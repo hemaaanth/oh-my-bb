@@ -26,8 +26,8 @@
   },
   "scripts": {
     "typecheck": "tsc -p .",
-    "test": "unshare -rn sh -c \"ip link set lo up && exec node --test test/\"",
-    "test:ci": "node --test test/"
+    "test": "unshare -rn sh -c \"ip link set lo up && exec node --test test/*.test.mjs\"",
+    "test:ci": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.5.0",
