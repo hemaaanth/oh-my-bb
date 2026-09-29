@@ -52,4 +52,4 @@ jobs:
           cache-dependency-path: agents/nanocodex-acp/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run test:ci
