@@ -32,12 +32,18 @@ as `fx-acp/v0.1.0`.
 
 - [`plugins/model-gateway`](plugins/model-gateway) routes supported BB harnesses
   through ordered provider accounts and optional API-key fallbacks.
+- [`plugins/pages`](plugins/pages) publishes versioned HTML and Markdown
+  artifacts, organizes them in project folders, and optionally shares them.
 - [`agents/fx-acp`](agents/fx-acp) is an optional standalone ACP adapter for FX.
 - [`agents/nanocodex-acp`](agents/nanocodex-acp) is an optional standalone ACP
   adapter for nanocodex.
 
 The agent adapters are not installed by Model Gateway. Model Gateway runs without
 either adapter, and each adapter has its own package manifest and tests.
+
+Pages runs without another BB plugin. Its optional chart feature bundles
+Highcharts; each user must obtain and manage the Highcharts license required
+for their intended use.
 
 ## Validate the repository
 

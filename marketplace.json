@@ -33,6 +33,33 @@
           "tagPrefix": "model-gateway/"
         }
       }
+    },
+    {
+      "id": "pages",
+      "displayName": "Pages",
+      "description": "Publish versioned pages in project folders, browse them in BB, and share them securely. Chart support bundles Highcharts; users must obtain and manage their own Highcharts license.",
+      "icon": "FileText",
+      "tags": [
+        "artifacts",
+        "charts",
+        "html",
+        "markdown",
+        "reports",
+        "sharing"
+      ],
+      "author": {
+        "name": "Hemanth Soni",
+        "github": "hemaaanth",
+        "url": "https://github.com/hemaaanth"
+      },
+      "source": {
+        "git": {
+          "url": "https://github.com/hemaaanth/oh-my-bb.git",
+          "subdir": "plugins/pages",
+          "range": "^0.1.0",
+          "tagPrefix": "pages/"
+        }
+      }
     }
   ]
 }

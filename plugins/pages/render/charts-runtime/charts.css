@@ -1,0 +1,115 @@
+/* Pages chart theme. Port of hem.so styles/highcharts.css, remapped to the
+ * --bb-* tokens in theme.css, so charts follow body.auto, body.dark, and
+ * data-bb-theme with no reload. charts.js inserts this right after the theme
+ * link, before author styles, so a page can still override any rule.
+ * No card: no chart border, no background box. Axis text is 12px at every width. */
+
+:root {
+  --highcharts-background-color: var(--bb-bg);
+  --highcharts-neutral-color-100: var(--bb-strong);
+  --highcharts-neutral-color-80: var(--bb-text);
+  --highcharts-neutral-color-60: var(--bb-chart-axis);
+  --highcharts-neutral-color-40: var(--bb-muted);
+  --highcharts-neutral-color-20: var(--bb-link-line);
+  --highcharts-neutral-color-10: var(--bb-chart-grid);
+  --highcharts-neutral-color-5: var(--bb-surface);
+  --highcharts-neutral-color-3: var(--bb-surface);
+  --highcharts-highlight-color-100: var(--bb-accent);
+  --highcharts-highlight-color-80: color-mix(in srgb, var(--bb-accent) 80%, transparent);
+  --highcharts-highlight-color-60: color-mix(in srgb, var(--bb-accent) 60%, transparent);
+  --highcharts-highlight-color-20: color-mix(in srgb, var(--bb-accent) 20%, transparent);
+  --highcharts-highlight-color-10: color-mix(in srgb, var(--bb-accent) 10%, transparent);
+  /* The site's indigo-led palette. theme.css carries six; the last four mix them. */
+  --highcharts-color-0: var(--bb-chart-1);
+  --highcharts-color-1: var(--bb-chart-2);
+  --highcharts-color-2: var(--bb-chart-3);
+  --highcharts-color-3: var(--bb-chart-4);
+  --highcharts-color-4: var(--bb-chart-5);
+  --highcharts-color-5: var(--bb-chart-6);
+  --highcharts-color-6: color-mix(in srgb, var(--bb-chart-1) 60%, var(--bb-chart-5));
+  --highcharts-color-7: color-mix(in srgb, var(--bb-chart-2) 70%, var(--bb-bg));
+  --highcharts-color-8: color-mix(in srgb, var(--bb-chart-6) 60%, var(--bb-chart-2));
+  --highcharts-color-9: color-mix(in srgb, var(--bb-chart-4) 45%, var(--bb-chart-2));
+  --highcharts-positive-color: var(--bb-positive);
+  --highcharts-negative-color: var(--bb-negative);
+}
+
+/* The canvas box is sized by the figure's aspect ratio before Highcharts draws. */
+.chart-canvas { position: relative; width: 100%; aspect-ratio: 16 / 9; min-height: 200px; margin-top: var(--bb-space-group); }
+.chart-canvas-inner { position: absolute; inset: 0; }
+.chart-error { margin: var(--bb-space-tight) 0 0; color: var(--bb-muted); font-size: var(--bb-size-small); }
+
+/* theme.css styles static chart SVGs; undo that for the Highcharts root. */
+.chart .highcharts-root { margin: 0; width: auto; height: auto; overflow: hidden; }
+
+.highcharts-container,
+.highcharts-root,
+.highcharts-tooltip-container {
+  font-family: var(--bb-font-sans);
+  font-size: 12px;
+}
+.highcharts-root text,
+.highcharts-tooltip-container text {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "cv05" on, "cv10" on;
+}
+
+.highcharts-background { fill: transparent; }
+.highcharts-plot-border { stroke-width: 0; }
+
+/* Axis, legend, and data-label text: 12px, never scaled down. */
+.highcharts-axis-labels text,
+.highcharts-axis-title,
+.highcharts-legend-item text,
+.highcharts-data-label text,
+.highcharts-data-labels text,
+.highcharts-stack-labels text,
+.highcharts-coloraxis-labels text {
+  font-size: 12px;
+}
+.highcharts-axis-labels text,
+.highcharts-legend-item text {
+  font-weight: 500;
+  font-variation-settings: "opsz" 12;
+}
+.highcharts-axis-labels text { fill: var(--bb-chart-axis); }
+.highcharts-legend-item text { fill: var(--bb-text); }
+.highcharts-legend-item:hover text { fill: var(--bb-strong); }
+.highcharts-data-label text,
+.highcharts-data-labels text { font-weight: 500; }
+.highcharts-axis-title {
+  font-variation-settings: "opsz" 13;
+  fill: var(--bb-muted);
+}
+
+/* No bold anywhere: strong text is weight 500. */
+.highcharts-strong,
+.highcharts-root b,
+.highcharts-tooltip b { font-weight: 500; }
+
+/* Simple variant: gridlines hidden here, because gridLineWidth 0 is ignored in styled mode. */
+.hc-simple .highcharts-grid-line,
+.hc-simple .highcharts-minor-grid-line { display: none; }
+
+/* Soft axis lines and ticks; the y-axis line matches the x baseline. */
+.highcharts-axis-line,
+.highcharts-xaxis .highcharts-axis-line,
+.highcharts-yaxis .highcharts-axis-line,
+.highcharts-tick { stroke: var(--highcharts-neutral-color-20); }
+.highcharts-yaxis .highcharts-axis-line { stroke-width: 1px; }
+.highcharts-radial-axis-grid .highcharts-grid-line { stroke-width: 1px; }
+.hc-radar .highcharts-area { fill-opacity: 0.3; }
+.highcharts-coloraxis-grid .highcharts-grid-line,
+.highcharts-coloraxis .highcharts-tick { display: none; }
+
+/* Tooltip: a plain rounded box on the page surface. No pointer. */
+.highcharts-tooltip-box {
+  fill: var(--bb-surface);
+  stroke: var(--bb-rule);
+}
+.highcharts-tooltip text {
+  font-size: 12px;
+  fill: var(--bb-text);
+}
+.highcharts-tooltip text .highcharts-strong,
+.highcharts-tooltip text tspan b { fill: var(--bb-strong); }

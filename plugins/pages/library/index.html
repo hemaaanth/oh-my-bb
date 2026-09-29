@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pages component library</title>
+<style>
+  /* Library chrome only. Nothing here is part of the theme. */
+  .lib-toolbar { display: flex; gap: var(--bb-space-group); align-items: baseline; font-size: var(--bb-size-small); color: var(--bb-muted); margin-bottom: var(--bb-space-section); }
+  .lib-toolbar button { font: inherit; color: var(--bb-muted); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 2.5px; }
+  .lib-toolbar button[aria-pressed="true"] { color: var(--bb-strong); text-decoration-color: var(--bb-link-line); }
+  .lib-label { display: flex; gap: var(--bb-space-tight); align-items: baseline; margin: var(--bb-space-sub) 0 var(--bb-space-tight); }
+  .lib-label code { font-size: var(--bb-size-micro); }
+  .lib-label span { color: var(--bb-muted); font-size: var(--bb-size-small); }
+  @media (max-width: 95.99rem) { .page > nav.toc ul { columns: 3 12rem; column-gap: 2rem; } .page > nav.toc li { break-inside: avoid; } }
+  .specimen { padding: var(--bb-space-block) 0 var(--bb-space-group); border-top: 1px dashed var(--bb-rule); }
+  .specimen > :last-child { margin-bottom: 0; }
+  .lib-source { margin: var(--bb-space-tight) 0 0; }
+  .lib-source pre { font-size: var(--bb-size-micro); max-height: 22rem; }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: var(--bb-space-group); margin-bottom: var(--bb-space-block); }
+  .swatch { font-size: var(--bb-size-micro); line-height: 1.4; }
+  .swatch i { display: block; height: 3rem; border-radius: var(--bb-radius-sm); box-shadow: inset 0 0 0 1px var(--bb-rule); margin-bottom: var(--bb-space-hair); }
+  .swatch code { background: none; padding: 0; color: var(--bb-strong); }
+  .swatch span { display: block; color: var(--bb-muted); font-family: var(--bb-font-mono); }
+  .scale-row { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: var(--bb-space-group); align-items: baseline; padding: var(--bb-space-tight) 0; border-bottom: 1px solid var(--bb-line); }
+  .scale-row > code { font-size: var(--bb-size-micro); background: none; padding: 0; color: var(--bb-muted); }
+  .width-bar { padding: var(--bb-space-hair) var(--bb-space-tight); border-radius: 2px; background: var(--bb-hover); color: var(--bb-muted); font-size: var(--bb-size-micro); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .space-bar { height: 0.5rem; background: var(--bb-accent); border-radius: 2px; opacity: 0.7; }
+  .lib-charts > .lib-cell > .lib-label { margin-top: 0; }
+</style>
+</head>
+<body class="auto">
+<main class="page wide">
+  <h1>Pages component library</h1>
+  <p class="lede">Every token, element, component, and chart the Pages theme ships, drawn by the real theme. Each specimen shows the HTML an agent writes.</p>
+  <div class="meta-line"><span>Theme: plugins/pages/assets/theme.css</span><span>Charts: Highcharts 13, styled mode</span><span id="lib-count"></span></div>
+
+  <div class="lib-toolbar" role="group" aria-label="Theme">
+    <span>Theme</span>
+    <button type="button" data-mode="auto" aria-pressed="true">Auto</button>
+    <button type="button" data-mode="light" aria-pressed="false">Light</button>
+    <button type="button" data-mode="dark" aria-pressed="false">Dark</button>
+  </div>
+
+  <nav class="toc"></nav>
+
+  <!-- ================= FOUNDATIONS ================= -->
+
+  <h2 id="tokens">Colour tokens</h2>
+  <p>Set on <code>:root</code>. Values below are read live, so they change with the theme toggle.</p>
+  <h3>Surface and text</h3>
+  <div class="swatches" data-tokens="--bb-bg --bb-surface --bb-text --bb-strong --bb-muted --bb-rule --bb-line --bb-link-line --bb-code-bg --bb-badge-bg"></div>
+  <h3>Accent and status</h3>
+  <div class="swatches" data-tokens="--bb-accent --bb-positive --bb-negative --bb-warning"></div>
+  <h3>Chart series</h3>
+  <div class="swatches" data-tokens="--bb-chart-1 --bb-chart-2 --bb-chart-3 --bb-chart-4 --bb-chart-5 --bb-chart-6 --bb-chart-grid --bb-chart-axis"></div>
+
+  <h2 id="type">Type scale</h2>
+  <p>Inter variable. Weight 500 through <code>font-variation-settings</code>, never bold. Optical size follows the step.</p>
+  <div class="scale-row"><code>--bb-size-title</code><span style="font-size:var(--bb-size-title);line-height:1.2;color:var(--bb-strong);font-variation-settings:'opsz' 32,'wght' 500">Activation after launch</span></div>
+  <div class="scale-row"><code>--bb-size-section</code><span style="font-size:var(--bb-size-section);line-height:1.3;color:var(--bb-strong);font-variation-settings:'opsz' 24,'wght' 500">What changed this week</span></div>
+  <div class="scale-row"><code>--bb-size-subsection</code><span style="font-size:var(--bb-size-subsection);color:var(--bb-strong);font-variation-settings:'opsz' 20,'wght' 500">Paid traffic</span></div>
+  <div class="scale-row"><code>--bb-size-body</code><span>Verified teams enable on day one or not at all.</span></div>
+  <div class="scale-row"><code>--bb-size-small</code><span style="font-size:var(--bb-size-small);color:var(--bb-muted)">PostHog, through 22 Sep</span></div>
+  <div class="scale-row"><code>--bb-size-micro</code><span style="font-size:var(--bb-size-micro);color:var(--bb-muted)">Updated 14:02</span></div>
+  <div class="scale-row"><code>--bb-size-mono</code><span style="font-family:var(--bb-font-mono);font-size:var(--bb-size-mono)">plugins/pages/assets/theme.css:284</span></div>
+
+  <h2 id="space">Spacing rhythm</h2>
+  <p>Every vertical gap uses one of these six steps.</p>
+  <div data-space="--bb-space-hair --bb-space-tight --bb-space-group --bb-space-block --bb-space-sub --bb-space-section"></div>
+
+  <h2 id="widths">Page widths</h2>
+  <p>Every page is one of three fixed widths. They shrink only when the window is narrower. A page with no <code>.page</code> gets narrow.</p>
+  <div class="scale-row"><code>main.page · S · 46rem</code><div class="width-bar" style="width:calc(46 / 80 * 100%)">Narrow: articles, reports, plans</div></div>
+  <div class="scale-row"><code>main.page.wide · M · 62rem</code><div class="width-bar" style="width:calc(62 / 80 * 100%)">Wide: wide tables, side-by-side comparisons</div></div>
+  <div class="scale-row"><code>main.page.dashboard · L · 80rem</code><div class="width-bar" style="width:100%">Dashboard: many charts in a grid</div></div>
+
+  <!-- ================= ELEMENTS ================= -->
+
+  <h2 id="headings">Headings</h2>
+  <p>One <code>h1</code> per page. <code>h2</code> opens a section with a hairline. Nothing else gets a rule.</p>
+  <div class="specimen" data-toc="skip">
+    <h2 style="margin-top:0">Section heading, h2</h2>
+    <p>Body text under a section.</p>
+    <h3>Subsection heading, h3</h3>
+    <p>Body text under a subsection.</p>
+    <h4>Minor heading, h4</h4>
+    <p>Body text under a minor heading.</p>
+  </div>
+
+  <h2 id="text">Text and inline</h2>
+  <div class="specimen">
+    <p>A paragraph with a <a href="#text">link</a>, <strong>strong text at weight 500</strong>, <em>emphasis as a wavy underline</em>, inline <code>code</code>, a key <kbd>⌘K</kbd>, and <small>small muted text</small>.</p>
+    <p>Numbers in running text: 14.7% fell to 0 across 4 days, from 12,480 to 9,113 visitors.</p>
+    <hr>
+    <p>The line above is an <code>hr</code>.</p>
+  </div>
+
+  <h2 id="lists">Lists and quotes</h2>
+  <div class="specimen">
+    <ul>
+      <li>Unordered item with a muted marker</li>
+      <li>Second item
+        <ul><li>Nested item</li><li>Another nested item</li></ul>
+      </li>
+    </ul>
+    <ol>
+      <li>Ordered step one</li>
+      <li>Ordered step two</li>
+    </ol>
+    <blockquote><p>Quotes are indented and muted. No coloured rail.</p></blockquote>
+  </div>
+
+  <h2 id="code">Code</h2>
+  <div class="specimen">
+    <pre><code>bb pages publish "$BB_THREAD_STORAGE/reports/activation.html" \
+  --key activation --label "Adds Sep 22"</code></pre>
+    <pre><code>const url = new URL("/v?id=92a49624-de56-4cff-8f66-c8a6df6f2167&amp;theme=dark&amp;frame=card", "https://bb.local/plugins/pages"); // long line: hover to see the scrollbar</code></pre>
+  </div>
+
+  <h2 id="tables">Tables</h2>
+  <p>Flush, hairline rows, tabular numbers. The first column is strong. <code>td.num</code> and <code>th.num</code> right-align. Wrap wide tables in <code>div.scroll</code> for a quiet sideways scroll.</p>
+  <div class="specimen">
+    <div class="scroll">
+    <table>
+      <thead><tr><th>Source</th><th class="num">Visitors</th><th class="num">Signups</th><th class="num">Rate</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>Paid search</td><td class="num">12,480</td><td class="num">1,032</td><td class="num">8.3%</td><td>Launch campaign</td></tr>
+        <tr><td>Organic</td><td class="num">9,113</td><td class="num">640</td><td class="num">7.0%</td><td>Steady</td></tr>
+        <tr><td>Referral</td><td class="num">2,050</td><td class="num">301</td><td class="num">14.7%</td><td>Partner newsletter</td></tr>
+        <tr><td>Direct</td><td class="num">1,208</td><td class="num">88</td><td class="num">7.3%</td><td>—</td></tr>
+      </tbody>
+      <caption>Launch week, 15–21 Sep.</caption>
+    </table>
+    </div>
+  </div>
+
+  <h2 id="media">Media and disclosure</h2>
+  <div class="specimen">
+    <figure>
+      <img alt="Placeholder" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 300'%3E%3Crect width='800' height='300' fill='%23888' fill-opacity='.12'/%3E%3Ctext x='400' y='158' font-family='sans-serif' font-size='20' fill='%23888' text-anchor='middle'%3E800 × 300 image%3C/text%3E%3C/svg%3E">
+      <figcaption>A figure with a caption. Images get the small radius.</figcaption>
+    </figure>
+    <details>
+      <summary>Details and summary</summary>
+      <p>Hidden content goes here. Put secondary detail in a disclosure, not up front.</p>
+    </details>
+  </div>
+
+  <!-- ================= COMPONENTS ================= -->
+
+  <h2 id="header">Page header</h2>
+  <p><code>h1</code>, then <code>p.lede</code>, then <code>div.meta-line</code> with <code>&lt;span&gt;</code> items.</p>
+  <div class="specimen">
+    <h1>Activation after launch</h1>
+    <p class="lede">Verified teams enable on day one or not at all.</p>
+    <div class="meta-line" style="margin-bottom:0"><span>PostHog, through 22 Sep</span><span>v3</span><span>Updated 14:02</span></div>
+  </div>
+
+  <h2 id="dl">Label list</h2>
+  <p><code>dl.list</code>: label in one column, content in two. Stacks on narrow panes.</p>
+  <div class="specimen">
+    <dl class="list">
+      <dt>Owner</dt><dd>Growth team</dd>
+      <dt>Window</dt><dd>15–21 Sep 2026</dd>
+      <dt>Source</dt><dd>PostHog insight <code>activation-funnel</code></dd>
+      <dt>Status</dt><dd>Shipped <span class="badge">v3</span></dd>
+    </dl>
+  </div>
+
+  <h2 id="notes">Notes</h2>
+  <p><code>div.note</code> with an optional tone class. Start with one tone word in <code>span.tone</code>.</p>
+  <div class="specimen">
+    <div class="note"><span class="tone">Note</span><p>Default tone. A quiet inset for context the reader should not miss.</p></div>
+    <div class="note info"><span class="tone">Context</span><p>Info tone uses the accent dot.</p></div>
+    <div class="note success"><span class="tone">Fixed</span><p>Success tone for a resolved issue.</p></div>
+    <div class="note warning"><span class="tone">Watch</span><p>Warning tone for a risk that is not yet a problem.</p></div>
+    <div class="note danger"><span class="tone">Broken</span><p>Danger tone for a real failure.</p></div>
+  </div>
+
+  <h2 id="badges">Badges</h2>
+  <p><code>span.badge</code>: a small status word. Use it rarely.</p>
+  <div class="specimen">
+    <p>Release notes <span class="badge">beta</span> and a version <span class="badge">v0.43</span> inline.</p>
+  </div>
+
+  <h2 id="findings">Findings</h2>
+  <p><code>ol.findings</code>. Severity dot: <code>important</code>/<code>danger</code>, <code>nit</code>/<code>warning</code>, <code>ok</code>/<code>success</code>, or none for neutral.</p>
+  <div class="specimen">
+    <ol class="findings">
+      <li><span class="sev important"></span><strong>Migration drops child rows on reload</strong><span class="loc">plugins/tasks/migrations.ts:41</span><p>Foreign keys stay on during the table rebuild, so the cascade deletes every comment.</p>
+        <details><summary>Evidence</summary><pre><code>PRAGMA foreign_keys = ON; -- still on at rebuild</code></pre></details></li>
+      <li><span class="sev nit"></span><strong>Unused import</strong><span class="loc">render/inject.ts:2</span><p><code>escapeHtml</code> is imported twice.</p></li>
+      <li><span class="sev ok"></span><strong>CSP blocks network as intended</strong><span class="loc">render/inject.ts:24</span><p>Checked with a fetch probe; it is refused.</p></li>
+      <li><span class="sev"></span><strong>Neutral observation</strong><span class="loc">server/http.ts</span><p>No severity class gives a muted dot.</p></li>
+    </ol>
+  </div>
+
+  <h2 id="contents">Contents</h2>
+  <p><code>nav.toc</code>, from the hem.so post sidebar. Leave it empty and Pages fills it from the page's <code>h2</code>s; add <code>data-depth="3"</code> to include <code>h3</code>s. The section in view is marked. It sits under the header, and moves to a fixed left column when the window has room beside the page (80rem for narrow, 96rem for wide). The one at the top of this page is the empty form. This specimen writes its links by hand.</p>
+  <div class="specimen">
+    <nav class="toc" aria-label="On this page">
+      <p class="toc-label">On this page</p>
+      <ul>
+        <li><a href="#tokens">Colour tokens</a></li>
+        <li><a href="#type">Type scale</a></li>
+        <li class="toc-sub"><a href="#widths">Page widths</a></li>
+        <li><a href="#tabs">Tabs</a></li>
+      </ul>
+    </nav>
+  </div>
+
+  <h2 id="tabs">Tabs</h2>
+  <p><code>div.tabs</code> with one <code>&lt;section data-tab="Name"&gt;</code> per tab. Pages adds the tab row; arrow keys move between tabs. Add <code>data-selected</code> to open a tab other than the first. A link or contents entry that points inside a tab opens it.</p>
+  <div class="specimen">
+    <div class="tabs">
+      <section data-tab="Overview">
+        <p>Verified teams enable on day one or not at all. The funnel tab has the chart; the table tab has the numbers.</p>
+        <dl class="list"><dt>Window</dt><dd>15–21 Sep</dd><dt>Teams</dt><dd>2,061</dd></dl>
+      </section>
+      <section data-tab="Funnel">
+        <figure class="chart" data-aspect="21/9" data-table="none">
+          <div class="chart-title">Most teams stall before their first project</div>
+          <div class="chart-subtitle">Teams at each step, launch week</div>
+          <script type="application/json">{
+            "chart": { "type": "column" },
+            "xAxis": { "categories": ["Signup", "First project", "Invite", "Activated"] },
+            "yAxis": { "title": { "text": "Teams" } },
+            "legend": { "enabled": false },
+            "series": [{ "name": "Teams", "data": [2061, 1240, 1010, 910] }]
+          }</script>
+        </figure>
+      </section>
+      <section data-tab="Table">
+        <table>
+          <thead><tr><th>Step</th><th class="num">Teams</th><th class="num">Of signups</th></tr></thead>
+          <tbody><tr><td>Signup</td><td class="num">2,061</td><td class="num">100%</td></tr><tr><td>First project</td><td class="num">1,240</td><td class="num">60%</td></tr><tr><td>Activated</td><td class="num">910</td><td class="num">44%</td></tr></tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+
+  <h2 id="stats">Stats</h2>
+  <p><code>dl.stats</code>: a row of headline numbers. One <code>&lt;div&gt;</code> per stat with <code>dt</code> label, <code>dd</code> value, and an optional <code>dd.delta</code>, coloured with <code>positive</code> or <code>negative</code> by what is good, not by direction. Put it right under the header.</p>
+  <div class="specimen">
+    <dl class="stats">
+      <div><dt>Signups</dt><dd>2,061</dd><dd class="delta positive">+12% vs last week</dd></div>
+      <div><dt>Activation</dt><dd>44%</dd><dd class="delta negative">−3 pts</dd></div>
+      <div><dt>p95 latency</dt><dd>180 ms</dd><dd class="delta positive">−40 ms</dd></div>
+      <div><dt>Open incidents</dt><dd>0</dd><dd class="delta">no change</dd></div>
+    </dl>
+  </div>
+
+  <h2 id="grid">Grid</h2>
+  <p><code>div.grid</code> puts charts or blocks side by side; columns fit the width. <code>.cols-2</code> or <code>.cols-3</code> fixes the count and stacks on narrow panes. Pair it with <code>main.page.dashboard</code>. The charts section below is one.</p>
+  <div class="specimen">
+    <div class="grid cols-3">
+      <figure class="chart" data-aspect="4/3" data-table="none">
+        <div class="chart-title">Signups</div>
+        <div class="chart-subtitle">Per day</div>
+        <script type="application/json">{ "legend": { "enabled": false }, "xAxis": { "categories": ["M","T","W","T","F"] }, "yAxis": { "title": { "text": null } }, "series": [{ "type": "line", "name": "Signups", "data": [280, 310, 295, 360, 402] }] }</script>
+      </figure>
+      <figure class="chart" data-aspect="4/3" data-table="none">
+        <div class="chart-title">Activation</div>
+        <div class="chart-subtitle">% of signups</div>
+        <script type="application/json">{ "legend": { "enabled": false }, "xAxis": { "categories": ["M","T","W","T","F"] }, "yAxis": { "title": { "text": null }, "labels": { "format": "{value}%" } }, "series": [{ "type": "column", "name": "Activation", "colorIndex": 2, "data": [46, 45, 44, 43, 44] }] }</script>
+      </figure>
+      <figure class="chart" data-aspect="4/3" data-table="none">
+        <div class="chart-title">Plans</div>
+        <div class="chart-subtitle">Share of new teams</div>
+        <script type="application/json">{ "series": [{ "type": "pie", "name": "Teams", "innerSize": "55%", "data": [{ "name": "Team", "y": 58 }, { "name": "Pro", "y": 30 }, { "name": "Free", "y": 12 }] }] }</script>
+      </figure>
+    </div>
+  </div>
+
+  <h2 id="compare">Compare</h2>
+  <p><code>div.compare</code>: two columns (or three), each opening with <code>p.compare-label</code>. Add <code>positive</code>, <code>negative</code>, or <code>warning</code> to the label for a dot. Columns take any content: text, lists, code, tables.</p>
+  <div class="specimen">
+    <div class="compare">
+      <div>
+        <p class="compare-label negative">Before</p>
+        <p>Every publish re-uploaded the theme and chart runtime, 1.4 MB per share.</p>
+        <pre><code>upload(index.html, theme.css, charts.js)</code></pre>
+      </div>
+      <div>
+        <p class="compare-label positive">After</p>
+        <p>Assets are content-hashed and uploaded once; a share sends only its HTML.</p>
+        <pre><code>upload(index.html)</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= CHARTS ================= -->
+
+  <h2 id="charts">Charts</h2>
+  <p><code>figure.chart</code> with a <code>chart-title</code>, a <code>chart-subtitle</code>, and Highcharts options as JSON. Colours come from <code>--bb-chart-*</code>. Pick one with <code>colorIndex</code>.</p>
+
+  <div class="grid lib-charts">
+
+  <div class="lib-cell">
+  <div class="lib-label"><code>line</code><span>default aspect 16/9</span></div>
+  <figure class="chart">
+    <div class="chart-title">CTA rate fell from 14.7% to zero in four days</div>
+    <div class="chart-subtitle">Unique visitors who clicked the CTA, %</div>
+    <script type="application/json">{
+      "xAxis": { "categories": ["Sep 15", "Sep 16", "Sep 17", "Sep 18", "Sep 19", "Sep 20"] },
+      "yAxis": { "title": { "text": "CTA rate" }, "labels": { "format": "{value}%" } },
+      "tooltip": { "valueSuffix": "%" },
+      "legend": { "enabled": false },
+      "series": [{ "type": "line", "name": "CTA rate", "data": [9.1, 14.7, 2.9, 2.3, 0, 0] }]
+    }</script>
+    <figcaption>Sep 20 is partial.</figcaption>
+  </figure>
+  </div>
+
+  <div class="lib-cell">
+  <div class="lib-label"><code>line</code><span>six series, full palette</span></div>
+  <figure class="chart">
+    <div class="chart-title">All six series colours</div>
+    <div class="chart-subtitle">Index, week 1 = 100</div>
+    <script type="application/json">{
+      "xAxis": { "categories": ["W1", "W2", "W3", "W4", "W5", "W6"] },
+      "yAxis": { "title": { "text": "Index" } },
+      "series": [
+        { "name": "One", "data": [100, 108, 115, 121, 130, 138] },
+        { "name": "Two", "data": [100, 104, 106, 111, 113, 117] },
+        { "name": "Three", "data": [100, 98, 103, 101, 107, 110] },
+        { "name": "Four", "data": [100, 95, 97, 94, 99, 102] },
+        { "name": "Five", "data": [100, 92, 89, 91, 88, 93] },
+        { "name": "Six", "data": [100, 90, 84, 83, 80, 78] }
+      ]
+    }</script>
+  </figure>
+  </div>
+
+  <div class="lib-cell">
+  <div class="lib-label"><code>column</code><span>stacked, aspect 4/3</span></div>
+  <figure class="chart" data-aspect="4/3">
+    <div class="chart-title">Paid traffic carried the launch week</div>
+    <div class="chart-subtitle">Visitors by source, thousands</div>
+    <script type="application/json">{
+      "chart": { "type": "column" },
+      "xAxis": { "categories": ["Mon", "Tue", "Wed", "Thu", "Fri"] },
+      "yAxis": { "title": { "text": "Visitors (k)" } },
+      "plotOptions": { "series": { "stacking": "normal" } },
+      "series": [
+        { "name": "Paid", "data": [12, 14, 18, 22, 25] },
+        { "name": "Organic", "data": [8, 9, 9, 10, 12] }
+      ]
+    }</script>
+  </figure>
+  </div>
+
+  <div class="lib-cell">
+  <div class="lib-label"><code>bar</code><span>one series, colorIndex highlight</span></div>
+  <figure class="chart" data-aspect="4/3">
+    <div class="chart-title">Referral converts at twice the average</div>
+    <div class="chart-subtitle">Signup rate by source, %</div>
+    <script type="application/json">{
+      "chart": { "type": "bar" },
+      "xAxis": { "categories": ["Referral", "Paid search", "Direct", "Organic"] },
+      "yAxis": { "title": { "text": "Rate" }, "labels": { "format": "{value}%" } },
+      "legend": { "enabled": false },
+      "tooltip": { "valueSuffix": "%" },
+      "series": [{ "name": "Rate", "colorIndex": 1, "data": [{ "y": 14.7, "colorIndex": 0 }, 8.3, 7.3, 7.0] }]
+    }</script>
+  </figure>
+  </div>
+
+  <div class="lib-cell">
+  <div class="lib-label"><code>area</code><span>stacked percent</span></div>
+  <figure class="chart">
+    <div class="chart-title">Mobile passed desktop in August</div>
+    <div class="chart-subtitle">Share of sessions by device, %</div>
+    <script type="application/json">{
+      "chart": { "type": "area" },
+      "xAxis": { "categories": ["Apr", "May", "Jun", "Jul", "Aug", "Sep"] },
+      "yAxis": { "title": { "text": "Share" }, "labels": { "format": "{value}%" } },
+      "plotOptions": { "area": { "stacking": "percent" } },
+      "series": [
+        { "name": "Mobile", "data": [38, 41, 44, 47, 52, 55] },
+        { "name": "Desktop", "data": [56, 53, 50, 47, 43, 40] },
+        { "name": "Tablet", "data": [6, 6, 6, 6, 5, 5] }
+      ]
+    }</script>
+  </figure>
+  </div>
+
+  <div class="lib-cell">
+  <div class="lib-label"><code>pie</code><span>donut via innerSize</span></div>
+  <figure class="chart" data-aspect="4/3">
+    <div class="chart-title">Three plans make up 90% of revenue</div>
+    <div class="chart-subtitle">MRR by plan, September</div>
+    <script type="application/json">{
+      "chart": { "type": "pie" },
+      "plotOptions": { "pie": { "innerSize": "55%" } },
+      "series": [{ "name": "MRR", "data": [
+        { "name": "Team", "y": 48 }, { "name": "Pro", "y": 27 }, { "name": "Enterprise", "y": 15 }, { "name": "Other", "y": 10 }
+      ] }]
+    }</script>
+  </figure>
+  </div>
+
+  <div class="lib-cell">
+  <div class="lib-label"><code>scatter</code></div>
+  <figure class="chart">
+    <div class="chart-title">Larger teams activate faster</div>
+    <div class="chart-subtitle">Team size vs days to activation</div>
+    <script type="application/json">{
+      "chart": { "type": "scatter" },
+      "xAxis": { "title": { "text": "Seats" } },
+      "yAxis": { "title": { "text": "Days" } },
+      "legend": { "enabled": false },
+      "series": [{ "name": "Teams", "data": [[2, 11], [3, 9], [4, 10], [5, 7], [6, 8], [8, 6], [10, 5], [12, 5], [15, 4], [18, 3], [22, 3], [30, 2]] }]
+    }</script>
+  </figure>
+  </div>
+
+  <div class="lib-cell">
+  <div class="lib-label"><code>heatmap</code><span>colour axis surface → chart-1</span></div>
+  <figure class="chart">
+    <div class="chart-title">Signups cluster on weekday mornings</div>
+    <div class="chart-subtitle">Signups by day and hour block</div>
+    <script type="application/json">{
+      "chart": { "type": "heatmap" },
+      "xAxis": { "categories": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] },
+      "yAxis": { "categories": ["Night", "Morning", "Afternoon", "Evening"], "title": { "text": null }, "reversed": true },
+      "colorAxis": { "min": 0 },
+      "legend": { "enabled": false },
+      "series": [{ "name": "Signups", "data": [
+        [0,0,3],[0,1,42],[0,2,30],[0,3,12],[1,0,4],[1,1,48],[1,2,33],[1,3,14],[2,0,2],[2,1,45],[2,2,31],[2,3,13],
+        [3,0,5],[3,1,40],[3,2,29],[3,3,15],[4,0,3],[4,1,33],[4,2,22],[4,3,9],[5,0,6],[5,1,12],[5,2,14],[5,3,10],[6,0,4],[6,1,10],[6,2,12],[6,3,11]
+      ] }]
+    }</script>
+  </figure>
+  </div>
+
+  <div class="lib-cell">
+  <div class="lib-label"><code>sankey</code></div>
+  <figure class="chart">
+    <div class="chart-title">Most drop-off happens before the first project</div>
+    <div class="chart-subtitle">Visitors through the funnel, launch week</div>
+    <script type="application/json">{
+      "series": [{ "type": "sankey", "name": "Funnel", "keys": ["from", "to", "weight"], "data": [
+        ["Visit", "Signup", 2061], ["Visit", "Left", 22790],
+        ["Signup", "First project", 1240], ["Signup", "Left early", 821],
+        ["First project", "Activated", 910], ["First project", "Stalled", 330]
+      ] }]
+    }</script>
+  </figure>
+  </div>
+
+  <div class="lib-cell">
+  <div class="lib-label"><code>treemap</code></div>
+  <figure class="chart">
+    <div class="chart-title">Storage is a third of infra spend</div>
+    <div class="chart-subtitle">Monthly infra cost by service, $k</div>
+    <script type="application/json">{
+      "series": [{ "type": "treemap", "layoutAlgorithm": "squarified", "name": "Cost", "data": [
+        { "name": "Storage", "value": 34, "colorIndex": 0 }, { "name": "Compute", "value": 28, "colorIndex": 1 },
+        { "name": "Network", "value": 16, "colorIndex": 2 }, { "name": "Database", "value": 12, "colorIndex": 3 },
+        { "name": "Logs", "value": 6, "colorIndex": 4 }, { "name": "Other", "value": 4, "colorIndex": 5 }
+      ] }]
+    }</script>
+  </figure>
+  </div>
+
+  <div class="lib-cell">
+  <div class="lib-label"><code>columnrange</code><span>via highcharts-more</span></div>
+  <figure class="chart">
+    <div class="chart-title">p50 to p95 latency by endpoint</div>
+    <div class="chart-subtitle">Milliseconds, last 7 days</div>
+    <script type="application/json">{
+      "chart": { "type": "columnrange", "inverted": true },
+      "xAxis": { "categories": ["/publish", "/lookup", "/share", "/assets"] },
+      "yAxis": { "title": { "text": "ms" } },
+      "legend": { "enabled": false },
+      "series": [{ "name": "p50–p95", "data": [[42, 180], [8, 35], [120, 610], [3, 12]] }]
+    }</script>
+  </figure>
+  </div>
+
+  <div class="lib-cell">
+  <div class="lib-label"><code>data-variant="simple"</code><span>no numbers, ticks, or grid</span></div>
+  <figure class="chart" data-variant="simple" data-table="none">
+    <div class="chart-title">Illustrative: adoption follows an S-curve</div>
+    <div class="chart-subtitle">Shape only</div>
+    <script type="application/json">{
+      "legend": { "enabled": false },
+      "series": [{ "type": "area", "name": "Adoption", "data": [1, 2, 4, 8, 16, 30, 52, 70, 82, 89, 93, 95] }]
+    }</script>
+  </figure>
+  </div>
+
+  </div>
+</main>
+
+<script>
+(() => {
+  // Capture chart source now: this script runs before the chart runtime, which rewrites each figure.
+  for (const f of document.querySelectorAll(".lib-charts figure.chart")) f.dataset.libSource = f.outerHTML;
+
+  // Theme toggle: swaps the body class the theme and chart runtime already watch.
+  const buttons = document.querySelectorAll(".lib-toolbar button");
+  for (const button of buttons) {
+    button.addEventListener("click", () => {
+      document.body.classList.remove("auto", "dark");
+      if (button.dataset.mode !== "light") document.body.classList.add(button.dataset.mode);
+      for (const other of buttons) other.setAttribute("aria-pressed", String(other === button));
+      paintTokens();
+    });
+  }
+
+  // Swatches and spacing bars, read from the live computed tokens.
+  function paintTokens() {
+    const root = getComputedStyle(document.documentElement);
+    for (const grid of document.querySelectorAll("[data-tokens]")) {
+      grid.innerHTML = grid.dataset.tokens.split(" ").map((name) =>
+        `<div class="swatch"><i style="background:var(${name})"></i><code>${name}</code><span>${root.getPropertyValue(name).trim()}</span></div>`).join("");
+    }
+    for (const box of document.querySelectorAll("[data-space]")) {
+      box.innerHTML = box.dataset.space.split(" ").map((name) =>
+        `<div class="scale-row"><code>${name} · ${root.getPropertyValue(name).trim()}</code><div class="space-bar" style="width:var(${name})"></div></div>`).join("");
+    }
+  }
+  paintTokens();
+  new MutationObserver(paintTokens).observe(document.documentElement, { attributes: true, attributeFilter: ["data-bb-theme"] });
+
+  // Show the HTML behind each specimen, taken from the markup itself so it never drifts.
+  const indent = (html) => {
+    const lines = html.replace(/^\n+|\s+$/g, "").split("\n");
+    const pad = Math.min(...lines.filter((l) => l.trim()).map((l) => l.match(/^ */)[0].length));
+    return lines.map((l) => l.slice(pad)).join("\n");
+  };
+  const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  for (const node of document.querySelectorAll(".specimen, .lib-charts figure.chart")) {
+    const source = node.matches("figure") ? node.dataset.libSource : node.innerHTML;
+    if (source == null) continue;
+    const details = document.createElement("details");
+    details.className = "lib-source";
+    details.innerHTML = `<summary>HTML</summary><pre><code>${escape(indent(source))}</code></pre>`;
+    node.after(details);
+  }
+
+  document.getElementById("lib-count").textContent =
+    `${document.querySelectorAll(".specimen").length} specimens · ${document.querySelectorAll("figure.chart").length} charts`;
+})();
+</script>
+</body>
+</html>

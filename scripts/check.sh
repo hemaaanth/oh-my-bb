@@ -5,6 +5,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 for package in \
   plugins/model-gateway \
+  plugins/pages \
   agents/fx-acp \
   agents/nanocodex-acp
 do
@@ -15,3 +16,4 @@ do
 done
 
 npm --prefix "$root/plugins/model-gateway" run build
+npm --prefix "$root/plugins/pages" run build

@@ -1,0 +1,670 @@
+/* Pages theme — derived from hemaaanth/site (hem.so) at a6411cc.
+ * Every rule is inside :where(), so it has zero specificity: any rule a page
+ * writes wins. Pseudo-elements cannot live inside :where(), so rules like
+ * :where(summary)::before carry the one type-level point a pseudo adds.
+ * Tokens live on :root; override them there, not on body.
+ * Light by default. body.dark forces dark. body.auto follows the reader's
+ * system, or the BB app theme when the preview sets data-bb-theme on <html>.
+ * No borders around blocks, no coloured rails, no pills, no bold. Hierarchy
+ * comes from a fixed type scale, Inter's weight/opsz axes, muted colour, and
+ * a fixed spacing rhythm.
+ *
+ * Type scale (the site's post page: text-xl title, prose h2/h3, prose body):
+ *   title 1.875rem · section 1.5rem · subsection 1.25rem · body 0.9375rem
+ *   small 0.875rem · micro 0.75rem · mono 0.8125rem (blocks and paths)
+ * Spacing rhythm, used for every vertical gap:
+ *   hair 0.25 · tight 0.5 · group 1 · block 1.5 · sub 2 · section 3 (rem)
+ * Page widths, one of three: narrow 46rem (.page), wide 62rem (.page.wide),
+ * dashboard 80rem (.page.dashboard). A page without .page gets narrow.  */
+
+@font-face {
+  font-family: "Inter";
+  src: url("inter.roman.var.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:where(:root) {
+  color-scheme: light;
+  --bb-bg: #f9fafb;              /* site bg-gray-50 */
+  --bb-surface: #f0f1f3;         /* inset blocks: pre, notes */
+  --bb-text: #262626;            /* neutral-800 */
+  --bb-strong: #171717;          /* headings, prose-neutral */
+  --bb-muted: #737373;           /* neutral-500: .time, captions */
+  --bb-rule: rgb(115 115 115 / 0.14); /* section hairline, .list-container */
+  --bb-line: #ececec;            /* table rows */
+  --bb-link-line: #d4d4d4;       /* link underline, neutral-300 */
+  --bb-link-line-hover: #a3a3a3;
+  --bb-accent: #6366f1;          /* indigo-500, used sparingly */
+  --bb-code-bg: rgb(115 115 115 / 0.12);
+  --bb-code-text: #262626;
+  --bb-badge-bg: #e5e7eb;        /* site .badge bg-gray-200 */
+  --bb-hover: #e5e5e5;           /* site .toc-active bg-neutral-200 */
+  --bb-scrollbar: rgb(115 115 115 / 0.35);
+  --bb-positive: #4ea291;
+  --bb-negative: #cd7b73;
+  --bb-warning: #cc9a55;
+  --bb-chart-1: #7c84e0; --bb-chart-2: #79848f; --bb-chart-3: #4ea291;
+  --bb-chart-4: #cc9a55; --bb-chart-5: #b87e94; --bb-chart-6: #739bc2;
+  --bb-chart-grid: rgb(115 115 115 / 0.12);
+  --bb-chart-axis: #525252;
+
+  --bb-measure: 46rem;           /* site max-w-main */
+  --bb-wide: 62rem;              /* site max-w-wide-main */
+  --bb-dashboard: 80rem;         /* many charts side by side */
+  --bb-radius: 0.75rem;          /* site rounded-xl: notes */
+  --bb-radius-sm: 0.5rem;        /* code blocks, images */
+  --bb-font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --bb-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Type scale. */
+  --bb-size-title: 1.875rem;
+  --bb-size-section: 1.5rem;
+  --bb-size-subsection: 1.25rem;
+  --bb-size-body: 0.9375rem;
+  --bb-size-small: 0.875rem;
+  --bb-size-micro: 0.75rem;
+  --bb-size-mono: 0.8125rem;
+  --bb-leading: 1.6875;          /* site leading-golden */
+
+  /* Spacing rhythm. */
+  --bb-space-hair: 0.25rem;      /* parts of one line group: title → path */
+  --bb-space-tight: 0.5rem;      /* heading → its text, list items */
+  --bb-space-group: 1rem;        /* hairline → heading, item → item */
+  --bb-space-block: 1.5rem;      /* paragraph → paragraph, figure, table */
+  --bb-space-sub: 2rem;          /* before a subsection */
+  --bb-space-section: 3rem;      /* before a section, after the header */
+}
+
+/* Narrow panes (side panel, inline chat card): same scale, one step tighter. */
+@media (max-width: 40rem) {
+  :where(:root) {
+    --bb-size-title: 1.625rem;
+    --bb-size-section: 1.3125rem;
+    --bb-size-subsection: 1.125rem;
+    --bb-space-section: 2.5rem;
+  }
+}
+
+:where(:root:has(> body.dark)),
+:where(:root[data-bb-theme="dark"]:has(> body.auto)) {
+  color-scheme: dark;
+  --bb-bg: #09090b;              /* zinc-950 */
+  --bb-surface: #131313;         /* a touch above neutral-950 so it reads without a border */
+  --bb-text: #dfdfde;            /* silver */
+  --bb-strong: #ffffff;
+  --bb-muted: #9b9b9b;           /* silver-dark */
+  --bb-rule: #1c1c1c;            /* neutral-850 */
+  --bb-line: #1a1a1a;
+  --bb-link-line: #404040;
+  --bb-link-line-hover: #525252;
+  --bb-accent: #818cf8;
+  --bb-code-bg: #1f1f1f;
+  --bb-code-text: #d4d4d4;
+  --bb-badge-bg: #171717;        /* neutral-900 */
+  --bb-hover: #262626;           /* neutral-800 */
+  --bb-scrollbar: rgb(255 255 255 / 0.22);
+  --bb-positive: #54bdae;
+  --bb-negative: #e0968e;
+  --bb-warning: #e0b15e;
+  --bb-chart-1: #818cf8; --bb-chart-2: #94a3b8; --bb-chart-3: #54bdae;
+  --bb-chart-4: #e0b15e; --bb-chart-5: #cf8aa4; --bb-chart-6: #84acd6;
+  --bb-chart-grid: rgb(255 255 255 / 0.1);
+  --bb-chart-axis: #9b9b9b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-bb-theme]):has(> body.auto)) {
+    color-scheme: dark;
+    --bb-bg: #09090b; --bb-surface: #131313; --bb-text: #dfdfde; --bb-strong: #ffffff;
+    --bb-muted: #9b9b9b; --bb-rule: #1c1c1c; --bb-line: #1a1a1a; --bb-link-line: #404040;
+    --bb-link-line-hover: #525252; --bb-accent: #818cf8; --bb-code-bg: #1f1f1f; --bb-code-text: #d4d4d4;
+    --bb-badge-bg: #171717; --bb-hover: #262626; --bb-scrollbar: rgb(255 255 255 / 0.22); --bb-positive: #54bdae; --bb-negative: #e0968e; --bb-warning: #e0b15e;
+    --bb-chart-1: #818cf8; --bb-chart-2: #94a3b8; --bb-chart-3: #54bdae;
+    --bb-chart-4: #e0b15e; --bb-chart-5: #cf8aa4; --bb-chart-6: #84acd6;
+    --bb-chart-grid: rgb(255 255 255 / 0.1); --bb-chart-axis: #9b9b9b;
+  }
+}
+
+:where(*), :where(*)::before, :where(*)::after { box-sizing: border-box; }
+
+:where(html) { color: var(--bb-text); background: var(--bb-bg); }
+
+:where(body) {
+  margin: 0;
+  background: var(--bb-bg);
+  color: var(--bb-text);
+  font-family: var(--bb-font-sans);
+  font-size: var(--bb-size-body);
+  line-height: var(--bb-leading);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" on, "liga" on, "cv05" on, "cv10" on;
+  font-variation-settings: "opsz" 15;
+}
+
+::selection { background: var(--bb-accent); color: #fff; }
+
+/* ---- Headings ---------------------------------------------------------
+ * Weight 500 through font-variation-settings, never bold. opsz follows size.
+ * A section (h2) opens with the site's hairline; nothing else does. */
+:where(h1, h2, h3, h4) {
+  color: var(--bb-strong);
+  font-weight: 400;
+  text-wrap: balance;
+  margin: 0;
+}
+:where(h1) {
+  font-size: var(--bb-size-title);
+  line-height: 1.2;
+  letter-spacing: -0.012em;
+  font-variation-settings: "opsz" 32, "wght" 500;
+  margin-bottom: var(--bb-space-block);
+}
+:where(h2) {
+  font-size: var(--bb-size-section);
+  line-height: 1.3;
+  letter-spacing: -0.008em;
+  font-variation-settings: "opsz" 24, "wght" 500;
+  margin: var(--bb-space-section) 0 var(--bb-space-tight);
+  padding-top: var(--bb-space-group);
+  border-top: 1px solid var(--bb-rule);
+}
+:where(h3) {
+  font-size: var(--bb-size-subsection);
+  line-height: 1.4;
+  font-variation-settings: "opsz" 20, "wght" 500;
+  margin: var(--bb-space-sub) 0 var(--bb-space-tight);
+}
+:where(h4) {
+  font-size: var(--bb-size-body);
+  line-height: var(--bb-leading);
+  font-variation-settings: "opsz" 15, "wght" 500;
+  margin: var(--bb-space-block) 0 var(--bb-space-hair);
+}
+:where(h2 + h3) { margin-top: var(--bb-space-group); }
+
+/* ---- Text blocks ------------------------------------------------------ */
+:where(p, ul, ol, dl, blockquote, figure, table, pre, details) { margin: 0 0 var(--bb-space-block); }
+:where(ul, ol) { padding-left: 1.25em; }
+:where(li) { margin-bottom: var(--bb-space-tight); }
+:where(li > ul, li > ol) { margin: var(--bb-space-tight) 0 0; }
+:where(li)::marker { color: var(--bb-muted); }
+
+:where(strong, b) { font-weight: 400; font-variation-settings: "opsz" 15, "wght" 500; color: var(--bb-strong); }
+:where(em) { font-style: normal; text-decoration: underline wavy var(--bb-link-line); text-underline-offset: 3px; }
+:where(small) { font-size: var(--bb-size-small); color: var(--bb-muted); font-variation-settings: "opsz" 14; }
+
+:where(a) {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2.5px;
+  text-decoration-color: var(--bb-link-line);
+  text-decoration-skip-ink: all;
+  font-variation-settings: "opsz" 15, "wght" 450;
+  transition: text-decoration-color 150ms cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+:where(a:hover) { text-decoration-color: var(--bb-link-line-hover); }
+
+:where(hr) { height: 2px; border: 0; background: var(--bb-line); margin: var(--bb-space-section) 0; }
+
+/* Quotes: indented and muted. No rail. */
+:where(blockquote) { padding-left: 1.25em; margin-left: 0; color: var(--bb-muted); }
+:where(blockquote > :last-child) { margin-bottom: 0; }
+
+/* ---- Code -------------------------------------------------------------
+ * Inline: a quiet tint that keeps the line height. Blocks: a soft fill,
+ * no outline, text on the mono step. The block trims its first and last line
+ * to cap height and baseline, so the padding reads the same on all four sides.
+ * The scrollbar is thin and shows only while the pointer is over the block. */
+:where(code, kbd, samp) { font-family: var(--bb-font-mono); font-size: 0.875em; }
+:where(:not(pre) > code, kbd) {
+  padding: 0.1em 0.3em;
+  border-radius: 0.3rem;
+  background: var(--bb-code-bg);
+  color: var(--bb-code-text);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+:where(pre) {
+  padding: 1rem;
+  overflow: auto hidden;
+  font-size: var(--bb-size-mono);
+  line-height: 1.7;
+  text-box: trim-both cap alphabetic;
+  border-radius: var(--bb-radius-sm);
+  background: var(--bb-surface);
+  color: var(--bb-text);
+  tab-size: 2;
+  container-type: scroll-state;
+}
+:where(pre code) { display: block; padding: 0; background: none; color: inherit; font-size: inherit; }
+/* A classic scrollbar takes room under the text. When the block scrolls,
+ * pull the code up by that room so the bottom gap still matches the top. */
+@container scroll-state(scrollable: x) {
+  :where(pre > code) { margin-bottom: -10px; }
+}
+
+/* Quiet scrollbars: thin, invisible until hover. */
+:where(pre, .scroll) { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color 150ms; }
+:where(pre:hover, .scroll:hover) { scrollbar-color: var(--bb-scrollbar) transparent; }
+:where(.scroll) { overflow-x: auto; }
+
+/* ---- Tables: flush, hairline rows, small step. ----------------------- */
+:where(table) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--bb-size-small);
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-variation-settings: "opsz" 14;
+}
+:where(th, td) { padding: var(--bb-space-tight) var(--bb-space-group) var(--bb-space-tight) 0; text-align: left; vertical-align: top; }
+:where(th:last-child, td:last-child) { padding-right: 0; }
+:where(th) { color: var(--bb-muted); font-weight: 400; border-bottom: 1px solid var(--bb-rule); vertical-align: bottom; }
+:where(td) { border-bottom: 1px solid var(--bb-line); }
+:where(td:first-child) { color: var(--bb-strong); font-variation-settings: "opsz" 14, "wght" 500; }
+:where(tbody tr:last-child td) { border-bottom: 0; }
+:where(th.num, td.num) { text-align: right; }
+:where(caption) { caption-side: bottom; text-align: left; padding-top: var(--bb-space-tight); color: var(--bb-muted); }
+
+/* Virtualized data table. JSON-backed rows keep large datasets out of the DOM;
+ * the runtime renders only the visible window. */
+:where(.data-table) { margin: 0 0 var(--bb-space-block); font-size: var(--bb-size-small); font-variant-numeric: tabular-nums slashed-zero; font-variation-settings: "opsz" 14; }
+:where(.data-table-viewport) { height: min(70vh, 36rem); overflow: auto; border-top: 1px solid var(--bb-rule); }
+:where(.data-table-grid) { position: relative; width: 100%; }
+:where(.data-table-head, .data-table-row) { display: grid; width: 100%; }
+:where(.data-table-head) { position: sticky; z-index: 2; top: 0; height: 2.5rem; background: var(--bb-bg); border-bottom: 1px solid var(--bb-rule); }
+:where(.data-table-body) { position: relative; }
+:where(.data-table-row) { position: absolute; inset: 0 0 auto; height: 2.5rem; border-bottom: 1px solid var(--bb-line); }
+:where(.data-table-heading, .data-table-cell) { min-width: 0; padding: 0.625rem 1rem 0.625rem 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+:where(.data-table-heading:first-child, .data-table-cell:first-child) { padding-left: 0.25rem; }
+:where(.data-table-heading.num, .data-table-cell.num) { text-align: right; }
+:where(.data-table-heading button) { width: 100%; padding: 0; border: 0; background: none; color: var(--bb-muted); font: inherit; text-align: inherit; cursor: pointer; }
+:where(.data-table-heading button)::after { content: ""; display: inline-block; width: 0.35rem; height: 0.35rem; margin: 0 0 0.2rem 0.45rem; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; opacity: 0; transform: rotate(45deg); }
+:where(.data-table-heading:hover button) { color: var(--bb-text); }
+:where(.data-table-heading[aria-sort="ascending"] button, .data-table-heading[aria-sort="descending"] button) { color: var(--bb-strong); font-variation-settings: "opsz" 14, "wght" 500; }
+:where(.data-table-heading[aria-sort="ascending"] button)::after { opacity: 1; transform: translateY(0.15rem) rotate(225deg); }
+:where(.data-table-heading[aria-sort="descending"] button)::after { opacity: 1; transform: translateY(-0.1rem) rotate(45deg); }
+:where(.data-table-heading button:focus-visible) { outline: 2px solid var(--bb-accent); outline-offset: 2px; border-radius: 2px; }
+:where(.data-table-heading.filtered button)::before { content: ""; display: inline-block; width: 0.5rem; height: 0.5rem; margin-right: 0.4rem; background: currentColor; clip-path: polygon(0 0, 100% 0, 63% 45%, 63% 100%, 37% 80%, 37% 45%); }
+:where(.data-table-pill) { display: inline-block; max-width: 100%; padding: 0.125rem 0.5rem; overflow: hidden; border-radius: 999px; background: var(--bb-badge-bg); color: var(--bb-muted); text-decoration: none; text-overflow: ellipsis; vertical-align: top; }
+:where(.data-table-pill.success) { color: var(--bb-positive); }
+:where(.data-table-pill.warning) { color: var(--bb-warning); }
+:where(.data-table-pill.danger) { color: var(--bb-negative); }
+:where(.data-table-pill.info) { color: var(--bb-accent); }
+:where(a.data-table-pill:hover) { text-decoration: underline; text-decoration-color: currentColor; }
+:where(.data-table-footer) { display: flex; min-height: 2.5rem; align-items: center; justify-content: space-between; gap: 1rem; border-block: 1px solid var(--bb-rule); color: var(--bb-muted); }
+:where(.data-table-status) { padding-left: 0.25rem; }
+:where(.data-table-filter-wrap) { position: relative; }
+:where(.data-table-filter-button, .data-table-filter-panel button) { border: 0; background: none; color: var(--bb-muted); font: inherit; cursor: pointer; }
+:where(.data-table-filter-button) { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.25rem 0.5rem 0.75rem; }
+:where(.data-table-filter-button)::before { content: ""; width: 0.5rem; height: 0.5rem; background: currentColor; clip-path: polygon(0 0, 100% 0, 63% 45%, 63% 100%, 37% 80%, 37% 45%); }
+:where(.data-table-filter-button:hover, .data-table-filter-panel button:hover) { color: var(--bb-strong); }
+:where(.data-table-filter-button:focus-visible, .data-table-filter-panel button:focus-visible, .data-table-filter-panel input:focus-visible) { outline: 2px solid var(--bb-accent); outline-offset: 2px; }
+:where(.data-table-filter-count:not(:empty)) { min-width: 1.25rem; padding: 0.05rem 0.35rem; border-radius: 999px; background: var(--bb-badge-bg); color: var(--bb-strong); text-align: center; }
+:where(.data-table-filter-panel) { position: absolute; z-index: 4; right: 0; bottom: calc(100% + 0.4rem); width: min(23rem, calc(100vw - 2.5rem)); max-width: calc(100vw - 2.5rem); max-height: min(65vh, 24rem); padding: 0.5rem; overflow: auto; border: 1px solid var(--bb-rule); border-radius: var(--bb-radius-sm); background: var(--bb-bg); box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 0.16); color: var(--bb-text); }
+:where(.data-table-filter-panel[hidden]) { display: none; }
+:where(.data-table-filter-panel-head) { display: flex; align-items: center; justify-content: space-between; min-height: 1.75rem; padding: 0 0.25rem 0.35rem; color: var(--bb-strong); font-variation-settings: "opsz" 14, "wght" 500; }
+:where(.data-table-filter-panel-head button:disabled) { opacity: 0.4; cursor: default; }
+:where(.data-table-filter-row) { display: grid; grid-template-columns: 4.75rem minmax(0, 1fr); gap: 0.5rem; align-items: center; min-width: 0; min-height: 2.25rem; border-top: 1px solid var(--bb-line); }
+:where(.data-table-filter-row > span:first-child) { overflow: hidden; color: var(--bb-muted); text-overflow: ellipsis; white-space: nowrap; }
+:where(.data-table-filter-controls) { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 0.35rem; min-width: 0; }
+:where(.data-table-filter-panel input, .data-table-select-trigger) { width: 100%; min-width: 0; height: 1.75rem; padding: 0 0.45rem; border: 1px solid var(--bb-rule); border-radius: 0.25rem; background: var(--bb-surface); color: var(--bb-text); font: inherit; }
+:where(.data-table-filter-panel input[aria-invalid="true"]) { border-color: var(--bb-negative); }
+:where(.data-table-select) { position: relative; display: block; min-width: 0; }
+:where(.data-table-select-trigger) { display: flex; align-items: center; justify-content: space-between; gap: 0.35rem; overflow: hidden; text-align: left; white-space: nowrap; }
+:where(.data-table-select-trigger > span) { overflow: hidden; text-overflow: ellipsis; }
+:where(.data-table-select-trigger)::after { content: ""; flex: none; width: 0.35rem; height: 0.35rem; margin: -0.15rem 0.1rem 0 0; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); transition: transform 120ms; }
+:where(.data-table-select-trigger[aria-expanded="true"])::after { margin-top: 0.15rem; transform: rotate(225deg); }
+:where(.data-table-select-menu) { position: fixed; z-index: 20; max-height: 11rem; padding: 0.2rem; overflow-y: auto; border: 1px solid var(--bb-rule); border-radius: 0.3rem; background: var(--bb-bg); box-shadow: 0 0.65rem 1.5rem rgb(0 0 0 / 0.18); font-size: var(--bb-size-small); font-variation-settings: "opsz" 14; }
+:where(.data-table-select-menu[hidden]) { display: none; }
+:where(.data-table-select-option) { display: flex; width: 100%; min-height: 1.75rem; align-items: center; justify-content: space-between; padding: 0.2rem 0.45rem; border: 0; border-radius: 0.2rem; background: none; color: var(--bb-text); font: inherit; text-align: left; cursor: pointer; }
+:where(.data-table-select-option:hover, .data-table-select-option:focus-visible) { background: var(--bb-hover); color: var(--bb-strong); outline: none; }
+:where(.data-table-select-option[aria-selected="true"]) { color: var(--bb-strong); font-variation-settings: "opsz" 14, "wght" 500; }
+:where(.data-table-select-option[aria-selected="true"])::after { content: ""; width: 0.35rem; height: 0.2rem; margin-right: 0.15rem; border-left: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); }
+:where(.data-table-error) { padding: var(--bb-space-group); background: var(--bb-surface); color: var(--bb-negative); }
+
+@media (max-width: 40rem) {
+  :where(.data-table-filter-row) { grid-template-columns: 1fr; gap: 0.25rem; padding: 0.5rem 0; }
+}
+
+/* ---- Media and disclosure ------------------------------------------- */
+:where(img, svg, video, canvas, iframe) { max-width: 100%; }
+:where(img, video) { height: auto; border-radius: var(--bb-radius-sm); }
+:where(figcaption) { font-size: var(--bb-size-small); color: var(--bb-muted); margin-top: var(--bb-space-tight); font-variation-settings: "opsz" 14; }
+
+/* Summary: small muted label with a drawn chevron, not the ▶ glyph. */
+:where(summary) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  list-style: none;
+  cursor: pointer;
+  color: var(--bb-muted);
+  font-size: var(--bb-size-small);
+  font-variation-settings: "opsz" 14;
+  transition: color 150ms cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+:where(summary)::-webkit-details-marker { display: none; }
+:where(summary)::before {
+  content: "";
+  width: 0.3rem;
+  height: 0.3rem;
+  margin-left: 0.1rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 150ms cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+:where(details[open] > summary)::before { transform: translateY(-0.1rem) rotate(45deg); }
+:where(summary:hover) { color: var(--bb-text); }
+:where(details[open] > summary) { margin-bottom: var(--bb-space-tight); }
+:where(details > :last-child) { margin-bottom: 0; }
+
+/* ---- Optional classes the renderer emits and agents may use ---------- */
+
+/* Page frame, one of three fixed widths. A page that sets no .page gets the
+ * narrow frame on <body>, so every page lands on one of the three. */
+:where(.page, body:not(:has(.page))) { width: min(100% - 3rem, var(--bb-measure)); margin: 0 auto; padding: 4rem 0 5rem; }
+:where(.page.wide) { width: min(100% - 3rem, var(--bb-wide)); }
+:where(.page.dashboard) { width: min(100% - 3rem, var(--bb-dashboard)); }
+:where(.page > :first-child) { margin-top: 0; }
+:where(.page > :last-child) { margin-bottom: 0; }
+
+/* Header: title, lede, then the site's hairline over the metadata line. */
+:where(h1:has(+ .lede)) { margin-bottom: var(--bb-space-tight); }
+:where(.lede) { color: var(--bb-muted); margin: 0 0 var(--bb-space-block); text-wrap: pretty; }
+:where(.meta-line) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bb-space-hair) var(--bb-space-group);
+  padding-top: var(--bb-space-group);
+  border-top: 1px solid var(--bb-rule);
+  margin-bottom: var(--bb-space-section);
+  color: var(--bb-muted);
+  font-size: var(--bb-size-small);
+  line-height: 1.5;
+  font-variation-settings: "opsz" 14;
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+:where(.meta-line + h2) { margin-top: 0; }
+
+/* The site's label/content list: label in 4 columns, content in 8. */
+:where(dl.list) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--bb-space-group) 2rem;
+  align-items: baseline;
+}
+:where(dl.list dt) { color: var(--bb-muted); font-size: var(--bb-size-small); font-variation-settings: "opsz" 14; }
+:where(dl.list dd) { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 30rem) {
+  :where(dl.list) { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  :where(dl.list dd + dt) { margin-top: var(--bb-space-group); }
+}
+
+/* A note: an inset surface, no border, no coloured rail. The tone word
+ * carries the same dot the findings use. */
+:where(.note) { background: var(--bb-surface); border-radius: var(--bb-radius); padding: var(--bb-space-group) 1.25rem; margin: 0 0 var(--bb-space-block); }
+:where(.note > :last-child) { margin-bottom: 0; }
+:where(.note .tone) {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: var(--bb-space-hair);
+  color: var(--bb-strong);
+  font-size: var(--bb-size-small);
+  font-variation-settings: "opsz" 14, "wght" 500;
+}
+:where(.note .tone)::before { content: ""; width: 0.4375rem; height: 0.4375rem; border-radius: 50%; background: var(--bb-muted); }
+:where(.note.warning .tone)::before { background: var(--bb-warning); }
+:where(.note.danger .tone)::before { background: var(--bb-negative); }
+:where(.note.success .tone)::before { background: var(--bb-positive); }
+:where(.note.info .tone)::before { background: var(--bb-accent); }
+
+/* Small status word, the site's .badge. */
+:where(.badge) {
+  display: inline;
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--bb-radius);
+  background: var(--bb-badge-bg);
+  color: var(--bb-muted);
+  font-size: var(--bb-size-micro);
+  font-variation-settings: "opsz" 12, "wght" 500;
+  font-variant-numeric: slashed-zero;
+  vertical-align: 0.1em;
+}
+
+/* Charts: HTML title outside the SVG, as on the site. */
+:where(.chart) { margin: 0 0 var(--bb-space-block); }
+:where(.chart-title) { color: var(--bb-strong); line-height: 1.375; font-variation-settings: "opsz" 15, "wght" 500; }
+:where(.chart-subtitle) { color: var(--bb-muted); font-size: var(--bb-size-small); line-height: 1.5; margin-top: 0.125rem; font-variation-settings: "opsz" 14; }
+:where(.chart svg) { display: block; width: 100%; height: auto; margin-top: var(--bb-space-group); overflow: visible; }
+:where(.chart svg text) { font-family: var(--bb-font-sans); font-size: 12px; fill: var(--bb-chart-axis); font-variant-numeric: tabular-nums; }
+:where(.chart > details) { margin-top: var(--bb-space-tight); }
+
+/* Findings: a hanging grid. The dot sits in its own column, so the title,
+ * path, text, and evidence share one left edge. Hairlines between items. */
+:where(ol.findings) { list-style: none; padding: 0; margin-bottom: var(--bb-space-sub); }
+/* The last item closes the list with the same hairline, so whatever follows
+ * reads as outside the list, not as one more line of the last finding. */
+:where(ol.findings > li:last-child) { padding-bottom: var(--bb-space-block); border-bottom: 1px solid var(--bb-line); }
+:where(ol.findings > li) {
+  display: grid;
+  grid-template-columns: 1.125rem minmax(0, 1fr);
+  margin: 0;
+}
+:where(ol.findings > li > *) { grid-column: 2; }
+:where(ol.findings > li + li) { margin-top: var(--bb-space-block); padding-top: var(--bb-space-block); border-top: 1px solid var(--bb-line); }
+:where(ol.findings .sev) {
+  grid-column: 1;
+  grid-row: 1;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  margin-top: calc(0.5lh - 0.15rem);
+  border-radius: 50%;
+  background: var(--bb-muted);
+}
+:where(ol.findings .sev.important, ol.findings .sev.danger) { background: var(--bb-negative); }
+:where(ol.findings .sev.nit, ol.findings .sev.warning) { background: var(--bb-warning); }
+:where(ol.findings .sev.ok, ol.findings .sev.success) { background: var(--bb-positive); }
+:where(ol.findings > li > strong) { grid-row: 1; }
+:where(ol.findings .loc) {
+  font-family: var(--bb-font-mono);
+  font-size: var(--bb-size-mono);
+  line-height: 1.5;
+  color: var(--bb-muted);
+  overflow-wrap: anywhere;
+}
+:where(ol.findings p) { margin: var(--bb-space-tight) 0 0; }
+:where(ol.findings details) { margin: var(--bb-space-tight) 0 0; }
+
+/* Stats: dl.stats, a row of headline numbers. One <div> per stat holding
+ * dt (label), dd (value), and an optional dd.delta. Hairline above, no boxes. */
+:where(dl.stats) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  gap: var(--bb-space-block) 2rem;
+  margin: 0 0 var(--bb-space-section);
+  padding-top: var(--bb-space-group);
+  border-top: 1px solid var(--bb-rule);
+}
+:where(dl.stats > div) { min-width: 0; }
+:where(dl.stats dt) { color: var(--bb-muted); font-size: var(--bb-size-small); line-height: 1.5; font-variation-settings: "opsz" 14; }
+:where(dl.stats dd) {
+  margin: var(--bb-space-hair) 0 0;
+  color: var(--bb-strong);
+  font-size: var(--bb-size-section);
+  line-height: 1.2;
+  letter-spacing: -0.008em;
+  font-variation-settings: "opsz" 24, "wght" 500;
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+:where(dl.stats dd.delta) {
+  margin-top: var(--bb-space-hair);
+  color: var(--bb-muted);
+  font-size: var(--bb-size-small);
+  line-height: 1.5;
+  letter-spacing: 0;
+  font-variation-settings: "opsz" 14;
+}
+:where(dl.stats dd.delta.positive) { color: var(--bb-positive); }
+:where(dl.stats dd.delta.negative) { color: var(--bb-negative); }
+:where(.meta-line + dl.stats) { margin-top: calc(var(--bb-space-section) * -0.5); border-top: 0; padding-top: 0; }
+
+/* Grid: div.grid lays figures (or any blocks) side by side. Columns fit the
+ * width by default; .cols-2 and .cols-3 fix the count and stack when narrow. */
+:where(.grid) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--bb-space-section) 2.5rem;
+  margin: 0 0 var(--bb-space-block);
+}
+:where(.grid.cols-2) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+:where(.grid.cols-3) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 48rem) { :where(.grid.cols-2, .grid.cols-3) { grid-template-columns: minmax(0, 1fr); } }
+:where(.grid > *) { min-width: 0; margin-bottom: 0; }
+
+/* Compare: div.compare holds two (or three) columns, each opening with
+ * p.compare-label, e.g. Before / After. Stacks when narrow. */
+:where(.compare) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--bb-space-block) 2rem;
+  margin: 0 0 var(--bb-space-block);
+}
+:where(.compare > *) { min-width: 0; }
+:where(.compare > * > :last-child) { margin-bottom: 0; }
+:where(.compare-label) {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 var(--bb-space-tight);
+  color: var(--bb-strong);
+  font-size: var(--bb-size-small);
+  font-variation-settings: "opsz" 14, "wght" 500;
+}
+:where(.compare-label.positive, .compare-label.negative, .compare-label.warning)::before { content: ""; width: 0.4375rem; height: 0.4375rem; border-radius: 50%; }
+:where(.compare-label.positive)::before { background: var(--bb-positive); }
+:where(.compare-label.negative)::before { background: var(--bb-negative); }
+:where(.compare-label.warning)::before { background: var(--bb-warning); }
+
+/* Contents: nav.toc, the site's post sidebar. Pages fills an empty nav from
+ * the page's h2s (add data-depth="3" for h3s too) and marks the section in
+ * view. Inline under the header; a fixed left column when the window has
+ * room beside the page. */
+:where(nav.toc) {
+  margin: 0 0 var(--bb-space-section);
+  font-size: var(--bb-size-small);
+  line-height: 1.5;
+  color: var(--bb-muted);
+  font-variation-settings: "opsz" 14;
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+:where(nav.toc .toc-label) { margin: 0 0 var(--bb-space-tight); color: var(--bb-strong); font-variation-settings: "opsz" 14, "wght" 500; }
+:where(nav.toc ul, nav.toc ol) { list-style: none; margin: 0; padding: 0; }
+:where(nav.toc li) { margin: 0; }
+:where(nav.toc a) {
+  display: block;
+  margin: 0 -0.625rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.375rem;
+  color: inherit;
+  text-decoration: none;
+  font-variation-settings: "opsz" 14;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 150ms, color 150ms;
+}
+:where(nav.toc a:hover) { color: var(--bb-text); }
+:where(nav.toc a.active, nav.toc a[aria-current="true"]) { background: var(--bb-hover); color: var(--bb-strong); }
+:where(nav.toc .toc-sub) { padding-left: 1rem; }
+:where(.meta-line + nav.toc) { margin-top: calc(var(--bb-space-section) * -0.5); }
+@media (min-width: 80rem) {
+  :where(.page:not(.wide, .dashboard) > nav.toc, body:not(:has(.page)) > nav.toc) {
+    position: fixed;
+    top: 12rem;
+    right: calc(50% + var(--bb-measure) / 2 + 1.375rem);
+    width: 14.25rem;
+    max-height: calc(100vh - 14rem);
+    overflow-y: auto;
+    margin: 0;
+    padding-inline: 0.625rem;
+    scrollbar-width: none;
+  }
+}
+@media (min-width: 96rem) {
+  :where(.page.wide > nav.toc) {
+    position: fixed;
+    top: 12rem;
+    right: calc(50% + var(--bb-wide) / 2 + 1.375rem);
+    width: 14.25rem;
+    max-height: calc(100vh - 14rem);
+    overflow-y: auto;
+    margin: 0;
+    padding-inline: 0.625rem;
+    scrollbar-width: none;
+  }
+}
+
+/* Tabs: div.tabs holding one <section data-tab="Name"> per tab. Pages adds
+ * the tab row and shows one section at a time. Without the script every
+ * section shows, each under its name. */
+:where(.tabs) { margin: 0 0 var(--bb-space-block); }
+:where(.tab-list) {
+  display: flex;
+  gap: 1.5rem;
+  margin: 0 0 var(--bb-space-block);
+  border-bottom: 1px solid var(--bb-rule);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+:where(.tab-list button) {
+  flex: none;
+  margin: 0 0 -1px;
+  padding: 0 0 var(--bb-space-tight);
+  border: 0;
+  border-bottom: 1.5px solid transparent;
+  background: none;
+  color: var(--bb-muted);
+  font: inherit;
+  font-size: var(--bb-size-small);
+  font-variation-settings: "opsz" 14;
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms;
+}
+:where(.tab-list button:hover) { color: var(--bb-text); }
+:where(.tab-list button[aria-selected="true"]) { color: var(--bb-strong); border-bottom-color: var(--bb-strong); font-variation-settings: "opsz" 14, "wght" 500; }
+:where(.tab-list button:focus-visible) { outline: 2px solid var(--bb-accent); outline-offset: 2px; border-radius: 2px; }
+:where(.tabs > section > :first-child) { margin-top: 0; padding-top: 0; border-top: 0; }
+:where(.tabs > section > :last-child) { margin-bottom: 0; }
+:where(.tabs:not([data-ready]) > section[data-tab] + section[data-tab]) { margin-top: var(--bb-space-section); }
+:where(.tabs:not([data-ready]) > section[data-tab])::before {
+  content: attr(data-tab);
+  display: block;
+  margin-bottom: var(--bb-space-group);
+  padding-bottom: var(--bb-space-tight);
+  border-bottom: 1px solid var(--bb-rule);
+  color: var(--bb-strong);
+  font-size: var(--bb-size-small);
+  font-variation-settings: "opsz" 14, "wght" 500;
+}
+
+/* Wide pages: code blocks and notes bleed by their padding, so the text
+ * inside them lines up with the text column, as the site's pre does. */
+@media (min-width: 48rem) {
+  :where(.page > pre, .page > .note) { margin-inline: -1rem; padding-inline: 1rem; }
+}
+
+@media (max-width: 40rem) {
+  :where(.page, .page.wide, .page.dashboard, body:not(:has(.page))) { width: min(100% - 2.5rem, var(--bb-dashboard)); padding: 1.5rem 0 3rem; }
+}
+
+/* Inline chat card: the preview route adds data-bb-frame="card". Show the page
+ * zoomed out like a thumbnail, with a tight top, and no scrollbar (the card is
+ * click-to-open). */
+:where(:root[data-bb-frame="card"]) { zoom: 0.8; overflow: hidden; scrollbar-width: none; }
+:where(:root[data-bb-frame="card"] :is(.page, body:not(:has(.page)))) { padding-top: 1.25rem; }
