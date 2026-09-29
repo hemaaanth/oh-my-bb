@@ -1,0 +1,38 @@
+{
+  "$schema": "https://getbb.app/schemas/marketplace.schema.json",
+  "schemaVersion": 1,
+  "name": "oh-my-bb",
+  "displayName": "oh-my-bb",
+  "description": "Independent BB plugins maintained by Hemanth Soni.",
+  "plugins": [
+    {
+      "id": "model-gateway",
+      "displayName": "Model Gateway",
+      "description": "Keep coding when a Claude or ChatGPT account reaches its limit. Route Claude Code, Codex, omp, FX, nanocodex, and Pi through ordered accounts and optional API-key fallbacks. Translate Messages and Responses requests when a fallback uses another protocol. FX and nanocodex require their separate optional adapters. Claude Max accounts are restricted to Claude Code; API-key fallbacks bill per token. Optional Jev routing sends the truncated last user message and candidate model names to OpenRouter.",
+      "icon": "Route",
+      "tags": [
+        "accounts",
+        "agents",
+        "claude-code",
+        "codex",
+        "failover",
+        "models",
+        "providers",
+        "routing"
+      ],
+      "author": {
+        "name": "Hemanth Soni",
+        "github": "hemaaanth",
+        "url": "https://github.com/hemaaanth"
+      },
+      "source": {
+        "git": {
+          "url": "https://github.com/hemaaanth/oh-my-bb.git",
+          "subdir": "plugins/model-gateway",
+          "range": "^0.1.0",
+          "tagPrefix": "model-gateway/"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "name": "fx-acp",
+  "version": "0.1.0",
+  "description": "Run FX as a BB ACP agent pinned to FX's Codex subscription provider.",
+  "license": "MIT",
+  "author": "Hemanth Soni",
+  "homepage": "https://github.com/hemaaanth/oh-my-bb/tree/main/agents/fx-acp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hemaaanth/oh-my-bb.git",
+    "directory": "agents/fx-acp"
+  },
+  "bugs": {
+    "url": "https://github.com/hemaaanth/oh-my-bb/issues"
+  },
+  "keywords": ["acp", "bb", "codex", "fx"],
+  "type": "module",
+  "bin": {
+    "fx-acp": "./fx-acp.mjs"
+  },
+  "files": [
+    "fx-acp.mjs"
+  ],
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4"
+  }
+}

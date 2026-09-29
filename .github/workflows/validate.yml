@@ -1,0 +1,55 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  model-gateway:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/model-gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: plugins/model-gateway/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  fx-acp:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agents/fx-acp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: agents/fx-acp/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+  nanocodex-acp:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agents/nanocodex-acp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: agents/nanocodex-acp/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
