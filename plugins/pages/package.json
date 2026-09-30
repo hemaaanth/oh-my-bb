@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-pages",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Publish versioned HTML and Markdown pages in project folders, browse them in BB, and share them securely.",
   "license": "MIT",
   "author": "Hemanth Soni",

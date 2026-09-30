@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Open large before/after screenshots in an accessible full-screen lightbox.
+- Allow any detail-heavy image to opt into the lightbox with `data-zoom`.
+
 ## 0.1.0
 
 - Publish HTML and Markdown files as versioned BB pages.

@@ -165,7 +165,8 @@ so both themes keep working.
   `.cols-3` fixes the count. Use it with `main.page.dashboard`.
 - `div.compare` shows before/after or option A/B side by side. Each column opens
   with `<p class="compare-label">Before</p>`; add `positive`, `negative`, or
-  `warning` for a dot.
+  `warning` for a dot. A materially downscaled image in a compare block becomes
+  keyboard-accessible and opens in a full-screen lightbox.
 - `p.lede` is the muted line under the `h1`.
 - `div.meta-line` is the quiet metadata row: `<span>` items with a hairline above.
 - `dl.list` is a label/content list (`dt` label, `dd` content).
@@ -184,6 +185,30 @@ Write semantic HTML first: `h1`, `h2`, `p`, `ul`, `table`, `figure`,
 - Left-aligned text at the page measure. Group with whitespace and hairlines.
 - Put the most important fact first. Put details in `<details>`.
 - Wrap wide tables in `<div class="scroll">` so the page never scrolls sideways.
+
+### Image zoom
+
+Large before/after screenshots inside `div.compare` automatically become
+clickable when their intrinsic dimensions exceed their rendered size. The image
+opens in a full-screen lightbox and can be closed with Escape, the close button,
+or the backdrop.
+
+Use `data-zoom` to opt another image into the same behavior when fine detail
+matters. Do not add it to icons, logos, or small decorative images. Always write
+useful `alt` text.
+
+```html
+<div class="compare">
+  <div>
+    <p class="compare-label negative">Before</p>
+    <img data-zoom src="before.png" alt="Settings page before the navigation cleanup">
+  </div>
+  <div>
+    <p class="compare-label positive">After</p>
+    <img data-zoom src="after.png" alt="Settings page after the navigation cleanup">
+  </div>
+</div>
+```
 
 ### Data tables
 

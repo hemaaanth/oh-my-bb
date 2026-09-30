@@ -1,10 +1,10 @@
-// The page runtime: tabs (div.tabs) and contents (nav.toc). injectPage adds it
-// inline, only to pages that use one of them. It is a plain string, not a
+// The page runtime: tabs (div.tabs), contents (nav.toc), and image zoom.
+// injectPage adds it inline only to pages that use one of them. It is a plain string, not a
 // bundled module, so the bytes shipped are exactly the bytes written here.
 
 /** True when the page uses a component the runtime drives. */
 export function needsPageRuntime(html: string): boolean {
-  return /\bclass\s*=\s*["']?[^"'>]*\b(?:tabs|toc)\b/iu.test(html);
+  return /\bclass\s*=\s*["']?[^"'>]*\b(?:tabs|toc|compare)\b/iu.test(html) || /<img\b[^>]*\bdata-zoom(?:\s|=|>)/iu.test(html);
 }
 
 /** True when the page contains the opt-in virtualized data table component. */
@@ -147,6 +147,64 @@ export const PAGE_RUNTIME = String.raw`(() => {
   if (location.hash) {
     const target = doc.getElementById(decodeURIComponent(location.hash.slice(1)));
     if (target) { reveal(target); target.scrollIntoView(); }
+  }
+
+  // ---- Image zoom: explicit img[data-zoom], or downscaled compare images --
+  if (!doc.documentElement.hasAttribute("data-bb-frame")) {
+    let dialog = null;
+    let dialogImage = null;
+    let dialogCaption = null;
+    const ensureDialog = () => {
+      if (dialog) return dialog;
+      dialog = doc.createElement("dialog");
+      dialog.className = "image-lightbox";
+      dialog.setAttribute("aria-label", "Image preview");
+      const close = doc.createElement("button");
+      close.type = "button";
+      close.className = "image-lightbox-close";
+      close.setAttribute("aria-label", "Close image preview");
+      close.textContent = "×";
+      dialogImage = doc.createElement("img");
+      dialogCaption = doc.createElement("p");
+      dialogCaption.className = "image-lightbox-caption";
+      close.addEventListener("click", () => dialog.close());
+      dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
+      dialog.append(close, dialogImage, dialogCaption);
+      doc.body.append(dialog);
+      return dialog;
+    };
+    const openImage = (image) => {
+      const modal = ensureDialog();
+      dialogImage.src = image.currentSrc || image.src;
+      dialogImage.alt = image.alt || "";
+      const figureCaption = image.closest("figure")?.querySelector("figcaption")?.textContent?.trim();
+      const compareLabel = image.closest(".compare > *")?.querySelector(".compare-label")?.textContent?.trim();
+      dialogCaption.textContent = figureCaption || compareLabel || image.alt || "";
+      dialogCaption.hidden = !dialogCaption.textContent;
+      modal.showModal();
+    };
+    const enable = (image) => {
+      if (image.hasAttribute("data-pages-zoom-ready") || image.closest("a, button")) return;
+      image.setAttribute("data-pages-zoom-ready", "");
+      image.setAttribute("role", "button");
+      image.tabIndex = 0;
+      image.setAttribute("aria-label", (image.alt ? image.alt + ". " : "") + "Open full-size image");
+      image.addEventListener("click", () => openImage(image));
+      image.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        openImage(image);
+      });
+    };
+    const assess = (image) => {
+      if (image.hasAttribute("data-zoom")) return enable(image);
+      if (!image.closest(".compare") || !image.naturalWidth || !image.clientWidth) return;
+      if (image.naturalWidth > image.clientWidth * 1.15 || image.naturalHeight > image.clientHeight * 1.15) enable(image);
+    };
+    doc.querySelectorAll("img[data-zoom], .compare img").forEach((image) => {
+      if (image.hasAttribute("data-zoom") || image.complete) assess(image);
+      else image.addEventListener("load", () => assess(image), { once: true });
+    });
   }
 })();`;
 

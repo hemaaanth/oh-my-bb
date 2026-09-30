@@ -68,10 +68,11 @@ describe("injectPage", () => {
 
   it("adds component runtimes only when needed, before the charts", () => {
     expect(inject("<p class=\"lede\">x</p>")).not.toContain("<script>");
-    for (const html of ['<body><div class="tabs"><section data-tab="A"></section></div></body>', '<body><nav class="toc"></nav></body>']) {
+    for (const html of ['<body><div class="tabs"><section data-tab="A"></section></div></body>', '<body><nav class="toc"></nav></body>', '<body><div class="compare"><img src="before.png"></div></body>', '<body><img data-zoom src="detail.png"></body>']) {
       const out = inject(html, null, true);
       expect(out).toMatch(/<script>\(\(\) => \{[\s\S]*<\/script><script src="\.\/_page\/charts\.js" defer><\/script><\/body>$/u);
     }
+    expect(inject('<body><img src="small-icon.png"></body>')).not.toContain("image-lightbox");
     const table = inject('<body><div class="data-table"><script type="application/json">{"columns":[],"rows":[]}</script></div></body>');
     expect(table).toContain("const ROW_HEIGHT = 40");
     expect(table).not.toContain("// ---- Tabs:");

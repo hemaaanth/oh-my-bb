@@ -41,7 +41,7 @@ type Insert = { at: number; text: string };
 /**
  * Add the theme link (first in <head>, so author styles win), the font preload,
  * data-bb-theme on <html>, and before </body> the page runtime (only when the
- * page has tabs or contents) and the chart runtime. Everything
+ * page has tabs, contents, or zoomable images) and the chart runtime. Everything
  * else in the author's HTML stays byte-for-byte. Works on full documents,
  * documents without <html>/<head>/<body>, and bare fragments.
  */
