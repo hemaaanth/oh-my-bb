@@ -17,7 +17,7 @@ if (!Element.prototype.scrollIntoView) {
 }
 
 const app = await loadPluginApp(() => import("./app"));
-afterEach(cleanup);
+afterEach(() => { cleanup(); sessionStorage.clear(); });
 
 const CLAUDE_BLOCK = "Claude OAuth accounts serve only the claude-code harness";
 
@@ -365,5 +365,85 @@ describe("Model Gateway thread badge", () => {
       auto: "jev 0.82",
     });
     await slot.findByText(/auto → claude-opus-5-5 \(jev 0\.82\)/);
+  });
+});
+
+describe("Model Gateway usage footer", () => {
+  it("shows one row per provider account across duplicate logins", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    expect(footer?.kind).toBe("disclosure");
+    if (footer?.kind !== "disclosure") return;
+    const first = account({ accountUuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
+    const duplicate = account({
+      id: "33333333-3333-4333-8333-333333333333",
+      accountUuid: first.accountUuid,
+      label: "same Claude login",
+    });
+    const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: {
+      "account.list": () => [first, duplicate],
+    } as never });
+    await slot.findByText("person@example.com");
+    expect(slot.getAllByText("person@example.com")).toHaveLength(1);
+    expect(slot.getByRole("progressbar", { name: "max 5h usage" }).getAttribute("aria-valuenow")).toBe("21");
+    expect(slot.queryByText("same Claude login")).toBeNull();
+  });
+
+  it("omits empty Codex secondary windows", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    const codex = account({
+      provider: "codex", label: "pro", subscriptionType: "pro", fiveHourUtilization: null,
+      limitWindows: [
+        { slot: "primary", windowMinutes: 10_080, utilization: 0.76, resetAt: null, status: null, observedAt: 1, source: "usage" },
+        { slot: "secondary", windowMinutes: null, utilization: 0, resetAt: 0, status: null, observedAt: 1, source: "header" },
+      ],
+    });
+    const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: {
+      "account.list": () => [codex],
+    } as never });
+    await slot.findByText("person@example.com");
+    expect(slot.getAllByRole("progressbar")).toHaveLength(1);
+    expect(slot.getByRole("progressbar", { name: "pro 7d usage" }).getAttribute("aria-valuenow")).toBe("76");
+  });
+
+  it("shows all accounts and their limits together", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    const codex = account({
+      id: "22222222-2222-4222-8222-222222222222", provider: "codex", label: "pro", email: "other@example.com",
+      fiveHourUtilization: null, limitWindows: [
+        { slot: "primary", windowMinutes: 10_080, utilization: 0.76, resetAt: null, status: null, observedAt: 1, source: "usage" },
+      ],
+    });
+    const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: {
+      "account.list": () => [account(), codex],
+    } as never });
+    await slot.findByText("other@example.com");
+    expect(slot.getByText("person@example.com")).toBeTruthy();
+    expect(slot.getByRole("progressbar", { name: "pro 7d usage" }).getAttribute("aria-valuenow")).toBe("76");
+    expect(slot.getAllByRole("progressbar")).toHaveLength(2);
+    expect(slot.getByRole("button", { name: "Refresh Gateway usage" }).querySelector('[data-icon="RotateCcw"]')).toBeTruthy();
+    expect(slot.container.querySelector(".overflow-y-auto")).toBeNull();
+  });
+
+  it("opens instantly from cached usage and refreshes only on demand", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    let lists = 0;
+    let refreshes = 0;
+    const rpc = {
+      "account.list": () => { lists++; return [account()]; },
+      "account.refreshUsage": () => { refreshes++; return account(); },
+    } as never;
+    const first = renderSlot(footer, { dismiss: () => {} }, { rpc });
+    await first.findByRole("progressbar");
+    expect(lists).toBe(1);
+    first.unmount();
+    const second = renderSlot(footer, { dismiss: () => {} }, { rpc });
+    expect(second.getByRole("progressbar")).toBeTruthy();
+    expect(lists).toBe(1);
+    fireEvent.click(second.getByRole("button", { name: "Refresh Gateway usage" }));
+    await waitFor(() => expect(refreshes).toBe(1));
+    await waitFor(() => expect(lists).toBe(2));
   });
 });

@@ -30,7 +30,7 @@ import {
   useRealtime,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
-import { FxIcon, NanocodexIcon } from "./provider-icons";
+import { FxIcon, GatewayChatGPTIcon, GatewayClaudeIcon, NanocodexIcon } from "./provider-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -427,6 +427,162 @@ function quotaSummary(account: AccountSummary): string | null {
   return account.kind === "api-key" || parts.length === 0
     ? null
     : parts.join(" · ");
+}
+
+function accountIdentity(account: AccountSummary): string {
+  return `${account.provider}:${account.kind === "api-key" ? account.id
+    : account.provider === "claude" ? (account.accountUuid ?? account.id)
+      : (account.codexAccountId ?? account.id)}`;
+}
+function distinctAccounts(accounts: AccountSummary[]): AccountSummary[] {
+  const byIdentity = new Map<string, AccountSummary>();
+  for (const account of accounts) {
+    const key = accountIdentity(account);
+    const previous = byIdentity.get(key);
+    if (previous === undefined || (account.enabled && !previous.enabled) ||
+      (account.enabled === previous.enabled && (account.observedAt ?? 0) > (previous.observedAt ?? 0)))
+      byIdentity.set(key, account);
+  }
+  return [...byIdentity.values()];
+}
+
+function footerWindows(account: AccountSummary): Array<{ label: string; utilization: number; resetAt: number | null }> {
+  if (account.kind === "api-key") return [];
+  if (account.provider === "codex")
+    return account.limitWindows
+      .filter((window) => window.utilization !== null &&
+        !(window.slot === "secondary" && window.windowMinutes === null && window.resetAt === 0))
+      .map((window) => ({
+        label: windowShortLabel(window),
+        utilization: window.utilization!,
+        resetAt: window.resetAt,
+      }));
+  return [
+    { label: "5h", utilization: account.fiveHourUtilization, resetAt: account.fiveHourResetAt },
+    { label: "7d", utilization: account.sevenDayUtilization, resetAt: account.sevenDayResetAt },
+    ...MODEL_FAMILIES.map((family) => ({
+      label: `7d · ${capitalize(family)}`,
+      utilization: account.familyWeekly[family]?.utilization ?? null,
+      resetAt: account.familyWeekly[family]?.resetAt ?? null,
+    })),
+  ].filter((window): window is { label: string; utilization: number; resetAt: number | null } => window.utilization !== null);
+}
+
+function FooterUsageBar({ label, utilization, resetAt, account }: {
+  label: string; utilization: number; resetAt: number | null; account: string;
+}) {
+  const used = Math.min(100, Math.max(0, Math.round(utilization * 100)));
+  const remaining = resetAt === null || resetAt <= Date.now() ? "" : (() => {
+    const minutes = Math.max(1, Math.ceil((resetAt - Date.now()) / 60_000));
+    if (minutes >= 1_440) return `${Math.ceil(minutes / 1_440)}d`;
+    return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`;
+  })();
+  return (
+    <div className="flex items-center gap-2 text-2xs tabular-nums">
+      <span className="w-12 shrink-0 text-muted-foreground">{label}</span>
+      <div role="progressbar" aria-label={`${account} ${label} usage`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={used}
+        className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+        <div className={cn("h-full rounded-full", used >= 98 ? "bg-destructive" : "bg-warning")}
+          style={{ width: `${used}%` }} />
+      </div>
+      <span className="w-8 shrink-0 text-right font-medium text-foreground">{used}%</span>
+      <span className="w-12 shrink-0 text-right text-muted-foreground" title={resetAt === null || resetAt <= 0 ? undefined : `Resets ${new Date(resetAt).toLocaleString()}`}>
+        {remaining}
+      </span>
+    </div>
+  );
+}
+
+function GatewayAccountPanel({ account }: { account: AccountSummary }) {
+  const windows = footerWindows(account);
+  return (
+    <div className="px-3 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        {account.kind === "api-key" ? <Icon name="Lock" className="size-4 shrink-0 text-muted-foreground" /> :
+          account.provider === "claude" ? <GatewayClaudeIcon className="size-4 shrink-0" /> :
+            <GatewayChatGPTIcon className="size-4 shrink-0" />}
+        <span className="min-w-0 truncate text-xs font-medium text-foreground" title={account.email ?? account.label}>{account.email ?? account.label}</span>
+      </div>
+      {windows.length === 0 ? <p className="mt-2 text-xs text-muted-foreground">
+        {account.kind === "api-key" ? "Provider limit unavailable" : "Usage unavailable"}
+      </p> : <div className="mt-1.5 space-y-1">
+        {windows.map((window) => <FooterUsageBar key={window.label} {...window} account={account.label} />)}
+      </div>}
+      {account.observedAt === null ? null : <div className="mt-1.5 text-right text-2xs text-muted-foreground">Updated {relative(account.observedAt)}</div>}
+    </div>
+  );
+}
+
+const FOOTER_USAGE_CACHE_KEY = "model-gateway.footer-usage.v2";
+const FOOTER_USAGE_CACHE_MS = 5 * 60_000;
+type FooterUsageSnapshot = { accounts: AccountSummary[]; fetchedAt: number };
+function cachedFooterUsage(): FooterUsageSnapshot | null {
+  try {
+    const raw = sessionStorage.getItem(FOOTER_USAGE_CACHE_KEY);
+    if (raw === null) return null;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || !Array.isArray((value as FooterUsageSnapshot).accounts) ||
+      typeof (value as FooterUsageSnapshot).fetchedAt !== "number") return null;
+    return value as FooterUsageSnapshot;
+  } catch { return null; }
+}
+function cacheFooterUsage(snapshot: FooterUsageSnapshot): void {
+  try { sessionStorage.setItem(FOOTER_USAGE_CACHE_KEY, JSON.stringify(snapshot)); } catch { /* Storage may be unavailable. */ }
+}
+
+function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
+  const rpc = useRpc<typeof accountPoolRpcContract>();
+  const [snapshot, setSnapshot] = useState<FooterUsageSnapshot | null>(cachedFooterUsage);
+  const accounts = snapshot?.accounts ?? null;
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const load = useCallback(async () => {
+    try {
+      const next = await rpc.call("account.list", null);
+      const updated = { accounts: next, fetchedAt: Date.now() };
+      cacheFooterUsage(updated);
+      setSnapshot(updated);
+      setError(null);
+    } catch (cause) { setError(errorText(cause)); }
+  }, [rpc]);
+  useEffect(() => {
+    if (Date.now() - (cachedFooterUsage()?.fetchedAt ?? 0) >= FOOTER_USAGE_CACHE_MS) void load();
+  }, [load]);
+  useRealtime(MODEL_GATEWAY_ACCOUNTS_CHANGED, () => { void load(); });
+  async function refresh() {
+    if (refreshing || accounts === null) return;
+    setRefreshing(true);
+    try {
+      await Promise.all(accounts.filter((account) => account.kind === "oauth")
+        .map((account) => rpc.call("account.refreshUsage", { accountId: account.id })));
+      await load();
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setRefreshing(false);
+    }
+  }
+  return (
+    <section aria-label="Model Gateway usage" className="bg-surface">
+      <div className="flex items-center justify-between border-b border-border px-3 py-1">
+        <h2 className="text-xs font-semibold">Gateway usage</h2>
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="ghost" onClick={() => void refresh()} disabled={refreshing || accounts === null} aria-label="Refresh Gateway usage">
+            <Icon name="RotateCcw" className={cn("size-4", refreshing && "animate-spin")} />
+          </Button>
+          <Button size="sm" variant="ghost" onClick={dismiss} aria-label="Close Gateway usage">
+            <Icon name="X" className="size-4" />
+          </Button>
+        </div>
+      </div>
+      {error === null ? null : <p role="alert" className="px-4 py-2 text-xs text-destructive-text">{error}</p>}
+      {accounts === null ? <p className="px-4 py-5 text-xs text-muted-foreground">Loading accounts…</p> :
+        accounts.length === 0 ? <p className="px-4 py-5 text-xs text-muted-foreground">No Gateway accounts connected.</p> :
+        <div className="divide-y divide-border">
+          {distinctAccounts(accounts).map((account) => <GatewayAccountPanel key={accountIdentity(account)} account={account} />)}
+        </div>}
+    </section>
+  );
 }
 /** `claude-sonnet-5` → Sonnet, `claude-opus-*` → Opus; other ids stay as written. */
 function modelName(model: string): string {
@@ -2632,6 +2788,13 @@ function LoginDrawer({
 }
 
 export default definePluginApp((app) => {
+  app.experimental_sidebarFooter.register({
+    kind: "disclosure",
+    id: "gateway-usage",
+    label: "Model Gateway usage",
+    icon: "ChartColumn",
+    component: GatewayUsageFooter,
+  });
   app.slots.experimental_threadHeaderAction({
     id: "model-gateway-route",
     title: "Model Gateway route",

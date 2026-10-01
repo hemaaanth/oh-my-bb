@@ -44,6 +44,8 @@ Automatic Claude Code failover maps Fable to `gpt-6-astra`, Opus to
   `modelMap.set`, `auto.set`, `live.get` (threads on a fallback or a Jev
   pick, and holds), `hold.clear`, plus the ported
   account methods. `chain.set` rejects Claude OAuth outside `claude-code`.
+- The sidebar footer shows usage limits for each authenticated Gateway account.
+  It opens from a short-lived cache and refreshes limits on demand.
 
 ## Failover rules
 

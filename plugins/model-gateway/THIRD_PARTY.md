@@ -1,3 +1,9 @@
+## Usage logos
+
+The Claude and OpenAI marks in `provider-icons.tsx` are adapted from
+[`bb-plugin-usage/components/provider-logo.tsx`](https://github.com/MayankBansal12/bb-plugin-usage),
+MIT, Mayank Bansal 2026.
+
 ## Account Pooler
 
 - Source: core BB plugin [`account-pool`](https://github.com/get-bb/bb/tree/main/plugins/account-pool), MIT, Michael Yong 2026.

@@ -139,6 +139,8 @@ API key.
   Advanced (model map, Jev key and model, base URLs, limits). It edits the
   same state as the CLI. It never shows a key value. Per-account chain
   entries are set with `bb gateway chain set`.
+- The sidebar footer shows usage limits per authenticated account. Refresh it
+  to fetch current limits from the providers.
 - `bb gateway status --thread <id>` shows the upstream, model, chain entry,
   sticky time, and the Jev pick with its reason.
 
