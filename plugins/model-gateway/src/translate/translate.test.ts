@@ -278,21 +278,49 @@ describe("responsesStreamToMessages edge cases", () => {
 
   it("ends after the terminal event even if the upstream stays open", async () => {
     async function* openEnded() {
-      yield sse([created, { type: "response.completed", response: {} }]);
+      yield sse([created, { type: "response.completed", response: {
+        output: [{ id: "msg_final", type: "message", content: [{ type: "output_text", text: "done" }] }],
+      } }]);
       await new Promise(() => {}); // never closes
     }
     const types: string[] = [];
     for await (const chunk of responsesStreamToMessages(openEnded(), { requestModel: "m", pingIntervalMs: 0 })) {
       types.push(/^event: (\S+)/.exec(new TextDecoder().decode(chunk))![1]!);
     }
-    expect(types).toEqual(["message_start", "message_delta", "message_stop"]);
+    expect(types).toEqual(["message_start", "content_block_start", "content_block_delta", "content_block_stop", "message_delta", "message_stop"]);
+  });
+
+  it("recovers terminal-only output when the upstream omitted streaming deltas", async () => {
+    const events = await translateStream(sse([created, { type: "response.completed", response: {
+      output: [
+        { id: "msg_final", type: "message", content: [{ type: "output_text", text: "Recovered answer." }] },
+        { id: "call_final", type: "function_call", call_id: "call_1", name: "Read", arguments: "{\"file_path\":\"README.md\"}" },
+      ],
+      usage: { input_tokens: 8, output_tokens: 5 },
+    } }]));
+    const message = fold(events);
+    expect(message.stop_reason).toBe("tool_use");
+    expect(message.content).toEqual([
+      { type: "text", text: "Recovered answer." },
+      { type: "tool_use", id: "call_1", name: "Read", input: { file_path: "README.md" } },
+    ]);
+  });
+
+  it("turns a genuinely empty completed response into a retryable error", async () => {
+    const events = await translateStream(sse([created, { type: "response.completed", response: {} }]));
+    expect(events.at(-1)).toEqual({
+      type: "error",
+      error: { type: "overloaded_error", message: "upstream completed without assistant content" },
+    });
   });
 
   it("sends ping while the upstream is silent", async () => {
     async function* slow() {
       yield sse([created]);
       await new Promise(resolve => setTimeout(resolve, 40));
-      yield sse([{ type: "response.completed", response: {} }]);
+      yield sse([{ type: "response.completed", response: {
+        output: [{ id: "msg_final", type: "message", content: [{ type: "output_text", text: "done" }] }],
+      } }]);
     }
     const types: string[] = [];
     for await (const chunk of responsesStreamToMessages(slow(), { requestModel: "m", pingIntervalMs: 5 })) {

@@ -112,6 +112,8 @@ export async function* responsesStreamToMessages(
   let blockIndex = 0;
   let sawToolUse = false;
   let webSearchRequests = 0;
+  let sawContent = false;
+  const completedItems = new Set<string>();
   // At most one open block: Responses streams output items one after another.
   type Block = { kind: "text" | "thinking" | "tool_use" | "server"; index: number; itemId?: string; part?: unknown; argsSent?: boolean };
   let open: Block | null = null;
@@ -138,6 +140,7 @@ export async function* responsesStreamToMessages(
   const openBlock = (kind: Block["kind"], contentBlock: Rec, itemId?: string): Block => {
     start();
     close();
+    sawContent = true;
     const block: Block = { kind, index: blockIndex++, itemId };
     open = block;
     emit({ type: "content_block_start", index: block.index, content_block: contentBlock });
@@ -157,6 +160,75 @@ export async function* responsesStreamToMessages(
     terminated = true;
   };
 
+  const itemKey = (item: Rec): string | null => {
+    if (typeof item.id === "string" && item.id.length > 0) return item.id;
+    if (typeof item.call_id === "string" && item.call_id.length > 0)
+      return `${String(item.type)}:${item.call_id}`;
+    return null;
+  };
+
+  const completeItem = (item: Rec) => {
+    const key = itemKey(item);
+    if (key !== null && completedItems.has(key)) return;
+    const block = current();
+    if (item.type === "message") {
+      if (block?.kind === "text" && (block.itemId === key || block.itemId === undefined)) {
+        close();
+      } else {
+        for (const part of (Array.isArray(item.content) ? item.content : []).filter(isRec)) {
+          if (part.type !== "output_text" || typeof part.text !== "string" || part.text.length === 0) continue;
+          const text = openBlock("text", { type: "text", text: "" }, key ?? undefined);
+          emit({ type: "content_block_delta", index: text.index, delta: { type: "text_delta", text: part.text } });
+          close();
+        }
+      }
+    } else if (item.type === "function_call" || item.type === "custom_tool_call") {
+      sawToolUse = true;
+      const callId = typeof item.call_id === "string" ? item.call_id : `toolu_${randomUUID().replace(/-/g, "")}`;
+      const use = block?.kind === "tool_use" && block.itemId === key
+        ? block
+        : openBlock("tool_use", {
+            type: "tool_use",
+            id: callId,
+            name: typeof item.name === "string" ? item.name : "",
+            input: {},
+          }, key ?? undefined);
+      if (!use.argsSent) {
+        const args = item.type === "custom_tool_call"
+          ? JSON.stringify({ input: typeof item.input === "string" ? item.input : "" })
+          : typeof item.arguments === "string" ? item.arguments : "";
+        if (args.length > 0) {
+          emit({ type: "content_block_delta", index: use.index, delta: { type: "input_json_delta", partial_json: args } });
+          use.argsSent = true;
+        }
+      }
+      close();
+    } else if (item.type === "reasoning") {
+      const enc = typeof item.encrypted_content === "string" && item.encrypted_content.length > 0 ? item.encrypted_content : undefined;
+      const id = typeof item.id === "string" ? item.id : "";
+      const summary = (Array.isArray(item.summary) ? item.summary : [])
+        .filter(isRec)
+        .map(part => typeof part.text === "string" ? part.text : "")
+        .filter(Boolean)
+        .join("\n\n");
+      const isOpen = block?.kind === "thinking" && block.itemId === id;
+      if (isOpen || summary || enc) {
+        const thinking = isOpen ? block : openBlock("thinking", { type: "thinking", thinking: "", signature: "" }, id);
+        if (!isOpen && summary) emit({ type: "content_block_delta", index: thinking.index, delta: { type: "thinking_delta", thinking: summary } });
+        emit({ type: "content_block_delta", index: thinking.index, delta: { type: "signature_delta", signature: envelope(id, enc, upstream) } });
+        close();
+      }
+    } else if (item.type === "web_search_call") {
+      const pair = webSearchBlocks(item);
+      const use = openBlock("server", { type: "server_tool_use", id: pair.id, name: "web_search", input: {} });
+      emit({ type: "content_block_delta", index: use.index, delta: { type: "input_json_delta", partial_json: JSON.stringify(pair.input) } });
+      openBlock("server", { type: "web_search_tool_result", tool_use_id: pair.id, content: pair.result });
+      close();
+      if (pair.completed) webSearchRequests++;
+    }
+    if (key !== null) completedItems.add(key);
+  };
+
   const handle = (event: Rec) => {
     switch (event.type) {
       case "response.created":
@@ -165,7 +237,8 @@ export async function* responsesStreamToMessages(
       case "response.output_text.delta": {
         if (typeof event.delta !== "string" || event.delta.length === 0) break;
         const prev = current();
-        const block = prev?.kind === "text" ? prev : openBlock("text", { type: "text", text: "" });
+        const itemId = typeof event.item_id === "string" ? event.item_id : undefined;
+        const block = prev?.kind === "text" ? prev : openBlock("text", { type: "text", text: "" }, itemId);
         emit({ type: "content_block_delta", index: block.index, delta: { type: "text_delta", text: event.delta } });
         break;
       }
@@ -183,14 +256,14 @@ export async function* responsesStreamToMessages(
       }
       case "response.output_item.added": {
         const item = isRec(event.item) ? event.item : {};
-        if (item.type !== "function_call") break;
+        if (item.type !== "function_call" && item.type !== "custom_tool_call") break;
         sawToolUse = true;
         openBlock("tool_use", {
           type: "tool_use",
           id: typeof item.call_id === "string" ? item.call_id : `toolu_${randomUUID().replace(/-/g, "")}`,
           name: typeof item.name === "string" ? item.name : "",
           input: {},
-        });
+        }, itemKey(item) ?? undefined);
         break;
       }
       case "response.function_call_arguments.delta": {
@@ -202,38 +275,16 @@ export async function* responsesStreamToMessages(
       }
       case "response.output_item.done": {
         const item = isRec(event.item) ? event.item : {};
-        const block = current();
-        if (item.type === "function_call" && block?.kind === "tool_use") {
-          // Some streams carry arguments only on the finished item.
-          if (!block.argsSent && typeof item.arguments === "string" && item.arguments.length > 0) {
-            emit({ type: "content_block_delta", index: block.index, delta: { type: "input_json_delta", partial_json: item.arguments } });
-          }
-          close();
-        } else if (item.type === "message" && block?.kind === "text") {
-          close();
-        } else if (item.type === "reasoning") {
-          // Sign the thinking block with the envelope that lets Claude Code replay it.
-          const enc = typeof item.encrypted_content === "string" && item.encrypted_content.length > 0 ? item.encrypted_content : undefined;
-          const id = typeof item.id === "string" ? item.id : "";
-          const isOpen = block?.kind === "thinking" && block.itemId === id;
-          if (!isOpen && !enc) break;
-          const thinking = isOpen ? block : openBlock("thinking", { type: "thinking", thinking: "", signature: "" }, id);
-          emit({ type: "content_block_delta", index: thinking.index, delta: { type: "signature_delta", signature: envelope(id, enc, upstream) } });
-          close();
-        } else if (item.type === "web_search_call") {
-          // Hosted search, for Claude Code's WebSearch sub-request: emit the Anthropic
-          // server_tool_use + web_search_tool_result pair. Not a client tool call.
-          const pair = webSearchBlocks(item);
-          const use = openBlock("server", { type: "server_tool_use", id: pair.id, name: "web_search", input: {} });
-          emit({ type: "content_block_delta", index: use.index, delta: { type: "input_json_delta", partial_json: JSON.stringify(pair.input) } });
-          openBlock("server", { type: "web_search_tool_result", tool_use_id: pair.id, content: pair.result });
-          close();
-          if (pair.completed) webSearchRequests++;
-        }
+        completeItem(item);
         break;
       }
       case "response.completed": {
         const response = isRec(event.response) ? event.response : {};
+        for (const item of (Array.isArray(response.output) ? response.output : []).filter(isRec)) completeItem(item);
+        if (!sawContent) {
+          fail({ message: "upstream completed without assistant content" });
+          break;
+        }
         finish(sawToolUse ? "tool_use" : "end_turn", response.usage);
         break;
       }
