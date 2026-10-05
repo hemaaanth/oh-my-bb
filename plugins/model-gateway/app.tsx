@@ -99,6 +99,16 @@ type Route = {
   stickyUntil: number | null;
   autoModel: string | null;
   auto: string | null;
+  fallbackCause: FallbackCause | null;
+};
+
+type FallbackCause = {
+  upstreamId: string;
+  upstreamLabel: string;
+  category: "transport" | "authentication" | "rate-limit" | "availability";
+  status: number;
+  message: string;
+  at: number;
 };
 
 const HARNESS_TITLES: Record<Harness, string> = {
@@ -145,6 +155,8 @@ function RouteBadge({ threadId }: { threadId: string }) {
     `Now on step ${route.chainIndex + 1}: ${upstream}${route.accountLabel === null || route.accountLabel === upstream ? "" : ` (${route.accountLabel})`}`,
     route.stickyUntil !== null && `Stays there until ${clock(route.stickyUntil)}`,
     route.auto !== null && `Jev: ${route.auto}`,
+    route.fallbackCause !== null &&
+      `Fallback: ${route.fallbackCause.upstreamLabel} returned ${route.fallbackCause.category} (HTTP ${route.fallbackCause.status}) at ${clock(route.fallbackCause.at)}\n${route.fallbackCause.message}`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -188,6 +200,7 @@ interface LiveState {
     autoModel: string | null;
     autoReason: string | null;
     stickyUntil: number | null;
+    fallbackCause: FallbackCause | null;
     usedAt: number;
   }>;
   holds: Array<{
@@ -2173,6 +2186,11 @@ function ModelGatewaySettings() {
                     <div
                       key={route.threadId}
                       className="flex min-w-0 items-center gap-2 py-2 text-sm"
+                      title={
+                        route.fallbackCause === null
+                          ? undefined
+                          : `${route.fallbackCause.upstreamLabel}: ${route.fallbackCause.category} (HTTP ${route.fallbackCause.status}) — ${route.fallbackCause.message}`
+                      }
                     >
                       <span className="truncate font-mono text-xs text-foreground">
                         {route.threadId}

@@ -351,6 +351,12 @@ function formatThreadStatus(route: ThreadRouteStatus): string {
       : [`Auto: ${route.autoModel === null ? "client model" : `auto → ${route.autoModel}`} (${route.autoReason})`]),
     `Chain entry: ${route.entryIndex < 0 ? "not in chain" : `${route.entryIndex} ${route.entry}`}${route.entryIndex > 0 ? " (fallback)" : ""}`,
     `Reason: ${route.reason}`,
+    ...(route.fallbackCause === null
+      ? []
+      : [
+          `Fallback cause: ${route.fallbackCause.upstreamLabel} · ${route.fallbackCause.category} · HTTP ${route.fallbackCause.status} · ${route.fallbackCause.message}`,
+          `Fallback at: ${new Date(route.fallbackCause.at).toISOString()}`,
+        ]),
     `Bound at: ${new Date(route.boundAt).toISOString()}`,
     `Sticky until: ${formatReset(route.stickyUntil)}`,
     `Last used: ${new Date(route.usedAt).toISOString()}`,

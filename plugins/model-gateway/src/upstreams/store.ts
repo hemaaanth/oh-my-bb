@@ -32,6 +32,18 @@ const HUB_TOKEN_PREFIX = "hub-token-";
 const HUB_TOKEN_GRACE_MS = 10 * 60 * 1_000;
 const HUB_TOKEN_LAST_USED_PERSIST_MS = 60 * 1_000;
 
+const fallbackCauseSchema = z
+  .object({
+    upstreamId: z.string().min(1),
+    upstreamLabel: z.string().min(1),
+    category: z.enum(["transport", "authentication", "rate-limit", "availability"]),
+    status: z.number().int().min(0),
+    message: z.string(),
+    at: z.number().int().nonnegative(),
+  })
+  .strict();
+export type FallbackCause = z.infer<typeof fallbackCauseSchema>;
+
 const tokenValueSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/u);
 const priorHubTokenSchema = z
   .object({
@@ -774,6 +786,7 @@ const threadRouteRowSchema = z.object({
   model: z.string().nullable(),
   auto_model: z.string().nullable(),
   auto_reason: z.string().nullable(),
+  fallback_cause_json: z.string().nullable(),
 });
 
 export interface ThreadRoute {
@@ -790,6 +803,8 @@ export interface ThreadRoute {
   autoModel: string | null;
   /** P5: why (`jev 0.82`, `fail open: timeout`); null when auto is off. */
   autoReason: string | null;
+  /** Why the primary was rejected before this fallback served. */
+  fallbackCause: FallbackCause | null;
 }
 
 function threadRoute(row: z.infer<typeof threadRouteRowSchema>): ThreadRoute {
@@ -804,6 +819,10 @@ function threadRoute(row: z.infer<typeof threadRouteRowSchema>): ThreadRoute {
     model: row.model,
     autoModel: row.auto_model,
     autoReason: row.auto_reason,
+    fallbackCause:
+      row.fallback_cause_json === null
+        ? null
+        : fallbackCauseSchema.parse(JSON.parse(row.fallback_cause_json)),
   };
 }
 
@@ -837,13 +856,14 @@ export class ThreadRouteStore {
   put(route: ThreadRoute): void {
     this.db
       .prepare(
-        `INSERT INTO thread_route (thread_id, harness, upstream_id, bound_at, sticky_until, reason, used_at, model, auto_model, auto_reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO thread_route (thread_id, harness, upstream_id, bound_at, sticky_until, reason, used_at, model, auto_model, auto_reason, fallback_cause_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(thread_id) DO UPDATE SET harness = excluded.harness,
          upstream_id = excluded.upstream_id, bound_at = excluded.bound_at,
          sticky_until = excluded.sticky_until, reason = excluded.reason,
          used_at = excluded.used_at, model = excluded.model,
-         auto_model = excluded.auto_model, auto_reason = excluded.auto_reason`,
+         auto_model = excluded.auto_model, auto_reason = excluded.auto_reason,
+         fallback_cause_json = excluded.fallback_cause_json`,
       )
       .run(
         route.threadId,
@@ -856,6 +876,7 @@ export class ThreadRouteStore {
         route.model,
         route.autoModel,
         route.autoReason,
+        route.fallbackCause === null ? null : JSON.stringify(route.fallbackCause),
       );
   }
 
@@ -943,4 +964,14 @@ export const QUOTA_MIGRATIONS = [
   `ALTER TABLE thread_route ADD COLUMN model TEXT`,
   `ALTER TABLE thread_route ADD COLUMN auto_model TEXT;
   ALTER TABLE thread_route ADD COLUMN auto_reason TEXT`,
+  // Reserved: these migrations briefly shipped before usage-cost accounting
+  // was removed. Keep their exact text so existing installations can append.
+  `CREATE TABLE gateway_usage_cost (
+  account_id TEXT NOT NULL, day TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0,
+  unknown INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (account_id, day)
+)`,
+  `CREATE TABLE gateway_pricing_catalog (
+  id INTEGER PRIMARY KEY CHECK (id = 1), fetched_at INTEGER NOT NULL, data TEXT NOT NULL
+)`,
+  `ALTER TABLE thread_route ADD COLUMN fallback_cause_json TEXT`,
 ];

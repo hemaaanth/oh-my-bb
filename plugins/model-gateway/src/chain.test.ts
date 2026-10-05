@@ -643,6 +643,13 @@ describe("chain failover in the hub", () => {
         entryIndex: number;
         stickyUntil: number | null;
         reason: string;
+        fallbackCause: {
+          upstreamLabel: string;
+          category: string;
+          status: number;
+          message: string;
+          at: number;
+        } | null;
       };
     };
     return {
@@ -729,6 +736,54 @@ describe("chain failover in the hub", () => {
       entryIndex: 0,
       stickyUntil: null,
       reason: "primary",
+    });
+  });
+
+  it("retries a transient Claude failure once before crossing providers and records the cause", async () => {
+    const gw = await gateway();
+    await gw.cli("chain", "set", "claude-code", gw.max.id, "claude-key:*");
+    const key = await gw.token("claude-code", "thr_transient");
+    let failures = 1;
+    gw.upstream.reply = (who) => {
+      if (who !== "max-token" || failures-- <= 0) return undefined;
+      return Response.json(
+        { error: { message: "temporarily overloaded" } },
+        { status: 529, headers: { "retry-after": "0" } },
+      );
+    };
+
+    expect((await gw.send(key, userTurn)).text).toBe('{"served":"max-token"}');
+    expect(gw.upstream.attempts).toEqual(["max-token", "max-token"]);
+    expect(await gw.route("thr_transient")).toMatchObject({
+      entryIndex: 0,
+      reason: "primary",
+      fallbackCause: null,
+    });
+
+    gw.upstream.attempts.length = 0;
+    gw.upstream.reply = (who) =>
+      who === "max-token"
+        ? Response.json(
+            { error: { message: "temporarily overloaded" } },
+            { status: 529, headers: { "retry-after": "0" } },
+          )
+        : undefined;
+    expect((await gw.send(key, userTurn)).text).toBe('{"served":"key-token"}');
+    expect(gw.upstream.attempts).toEqual([
+      "max-token",
+      "max-token",
+      "key-token",
+    ]);
+    expect(await gw.route("thr_transient")).toMatchObject({
+      entryIndex: 1,
+      reason: "fallback",
+      fallbackCause: {
+        upstreamLabel: "max@example.com",
+        category: "availability",
+        status: 529,
+        message: expect.stringContaining("temporarily overloaded"),
+        at: T,
+      },
     });
   });
 
@@ -900,6 +955,11 @@ describe("chain failover in the hub", () => {
       stickyUntil: RESET,
       autoModel: null,
       auto: null,
+      fallbackCause: expect.objectContaining({
+        upstreamLabel: "max@example.com",
+        category: "rate-limit",
+        status: 429,
+      }),
     });
     expect(signals()).toHaveLength(2);
     expect(

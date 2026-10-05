@@ -347,6 +347,7 @@ describe("Model Gateway thread badge", () => {
     stickyUntil: null,
     autoModel: null,
     auto: null,
+    fallbackCause: null,
   };
 
   it("shows the primary route quietly, with the chain in its tooltip", async () => {
@@ -365,6 +366,29 @@ describe("Model Gateway thread badge", () => {
       auto: "jev 0.82",
     });
     await slot.findByText(/auto → claude-opus-5-5 \(jev 0\.82\)/);
+  });
+
+  it("explains why a fallback crossed providers", async () => {
+    const slot = renderBadge({
+      ...ROUTE,
+      upstreamKind: "chatgpt-oauth",
+      accountLabel: "pro",
+      model: "gpt-6-sol",
+      chainIndex: 1,
+      fallbackCause: {
+        upstreamId: "claude-1",
+        upstreamLabel: "max",
+        category: "availability",
+        status: 529,
+        message: "temporarily overloaded",
+        at: Date.now(),
+      },
+    });
+    const badge = await slot.findByText(/ChatGPT · gpt-6-sol/);
+    expect(badge.getAttribute("title")).toContain(
+      "Fallback: max returned availability (HTTP 529)",
+    );
+    expect(badge.getAttribute("title")).toContain("temporarily overloaded");
   });
 });
 

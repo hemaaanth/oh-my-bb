@@ -28,6 +28,7 @@ import {
   type KeyAddInput,
   type RoutingTarget,
 } from "./contracts.js";
+
 import {
   autoLadder,
   chainEntryOptions,
@@ -49,6 +50,17 @@ import {
 import { setupGuides } from "./setup.js";
 import type { ClaudeOAuthLogin } from "./upstreams/oauth-login.js";
 import type { CodexDeviceLogin } from "./upstreams/codex-device-login.js";
+
+const fallbackCauseRpcSchema = z
+  .object({
+    upstreamId: z.string(),
+    upstreamLabel: z.string(),
+    category: z.enum(["transport", "authentication", "rate-limit", "availability"]),
+    status: z.number().int(),
+    message: z.string(),
+    at: z.number().int(),
+  })
+  .strict();
 
 export const accountPoolRpcContract = defineRpcContract({
   "account.add": {
@@ -169,6 +181,7 @@ export const accountPoolRpcContract = defineRpcContract({
               autoModel: z.string().nullable(),
               autoReason: z.string().nullable(),
               stickyUntil: z.number().int().nullable(),
+              fallbackCause: fallbackCauseRpcSchema.nullable(),
               usedAt: z.number().int(),
             })
             .strict(),
@@ -246,6 +259,7 @@ export const accountPoolRpcContract = defineRpcContract({
         autoModel: z.string().nullable(),
         /** P5: why the model was chosen (`jev 0.82`, `fail open: timeout`); null when auto is off. */
         auto: z.string().nullable(),
+        fallbackCause: fallbackCauseRpcSchema.nullable(),
       })
       .strict()
       .nullable(),
@@ -359,6 +373,7 @@ export function createRpcHandlers(
         autoModel: route.autoModel,
         autoReason: route.autoReason,
         stickyUntil: route.stickyUntil,
+        fallbackCause: route.fallbackCause,
         usedAt: route.usedAt,
       })),
       holds: (await operations.holds()).map(({ account, until }) => ({
@@ -406,6 +421,7 @@ export function createRpcHandlers(
         stickyUntil: route.stickyUntil,
         autoModel: route.autoModel,
         auto: route.autoReason,
+        fallbackCause: route.fallbackCause,
       };
     },
   };

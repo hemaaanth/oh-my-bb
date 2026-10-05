@@ -36,6 +36,7 @@ import {
 import {
   EMPTY_QUOTA,
   type AccountBinding,
+  type FallbackCause,
   type AccountStore,
   type HubTokenStore,
   type PoolAffinityStore,
@@ -103,6 +104,8 @@ const DEFAULT_DRAIN_TIMEOUT_MS = 4_000;
 // Tells clients to retry once the reloaded instance is serving.
 const STOPPING_RETRY_AFTER = { "retry-after": "5" };
 const MAX_INLINE_HOLD_MS = 20_000;
+const TRANSIENT_RETRY_DELAY_MS = 250;
+const MAX_TRANSIENT_RETRY_DELAY_MS = 1_000;
 const MAX_REFRESH_BACKOFF_MS = 60_000;
 const MAX_REFRESH_BACKOFFS = 1_024;
 const MAX_FAILURE_DETAIL_BYTES = 1_024;
@@ -392,6 +395,7 @@ interface FailureSummary {
   status: number;
   message: string;
   headers: Record<string, string>;
+  cause?: FallbackCause;
 }
 
 class UpstreamConnectionError extends Error {}
@@ -840,6 +844,7 @@ export class AccountPoolHub {
               primary: entries[0] ?? [],
               rejected,
               family,
+              fallbackCause: failure?.cause ?? null,
             });
           }
           // A compatible key's own thinking and reasoning go back wrapped (fitReplay).
@@ -892,6 +897,7 @@ export class AccountPoolHub {
       primary: readonly Account[];
       rejected: ReadonlyMap<string, number | null>;
       family: ModelFamily;
+      fallbackCause: FallbackCause | null;
     },
   ): void {
     const now = this.options.now();
@@ -902,6 +908,10 @@ export class AccountPoolHub {
         : same && served.sticky
           ? route.stickyUntil
           : this.entryResetAt(served.primary, served.rejected, served.family);
+    const recordedCause =
+      served.index === 0
+        ? null
+        : served.fallbackCause ?? (same ? route.fallbackCause : null);
     this.options.routes.put({
       threadId: identity.threadId,
       harness: identity.harness,
@@ -918,11 +928,13 @@ export class AccountPoolHub {
       model: served.model,
       autoModel: served.auto?.model ?? null,
       autoReason: served.auto?.reason ?? null,
+      fallbackCause: recordedCause,
     });
     if (
       route?.upstreamId !== served.account.id ||
       route.model !== served.model ||
-      route.autoReason !== (served.auto?.reason ?? null)
+      route.autoReason !== (served.auto?.reason ?? null) ||
+      route.fallbackCause?.at !== recordedCause?.at
     )
       this.options.onRouteChanged(identity.threadId);
   }
@@ -1118,13 +1130,25 @@ export class AccountPoolHub {
         } catch (error) {
           signal.throwIfAborted();
           if (error instanceof TransientOAuthRefreshError) {
-            failure = { status: 503, message: error.message, headers: {} };
+            failure = {
+              status: 503,
+              message: error.message,
+              headers: {},
+              cause: fallbackCause(
+                selected.account,
+                "availability",
+                503,
+                error.message,
+                this.options.now(),
+              ),
+            };
           } else {
             this.markError(selected.account.id, errorMessage(error));
           }
           continue;
         }
         let authRetried = false;
+        let transientRetried = false;
         let paced = waited.has(selected.account.id);
         while (true) {
           signal.throwIfAborted();
@@ -1140,11 +1164,28 @@ export class AccountPoolHub {
           } catch (error) {
             signal.throwIfAborted();
             if (!(error instanceof UpstreamConnectionError)) throw error;
+            if (
+              adapter.provider === "claude" &&
+              selected.account.kind === "oauth" &&
+              !transientRetried
+            ) {
+              transientRetried = true;
+              await waitForDelay(TRANSIENT_RETRY_DELAY_MS, signal);
+              continue;
+            }
+            const message =
+              "Model Gateway could not reach " + adapter.upstreamName + ".";
             failure = {
               status: 502,
-              message:
-                "Model Gateway could not reach " + adapter.upstreamName + ".",
+              message,
               headers: {},
+              cause: fallbackCause(
+                selected.account,
+                "transport",
+                502,
+                message,
+                this.options.now(),
+              ),
             };
             break;
           }
@@ -1191,6 +1232,30 @@ export class AccountPoolHub {
             if (exhausted !== null) {
               rejected.set(selected.account.id, exhausted.resetAt);
               await this.discardUpstream(upstream, false);
+              failure = {
+                status: 429,
+                message: `${selected.account.label} is out of quota.`,
+                headers:
+                  exhausted.resetAt === null
+                    ? {}
+                    : {
+                        "retry-after": String(
+                          Math.max(
+                            0,
+                            Math.ceil(
+                              (exhausted.resetAt - this.options.now()) / 1_000,
+                            ),
+                          ),
+                        ),
+                      },
+                cause: fallbackCause(
+                  selected.account,
+                  "rate-limit",
+                  429,
+                  `${selected.account.label} is out of quota.`,
+                  this.options.now(),
+                ),
+              };
               break;
             }
             const waitMs = retryAfterMilliseconds(
@@ -1232,15 +1297,41 @@ export class AccountPoolHub {
             const retryAfter = response.headers.get("retry-after");
             const detail = await this.discardUpstream(upstream, true);
             signal.throwIfAborted();
+            const message =
+              detail ||
+              adapter.upstreamName +
+                " returned HTTP " +
+                response.status +
+                ".";
+            if (
+              adapter.provider === "claude" &&
+              selected.account.kind === "oauth" &&
+              !transientRetried &&
+              [408, 500, 502, 503, 504, 529].includes(response.status)
+            ) {
+              transientRetried = true;
+              const delay = Math.min(
+                retryAfter === null
+                  ? TRANSIENT_RETRY_DELAY_MS
+                  : retryAfterMilliseconds(retryAfter, this.options.now()),
+                MAX_TRANSIENT_RETRY_DELAY_MS,
+              );
+              await waitForDelay(delay, signal);
+              continue;
+            }
             failure = {
               status: response.status,
-              message:
-                detail ||
-                adapter.upstreamName +
-                  " returned HTTP " +
-                  response.status +
-                  ".",
+              message,
               headers: retryAfter === null ? {} : { "retry-after": retryAfter },
+              cause: fallbackCause(
+                selected.account,
+                response.status === 401 || response.status === 403
+                  ? "authentication"
+                  : "availability",
+                response.status,
+                message,
+                this.options.now(),
+              ),
             };
             if (
               response.status === 401 &&
@@ -2022,6 +2113,23 @@ function readBearer(value: string | null): string | null {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function fallbackCause(
+  account: Account,
+  category: FallbackCause["category"],
+  status: number,
+  message: string,
+  at: number,
+): FallbackCause {
+  return {
+    upstreamId: account.id,
+    upstreamLabel: account.label,
+    category,
+    status,
+    message,
+    at,
+  };
 }
 
 function waitForDelay(
