@@ -86,14 +86,22 @@ describe("injectPage", () => {
 describe("PAGE_CSP", () => {
   const directives = Object.fromEntries(PAGE_CSP.split(";").map((part) => part.trim().split(/\s+/u)).map(([name, ...values]) => [name, values]));
 
-  it("allows inline author code and self assets, and nothing remote for code", () => {
+  it("allows inline author code, self assets, and data: folder files, and nothing remote for code", () => {
     expect(directives["default-src"]).toEqual(["'none'"]);
-    expect(directives["script-src"]).toEqual(["'self'", "'unsafe-inline'"]);
-    expect(directives["style-src"]).toEqual(["'self'", "'unsafe-inline'"]);
+    expect(directives["script-src"]).toEqual(["'self'", "'unsafe-inline'", "data:"]);
+    expect(directives["style-src"]).toEqual(["'self'", "'unsafe-inline'", "data:"]);
     expect(directives["font-src"]).toEqual(["'self'", "data:"]);
-    expect(directives["img-src"]).toEqual(["data:", "blob:", "https:"]);
-    expect(directives["media-src"]).toEqual(["data:", "blob:", "https:"]);
+    expect(directives["img-src"]).toEqual(["'self'", "data:", "blob:", "https:"]);
+    expect(directives["media-src"]).toEqual(["'self'", "data:", "blob:", "https:"]);
     expect(directives["connect-src"]).toEqual(["'none'"]);
     expect(PAGE_CSP).not.toContain("unsafe-eval");
+  });
+
+  it("adds the link bridge only when asked, before </body>", () => {
+    const html = "<html><body><a href=\"https://example.com\">x</a></body></html>";
+    expect(inject(html)).not.toContain("open-link");
+    const out = injectPage(html, { assetBase: "./", theme: null, hasCharts: false, linkBridge: true });
+    expect(out.indexOf("open-link")).toBeGreaterThan(out.indexOf("</a>"));
+    expect(out.indexOf("open-link")).toBeLessThan(out.indexOf("</body>"));
   });
 });

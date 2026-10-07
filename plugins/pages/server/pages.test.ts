@@ -101,6 +101,30 @@ describe("publishDocument", () => {
     await harness.lifecycle.dispose();
   });
 
+  it("sends panel feedback to the thread with the page ID to republish", async () => {
+    const { harness, files, sent, archived, rpcFailure } = pagesHost();
+    files.set(`${WORKSPACE}/report.html`, html("<h1>One</h1>"));
+    const first = await harness.behavior.callRpc("publishFile", { threadId: "thr_a", file: "report.html" }) as Result;
+    files.set(`${WORKSPACE}/report.html`, html("<h1>Two</h1>"));
+    await harness.behavior.callRpc("publishFile", { threadId: "thr_a", file: "report.html" });
+    const pageId = first.page.id;
+    expect(await harness.behavior.callRpc("sendFeedback", { pageId, versionId: first.version.id, threadId: "thr_view", text: "  Make the chart bigger.  " })).toEqual({ ok: true });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ threadId: "thr_view", mode: "queue-if-active" });
+    expect(sent[0]!.text).toContain(`(page ID ${pageId}, version 1 (the current version is 2), published from report.html):\n\nMake the chart bigger.\n\n`);
+    expect(sent[0]!.text).toContain(`page_publish and pageId "${pageId}"`);
+    archived.add("thr_old");
+    expect(await harness.behavior.callRpc("sendFeedback", { pageId, versionId: first.version.id, threadId: "thr_old", text: "x" })).toMatchObject({ ok: false, reason: "thread-archived" });
+    rpcFailure.error = new Error("HTTP 409: Thread is archived");
+    expect(await harness.behavior.callRpc("sendFeedback", { pageId, versionId: first.version.id, threadId: "thr_view", text: "x" })).toMatchObject({ ok: false, reason: "thread-archived" });
+    rpcFailure.error = null;
+    await expect(harness.behavior.callRpc("sendFeedback", { pageId, versionId: first.version.id, threadId: "thr_view", text: "   " })).rejects.toThrow();
+    const review = await harness.behavior.callRpc("publishDocument", documentInput) as Result;
+    await expect(harness.behavior.callRpc("sendFeedback", { pageId: review.page.id, versionId: review.version.id, threadId: "thr_view", text: "x" })).rejects.toThrow(/use its actions/u);
+    expect(sent).toHaveLength(1);
+    await harness.lifecycle.dispose();
+  });
+
   it("answers an archived thread with a typed result instead of an error", async () => {
     const { harness, rpcCalls, archived, rpcFailure } = pagesHost();
     const page = await harness.behavior.callRpc("publishDocument", documentInput) as Result;
@@ -191,7 +215,7 @@ describe("page routes", () => {
   it("opens only the static asset routes to any origin; page routes stay local", async () => {
     const { harness } = pagesHost();
     const auth = Object.fromEntries(harness.registrations.httpRoutes.map((route) => [route.path, route.auth]));
-    expect(auth).toEqual({ "/v": "local", "/file": "local", "/_page/theme.css": "none", "/_page/inter.roman.var.woff2": "none", "/_page/charts.js": "none" });
+    expect(auth).toEqual({ "/v": "local", "/a": "local", "/file": "local", "/_page/theme.css": "none", "/_page/inter.roman.var.woff2": "none", "/_page/charts.js": "none" });
     const font = await harness.behavior.fetchHttp("GET", "/_page/inter.roman.var.woff2", { headers: { origin: "null" } });
     expect(font.status).toBe(200);
     expect(font.headers.get("access-control-allow-origin")).toBe("*");

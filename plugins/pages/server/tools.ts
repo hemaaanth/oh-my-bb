@@ -10,7 +10,8 @@ export const DIRECTIVE_RULE = "Copy this directive on its own line into your fin
 export function publishSummary({ result, changed }: PublishResult): string {
   const n = result.version.n;
   const status = !changed ? `unchanged: v${n} already has these bytes` : result.created ? "created v1" : `added v${n}`;
-  return `${DIRECTIVE_RULE}\n${result.directive}\n\n"${result.page.title}" ${status}.`;
+  // The page id rides along so a later edit (from panel feedback, another file, or another thread) updates this page.
+  return `${DIRECTIVE_RULE}\n${result.directive}\n\n"${result.page.title}" ${status}. To update it, publish the same path again, or pass pageId "${result.page.id}".`;
 }
 
 /** Lookup view: page, versions, share status, and document. No HTML and no password. */
@@ -29,12 +30,13 @@ export function lookupView(detail: PageDetail) {
 export function registerTools(bb: BbPluginApi, service: PageService) {
   bb.agents.registerTool({
     name: "page_publish",
-    description: "Publish a workspace or thread-storage .html/.md file as a versioned page. Publishing the same file (or key, or pageId) again adds a version; unchanged bytes add nothing.",
+    description: "Publish a workspace or thread-storage .html/.md file, or a folder with index.html plus its images, CSS, fonts, scripts, and other pages, as a versioned page. Publishing the same file or folder (or key, or pageId) again adds a version; unchanged bytes add nothing.",
     instructions: "After page_publish, copy the returned ::page directive on its own line into your final reply.",
     presentation: { label: { pending: "Publishing page", completed: "Published page" }, icon: { glyph: "FileText" } },
     parameters: z.object({
-      file: relativeFileSchema.describe("Path relative to the source root, e.g. reports/summary.html"),
-      source: fileSourceSchema.optional().describe("Where the file lives. Default: workspace"),
+      file: relativeFileSchema.optional().describe("An .html or .md file, relative to the source root, e.g. reports/summary.html"),
+      dir: relativeFileSchema.optional().describe("Instead of file: a folder with index.html, relative to the source root, e.g. reports/launch. Its other files are published with it"),
+      source: fileSourceSchema.optional().describe("Where the file or folder lives. Default: workspace"),
       title: titleSchema.optional(), label: labelSchema.optional().describe("Short note for this version"),
       folder: folderPathSchema.optional().describe("Logical subfolder inside this BB project, e.g. Reports/Weekly"),
       key: pageKeySchema.optional().describe("Stable page name, e.g. boost-daily. Use when the path changes between runs"),
@@ -92,6 +94,6 @@ export function registerTools(bb: BbPluginApi, service: PageService) {
     // page_share is registered by server/share (T4); BB allows one configure callback, so it is selected here.
     tools: ["page_publish", "page_lookup", "page_browse", "page_share"],
     skills: ["pages"],
-    instructions: "Pages: use page_browse to find prior project artifacts in fresh threads. Write an .html or .md file, publish it with page_publish (or `bb pages publish <file>`), and copy the returned ::page directive into your reply. Read the pages skill for the theme and chart rules.",
+    instructions: "Pages: use page_browse to find prior project artifacts in fresh threads. Write an .html or .md file (or a folder with index.html and its assets), publish it with page_publish (or `bb pages publish <path>`), and copy the returned ::page directive into your reply. Read the pages skill for the theme, folder, and chart rules.",
   }));
 }

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
-import { PAGE_RUNTIME, needsPageRuntime } from "./page-runtime.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { LINK_BRIDGE, PAGE_RUNTIME, needsPageRuntime } from "./page-runtime.js";
 
 function runRuntime(html: string): void {
   document.documentElement.removeAttribute("data-bb-frame");
@@ -51,5 +51,43 @@ describe("page runtime image zoom", () => {
     Function(PAGE_RUNTIME)();
     expect(before.hasAttribute("data-pages-zoom-ready")).toBe(true);
     expect(after.hasAttribute("data-pages-zoom-ready")).toBe(false);
+  });
+});
+
+describe("link bridge", () => {
+  // One bridge per document: its listeners stay on the shared jsdom document, so every case is one run.
+  it("posts outside links, loads our own v and a routes in the frame, and leaves the rest alone", () => {
+    const parent = { postMessage: vi.fn() };
+    Object.defineProperty(window, "parent", { configurable: true, value: parent });
+    window.history.replaceState(null, "", "/api/v1/plugins/pages/http/v?id=v1");
+    document.body.innerHTML = [
+      '<a id="out" href="https://example.com/x"><span>out</span></a><a id="mail" href="mailto:a@b.co">mail</a><a id="frag" href="#top">top</a><a id="rel" href="other.html">rel</a><a id="stopped" href="https://example.com/y">y</a>',
+      '<a id="page" href="./a?id=v1&amp;path=docs%2Fother.html#s">p</a><a id="home" href="./v?id=v1">h</a><a id="file" href="./file?x=1">f</a><a id="up" href="../other/v?id=v1">u</a><a id="root" href="/a?id=v1">r</a><a id="middle" href="./a?id=v1">m</a>',
+    ].join("");
+    document.getElementById("stopped")!.addEventListener("click", (event) => event.preventDefault());
+    Function(LINK_BRIDGE)();
+    const click = (id: string, init: MouseEventInit = {}, type = "click") => {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
+      (id === "out" ? document.querySelector("#out span")! : document.getElementById(id)!).dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(click("out")).toBe(true);
+    expect(click("out", { button: 1 }, "auxclick")).toBe(true);
+    expect(click("mail")).toBe(true);
+    expect(click("frag")).toBe(false);
+    // Same-origin links never navigate the frame itself; only our routes next to this page are passed up.
+    for (const id of ["rel", "page", "home", "file", "up", "root"]) expect(click(id)).toBe(true);
+    click("middle", { button: 1 }, "auxclick");
+    click("stopped");
+    const origin = window.location.origin;
+    expect(parent.postMessage.mock.calls.map(([data]) => [data.type, data.url])).toEqual([
+      ["open-link", "https://example.com/x"],
+      ["open-link", "https://example.com/x"],
+      ["open-link", "mailto:a@b.co"],
+      ["open-page", `${origin}/api/v1/plugins/pages/http/a?id=v1&path=docs%2Fother.html#s`],
+      ["open-page", `${origin}/api/v1/plugins/pages/http/v?id=v1`],
+    ]);
+    expect(parent.postMessage.mock.calls[0]).toEqual([{ source: "bb-pages", type: "open-link", url: "https://example.com/x" }, "*"]);
+    Object.defineProperty(window, "parent", { configurable: true, value: window });
   });
 });

@@ -1,7 +1,9 @@
 // `bb pages …`. The calling thread comes from the CLI context (`ctx.threadId`),
 // which the bb CLI fills from the invoking agent's BB_THREAD_ID.
+import { createHash } from "node:crypto";
+import path from "node:path";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES, PluginCliError, cliCommand, defineCli, type BbPluginApi, type PluginCliCommand, type PluginCliContext, type PluginCliResult } from "@get-bb/plugin-sdk";
-import { FileSourceError, mapCliPath } from "./server/files.js";
+import { FileSourceError, containedPath, mapCliPath, resolveRoot } from "./server/files.js";
 import { PageInputError, type PageService } from "./server/service.js";
 import { StaleVersionError, type PageStore } from "./server/store.js";
 import { lookupView, publishSummary } from "./server/tools.js";
@@ -45,12 +47,12 @@ export function registerPagesCli(bb: BbPluginApi, service: PageService, store: P
   bb.cli.register(defineCli({
     name: "pages",
     summary: "Publish, list, and read versioned pages",
-    description: "A page is a versioned HTML page made from an .html or .md file. Publishing the same file, --key, or --page again adds a version.",
+    description: "A page is a versioned HTML page made from an .html or .md file, or from a folder with index.html. Publishing the same file or folder, --key, or --page again adds a version.",
     commands: {
       publish: cliCommand({
-        summary: "Publish an .html or .md file as a page",
-        description: "The file must be inside the calling thread's workspace or thread storage ($BB_THREAD_STORAGE). Unchanged bytes add no version.",
-        positionals: [{ name: "file", description: "Absolute path, or a path relative to the current directory", required: true }],
+        summary: "Publish an .html or .md file, or a folder with index.html, as a page",
+        description: "The file or folder must be inside the calling thread's workspace or thread storage ($BB_THREAD_STORAGE). A path ending in .html, .htm, .md, or .markdown is a file; any other path is a folder. Unchanged bytes add no version.",
+        positionals: [{ name: "path", description: "Absolute path, or a path relative to the current directory", required: true }],
         options: {
           title: { type: "string", description: "Page title (default: <title>, first <h1>, or the file name)", placeholder: "TEXT" },
           label: { type: "string", description: "Short note for this version", placeholder: "TEXT" },
@@ -63,8 +65,9 @@ export function registerPagesCli(bb: BbPluginApi, service: PageService, store: P
         async run({ positionals, options }, ctx) {
           return attempt(async () => {
             const threadId = callingThread(ctx);
-            const { source, file } = await mapCliPath(bb.sdk, threadId, positionals.file, ctx.cwd);
-            const published = await service.publishFile({ threadId, file, source, title: options.title, label: options.label, folder: options.folder, key: options.key, pageId: options.page });
+            const { source, file } = await mapCliPath(bb.sdk, threadId, positionals.path, ctx.cwd);
+            const target = /\.(?:html?|md|markdown)$/iu.test(file) ? { file } : { dir: file };
+            const published = await service.publishFile({ threadId, ...target, source, title: options.title, label: options.label, folder: options.folder, key: options.key, pageId: options.page });
             return ok({ ...published.result, changed: published.changed }, publishSummary(published), options.json);
           });
         },
@@ -104,16 +107,42 @@ export function registerPagesCli(bb: BbPluginApi, service: PageService, store: P
         },
       }),
       pull: cliCommand({
-        summary: "Print a page version's stored HTML to stdout",
+        summary: "Print a page version's stored HTML to stdout, or write its files to a folder",
+        description: "A folder page needs --out: its index.html and every other file are written there. Existing files with other bytes are not overwritten.",
         positionals: [{ name: "id", description: "Page id" }],
-        options: { ...pageSelector, version: { type: "integer", min: 1, max: 1_000_000, description: "Version number (default: current)" } },
-        run({ positionals, options }) {
-          const detail = select(positionals.id, options);
-          const versionId = options.version === undefined ? detail.page.currentVersionId : store.versionIdByN(detail.page.id, options.version);
-          const stored = versionId ? store.storedHtml(versionId) : null;
-          if (!stored) throw new PluginCliError(`Version ${options.version} not found.`, { code: "not_found" });
-          if (Buffer.byteLength(stored.html, "utf8") > PLUGIN_CLI_OUTPUT_MAX_BYTES) throw new PluginCliError(`This version is larger than the CLI output limit (${PLUGIN_CLI_OUTPUT_MAX_BYTES} bytes).`, { code: "output_too_large" });
-          return { exitCode: 0, stdout: stored.html };
+        options: {
+          ...pageSelector,
+          version: { type: "integer", min: 1, max: 1_000_000, description: "Version number (default: current)" },
+          out: { type: "string", description: "Write the version's files into this folder (inside the workspace or thread storage)", placeholder: "DIR" },
+        },
+        run({ positionals, options }, ctx) {
+          return attempt(async () => {
+            const detail = select(positionals.id, options);
+            const versionId = options.version === undefined ? detail.page.currentVersionId : store.versionIdByN(detail.page.id, options.version);
+            const stored = versionId ? store.storedHtml(versionId) : null;
+            if (!stored) throw new PluginCliError(`Version ${options.version} not found.`, { code: "not_found" });
+            if (options.out === undefined) {
+              if (stored.folder) throw new PluginCliError("This version is a folder page. Pass --out <dir> to write its files.", { code: "folder_needs_out" });
+              if (Buffer.byteLength(stored.html, "utf8") > PLUGIN_CLI_OUTPUT_MAX_BYTES) throw new PluginCliError(`This version is larger than the CLI output limit (${PLUGIN_CLI_OUTPUT_MAX_BYTES} bytes). Pass --out <dir>.`, { code: "output_too_large" });
+              return { exitCode: 0, stdout: stored.html };
+            }
+            const threadId = callingThread(ctx);
+            const { source, file: dir } = await mapCliPath(bb.sdk, threadId, options.out, ctx.cwd);
+            const root = await resolveRoot(bb.sdk, threadId, source);
+            const files = [
+              { path: "index.html", bytes: Buffer.from(stored.html, "utf8") },
+              ...store.versionFiles(stored.versionId).map((file) => ({ path: file.path, bytes: store.blobBytes(file.sha256) ?? Buffer.alloc(0) })),
+            ];
+            for (const file of files) {
+              const target = containedPath(root.rootPath, path.posix.join(dir, file.path));
+              // expectedSha256 null: create only. An existing file with the same bytes counts as written.
+              const written = await bb.sdk.files.write({ path: target, rootPath: root.rootPath, hostId: root.hostId, content: file.bytes.toString("base64"), contentEncoding: "base64", createParents: true, expectedSha256: null });
+              if (written.outcome === "conflict" && written.currentSha256 !== createHash("sha256").update(file.bytes).digest("hex")) {
+                throw new PluginCliError(`${target} already exists with other content. Pull into an empty folder.`, { code: "file_exists" });
+              }
+            }
+            return { exitCode: 0, stdout: `Wrote ${files.length} file${files.length === 1 ? "" : "s"} to ${path.posix.join(root.rootPath, dir)}` };
+          });
         },
       }),
       ...extra,

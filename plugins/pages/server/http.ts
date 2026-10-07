@@ -2,16 +2,19 @@
 // query string and every page shape resolves `./_page/<asset>` to the same
 // asset routes:
 //   GET /v?id=<versionId>[&theme=light|dark]                      stored version
-//   GET /file?threadId=&source=&file=[&theme=light|dark]           live file (::inline-vis)
+//   GET /a?id=<versionId>&path=<file>[&theme=light|dark]          one file of a folder version
+//   GET /file?threadId=&source=&file=[&theme=light|dark]           live file (::inline-vis; single files only)
 //   GET /_page/theme.css | /_page/inter.roman.var.woff2 | /_page/charts.js   [?v=<content version>]
 // Preview HTML asks for assets with `?v=`, so the browser caches them for good; a stored version
 // never changes, so its HTML is cached briefly and revalidated by ETag. Live files are never cached.
+// Folder HTML (and CSS) is served with its relative subresources inlined as data: URLs and its
+// links to other folder files pointed at `./v` or `./a`; see render/folder.ts for why.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { PAGE_ASSET_NAMES } from "../contract.js";
-import { PAGE_CSP, inlinedPageAssets, inspectCharts, injectPage, pageAssetVersions, servedPageAsset } from "../render/index.js";
+import { PAGE_CSP, inlinedPageAssets, inspectCharts, injectPage, pageAssetVersions, pageRuntimeVersion, rewriteFolderCss, rewriteFolderHtml, servedPageAsset, type FolderRefs } from "../render/index.js";
 import { FileSourceError, readSourceFile } from "./files.js";
 import { sourceHtml } from "./service.js";
-import type { PageStore } from "./store.js";
+import type { PageStore, StoredHtml } from "./store.js";
 
 const pageHeaders = {
   "content-type": "text/html; charset=utf-8",
@@ -29,18 +32,56 @@ const frameOf = (value: string | undefined) => (value === "card" ? "card" as con
 export function registerRoutes(bb: BbPluginApi, store: PageStore) {
   const assetVersions = (() => { try { return pageAssetVersions(); } catch { return {}; } })();
   const inlineAssets = (() => { try { return inlinedPageAssets(); } catch { return undefined; } })();
-  // Changes when the assets change, so a plugin update never revalidates to old HTML.
-  const assetsTag = `${inlineAssets ? "inline" : "linked"}.${Object.values(assetVersions).join(".").slice(0, 24) || "none"}`;
+  // Changes when the assets or runtimes change, so a plugin update never revalidates to old HTML.
+  const assetsTag = `${inlineAssets ? "inline" : "linked"}.${Object.values(assetVersions).join(".").slice(0, 24) || "none"}.${pageRuntimeVersion()}`;
+
+  /** Folder file lookup for the rewriter. index.html is the version's HTML. */
+  const folderRefs = (stored: StoredHtml): FolderRefs => {
+    const entries = new Map(store.versionFiles(stored.versionId).map((entry) => [entry.path, entry]));
+    return {
+      file: (file) => {
+        if (file === "index.html") return { bytes: Buffer.from(stored.html, "utf8"), contentType: "text/html; charset=utf-8" };
+        const entry = entries.get(file);
+        const bytes = entry ? store.blobBytes(entry.sha256) : null;
+        return entry && bytes ? { bytes, contentType: entry.contentType } : null;
+      },
+      link: (file) => file === "index.html" ? `./v?id=${encodeURIComponent(stored.versionId)}` : `./a?${new URLSearchParams({ id: stored.versionId, path: file })}`,
+    };
+  };
+
+  /** A themed preview of stored page HTML (index.html, or another .html file of a folder version). */
+  const servePage = (c: Parameters<Parameters<BbPluginApi["http"]["route"]>[2]>[0], stored: StoredHtml, file: string, html: string, hasCharts: boolean) => {
+    const theme = themeOf(c.req.query("theme"));
+    const frame = frameOf(c.req.query("frame"));
+    const etag = `"${stored.versionId}.${file === "index.html" ? "" : `${encodeURIComponent(file)}.`}${theme ?? "auto"}.${frame ?? "full"}.${assetsTag}"`;
+    const headers = { ...pageHeaders, "cache-control": VERSION_CACHE, etag };
+    if (c.req.header("if-none-match") === etag) return new Response(null, { status: 304, headers });
+    const page = stored.folder ? rewriteFolderHtml(html, file, folderRefs(stored)) : html;
+    return new Response(injectPage(page, { assetBase: "./", theme, frame, hasCharts, assetVersions, inlineAssets, linkBridge: frame !== "card" }), { headers });
+  };
 
   bb.http.route("GET", "/v", (c) => {
     const stored = store.storedHtml(c.req.query("id") ?? "");
     if (!stored) return text(404, "Page version not found.");
-    const theme = themeOf(c.req.query("theme"));
-    const frame = frameOf(c.req.query("frame"));
-    const etag = `"${stored.versionId}.${theme ?? "auto"}.${frame ?? "full"}.${assetsTag}"`;
-    const headers = { ...pageHeaders, "cache-control": VERSION_CACHE, etag };
+    return servePage(c, stored, "index.html", stored.html, stored.hasCharts);
+  });
+
+  bb.http.route("GET", "/a", (c) => {
+    const stored = store.storedHtml(c.req.query("id") ?? "");
+    if (!stored) return text(404, "Page version not found.");
+    const file = c.req.query("path") ?? "";
+    if (file === "index.html") return servePage(c, stored, file, stored.html, stored.hasCharts);
+    const found = folderRefs(stored).file(file);
+    if (!found) return text(404, "This page has no such file.");
+    if (/^text\/html\b/iu.test(found.contentType)) {
+      const html = found.bytes.toString("utf8");
+      return servePage(c, stored, file, html, inspectCharts(html).hasCharts);
+    }
+    const etag = `"${stored.versionId}.${encodeURIComponent(file)}"`;
+    const headers = { "content-type": found.contentType, "content-security-policy": PAGE_CSP, "x-content-type-options": "nosniff", "cache-control": VERSION_CACHE, etag };
     if (c.req.header("if-none-match") === etag) return new Response(null, { status: 304, headers });
-    return new Response(injectPage(stored.html, { assetBase: "./", theme, frame, hasCharts: stored.hasCharts, assetVersions, inlineAssets }), { headers });
+    const bytes = /^text\/css\b/iu.test(found.contentType) ? Buffer.from(rewriteFolderCss(found.bytes.toString("utf8"), file, folderRefs(stored)), "utf8") : found.bytes;
+    return new Response(new Uint8Array(bytes), { headers });
   });
 
   bb.http.route("GET", "/file", async (c) => {
@@ -52,7 +93,8 @@ export function registerRoutes(bb: BbPluginApi, store: PageStore) {
     try {
       const read = await readSourceFile(bb.sdk, threadId, file, source);
       const html = sourceHtml(read);
-      return new Response(injectPage(html, { assetBase: "./", theme: themeOf(c.req.query("theme")), frame: frameOf(c.req.query("frame")), hasCharts: inspectCharts(html).hasCharts, assetVersions, inlineAssets }), { headers: pageHeaders });
+      const frame = frameOf(c.req.query("frame"));
+      return new Response(injectPage(html, { assetBase: "./", theme: themeOf(c.req.query("theme")), frame, hasCharts: inspectCharts(html).hasCharts, assetVersions, inlineAssets, linkBridge: frame !== "card" }), { headers: pageHeaders });
     } catch (error) {
       if (error instanceof FileSourceError) return text(error.status, error.message);
       bb.log.warn(`live preview failed for ${source}:${file}: ${error instanceof Error ? error.message : String(error)}`);

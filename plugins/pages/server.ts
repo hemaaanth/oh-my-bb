@@ -4,7 +4,7 @@ import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import type Database from "better-sqlite3";
 import { REALTIME_CHANNEL, rpcContract } from "./contract.js";
 import { PAGE_MIGRATIONS } from "./migrations.js";
-import { injectPage, readPageAsset } from "./render/index.js";
+import { injectPage, inspectCharts, readPageAsset } from "./render/index.js";
 import { registerPagesCli } from "./cli.js";
 import { registerRoutes } from "./server/http.js";
 import { importLegacyArtifacts } from "./server/import.js";
@@ -25,6 +25,7 @@ export const coreRpcContract = defineRpcContract({
   renamePage: rpcContract.renamePage,
   deletePage: rpcContract.deletePage,
   runProducerAction: rpcContract.runProducerAction,
+  sendFeedback: rpcContract.sendFeedback,
 });
 
 export default function plugin(bb: BbPluginApi) {
@@ -42,10 +43,21 @@ export default function plugin(bb: BbPluginApi) {
     getPublishBundle: (versionId) => {
       const stored = store.storedHtml(versionId);
       if (!stored) return null;
-      const assets = ["theme.css", "inter.roman.var.woff2", ...(stored.hasCharts ? ["charts.js"] as const : [])] as const;
+      // A folder's other files go up at their own paths, so relative references work on the real site.
+      // Its other HTML pages get the theme like index.html, with `_page/` resolved from their depth.
+      const folderFiles = store.versionFiles(versionId).map((file) => {
+        const bytes = store.blobBytes(file.sha256) ?? Buffer.alloc(0);
+        if (!/^text\/html\b/iu.test(file.contentType)) return { path: file.path, contentType: file.contentType, bytes, hasCharts: false };
+        const html = bytes.toString("utf8");
+        const hasCharts = inspectCharts(html).hasCharts;
+        return { path: file.path, contentType: file.contentType, bytes: Buffer.from(injectPage(html, { assetBase: "../".repeat(file.path.split("/").length - 1) || "./", theme: null, hasCharts }), "utf8"), hasCharts };
+      });
+      const hasCharts = stored.hasCharts || folderFiles.some((file) => file.hasCharts);
+      const assets = ["theme.css", "inter.roman.var.woff2", ...(hasCharts ? ["charts.js"] as const : [])] as const;
       return {
         files: [
           { path: "index.html", contentType: "text/html; charset=utf-8", bytes: Buffer.from(injectPage(stored.html, { assetBase: "./", theme: null, hasCharts: stored.hasCharts }), "utf8") },
+          ...folderFiles.map(({ path: file, contentType, bytes }) => ({ path: file, contentType, bytes })),
           ...assets.map((name) => { const asset = readPageAsset(name); return { path: `_page/${name}`, contentType: asset.contentType, bytes: asset.bytes }; }),
         ],
       };
@@ -85,6 +97,7 @@ export default function plugin(bb: BbPluginApi) {
     renamePage: ({ pageId, title }) => service.renamePage(pageId, title),
     deletePage: ({ pageId }) => service.deletePage(pageId),
     runProducerAction: (input) => service.runProducerAction(input),
+    sendFeedback: (input) => service.sendFeedback(input),
   });
   registerRoutes(bb, store);
   registerTools(bb, service);

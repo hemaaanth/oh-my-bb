@@ -7,7 +7,8 @@ and provides a searchable library for finding earlier work.
 ## Features
 
 - Publish workspace or thread-storage files with `page_publish` or
-  `bb pages publish`.
+  `bb pages publish`, or a folder with `index.html` plus its images, CSS,
+  fonts, scripts, and linked pages.
 - Organize pages in logical project folders such as `Reports/Weekly`.
 - Browse prior artifacts by project, folder, or title with `page_browse`.
 - Render Markdown, themed HTML, interactive data tables, and charts.
@@ -15,6 +16,8 @@ and provides a searchable library for finding earlier work.
   access. Sharing is optional and requires a Here.now API key.
 - Update a stable page by source path, key, or page id while preserving every
   changed version.
+- Send feedback from the page panel to the thread. The message carries the
+  page id, so the agent republishes the same page.
 
 ## Install
 

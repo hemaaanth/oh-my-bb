@@ -682,3 +682,37 @@ export const DATA_TABLE_RUNTIME = String.raw`(() => {
     requestAnimationFrame(fillViewport);
   });
 })();`;
+
+// The link bridge, for BB previews only. The preview iframe has no popups and no top
+// navigation, so a link click there does nothing or loads the site inside the frame.
+// The bridge stops the click and asks the BB app to open the link instead. Fragment
+// links scroll as usual. Links to another page of the same folder (our own `v` or `a`
+// route next to this page) ask the BB app to load that page into this frame: the frame's
+// own navigation would carry no BB session cookie, so it fails through a remote BB tunnel.
+// Other links back to the preview server go nowhere.
+export const LINK_BRIDGE = String.raw`(() => {
+  "use strict";
+  if (window.parent === window) return;
+  const here = new URL(location.href);
+  const routes = here.pathname.replace(/[^/]*$/u, "");
+  const open = (event) => {
+    if (event.defaultPrevented || event.button !== (event.type === "auxclick" ? 1 : 0)) return;
+    const link = event.target instanceof Element ? event.target.closest("a[href], area[href]") : null;
+    if (!link) return;
+    const raw = (link.getAttribute("href") || "").trim();
+    if (raw.startsWith("#") || /^javascript:/iu.test(raw)) return;
+    event.preventDefault();
+    let url;
+    try { url = new URL(link.href, here); } catch { return; }
+    if (url.protocol !== "http:" && url.protocol !== "https:" && url.protocol !== "mailto:") return;
+    if (url.protocol !== "mailto:" && url.origin === here.origin) {
+      if (event.type === "click" && (url.pathname === routes + "v" || url.pathname === routes + "a")) {
+        window.parent.postMessage({ source: "bb-pages", type: "open-page", url: url.href }, "*");
+      }
+      return;
+    }
+    window.parent.postMessage({ source: "bb-pages", type: "open-link", url: url.href }, "*");
+  };
+  document.addEventListener("click", open);
+  document.addEventListener("auxclick", open);
+})();`;

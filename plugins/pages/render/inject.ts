@@ -1,6 +1,6 @@
 import type { PageAssetName } from "../contract.js";
 import { escapeHtml, scanHtml } from "./html.js";
-import { DATA_TABLE_RUNTIME, PAGE_RUNTIME, needsDataTableRuntime, needsPageRuntime } from "./page-runtime.js";
+import { DATA_TABLE_RUNTIME, LINK_BRIDGE, PAGE_RUNTIME, needsDataTableRuntime, needsPageRuntime } from "./page-runtime.js";
 
 export type InjectOptions = {
   /** Base URL (absolute or relative) under which `_page/<asset>` resolves. */
@@ -15,22 +15,26 @@ export type InjectOptions = {
   assetVersions?: Partial<Record<PageAssetName, string>>;
   /** Self-contained assets for sandboxed BB previews. Omitted for published sites, which ship separate files. */
   inlineAssets?: InlinePageAssets;
+  /** Add the link bridge, so links open through the BB app. Only for BB panel previews; published sites keep native links. */
+  linkBridge?: boolean;
 };
 
 export type InlinePageAssets = { themeCss: string; chartsJs: string };
 
 /**
  * Content-Security-Policy for served pages. Inline author scripts and styles
- * run; `_page/` assets load from 'self'; images and media may be data:, blob:,
- * or https:; scripts get no network and no eval; no remote scripts or styles.
+ * run; `_page/` assets and folder files load from 'self'; folder previews inline
+ * their files as data: URLs (data: scripts add nothing over 'unsafe-inline');
+ * images and media may also be blob: or https:; scripts get no network and no
+ * eval; no remote scripts or styles.
  */
 export const PAGE_CSP = [
   "default-src 'none'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self' 'unsafe-inline' data:",
+  "style-src 'self' 'unsafe-inline' data:",
   "font-src 'self' data:",
-  "img-src data: blob: https:",
-  "media-src data: blob: https:",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' data: blob: https:",
   "connect-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
@@ -40,10 +44,11 @@ type Insert = { at: number; text: string };
 
 /**
  * Add the theme link (first in <head>, so author styles win), the font preload,
- * data-bb-theme on <html>, and before </body> the page runtime (only when the
- * page has tabs, contents, or zoomable images) and the chart runtime. Everything
- * else in the author's HTML stays byte-for-byte. Works on full documents,
- * documents without <html>/<head>/<body>, and bare fragments.
+ * data-bb-theme on <html>, and before </body> the link bridge (BB previews only),
+ * the page runtime (only when the page has tabs, contents, or zoomable images),
+ * and the chart runtime. Everything else in the author's HTML stays
+ * byte-for-byte. Works on full documents, documents without
+ * <html>/<head>/<body>, and bare fragments.
  */
 export function injectPage(html: string, options: InjectOptions): string {
   const { tags, doctypeEnd } = scanHtml(html);
@@ -78,7 +83,8 @@ export function injectPage(html: string, options: InjectOptions): string {
 
   const runtime = needsPageRuntime(html);
   const dataTable = needsDataTableRuntime(html);
-  if (runtime || dataTable || options.hasCharts) {
+  const linkBridge = options.linkBridge === true;
+  if (runtime || dataTable || linkBridge || options.hasCharts) {
     const hasBodyEnd = tags.some((tag) => tag.kind === "end" && tag.name === "body");
     let at = html.length;
     for (const tag of tags) {
@@ -86,6 +92,7 @@ export function injectPage(html: string, options: InjectOptions): string {
       if (tag.kind === "end" && tag.name === (hasBodyEnd ? "body" : "html")) at = tag.start;
     }
     // Inline, so a shared page needs no extra file. It runs before the charts, which then draw the visible tab.
+    if (linkBridge) inserts.push({ at, text: `<script>${LINK_BRIDGE}</script>` });
     if (runtime) inserts.push({ at, text: `<script>${PAGE_RUNTIME}</script>` });
     if (dataTable) inserts.push({ at, text: `<script>${DATA_TABLE_RUNTIME}</script>` });
     if (options.hasCharts) inserts.push({ at, text: options.inlineAssets ? `<script>${options.inlineAssets.chartsJs}</script>` : `<script src="${url("charts.js")}" defer></script>` });

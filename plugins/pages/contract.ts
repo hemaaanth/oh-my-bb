@@ -7,6 +7,11 @@ import { z } from "zod";
 // ---- Limits ---------------------------------------------------------------
 export const MAX_PAGE_HTML_BYTES = 10 * 1024 * 1024;
 export const MAX_SOURCE_FILE_BYTES = 10 * 1024 * 1024;
+/** Folder publishes: files counted after skipping dotfiles and node_modules, index.html included. */
+export const MAX_FOLDER_FILES = 200;
+export const MAX_FOLDER_BYTES = 25 * 1024 * 1024;
+/** Where the plugin's HTTP routes are mounted. */
+export const HTTP_BASE = "/api/v1/plugins/pages/http";
 /** Payload: `{ pageId, versionId?, sourceKey? }`. sourceKey is set for pages made from a file path. */
 export const REALTIME_CHANNEL = "pages-changed";
 
@@ -125,12 +130,14 @@ export const directive = (pageId: string, versionId: string) => `::page{id="${pa
 // ---- Inputs ---------------------------------------------------------------
 export const publishFileInputSchema = z.object({
   threadId: z.string().min(1),
-  file: relativeFileSchema, source: fileSourceSchema.default("workspace"),
+  /** Exactly one of file (an .html/.md file) or dir (a folder with index.html). */
+  file: relativeFileSchema.optional(), dir: relativeFileSchema.optional(), source: fileSourceSchema.default("workspace"),
   title: titleSchema.optional(), label: labelSchema.optional(),
   folder: folderPathSchema.optional().describe("Logical subfolder inside the BB project, e.g. Reports/Weekly"),
-  /** Exactly one identity override may be given; otherwise identity is the file's source key. */
+  /** Exactly one identity override may be given; otherwise identity is the file's or dir's source key. */
   key: pageKeySchema.optional(), pageId: uuid.optional(),
-}).strict().refine((v) => !(v.key && v.pageId), { message: "Pass key or pageId, not both" });
+}).strict().refine((v) => !(v.key && v.pageId), { message: "Pass key or pageId, not both" })
+  .refine((v) => Boolean(v.file) !== Boolean(v.dir), { message: "Pass exactly one of file or dir" });
 export type PublishFileInput = z.infer<typeof publishFileInputSchema>;
 
 /** Producers (PR Review) create or revise a document page. Revising needs the exact current version. */
@@ -170,6 +177,8 @@ export const rpcContract = defineRpcContract({
   /** Producer actions from the panel ⋯ menu. Pages forwards them to the producer plugin (pr-review: requestReviewAction). */
   /** `ok: false` is an expected outcome (the target thread is archived), not an error. */
   runProducerAction: { input: z.object({ pageId: uuid, threadId: z.string().min(1), action: z.enum(["explain", "fix", "rerun"]), findingId: z.string().trim().min(1).max(100).optional() }).strict(), output: z.union([z.object({ ok: z.literal(true) }).strict(), z.object({ ok: z.literal(false), reason: z.literal("thread-archived"), message: z.string() }).strict()]) },
+  /** The panel's Send feedback box. Sends the note to the thread with the page ID, so the agent republishes the same page. Not for producer pages. */
+  sendFeedback: { input: z.object({ pageId: uuid, versionId: uuid, threadId: z.string().min(1), text: z.string().trim().min(1).max(4_000) }).strict(), output: z.union([z.object({ ok: z.literal(true) }).strict(), z.object({ ok: z.literal(false), reason: z.literal("thread-archived"), message: z.string() }).strict()]) },
   // T4
   getShare: { input: z.object({ pageId: uuid }).strict(), output: z.object({ configured: z.boolean(), share: shareSchema.nullable(), defaults: z.object({ access: accessSchema, allowedDomains: z.array(z.string()) }).strict() }).strict() },
   sharePage: { input: shareInputSchema, output: shareSchema },
@@ -185,9 +194,12 @@ export type PagesRpc = typeof rpcContract;
 // Routes are exact-path, so ids go in the query string. Pages use assetBase "./",
 // so their relative `_page/<asset>` URLs resolve to the shared asset routes.
 //   GET /v?id=<versionId>[&theme=light|dark]           themed page HTML (CSP header, theme injected)
-//   GET /file?threadId=&source=&file=[&theme=]         themed live preview of a workspace/thread-storage file (::inline-vis cards)
+//   GET /a?id=<versionId>&path=<file>[&theme=]          one file of a folder version (HTML pages themed like /v)
+//   GET /file?threadId=&source=&file=[&theme=]         themed live preview of a workspace/thread-storage file (::inline-vis cards; single files only)
 //   GET /_page/<asset>[?v=<version>]                   theme.css, inter.roman.var.woff2, charts.js (same bytes for every page;
 //                                                      preview pages add the content version, which makes them cacheable for good)
+// Folder previews inline their files as data: URLs: a sandboxed frame's subrequests carry no BB session cookie,
+// so they fail through the remote BB tunnel. Links to other pages of the folder go through /a, loaded by the parent.
 export const PAGE_ASSET_NAMES = ["theme.css", "inter.roman.var.woff2", "charts.js"] as const;
 export type PageAssetName = (typeof PAGE_ASSET_NAMES)[number];
 
@@ -197,7 +209,7 @@ export type PageAssetName = (typeof PAGE_ASSET_NAMES)[number];
 //   ::inline-vis{file source? height?}  alias; live file preview + Share (snapshots via publishFile)
 
 // ---- Agent tools (T1 core, T4 share) ---------------------------------------
-//   page_publish  { file, source?, title?, label?, key?, pageId? }  -> directive text
+//   page_publish  { file | dir, source?, title?, label?, key?, pageId? } -> directive text
 //   page_lookup   { pageId | producerKey | key }                     -> JSON (no HTML, no password)
 //   page_browse   { projectId?, folder?, query?, limit? }            -> bounded page and folder summaries
 //   page_share    { pageId, access, allowedDomains?, allowedEmails? } -> BB confirmation, then share

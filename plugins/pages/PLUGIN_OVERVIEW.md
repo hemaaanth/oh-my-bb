@@ -6,7 +6,8 @@ thread.
 ## What you get
 
 Publish with the `page_publish` agent tool or `bb pages publish`. Pages accepts
-workspace and thread-storage files, follows stable keys across runs, and skips
+workspace and thread-storage files, or a whole folder with `index.html` and its
+images, styles, and linked pages. It follows stable keys across runs, and skips
 duplicate versions when the bytes have not changed.
 
 Organize artifacts into project folders such as `Reports/Weekly`. The Pages
@@ -17,6 +18,10 @@ Pages renders Markdown and sandboxed HTML with a light/dark theme, interactive
 data tables, and optional charts. A page can be shared through Here.now with
 restricted, password, or public-link access. Sharing requires your own Here.now
 API key and explicit confirmation in BB.
+
+To ask for changes, type a note in the page panel's feedback box. Pages sends it
+to the thread with the page id, so the agent updates the same page as a new
+version.
 
 ## Standalone by default
 

@@ -5,7 +5,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { MAX_PAGE_HTML_BYTES, directive, type PageDetail, type PublishFileInput, type SourceKey, type mutationResultSchema, type publishDocumentInputSchema } from "../contract.js";
 import { inspectCharts, renderMarkdown, renderPrReview } from "../render/index.js";
-import { readSourceFile, relativeFile, resolveRoot, sourceKeyOf, type FileSource, type SourceFile } from "./files.js";
+import { readSourceFile, readSourceFolder, relativeFile, resolveRoot, sourceKeyOf, type FileSource, type SourceFile } from "./files.js";
 import { HTTP_BASE, StaleVersionError, type PageStore } from "./store.js";
 
 export type MutationResult = z.infer<typeof mutationResultSchema>;
@@ -19,9 +19,23 @@ export class PageInputError extends Error {}
 export const normalizeFolderPath = (value: string) => value.split("/").map((part) => part.trim().replace(/\s+/gu, " ")).join("/");
 
 /** Returned (not thrown) when a producer action targets an archived thread: BB cannot send it a message. */
-export const ARCHIVED_THREAD_RESULT = { ok: false, reason: "thread-archived", message: "That thread is archived, so it cannot take review requests. Open the page from an active thread in the project." } as const;
+export const ARCHIVED_THREAD_RESULT = { ok: false, reason: "thread-archived", message: "That thread is archived, so it cannot take requests. Open the page from an active thread in the project." } as const;
 const producerOkSchema = z.object({ ok: z.literal(true) });
 const archivedError = (error: unknown) => /thread is archived/iu.test(error instanceof Error ? error.message : String(error));
+
+/** The thread message for panel feedback: the note, then how to republish the same page. */
+export function feedbackMessage({ page, version, versions }: PageDetail, text: string): string {
+  const current = versions.find((entry) => entry.id === page.currentVersionId)?.n;
+  const seen = `version ${version.n}${current !== undefined && current !== version.n ? ` (the current version is ${current})` : ""}`;
+  const source = version.sourcePath ? `, published from ${version.sourcePath}` : "";
+  return [
+    `Feedback on the page "${page.title}" (page ID ${page.id}, ${seen}${source}):`,
+    "",
+    text.trim(),
+    "",
+    `Update the page, then republish it with page_publish and pageId "${page.id}", so it stays one page with a new version.`,
+  ].join("\n");
+}
 
 export const sha256 = (html: string) => createHash("sha256").update(html, "utf8").digest("hex");
 
@@ -84,15 +98,29 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
     return charts.hasCharts;
   };
 
-  async function publishFile(input: PublishFileInput): Promise<PublishResult> {
-    if (input.key && input.pageId) throw new PageInputError("Pass key or pageId, not both.");
+  /** What a publish stores: the page HTML, a folder's other files, and the digest that decides "unchanged". */
+  async function readContent(input: PublishFileInput) {
+    if (input.dir) {
+      const folder = await readSourceFolder(sdk, input.threadId, input.dir, input.source);
+      const manifest = folder.files.map((file) => `${file.path}\0${file.contentType}\0${createHash("sha256").update(file.bytes).digest("hex")}`);
+      return { html: folder.index, files: folder.files, sourceKey: folder.sourceKey, sourcePath: folder.dir, digest: sha256([folder.index, ...manifest].join("\0\0")) };
+    }
+    if (!input.file) throw new PageInputError("Pass file or dir.");
     const source = await readSourceFile(sdk, input.threadId, input.file, input.source);
     const html = sourceHtml(source, input.title);
+    return { html, files: [], sourceKey: source.sourceKey, sourcePath: source.file, digest: sha256(html) };
+  }
+
+  /** Publishes a file, or a folder with index.html (`dir`), as a version of a file page. */
+  async function publishFile(input: PublishFileInput): Promise<PublishResult> {
+    if (input.key && input.pageId) throw new PageInputError("Pass key or pageId, not both.");
+    if (Boolean(input.file) === Boolean(input.dir)) throw new PageInputError("Pass exactly one of file or dir.");
+    const content = await readContent(input);
+    const { html, digest } = content;
     const hasCharts = checkedHtml(html);
-    const title = deriveTitle(html, source.file, input.title);
-    const digest = sha256(html);
+    const title = deriveTitle(html, content.sourcePath, input.title);
     const folderPath = input.folder ? normalizeFolderPath(input.folder) : undefined;
-    const version = { label: input.label ?? null, html, sha256: digest, hasCharts, document: null, provenance: null, sourcePath: source.file, threadId: input.threadId };
+    const version = { label: input.label ?? null, html, sha256: digest, hasCharts, document: null, provenance: null, sourcePath: content.sourcePath, threadId: input.threadId, files: content.files };
 
     let pageId: string | null;
     let sourceKey: SourceKey | null = null;
@@ -102,7 +130,7 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
       if (existing.page.kind !== "file") throw new PageInputError(`Page ${input.pageId} is a document page. Only its producer can add versions.`);
       pageId = input.pageId;
     } else {
-      sourceKey = input.key ? `key:${input.key}` : source.sourceKey;
+      sourceKey = input.key ? `key:${input.key}` : content.sourceKey;
       pageId = store.pageIdBySourceKey(sourceKey);
     }
 
@@ -191,7 +219,27 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
     }
   }
 
-  return { publishFile, publishDocument, findPage, resolveFile, renamePage, deletePage, runProducerAction, getPage: store.detail, listPages: store.list, listFolders: store.listFolders };
+  /**
+   * Sends the user's note from the panel to a thread, with what the agent needs to
+   * republish the same page. Producer pages are left to their producer's actions.
+   * An archived thread returns ARCHIVED_THREAD_RESULT, like runProducerAction.
+   */
+  async function sendFeedback({ pageId, versionId, threadId, text }: { pageId: string; versionId: string; threadId: string; text: string }) {
+    const detail = store.detail(pageId, versionId);
+    if (!detail) throw new PageInputError(`Page not found: ${pageId}`);
+    if (detail.page.producer) throw new PageInputError(`Page ${pageId} is made by ${detail.page.producer}; use its actions instead.`);
+    const thread = await sdk.threads.get({ threadId }).catch(() => null);
+    if (thread?.archivedAt) return ARCHIVED_THREAD_RESULT;
+    try {
+      await sdk.threads.send({ threadId, mode: "queue-if-active", input: [{ type: "text", text: feedbackMessage(detail, text), mentions: [] }] });
+      return { ok: true as const };
+    } catch (error) {
+      if (archivedError(error)) return ARCHIVED_THREAD_RESULT;
+      throw error;
+    }
+  }
+
+  return { publishFile, publishDocument, findPage, resolveFile, renamePage, deletePage, runProducerAction, sendFeedback, getPage: store.detail, listPages: store.list, listFolders: store.listFolders };
 }
 
 export const filePreviewUrl = (threadId: string, source: FileSource, file: string) => `${HTTP_BASE}/file?${new URLSearchParams({ threadId, source, file }).toString()}`;

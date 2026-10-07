@@ -1,13 +1,14 @@
 ---
 name: pages
-description: "Make a page: write an HTML or Markdown file (a report, summary, plan, notes, comparison, dashboard, or chart), publish it with page_publish or `bb pages publish`, and show it inline with the ::page directive. Use whenever the user should see a document, a chart, or data that reads better as a page than as chat text, when they ask for a report, a chart, a preview, or a link, or when you update a page you published before. Replaces inline-vis and flint-chart."
+description: "Make a page: write an HTML or Markdown file, or a folder with index.html and its images, CSS, and other pages (a report, summary, plan, notes, comparison, dashboard, or chart), publish it with page_publish or `bb pages publish`, and show it inline with the ::page directive. Use whenever the user should see a document, a chart, or data that reads better as a page than as chat text, when they ask for a report, a chart, a preview, or a link, or when you update a page you published before. Replaces inline-vis and flint-chart."
 ---
 
 # Pages
 
-A page is one HTML or Markdown file that BB shows inline in chat, keeps as
-versions, and can share as a link. You write the file. Pages adds the theme,
-the font, and the chart runtime. Every publish of changed bytes is a new version.
+A page is one HTML or Markdown file, or a folder with `index.html`, that BB
+shows inline in chat, keeps as versions, and can share as a link. You write the
+files. Pages adds the theme, the font, and the chart runtime. Every publish of
+changed bytes is a new version.
 
 ## When a page is the right surface
 
@@ -19,6 +20,16 @@ the font, and the chart runtime. Every publish of changed bytes is a new version
   and config. Commit those instead.
 - PR review pages come from the PR Review plugin. Do not write them by hand.
 
+### Offer before you are asked
+
+The user may not know pages exist. Look for output that would read better as one.
+
+- If your answer is a report, a comparison of three or more options, or a table
+  of more than about ten rows, make the page and put a short summary in chat.
+- If it is borderline, answer in chat and offer the page in one closing line,
+  for example "Want this as a page with the chart?"
+- Offer at most once per topic. Do not offer for short answers.
+
 ## Write the file
 
 - **Reports and one-off output**: write to thread storage,
@@ -26,8 +37,10 @@ the font, and the chart runtime. Every publish of changed bytes is a new version
 - **Project docs the user wants in the repo**: write inside the workspace.
 - `.html`, `.htm`, `.md`, and `.markdown` are accepted. Markdown is rendered
   with raw HTML off. Use HTML when you need charts or custom layout.
-- One file. Put CSS and JavaScript inline. Embed small images as `data:` URIs.
+- One file is the default. Put CSS and JavaScript inline. Embed small images as `data:` URIs.
 - Keep the file under 10 MB.
+- Need real image files, a stylesheet, fonts, or several linked pages? Publish a
+  folder instead. See [Publish a folder](#publish-a-folder).
 
 Start from this skeleton:
 
@@ -96,9 +109,43 @@ A new publish adds a version to an existing page when it matches one of these:
 A different path with no key or page id makes a **new** page. If you meant to
 update a page, pass `--page`. Unchanged bytes add no version.
 
+- Panel feedback arrives as a message that starts with `Feedback on the page`.
+  It carries the page ID. Make the change, then republish with that `pageId` so
+  the page gets a new version instead of a second page.
 - `--label` is the version note. Say what changed, for example "Adds Sep 22", not "update".
 - `--title` overrides the title. By default the title comes from `<title>`, then the first `<h1>`, then the file name.
 - `page_lookup` or `bb pages get` finds a page by id, key, or producer key.
+
+### Publish a folder
+
+A folder page is `index.html` plus the files it uses: images, CSS, fonts,
+scripts, and other `.html` pages. Reference them with relative paths, such as
+`img/before.png`, `css/site.css`, or `docs/details.html`.
+
+```bash
+bb pages publish "$BB_THREAD_STORAGE/reports/launch"
+```
+
+Or call the tool: `page_publish({ dir: "reports/launch", source: "thread-storage" })`.
+A CLI path that does not end in `.html`, `.htm`, `.md`, or `.markdown` is a folder.
+
+- `index.html` must be at the top of the folder. It is the page, its title, and its charts.
+- Dotfiles, dot-folders, and `node_modules` are skipped.
+- Limits: 200 files, 25 MB in total, and 10 MB for `index.html`.
+- Paths must be plain relative names. Do not use a top-level `_page/` folder; Pages reserves it.
+- The folder path is the page's identity, like a file path. Publishing it again
+  replaces the whole file set in a new version. Unchanged files are stored once.
+- Links between the folder's pages (`<a href="docs/details.html">`) open inside
+  the BB preview. On a shared Here.now link they are normal site links.
+- `bb pages pull <id> --out <dir>` writes a folder page back to disk. Without
+  `--out`, `pull` prints a single-file page's HTML and refuses a folder page.
+- Live `::inline-vis` previews show single files only. Publish a folder to see it.
+
+In the BB preview, Pages rewrites relative references in HTML and CSS: `src`,
+`href` on `<link>`, `<a>`, and `<area>`, `srcset`, `poster`, `url()`, and
+`@import`. **Paths that scripts build at runtime are not rewritten**, and scripts
+have no network, so `fetch("data.json")` fails. Put data the script needs inline
+in a `<script type="application/json">` block.
 
 ## Sandbox and CSP
 
@@ -109,7 +156,7 @@ that breaks these rules looks fine on disk and blank in BB.
 - **No network from scripts.** `fetch`, XHR, WebSockets, and EventSource are blocked. Put the data in the file.
 - **No `eval` and no `new Function`.** Libraries that compile code at runtime fail.
 - **No remote scripts, stylesheets, or fonts.** Never load a library from a CDN.
-- **Images and media** may be `https:`, `data:`, or `blob:`. Prefer `data:` for anything the page needs.
+- **Images and media** may be `https:`, `data:`, `blob:`, or files of a folder page. Prefer `data:` or a folder file for anything the page needs.
 - **No forms that submit**, no access to the BB window, no storage you can rely on.
 
 ## The theme
@@ -197,15 +244,19 @@ Use `data-zoom` to opt another image into the same behavior when fine detail
 matters. Do not add it to icons, logos, or small decorative images. Always write
 useful `alt` text.
 
+The image must be a file the page can load: in a folder page, put the
+screenshots next to `index.html` (here in `img/`). In a single-file page, use a
+`data:` URI or an `https:` URL.
+
 ```html
 <div class="compare">
   <div>
     <p class="compare-label negative">Before</p>
-    <img data-zoom src="before.png" alt="Settings page before the navigation cleanup">
+    <img data-zoom src="img/before.png" alt="Settings page before the navigation cleanup">
   </div>
   <div>
     <p class="compare-label positive">After</p>
-    <img data-zoom src="after.png" alt="Settings page after the navigation cleanup">
+    <img data-zoom src="img/after.png" alt="Settings page after the navigation cleanup">
   </div>
 </div>
 ```

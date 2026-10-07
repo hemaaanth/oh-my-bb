@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import * as Popover from "@radix-ui/react-popover";
 import { experimental_Icon as Icon, useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import type { PageDetail, PagesRpc } from "../contract.js";
 import { ShareButton } from "./share/SharePopover.js";
@@ -24,8 +25,60 @@ function PanelShell({ header, banner, children }: { header: ReactNode; banner?: 
   </div>;
 }
 
+/** Pull a link out of a link-bridge message. Only http(s) and mailto links pass. */
+export function bridgedLink(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const { source, type, url } = data as Record<string, unknown>;
+  if (source !== "bb-pages" || type !== "open-link" || typeof url !== "string") return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "mailto:" ? parsed.href : null;
+  } catch { return null; }
+}
+
+/**
+ * Pull a folder page link out of a link-bridge message. Only our own `v` or `a` route next to
+ * `frameSrc`, for the same version, passes. Returns that URL with `frameSrc`'s theme and no card frame, or null.
+ */
+export function bridgedPage(data: unknown, frameSrc: string): string | null {
+  if (!data || typeof data !== "object") return null;
+  const { source, type, url } = data as Record<string, unknown>;
+  if (source !== "bb-pages" || type !== "open-page" || typeof url !== "string") return null;
+  try {
+    const frame = new URL(frameSrc, window.location.href);
+    const target = new URL(url, frame);
+    const routes = frame.pathname.replace(/[^/]*$/u, "");
+    if (target.origin !== frame.origin || (target.pathname !== `${routes}v` && target.pathname !== `${routes}a`)) return null;
+    // Only files of the version already shown: a page cannot load another page into its frame.
+    if (!frame.searchParams.get("id") || target.searchParams.get("id") !== frame.searchParams.get("id")) return null;
+    target.searchParams.delete("frame");
+    const theme = frame.searchParams.get("theme");
+    if (theme) target.searchParams.set("theme", theme);
+    return target.origin === window.location.origin ? `${target.pathname}${target.search}${target.hash}` : target.href;
+  } catch { return null; }
+}
+
+/**
+ * The sandboxed page. Its link bridge posts link clicks here: outside links open through BB, and
+ * links to another page of a folder load into this frame (set by the app, so the request carries
+ * the BB session; the frame's own navigation would not).
+ */
 function Preview({ title, src }: { title: string; src: string }) {
-  return <iframe title={title} src={src} sandbox="allow-scripts" className="absolute inset-0 size-full border-0 bg-transparent" />;
+  const navigate = useBbNavigate();
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [page, setPage] = useState<{ from: string; url: string } | null>(null);
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (!frame.current || event.source !== frame.current.contentWindow) return;
+      const next = bridgedPage(event.data, frame.current.getAttribute("src") ?? src);
+      if (next) { setPage({ from: src, url: next }); return; }
+      const url = bridgedLink(event.data);
+      if (url && !navigate.openUrl(url)) window.open(url, "_blank", "noopener,noreferrer");
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [navigate, src]);
+  return <iframe ref={frame} title={title} src={page?.from === src ? page.url : src} sandbox="allow-scripts" className="absolute inset-0 size-full border-0 bg-transparent" />;
 }
 
 function RenameInput({ detail, onDone }: { detail: PageDetail; onDone: (error?: string) => void }) {
@@ -146,6 +199,65 @@ function ProducerMenu({ detail, threadId, onNotice }: { detail: PageDetail; thre
   </DropdownMenu.Root>;
 }
 
+/**
+ * The Send feedback box: the user's note goes to a thread as a message with the page ID,
+ * so the agent republishes the same page. `inThread` is false in the library, where the
+ * note goes to the thread that published the version.
+ */
+function FeedbackButton({ detail, versionId, threadId, inThread, onNotice }: { detail: PageDetail; versionId: string; threadId: string; inThread: boolean; onNotice: (message: string) => void }) {
+  const rpc = useRpc<PagesRpc>();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const send = async () => {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await rpc.call("sendFeedback", { pageId: detail.page.id, versionId, threadId, text });
+      if (!result.ok) { setError(result.message); return; }
+      setText("");
+      setOpen(false);
+      onNotice("Feedback sent to the thread.");
+    } catch (failure) {
+      setError(messageOf(failure, "The feedback could not be sent."));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <Popover.Root open={open} onOpenChange={(next) => { setOpen(next); setError(null); }}>
+    <Popover.Trigger asChild>
+      <button type="button" aria-label="Send feedback" title="Send feedback" className={`inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground data-[state=open]:bg-state-hover ${focusRing}`}>
+        <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+      </button>
+    </Popover.Trigger>
+    <Popover.Portal>
+      <Popover.Content {...PORTAL_SCOPE} aria-label="Send feedback" align="end" sideOffset={6} collisionPadding={8} style={{ zIndex: 75 }} className="w-[300px] max-w-[calc(100vw-16px)] rounded-[10px] border border-border bg-popover p-3 text-[13px] text-popover-foreground shadow-md outline-none">
+        <textarea
+          aria-label="Feedback"
+          autoFocus
+          rows={4}
+          maxLength={4_000}
+          value={text}
+          disabled={busy}
+          placeholder="What should change?"
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void send(); } }}
+          className={`block w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-[13px] placeholder:text-muted-foreground ${focusRing}`}
+        />
+        {error ? <p role="alert" className="mt-2 text-xs text-destructive">{error}</p> : null}
+        <div className="mt-2 flex items-center gap-2">
+          <span className="min-w-0 text-xs text-muted-foreground">{inThread ? "Goes to this thread." : "Goes to the thread that made this version."}</span>
+          <button type="button" disabled={!text.trim() || busy} onClick={() => void send()} className={`ml-auto inline-flex h-6 shrink-0 cursor-pointer items-center rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:cursor-default disabled:opacity-50 ${focusRing}`}>{busy ? "Sending…" : "Send"}</button>
+        </div>
+      </Popover.Content>
+    </Popover.Portal>
+  </Popover.Root>;
+}
+
 function DeleteDialog({ detail, open, onOpenChange, onDeleted }: { detail: PageDetail; open: boolean; onOpenChange: (open: boolean) => void; onDeleted: () => void }) {
   const rpc = useRpc<PagesRpc>();
   const [state, setState] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
@@ -197,7 +309,7 @@ export function PageView({ pageId, versionId = null, inLibrary = false, threadId
   const detail = latest.state.value;
   const shown = olderId ? older.state.status === "ready" ? older.state.value : null : detail;
 
-  // Producer actions go to the thread the panel is open in; the library has none, so use the thread that made the version.
+  // Producer actions and feedback go to the thread the panel is open in; the library has none, so use the thread that made the version.
   const actionThreadId = threadId ?? detail.version.threadId;
   const header = <>
     {renaming
@@ -217,6 +329,7 @@ export function PageView({ pageId, versionId = null, inLibrary = false, threadId
     />
     <div className="ml-auto flex shrink-0 items-center gap-1 pl-2">
       {detail.page.producer === "pr-review" && actionThreadId ? <ProducerMenu detail={detail} threadId={actionThreadId} onNotice={setNotice} /> : null}
+      {!detail.page.producer && actionThreadId ? <FeedbackButton detail={detail} versionId={shown?.version.id ?? detail.version.id} threadId={actionThreadId} inThread={threadId !== null} onNotice={setNotice} /> : null}
       <ShareButton pageId={detail.page.id} share={detail.share} />
     </div>
     <DeleteDialog detail={detail} open={deleting} onOpenChange={setDeleting} onDeleted={() => { setDeleted(true); onDeleted?.(); }} />

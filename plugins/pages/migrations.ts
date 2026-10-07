@@ -64,4 +64,17 @@ export const PAGE_MIGRATIONS = [
     value TEXT NOT NULL
   );`,
   `ALTER TABLE pages ADD COLUMN folder_path TEXT;`,
+  // Folder pages: file bytes stored once by sha256, and each version's file set. Single-file versions have no rows.
+  `CREATE TABLE page_blobs (
+    sha256 TEXT PRIMARY KEY,
+    bytes BLOB NOT NULL
+  );
+  CREATE TABLE page_version_files (
+    version_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    PRIMARY KEY (version_id, path)
+  );
+  CREATE INDEX page_version_files_sha ON page_version_files(sha256);`,
 ] as const;

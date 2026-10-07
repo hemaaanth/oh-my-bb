@@ -224,6 +224,37 @@ describe("side panel", () => {
     slot.lifecycle.unmount();
   });
 
+  it("opens links that the page's link bridge posts, and only from its own frame", async () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const slot = renderSlot(panel, { threadId: "thread-a", params: { pageId } }, { rpc: { getPage } as never });
+    const frame = await slot.findByTitle("Landing intent, version 2") as HTMLIFrameElement;
+    const post = (data: unknown, source: MessageEventSource | null) => act(() => { window.dispatchEvent(new MessageEvent("message", { data, source })); });
+    post({ source: "bb-pages", type: "open-link", url: "https://example.com/a" }, frame.contentWindow);
+    post({ source: "bb-pages", type: "open-link", url: "https://example.com/b" }, window);
+    post({ source: "bb-pages", type: "open-link", url: "javascript:alert(1)" }, frame.contentWindow);
+    post({ source: "other", type: "open-link", url: "https://example.com/c" }, frame.contentWindow);
+    expect(slot.inspection.navigateCalls.filter(({ method }) => method === "openUrl")).toEqual([{ method: "openUrl", url: "https://example.com/a" }]);
+    // The test host owns no URL schemes, so openUrl returns false and the fallback opens a tab.
+    expect(open.mock.calls).toEqual([["https://example.com/a", "_blank", "noopener,noreferrer"]]);
+    open.mockRestore();
+    slot.lifecycle.unmount();
+  });
+
+  it("loads folder page links into its own frame, keeping the theme, and ignores other routes", async () => {
+    const slot = renderSlot(panel, { threadId: "thread-a", params: { pageId } }, { rpc: { getPage } as never, codeTheme: { mode: "dark" } });
+    const frame = await slot.findByTitle("Landing intent, version 2") as HTMLIFrameElement;
+    const post = (url: string) => act(() => { window.dispatchEvent(new MessageEvent("message", { data: { source: "bb-pages", type: "open-page", url }, source: frame.contentWindow })); });
+    const base = `${window.location.origin}/api/v1/plugins/pages/http`;
+    post(`${base}/file?threadId=x`);
+    post(`https://evil.example/api/v1/plugins/pages/http/a?id=${v2}`);
+    post(`${base}/v?id=${v1}`);
+    expect(frame.getAttribute("src")).toBe(`/api/v1/plugins/pages/http/v?id=${v2}&theme=dark`);
+    post(`${base}/a?id=${v2}&path=about.html&frame=card#team`);
+    expect(frame.getAttribute("src")).toBe(`/api/v1/plugins/pages/http/a?id=${v2}&path=about.html&theme=dark#team`);
+    expect(slot.inspection.navigateCalls).toEqual([]);
+    slot.lifecycle.unmount();
+  });
+
   it("renames the page inline", async () => {
     const renamePage = vi.fn(({ title }: { title: string }) => detail(v2, { page: { ...detail().page, title } }));
     const slot = renderSlot(panel, { threadId: "thread-a", params: { pageId } }, { rpc: { getPage, renamePage } as never });
@@ -234,6 +265,32 @@ describe("side panel", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(renamePage).toHaveBeenCalledTimes(1));
     expect(renamePage).toHaveBeenCalledWith({ pageId, title: "Visitor intent" });
+    slot.lifecycle.unmount();
+  });
+
+  it("sends feedback on the shown version to the panel's thread, and shows an archived thread's message", async () => {
+    const sendFeedback = vi.fn()
+      .mockResolvedValueOnce({ ok: false, reason: "thread-archived", message: "That thread is archived." })
+      .mockResolvedValueOnce({ ok: true });
+    const slot = renderSlot(panel, { threadId: "thread-b", params: { pageId } }, { rpc: { getPage, sendFeedback } as never });
+    fireEvent.click(await slot.findByRole("button", { name: "Send feedback" }));
+    const box = await slot.findByRole("textbox", { name: "Feedback" });
+    expect((slot.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(box, { target: { value: "Bigger chart" } });
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    expect((await slot.findByRole("alert")).textContent).toBe("That thread is archived.");
+    fireEvent.click(slot.getByRole("button", { name: "Send" }));
+    await slot.findByText("Feedback sent to the thread.");
+    expect(sendFeedback.mock.calls).toEqual([[{ pageId, versionId: v2, threadId: "thread-b", text: "Bigger chart" }], [{ pageId, versionId: v2, threadId: "thread-b", text: "Bigger chart" }]]);
+    expect(slot.queryByRole("textbox", { name: "Feedback" })).toBeNull();
+    slot.lifecycle.unmount();
+  });
+
+  it("offers no feedback box on producer pages", async () => {
+    const producerPage = () => detail(v2, { page: { ...detail().page, producer: "pr-review", producerKey: "k" } });
+    const slot = renderSlot(panel, { threadId: "thread-a", params: { pageId } }, { rpc: { getPage: producerPage } as never });
+    await slot.findByRole("button", { name: "Review actions" });
+    expect(slot.queryByRole("button", { name: "Send feedback" })).toBeNull();
     slot.lifecycle.unmount();
   });
 
