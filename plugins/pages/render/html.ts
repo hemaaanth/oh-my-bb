@@ -19,6 +19,8 @@ export type TagToken = {
   end: number;
   /** Attributes in source order. Names are lowercase; values are raw (not entity-decoded). */
   attrs: Array<[string, string]>;
+  /** Source offsets [start, end) of each attribute's raw value, aligned with `attrs`. Empty at the name's end when there is no value. */
+  valueRanges: Array<[number, number]>;
   /** For raw-text elements (script, style, …): the text between the start tag and its end tag. */
   text?: string;
 };
@@ -72,6 +74,7 @@ export function scanHtml(html: string): ScanResult {
     while (cursor < length && !isSpace(html[cursor]!) && html[cursor] !== "/" && html[cursor] !== ">") cursor += 1;
     const name = html.slice(nameStart, cursor).toLowerCase();
     const attrs: Array<[string, string]> = [];
+    const valueRanges: Array<[number, number]> = [];
     // Attributes: quoted values may contain ">".
     while (cursor < length && html[cursor] !== ">") {
       const char = html[cursor]!;
@@ -85,6 +88,7 @@ export function scanHtml(html: string): ScanResult {
       const attrName = html.slice(attrStart, cursor).toLowerCase();
       while (cursor < length && isSpace(html[cursor]!)) cursor += 1;
       let value = "";
+      let range: [number, number] = [cursor, cursor];
       if (html[cursor] === "=") {
         cursor += 1;
         while (cursor < length && isSpace(html[cursor]!)) cursor += 1;
@@ -93,17 +97,22 @@ export function scanHtml(html: string): ScanResult {
           const close = html.indexOf(quote, cursor + 1);
           const stop = close < 0 ? length : close;
           value = html.slice(cursor + 1, stop);
+          range = [cursor + 1, stop];
           cursor = stop + 1;
         } else {
           const valueStart = cursor;
           while (cursor < length && !isSpace(html[cursor]!) && html[cursor] !== ">") cursor += 1;
           value = html.slice(valueStart, cursor);
+          range = [valueStart, cursor];
         }
       }
-      if (attrName) attrs.push([attrName, value]);
+      if (attrName) {
+        attrs.push([attrName, value]);
+        valueRanges.push(range);
+      }
     }
     const end = Math.min(cursor + 1, length);
-    const token: TagToken = { kind: isEnd ? "end" : "start", name, start: open, end, attrs };
+    const token: TagToken = { kind: isEnd ? "end" : "start", name, start: open, end, attrs, valueRanges };
     tags.push(token);
     index = end;
     if (!isEnd && name === "plaintext") break;

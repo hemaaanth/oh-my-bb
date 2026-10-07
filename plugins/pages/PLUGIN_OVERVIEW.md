@@ -7,7 +7,8 @@ thread.
 
 Publish with the `page_publish` agent tool or `bb pages publish`. Pages accepts
 workspace and thread-storage files, follows stable keys across runs, and skips
-duplicate versions when the bytes have not changed.
+duplicate versions when the bytes have not changed. Local images referenced by
+path are embedded at publish, so a page stays self-contained when shared.
 
 Organize artifacts into project folders such as `Reports/Weekly`. The Pages
 library groups them by project and folder, while `page_browse` lets an agent
