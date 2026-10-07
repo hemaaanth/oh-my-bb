@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PAGE_CSP } from "../render/index.js";
-import { DIRECTIVE_RULE } from "./tools.js";
+import { DIRECTIVE_RULE, RESTATE_RULE } from "./tools.js";
 import { WORKSPACE, pagesHost, storageOf } from "./test-fakes.js";
 
 type Result = { page: { id: string; title: string; sourceKey: string | null }; version: { id: string; n: number; label: string | null }; versions: unknown[]; created: boolean; directive: string };
@@ -165,6 +165,23 @@ describe("page routes", () => {
     await harness.lifecycle.dispose();
   });
 
+  it("serves inline previews as their own document, with the frame bridge", async () => {
+    const { harness, files } = pagesHost();
+    files.set(`${WORKSPACE}/i.html`, html("<h1>I</h1>"));
+    const result = await harness.behavior.callRpc("publishFile", { threadId: "thr_a", file: "i.html" }) as Result;
+    const card = await harness.behavior.fetchHttp("GET", `/v?id=${result.version.id}&theme=dark&frame=card`);
+    const inline = await harness.behavior.fetchHttp("GET", `/v?id=${result.version.id}&theme=dark&frame=inline`, { headers: { "if-none-match": card.headers.get("etag") ?? "" } });
+    expect(inline.status).toBe(200);
+    expect(inline.headers.get("etag")).not.toBe(card.headers.get("etag"));
+    const page = await inline.text();
+    expect(page).toContain('data-bb-frame="inline"');
+    expect(page).toContain("bb-pages:height");
+    expect(page).toContain("<h1>I</h1>");
+    // An unknown frame is the full page, as in the panel.
+    expect(await (await harness.behavior.fetchHttp("GET", `/v?id=${result.version.id}&theme=dark&frame=wide`)).text()).toMatch(/^<!doctype html><html data-bb-theme="dark"><head>/u);
+    await harness.lifecycle.dispose();
+  });
+
   it("makes previews self-contained so sandboxed frames make no asset requests", async () => {
     const { harness, files } = pagesHost();
     files.set(`${WORKSPACE}/a.html`, html('<h1>A</h1><figure class="chart"><script type="application/json">{"series":[]}</script></figure>'));
@@ -221,7 +238,18 @@ describe("agent tool and CLI", () => {
     const [rule, line] = text.split("\n");
     expect(rule).toBe(DIRECTIVE_RULE);
     expect(line).toMatch(/^::page\{id="[0-9a-f-]{36}" version="[0-9a-f-]{36}"\}$/u);
+    expect(text.split("\n")[2]).toBe(RESTATE_RULE);
     expect(text).not.toMatch(/https?:/u);
+    await harness.lifecycle.dispose();
+  });
+
+  it("page_publish bakes display into the directive, and the CLI takes it too", async () => {
+    const { harness, files } = pagesHost();
+    files.set(`${storageOf("thr_a")}/chart.html`, html("<h1>Chart</h1>"));
+    const text = String(await harness.behavior.callAgentTool("page_publish", { file: "chart.html", source: "thread-storage", display: "inline" }, { threadId: "thr_a", projectId: "proj_test" }));
+    expect(text.split("\n")[1]).toMatch(/^::page\{id="[0-9a-f-]{36}" version="[0-9a-f-]{36}" display="inline"\}$/u);
+    expect(text).toContain(RESTATE_RULE);
+    await expect(harness.behavior.callAgentTool("page_publish", { file: "chart.html", source: "thread-storage", display: "wide" }, { threadId: "thr_a", projectId: "proj_test" })).rejects.toThrow();
     await harness.lifecycle.dispose();
   });
 

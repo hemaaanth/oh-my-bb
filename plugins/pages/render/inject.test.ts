@@ -78,6 +78,18 @@ describe("injectPage", () => {
     expect(table).not.toContain("// ---- Tabs:");
   });
 
+  it("adds the frame bridge to BB previews only, never to published or shared sites", () => {
+    const bridged = /<script>\(\(\) => \{\s*"use strict";\s*if \(window\.parent === window\) return;/u;
+    expect(inject("<p>x</p>", "dark")).toMatch(bridged);
+    expect(injectPage("<p>x</p>", { assetBase: "./", theme: null, frame: "card", hasCharts: false })).toMatch(bridged);
+    expect(inject("<p>x</p>")).not.toContain("bb-pages:");
+    expect(inject("<html><head><title>t</title></head><body>x</body></html>")).not.toContain("<script>");
+    // In <head>, after the theme, before any author code.
+    const out = injectPage("<html><head><script>author()</script></head><body></body></html>", { assetBase: "./", theme: "light", frame: "inline", hasCharts: false });
+    expect(out.startsWith('<html data-bb-theme="light" data-bb-frame="inline"><head>')).toBe(true);
+    expect(out.indexOf("bb-pages:open")).toBeLessThan(out.indexOf("author()"));
+  });
+
   it("escapes the asset base", () => {
     expect(injectPage("<p>x</p>", { assetBase: '"><script>', theme: null, hasCharts: false })).not.toContain('"><script>_page');
   });
