@@ -1,9 +1,9 @@
 // Plugin HTTP routes. The host matches exact paths only, so ids travel in the
 // query string and every page shape resolves `./_page/<asset>` to the same
 // asset routes:
-//   GET /v?id=<versionId>[&theme=light|dark]                      stored version
-//   GET /a?id=<versionId>&path=<file>[&theme=light|dark]          one file of a folder version
-//   GET /file?threadId=&source=&file=[&theme=light|dark]           live file (::inline-vis; single files only)
+//   GET /v?id=<versionId>[&theme=light|dark][&frame=card|inline]               stored version
+//   GET /a?id=<versionId>&path=<file>[&theme=light|dark][&frame=card|inline]   one file of a folder version
+//   GET /file?threadId=&source=&file=[&theme=light|dark][&frame=card|inline]    live file (::inline-vis; single files only)
 //   GET /_page/theme.css | /_page/inter.roman.var.woff2 | /_page/charts.js   [?v=<content version>]
 // Preview HTML asks for assets with `?v=`, so the browser caches them for good; a stored version
 // never changes, so its HTML is cached briefly and revalidated by ETag. Live files are never cached.
@@ -11,8 +11,9 @@
 // links to other folder files pointed at `./v` or `./a`; see render/folder.ts for why.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { PAGE_ASSET_NAMES } from "../contract.js";
-import { PAGE_CSP, inlinedPageAssets, inspectCharts, injectPage, pageAssetVersions, pageRuntimeVersion, rewriteFolderCss, rewriteFolderHtml, servedPageAsset, type FolderRefs } from "../render/index.js";
+import { PAGE_CSP, PREVIEW_SHELL_VERSION, inlinedPageAssets, inspectCharts, injectPage, pageAssetVersions, rewriteFolderCss, rewriteFolderHtml, servedPageAsset, type FolderRefs } from "../render/index.js";
 import { FileSourceError, readSourceFile } from "./files.js";
+import { inlineLocalImages } from "./images.js";
 import { sourceHtml } from "./service.js";
 import type { PageStore, StoredHtml } from "./store.js";
 
@@ -27,13 +28,13 @@ const VERSION_CACHE = "private, no-cache";
 const IMMUTABLE = "public, max-age=31536000, immutable";
 const text = (status: number, body: string) => new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8", "x-content-type-options": "nosniff", "cache-control": "no-store" } });
 const themeOf = (value: string | undefined) => (value === "light" || value === "dark" ? value : null);
-const frameOf = (value: string | undefined) => (value === "card" ? "card" as const : null);
+const frameOf = (value: string | undefined) => (value === "card" || value === "inline" ? value : null);
 
 export function registerRoutes(bb: BbPluginApi, store: PageStore) {
   const assetVersions = (() => { try { return pageAssetVersions(); } catch { return {}; } })();
   const inlineAssets = (() => { try { return inlinedPageAssets(); } catch { return undefined; } })();
-  // Changes when the assets or runtimes change, so a plugin update never revalidates to old HTML.
-  const assetsTag = `${inlineAssets ? "inline" : "linked"}.${Object.values(assetVersions).join(".").slice(0, 24) || "none"}.${pageRuntimeVersion()}`;
+  // Changes when the assets or injected scripts change, so a plugin update never revalidates to old HTML.
+  const assetsTag = `${inlineAssets ? "inline" : "linked"}.${Object.values(assetVersions).join(".").slice(0, 24) || "none"}.${PREVIEW_SHELL_VERSION}`;
 
   /** Folder file lookup for the rewriter. index.html is the version's HTML. */
   const folderRefs = (stored: StoredHtml): FolderRefs => {
@@ -57,7 +58,7 @@ export function registerRoutes(bb: BbPluginApi, store: PageStore) {
     const headers = { ...pageHeaders, "cache-control": VERSION_CACHE, etag };
     if (c.req.header("if-none-match") === etag) return new Response(null, { status: 304, headers });
     const page = stored.folder ? rewriteFolderHtml(html, file, folderRefs(stored)) : html;
-    return new Response(injectPage(page, { assetBase: "./", theme, frame, hasCharts, assetVersions, inlineAssets, linkBridge: frame !== "card" }), { headers });
+    return new Response(injectPage(page, { assetBase: "./", theme, frame, hasCharts, assetVersions, inlineAssets }), { headers });
   };
 
   bb.http.route("GET", "/v", (c) => {
@@ -92,9 +93,9 @@ export function registerRoutes(bb: BbPluginApi, store: PageStore) {
     if (source !== "workspace" && source !== "thread-storage") return text(400, "source must be workspace or thread-storage.");
     try {
       const read = await readSourceFile(bb.sdk, threadId, file, source);
-      const html = sourceHtml(read);
-      const frame = frameOf(c.req.query("frame"));
-      return new Response(injectPage(html, { assetBase: "./", theme: themeOf(c.req.query("theme")), frame, hasCharts: inspectCharts(html).hasCharts, assetVersions, inlineAssets, linkBridge: frame !== "card" }), { headers: pageHeaders });
+      // Unusable images stay as written here; publish reports them.
+      const html = await inlineLocalImages(bb.sdk, threadId, read, sourceHtml(read), { strict: false });
+      return new Response(injectPage(html, { assetBase: "./", theme: themeOf(c.req.query("theme")), frame: frameOf(c.req.query("frame")), hasCharts: inspectCharts(html).hasCharts, assetVersions, inlineAssets }), { headers: pageHeaders });
     } catch (error) {
       if (error instanceof FileSourceError) return text(error.status, error.message);
       bb.log.warn(`live preview failed for ${source}:${file}: ${error instanceof Error ? error.message : String(error)}`);

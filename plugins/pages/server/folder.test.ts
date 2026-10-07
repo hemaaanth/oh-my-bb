@@ -16,7 +16,7 @@ const DIR = `${storageOf("thr_a")}/site`;
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]);
 const INDEX = '<!doctype html><html><head><title>Launch</title><link rel="stylesheet" href="css/site.css"></head><body><img src="img/logo.png"><a href="about.html">About</a></body></html>';
 
-function writeSite(files: Map<string, string | Buffer>, extra: Record<string, string | Buffer> = {}) {
+function writeSite(files: Map<string, string | Uint8Array>, extra: Record<string, string | Uint8Array> = {}) {
   files.set(`${DIR}/index.html`, INDEX);
   files.set(`${DIR}/css/site.css`, "body{background:url(../img/logo.png)}");
   files.set(`${DIR}/img/logo.png`, PNG);

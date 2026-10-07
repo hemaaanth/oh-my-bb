@@ -1,23 +1,32 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { useBbNavigate, useRpc, type PluginMessageDirectiveProps } from "@get-bb/plugin-sdk/app";
-import type { PageDetail, PagesRpc } from "../contract.js";
+import type { PageDetail, PageDisplay, PagesRpc } from "../contract.js";
+import { useFrameBridge } from "./bridge.js";
 import { ShareButton } from "./share/SharePopover.js";
 import { pageTag, sourceTag, updateCached, useCachedQuery, usePageDetail, type Load } from "./data.js";
 import { parseDirective, type DirectiveName, type FileSource } from "./directives.js";
-import { IconButton, QuietLine, focusRing, messageOf, themedUrl, usePreviewTheme } from "./ui.js";
+import { IconButton, QuietLine, focusRing, messageOf } from "./ui.js";
 
 export const PANEL_ACTION_ID = "page";
 const COLLAPSED_KEY = "bb.pages.collapsed";
+/** The tallest an inline page grows. Past it the page is clipped with a fade, never scrolled: a frame that scrolls inside the thread traps the reader's scroll. */
+export const MAX_INLINE_HEIGHT = 960;
 
 function readCollapsed() {
   try { return window.localStorage.getItem(COLLAPSED_KEY) === "true"; } catch { return false; }
 }
 
-/** The 32px bar plus the live preview. Every directive renders through this frame. The compact ShareButton shows the shared dot. */
-function CardFrame({ title, version, share, height, src, onOpen }: {
-  title: string; version: string | null; share: ReactNode; height: number; src: string; onOpen: () => void;
-}) {
+type FrameProps = { title: string; version: string | null; share: ReactNode; height: number; previewUrl: string; display: PageDisplay; onOpen: () => void };
+
+/** Every directive renders through one of the two frames. */
+function PageFrame({ display, ...props }: FrameProps) {
+  return display === "inline" ? <InlineFrame {...props} /> : <CardFrame {...props} />;
+}
+
+/** The 32px bar plus a zoomed-out live preview. A click anywhere opens the panel. The compact ShareButton shows the shared dot. */
+function CardFrame({ title, version, share, height, previewUrl, onOpen }: Omit<FrameProps, "display">) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
+  const bridge = useFrameBridge(previewUrl, "card");
   const toggle = () => {
     setCollapsed(!collapsed);
     try { window.localStorage.setItem(COLLAPSED_KEY, String(!collapsed)); } catch { /* storage unavailable */ }
@@ -33,16 +42,33 @@ function CardFrame({ title, version, share, height, src, onOpen }: {
       </span>
     </div>
     {collapsed ? null : <div className="relative" style={{ height }}>
-      <iframe title={`Preview: ${title}`} src={src} sandbox="allow-scripts" loading="lazy" className="block size-full border-0 bg-background" />
+      <iframe ref={bridge.ref} title={`Preview: ${title}`} src={bridge.src} onLoad={bridge.onLoad} style={bridge.style} sandbox="allow-scripts" loading="lazy" className="block size-full border-0 bg-background" />
       <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-b from-transparent to-background" />
       <button type="button" tabIndex={-1} aria-hidden title={`Open ${title} in panel`} className={`absolute inset-0 cursor-pointer ${focusRing}`} onClick={onOpen} />
     </div>}
   </div>;
 }
 
-function PageCard({ pageId, versionId, height, source }: { pageId: string; versionId: string | null; height: number; source: string }) {
+/**
+ * The borderless preview: the page itself, on the thread's background, as part of the reply. It is interactive and
+ * fits the page's reported height. Until the first report it holds the directive height.
+ */
+function InlineFrame({ title, height, previewUrl, onOpen }: Omit<FrameProps, "display">) {
+  const [contentHeight, setContentHeight] = useState<number | null>(null);
+  const bridge = useFrameBridge(previewUrl, "inline", setContentHeight);
+  const clipped = contentHeight !== null && contentHeight > MAX_INLINE_HEIGHT;
+  return <div className="group/page relative my-2" style={{ height: contentHeight === null ? height : Math.min(contentHeight, MAX_INLINE_HEIGHT) }}>
+    <iframe ref={bridge.ref} title={`Page: ${title}`} src={bridge.src} onLoad={bridge.onLoad} style={bridge.style} sandbox="allow-scripts" loading="lazy" scrolling="no" className="block size-full border-0 bg-transparent" />
+    {clipped ? <>
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-transparent to-background" />
+      <button type="button" onClick={onOpen} className={`absolute bottom-2 left-1/2 h-7 -translate-x-1/2 cursor-pointer rounded-md border border-border bg-background px-2.5 text-xs text-foreground hover:bg-state-hover ${focusRing}`}>Open full page</button>
+    </> : null}
+    <IconButton label={`Open ${title} in panel`} icon="ExternalLink" onClick={onOpen} className="absolute right-1 top-1 border border-border bg-background opacity-0 transition-opacity focus-visible:opacity-100 group-hover/page:opacity-100 [@media(hover:none)]:opacity-100" />
+  </div>;
+}
+
+function PageCard({ pageId, versionId, height, display, source }: { pageId: string; versionId: string | null; height: number; display: PageDisplay; source: string }) {
   const navigate = useBbNavigate();
-  const theme = usePreviewTheme();
   const { state } = usePageDetail(pageId, versionId);
   if (state.status === "loading" || state.status === "idle") return <QuietLine>Loading page…</QuietLine>;
   if (state.status === "missing") return <QuietLine source={source}>{versionId ? "This page version no longer exists." : "This page no longer exists."}</QuietLine>;
@@ -50,12 +76,13 @@ function PageCard({ pageId, versionId, height, source }: { pageId: string; versi
   const { page, version, versions, share, previewUrl } = state.value;
   const latest = Math.max(version.n, ...versions.map(({ n }) => n));
   const pinnedOlder = version.n < latest;
-  return <CardFrame
+  return <PageFrame
     title={page.title}
     version={pinnedOlder ? `v${version.n} of ${latest}` : `v${version.n}`}
     share={<ShareButton compact pageId={page.id} share={share} />}
     height={height}
-    src={themedUrl(previewUrl, theme, "card")}
+    previewUrl={previewUrl}
+    display={display}
     onOpen={() => navigate.openThreadPanel({ actionId: PANEL_ACTION_ID, title: page.title, params: pinnedOlder ? { pageId: page.id, versionId: version.id } : { pageId: page.id } })}
   />;
 }
@@ -83,32 +110,32 @@ export function useResolvedFile(threadId: string, file: string, source: FileSour
   return { state, publish };
 }
 
-function FileCard({ threadId, file, source, height, directiveSource }: { threadId: string; file: string; source: FileSource; height: number; directiveSource: string }) {
+function FileCard({ threadId, file, source, height, display, directiveSource }: { threadId: string; file: string; source: FileSource; height: number; display: PageDisplay; directiveSource: string }) {
   const navigate = useBbNavigate();
-  const theme = usePreviewTheme();
   const { state, publish } = useResolvedFile(threadId, file, source);
   if (state.status === "loading" || state.status === "idle") return <QuietLine>Loading {file}…</QuietLine>;
   if (state.status !== "ready") return <QuietLine tone="error" source={directiveSource}>{state.status === "error" ? state.message : "The file could not load."}</QuietLine>;
   const { page, previewUrl } = state.value;
   const title = page?.page.title ?? file;
-  return <CardFrame
+  return <PageFrame
     title={title}
     version={page ? `v${page.version.n}` : null}
     share={<ShareButton compact pageId={page?.page.id ?? null} share={page?.share ?? null} onNeedsPage={publish} />}
     height={height}
-    src={themedUrl(previewUrl, theme, "card")}
+    previewUrl={previewUrl}
+    display={display}
     onOpen={() => navigate.openThreadPanel({ actionId: PANEL_ACTION_ID, title, params: { threadId, source, file } })}
   />;
 }
 
-/** One directive component per alias; all of them render the same card. */
+/** One directive component per alias; all of them render the same frames. */
 export function directiveComponent(name: DirectiveName) {
   return function PageDirective(props: PluginMessageDirectiveProps) {
     const parsed = parseDirective(name, props.attributes);
     if (!parsed.ok) return <QuietLine tone="error" source={props.source}>{parsed.message}</QuietLine>;
     const card = parsed.ref;
     return card.kind === "page"
-      ? <PageCard pageId={card.pageId} versionId={card.versionId} height={card.height} source={props.source} />
-      : <FileCard threadId={props.message.threadId} file={card.file} source={card.source} height={card.height} directiveSource={props.source} />;
+      ? <PageCard pageId={card.pageId} versionId={card.versionId} height={card.height} display={card.display} source={props.source} />
+      : <FileCard threadId={props.message.threadId} file={card.file} source={card.source} height={card.height} display={card.display} directiveSource={props.source} />;
   };
 }

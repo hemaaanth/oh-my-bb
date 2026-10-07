@@ -1,17 +1,19 @@
 // Agent tools: page_publish and page_lookup. page_share belongs to server/share (T4).
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { directive, fileSourceSchema, folderPathSchema, labelSchema, pageKeySchema, relativeFileSchema, titleSchema, type PageDetail } from "../contract.js";
+import { directive, displaySchema, fileSourceSchema, folderPathSchema, labelSchema, pageKeySchema, relativeFileSchema, titleSchema, type PageDetail, type PageDisplay } from "../contract.js";
 import type { PageService, PublishResult } from "./service.js";
 
 /** First line of every publish result: agents must repeat the directive or the card never renders. */
 export const DIRECTIVE_RULE = "Copy this directive on its own line into your final reply:";
+/** The directive renders the page in the reply, so prose about it only repeats what the reader sees. */
+export const RESTATE_RULE = "The reader sees the page where the directive is. Do not announce, describe, or restate it in your reply.";
 
-export function publishSummary({ result, changed }: PublishResult): string {
+export function publishSummary({ result, changed }: PublishResult, display: PageDisplay = "card"): string {
   const n = result.version.n;
   const status = !changed ? `unchanged: v${n} already has these bytes` : result.created ? "created v1" : `added v${n}`;
   // The page id rides along so a later edit (from panel feedback, another file, or another thread) updates this page.
-  return `${DIRECTIVE_RULE}\n${result.directive}\n\n"${result.page.title}" ${status}. To update it, publish the same path again, or pass pageId "${result.page.id}".`;
+  return `${DIRECTIVE_RULE}\n${directive(result.page.id, result.version.id, display)}\n${RESTATE_RULE}\n\n"${result.page.title}" ${status}. To update it, publish the same path again, or pass pageId "${result.page.id}".`;
 }
 
 /** Lookup view: page, versions, share status, and document. No HTML and no password. */
@@ -30,8 +32,8 @@ export function lookupView(detail: PageDetail) {
 export function registerTools(bb: BbPluginApi, service: PageService) {
   bb.agents.registerTool({
     name: "page_publish",
-    description: "Publish a workspace or thread-storage .html/.md file, or a folder with index.html plus its images, CSS, fonts, scripts, and other pages, as a versioned page. Publishing the same file or folder (or key, or pageId) again adds a version; unchanged bytes add nothing.",
-    instructions: "After page_publish, copy the returned ::page directive on its own line into your final reply.",
+    description: "Publish a workspace or thread-storage .html/.md file, or a folder with index.html plus its images, CSS, fonts, scripts, and other pages, as a versioned page. Publishing the same file or folder (or key, or pageId) again adds a version; unchanged bytes add nothing. Local images referenced by path are embedded at publish.",
+    instructions: "After page_publish, copy the returned ::page directive on its own line into your final reply. The reader sees the page there, so do not announce, describe, or restate it. Use display \"inline\" for one chart, a small table, a diagram, or a stat row; keep the default card for tabs, a contents list, several sections, or more than about one screen.",
     presentation: { label: { pending: "Publishing page", completed: "Published page" }, icon: { glyph: "FileText" } },
     parameters: z.object({
       file: relativeFileSchema.optional().describe("An .html or .md file, relative to the source root, e.g. reports/summary.html"),
@@ -41,9 +43,10 @@ export function registerTools(bb: BbPluginApi, service: PageService) {
       folder: folderPathSchema.optional().describe("Logical subfolder inside this BB project, e.g. Reports/Weekly"),
       key: pageKeySchema.optional().describe("Stable page name, e.g. boost-daily. Use when the path changes between runs"),
       pageId: z.string().uuid().optional().describe("Add a version to this existing page"),
+      display: displaySchema.optional().describe("How the returned directive shows the page in chat. card (default): a framed, zoomed-out preview. inline: the page itself, borderless, for one chart, small table, diagram, or stat row"),
     }).strict(),
-    async execute(input, { threadId }) {
-      return publishSummary(await service.publishFile({ ...input, source: input.source ?? "workspace", threadId }));
+    async execute({ display, ...input }, { threadId }) {
+      return publishSummary(await service.publishFile({ ...input, source: input.source ?? "workspace", threadId }), display);
     },
   });
 
@@ -94,6 +97,6 @@ export function registerTools(bb: BbPluginApi, service: PageService) {
     // page_share is registered by server/share (T4); BB allows one configure callback, so it is selected here.
     tools: ["page_publish", "page_lookup", "page_browse", "page_share"],
     skills: ["pages"],
-    instructions: "Pages: use page_browse to find prior project artifacts in fresh threads. Write an .html or .md file (or a folder with index.html and its assets), publish it with page_publish (or `bb pages publish <path>`), and copy the returned ::page directive into your reply. Read the pages skill for the theme, folder, and chart rules.",
+    instructions: "Pages: use page_browse to find prior project artifacts in fresh threads. Write an .html or .md file (or a folder with index.html and its assets), publish it with page_publish (or `bb pages publish <path>`), and copy the returned ::page directive into your reply without restating the page. Read the pages skill for the theme, folder, chart, and inline-or-card rules.",
   }));
 }

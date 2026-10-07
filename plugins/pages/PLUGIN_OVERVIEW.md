@@ -8,16 +8,18 @@ thread.
 Publish with the `page_publish` agent tool or `bb pages publish`. Pages accepts
 workspace and thread-storage files, or a whole folder with `index.html` and its
 images, styles, and linked pages. It follows stable keys across runs, and skips
-duplicate versions when the bytes have not changed.
+duplicate versions when the bytes have not changed. Local images referenced by
+path are embedded at publish, so a page stays self-contained when shared.
 
 Organize artifacts into project folders such as `Reports/Weekly`. The Pages
 library groups them by project and folder, while `page_browse` lets an agent
 find earlier pages by project, folder, or title before updating them.
 
 Pages renders Markdown and sandboxed HTML with a light/dark theme, interactive
-data tables, and optional charts. A page can be shared through Here.now with
-restricted, password, or public-link access. Sharing requires your own Here.now
-API key and explicit confirmation in BB.
+data tables, and optional charts. In chat, a page shows as a compact card, or
+borderless and inline for a single chart, table, or diagram. A page can be
+shared through Here.now with restricted, password, or public-link access.
+Sharing requires your own Here.now API key and explicit confirmation in BB.
 
 To ask for changes, type a note in the page panel's feedback box. Pages sends it
 to the thread with the page id, so the agent updates the same page as a new

@@ -37,9 +37,20 @@ The user may not know pages exist. Look for output that would read better as one
 - **Project docs the user wants in the repo**: write inside the workspace.
 - `.html`, `.htm`, `.md`, and `.markdown` are accepted. Markdown is rendered
   with raw HTML off. Use HTML when you need charts or custom layout.
-- One file is the default. Put CSS and JavaScript inline. Embed small images as `data:` URIs.
-- Keep the file under 10 MB.
-- Need real image files, a stylesheet, fonts, or several linked pages? Publish a
+- One file is the default. Put CSS and JavaScript inline.
+- **Reference local images by path. Do not base64-encode them yourself.**
+  Write `<img src="img/chart.png">`, `url("bg.png")` in CSS, or
+  `![Chart](img/chart.png)` in Markdown. Publishing reads each image and embeds
+  it in the stored page, so it still works when shared.
+  - Relative paths start at the page's folder. Absolute paths must be inside the
+    workspace or thread storage. A path that leaves both is rejected.
+  - PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, and SVG. Each image at most 5 MB.
+  - `src`, `srcset`, `poster`, SVG `<image href>`, and CSS `url()` in `<style>`
+    or `style=""` are read. Paths built in JavaScript are not.
+  - A missing or oversized image fails the publish with a list of the bad
+    paths. Fix them and publish again.
+- Keep the file under 10 MB, including its images.
+- Need a stylesheet, fonts, scripts as files, or several linked pages? Publish a
   folder instead. See [Publish a folder](#publish-a-folder).
 
 Start from this skeleton:
@@ -84,6 +95,32 @@ The result contains a directive of this form:
 
 Copy the returned directive **exactly** onto its own line in your reply. Do not
 put it in backticks or a code block. Do not invent ids.
+
+The reader sees the page where the directive is. Do not announce it ("Here is
+the report"), describe it, or restate its findings in your reply. Write only
+what the page does not say, such as a caveat or a question for the user.
+
+### Inline or card
+
+`display` (CLI: `--display`) picks how the directive shows the page in chat.
+The tool bakes it into the returned directive.
+
+- **`inline`**: the page itself, borderless, on the thread background, as part
+  of the reply. It is interactive and grows to fit its content. Use it for one
+  chart, a small table, a diagram, or a stat row.
+- **`card`** (default): a framed, zoomed-out preview with a header. A click
+  opens the full page in the panel. Use it for pages with tabs, a contents
+  list, several sections, or more than about one screen of content.
+
+```text
+::page{id="<page id>" version="<version id>" display="inline"}
+```
+
+An inline page takes the width of the reply: `.page`, `.page.wide`, and
+`.page.dashboard` lose their max width and outer padding. Keep the page's
+background on `body.auto` (or the matching `body.dark`) so it blends with the
+thread. A very tall inline page is clipped with a fade and an "Open full page"
+button, so publish long pages as cards.
 
 Use `folder` (CLI: `--folder`) for a logical subfolder such as `Reports/Weekly`.
 The Pages library groups pages by project and folder. When shared, Here.now files
@@ -156,8 +193,10 @@ that breaks these rules looks fine on disk and blank in BB.
 - **No network from scripts.** `fetch`, XHR, WebSockets, and EventSource are blocked. Put the data in the file.
 - **No `eval` and no `new Function`.** Libraries that compile code at runtime fail.
 - **No remote scripts, stylesheets, or fonts.** Never load a library from a CDN.
-- **Images and media** may be `https:`, `data:`, `blob:`, or files of a folder page. Prefer `data:` or a folder file for anything the page needs.
+- **Images and media** may be `https:`, `data:`, `blob:`, or files of a folder page. Local image paths in a single file are turned into `data:` at publish (see above).
 - **No forms that submit**, no access to the BB window, no storage you can rely on.
+- **Links** to `http:` and `https:` URLs open through BB, in the browser or
+  a new tab. `#` links stay in the page.
 
 ## The theme
 

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { MAX_PAGE_HTML_BYTES, directive, type PageDetail, type PublishFileInput, type SourceKey, type mutationResultSchema, type publishDocumentInputSchema } from "../contract.js";
 import { inspectCharts, renderMarkdown, renderPrReview } from "../render/index.js";
 import { readSourceFile, readSourceFolder, relativeFile, resolveRoot, sourceKeyOf, type FileSource, type SourceFile } from "./files.js";
+import { inlineLocalImages } from "./images.js";
 import { HTTP_BASE, StaleVersionError, type PageStore } from "./store.js";
 
 export type MutationResult = z.infer<typeof mutationResultSchema>;
@@ -107,7 +108,8 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
     }
     if (!input.file) throw new PageInputError("Pass file or dir.");
     const source = await readSourceFile(sdk, input.threadId, input.file, input.source);
-    const html = sourceHtml(source, input.title);
+    // Stored and compared with local images inlined, so an image change adds a version. Folders store their images as files.
+    const html = await inlineLocalImages(sdk, input.threadId, source, sourceHtml(source, input.title), { strict: true });
     return { html, files: [], sourceKey: source.sourceKey, sourcePath: source.file, digest: sha256(html) };
   }
 

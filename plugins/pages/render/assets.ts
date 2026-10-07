@@ -4,7 +4,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PageAssetName } from "../contract.js";
 import type { InlinePageAssets } from "./inject.js";
-import { DATA_TABLE_RUNTIME, LINK_BRIDGE, PAGE_RUNTIME } from "./page-runtime.js";
 
 const CONTENT_TYPES: Record<PageAssetName, string> = {
   "theme.css": "text/css; charset=utf-8",
@@ -79,9 +78,4 @@ export function servedPageAsset(name: PageAssetName): ServedAsset {
 /** `?v=` versions for every asset, for injectPage in the BB preview routes. */
 export function pageAssetVersions(): Record<PageAssetName, string> {
   return { "theme.css": servedPageAsset("theme.css").version, "inter.roman.var.woff2": servedPageAsset(FONT).version, "charts.js": servedPageAsset("charts.js").version };
-}
-
-/** A content version for the inline runtimes, so preview ETags change when a plugin update changes them. */
-export function pageRuntimeVersion(): string {
-  return createHash("sha256").update(`${PAGE_RUNTIME}\0${DATA_TABLE_RUNTIME}\0${LINK_BRIDGE}`).digest("base64url").slice(0, 8);
 }

@@ -8,11 +8,12 @@ export const storageOf = (threadId: string) => `/bb/threads/${threadId}/storage`
 
 /**
  * A plugin host whose threads have a workspace at WORKSPACE and storage at storageOf(threadId).
- * `files` holds text (read as utf8) or Buffers (read as base64). `files.list` returns every file
+ * `files` holds text (read as utf8) or bytes (read as base64). `files.list` returns every file
  * under a folder, dotfiles and node_modules included, so the plugin's own filter is what tests see.
  */
 export function pagesHost() {
-  const files = new Map<string, string | Buffer>();
+  /** Text files as strings; binary files (images) as bytes, read back as base64. */
+  const files = new Map<string, string | Uint8Array>();
   /** Calls to other plugins (runProducerAction forwards to pr-review). */
   const rpcCalls: Array<{ pluginId: string; method: string; input: unknown }> = [];
   /** Threads that report archivedAt. */
@@ -47,8 +48,10 @@ export function pagesHost() {
         read: async ({ path }) => {
           const content = files.get(path);
           if (content === undefined) throw Object.assign(new Error("not found"), { status: 404 });
-          const bytes = Buffer.from(content);
-          return { path, content: typeof content === "string" ? content : bytes.toString("base64"), contentEncoding: typeof content === "string" ? "utf8" : "base64", sizeBytes: bytes.byteLength, sha256: createHash("sha256").update(bytes).digest("hex") };
+          const bytes = typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content);
+          return typeof content === "string"
+            ? { path, content, contentEncoding: "utf8" as const, sizeBytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") }
+            : { path, content: bytes.toString("base64"), contentEncoding: "base64" as const, sizeBytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
         },
         list: async ({ path, limit = 1_000 }) => {
           const prefix = `${path.replace(/\/$/u, "")}/`;
@@ -58,7 +61,7 @@ export function pagesHost() {
         write: async ({ path, content, contentEncoding, expectedSha256 }) => {
           const bytes = Buffer.from(content, contentEncoding ?? "utf8");
           const existing = files.get(path);
-          const currentSha256 = existing === undefined ? null : createHash("sha256").update(Buffer.from(existing)).digest("hex");
+          const currentSha256 = existing === undefined ? null : createHash("sha256").update(existing).digest("hex");
           if (expectedSha256 !== undefined && expectedSha256 !== currentSha256) return { outcome: "conflict", currentSha256 };
           files.set(path, bytes);
           return { outcome: "written", sha256: createHash("sha256").update(bytes).digest("hex"), sizeBytes: bytes.byteLength };

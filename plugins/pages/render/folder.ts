@@ -2,7 +2,7 @@
 // A sandboxed preview frame has an opaque origin, so its subrequests and its own link
 // navigations carry no BB session cookie and fail through the remote BB tunnel. So
 // subresources (src, link href, srcset, poster, CSS url() and @import) become data: URLs,
-// and links to other folder files become `./v` or `./a` preview URLs that the link bridge
+// and links to other folder files become `./v` or `./a` preview URLs that the frame bridge
 // hands to the BB app, which loads them into the frame. Absolute, scheme (data:, https:, …),
 // protocol-relative, fragment-only, and escaping references are left alone, and so are
 // references to files the folder does not have. URLs built by scripts are not rewritten.
@@ -103,8 +103,9 @@ export function rewriteFolderHtml(html: string, from: string, refs: FolderRefs):
       const css = rewriteFolderCss(tag.text, from, refs);
       if (css !== tag.text) edits.push({ start: tag.end, end: tag.end + tag.text.length, text: css });
     }
-    for (const [name, raw, at] of tag.attrs) {
-      if (at < 0) continue;
+    for (const [index, [name, raw]] of tag.attrs.entries()) {
+      if (!raw) continue;
+      const [at] = tag.valueRanges[index]!;
       const value = raw.replace(/&(amp|quot|apos|lt|gt|#39|#x27);/giu, (whole, entity: string) => ENTITIES[entity.toLowerCase()] ?? whole);
       let text: string | null = null;
       if (name === "href" && (tag.name === "a" || tag.name === "area")) {
