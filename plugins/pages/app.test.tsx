@@ -24,7 +24,8 @@ Object.defineProperty(window, "localStorage", { configurable: true, value: {
 const app = await loadPluginApp(() => import("./app.js"));
 // These import the SDK app runtime, which loadPluginApp installs.
 const { REALTIME_CHANNEL, pageDirective, resetPagesCache } = await import("./app/data.js");
-const { directiveComponent } = await import("./app/PageCard.js");
+const { directiveComponent, MAX_INLINE_HEIGHT } = await import("./app/PageCard.js");
+const { readFrameMessage } = await import("./app/bridge.js");
 const pageId = "123e4567-e89b-42d3-a456-426614174000";
 const v1 = "123e4567-e89b-42d3-a456-426614174001";
 const v2 = "123e4567-e89b-42d3-a456-426614174002";
@@ -49,10 +50,19 @@ afterEach(() => { cleanup(); window.localStorage.clear(); resetPagesCache(); });
 
 describe("directive parsing", () => {
   it("reads each alias into one card reference", () => {
-    expect(parseDirective("page", { id: pageId, version: v1, height: "600" })).toEqual({ ok: true, ref: { kind: "page", pageId, versionId: v1, height: 600 } });
-    expect(parseDirective("artifact", { id: pageId, revision: v1 })).toEqual({ ok: true, ref: { kind: "page", pageId, versionId: v1, height: 240 } });
-    expect(parseDirective("inline-vis", { file: "reports/a.html", source: "thread-storage" })).toEqual({ ok: true, ref: { kind: "file", file: "reports/a.html", source: "thread-storage", height: 240 } });
+    expect(parseDirective("page", { id: pageId, version: v1, height: "600" })).toEqual({ ok: true, ref: { kind: "page", pageId, versionId: v1, height: 600, display: "card" } });
+    expect(parseDirective("artifact", { id: pageId, revision: v1 })).toEqual({ ok: true, ref: { kind: "page", pageId, versionId: v1, height: 240, display: "card" } });
+    expect(parseDirective("inline-vis", { file: "reports/a.html", source: "thread-storage" })).toEqual({ ok: true, ref: { kind: "file", file: "reports/a.html", source: "thread-storage", height: 240, display: "card" } });
     expect(parseDirective("inline-vis", { file: "a.md" })).toMatchObject({ ok: true, ref: { source: "workspace" } });
+  });
+
+  it("reads display on every alias and defaults to card", () => {
+    expect(parseDirective("page", { id: pageId, display: "inline" })).toMatchObject({ ok: true, ref: { display: "inline" } });
+    expect(parseDirective("artifact", { id: pageId, display: "inline" })).toMatchObject({ ok: true, ref: { display: "inline" } });
+    expect(parseDirective("inline-vis", { file: "a.html", display: "inline" })).toMatchObject({ ok: true, ref: { display: "inline" } });
+    expect(parseDirective("page", { id: pageId, display: "card" })).toMatchObject({ ok: true, ref: { display: "card" } });
+    expect(parseDirective("page", { id: pageId, display: "" })).toMatchObject({ ok: true, ref: { display: "card" } });
+    for (const display of ["Inline", "full", "inline-block"]) expect(parseDirective("page", { id: pageId, display })).toEqual({ ok: false, message: "display must be card or inline." });
   });
 
   it("rejects bad ids, heights, paths, and sources", () => {
@@ -69,6 +79,8 @@ describe("directive parsing", () => {
   it("keeps the app's copies of contract values in step", () => {
     expect(REALTIME_CHANNEL).toBe(CONTRACT_CHANNEL);
     expect(pageDirective(pageId, v1)).toBe(directive(pageId, v1));
+    expect(directive(pageId, v1, "inline")).toBe(`::page{id="${pageId}" version="${v1}" display="inline"}`);
+    expect(directive(pageId, v1, "card")).toBe(directive(pageId, v1));
   });
 
   it("owns ::page and the legacy ::artifact and ::inline-vis ids after the switch-over", () => {
@@ -154,6 +166,89 @@ describe("inline card", () => {
     await slot.findByText("v1");
     expect(slot.getByRole("button", { name: "share-icon" }).getAttribute("data-page-id")).toBe(pageId);
     slot.lifecycle.unmount();
+  });
+});
+
+describe("borderless inline page", () => {
+  const post = (frame: HTMLIFrameElement, data: unknown, source: Window | null = frame.contentWindow) =>
+    act(() => { window.dispatchEvent(new MessageEvent("message", { data, source })); });
+  const render = (attributes: Record<string, string>, options: { openUrl?: (url: string) => boolean } = {}) =>
+    renderSlot(pageSlot, { attributes: { id: pageId, version: v2, display: "inline", ...attributes }, message, source: "::page{}", openWorkspaceFile: null }, { rpc: { getPage } as never, codeTheme: { mode: "dark" }, ...options });
+
+  it("shows the page itself: no header, no overlay, and the app's colour scheme", async () => {
+    const slot = render({ height: "300" });
+    const frame = await slot.findByTitle("Page: Landing intent") as HTMLIFrameElement;
+    expect(frame.getAttribute("src")).toBe(`/api/v1/plugins/pages/http/v?id=${v2}&theme=dark&frame=inline`);
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame.getAttribute("scrolling")).toBe("no");
+    expect(frame.style.colorScheme).toBe("dark");
+    expect(slot.queryByText("v2")).toBeNull();
+    expect(slot.queryByRole("button", { name: "Collapse Landing intent" })).toBeNull();
+    expect(slot.queryByTitle("Preview: Landing intent")).toBeNull();
+    fireEvent.click(slot.getByRole("button", { name: "Open Landing intent in panel" }));
+    expect(slot.inspection.navigateCalls.at(-1)).toMatchObject({ method: "openThreadPanel", options: { actionId: "page", params: { pageId } } });
+    slot.lifecycle.unmount();
+  });
+
+  it("holds the directive height, then fits the reported height up to the cap", async () => {
+    const slot = render({ height: "300" });
+    const frame = await slot.findByTitle("Page: Landing intent") as HTMLIFrameElement;
+    const box = frame.parentElement as HTMLElement;
+    expect(box.style.height).toBe("300px");
+    await post(frame, { type: "bb-pages:height", height: 412.4 });
+    expect(box.style.height).toBe("413px");
+    expect(slot.queryByRole("button", { name: "Open full page" })).toBeNull();
+    // Another window's report, and nonsense, change nothing.
+    await post(frame, { type: "bb-pages:height", height: 200 }, window);
+    await post(frame, { type: "bb-pages:height", height: -1 });
+    expect(box.style.height).toBe("413px");
+    await post(frame, { type: "bb-pages:height", height: 4_000 });
+    expect(box.style.height).toBe(`${MAX_INLINE_HEIGHT}px`);
+    fireEvent.click(slot.getByRole("button", { name: "Open full page" }));
+    expect(slot.inspection.navigateCalls.at(-1)).toMatchObject({ method: "openThreadPanel" });
+    slot.lifecycle.unmount();
+  });
+
+  it("opens the page's http(s) links through the host, and nothing else", async () => {
+    const opened = vi.spyOn(window, "open").mockReturnValue(null);
+    const slot = render({}, { openUrl: (url) => url.startsWith("https://") });
+    const frame = await slot.findByTitle("Page: Landing intent") as HTMLIFrameElement;
+    await post(frame, { type: "bb-pages:open", url: "https://example.com/a?b=1" });
+    expect(slot.inspection.navigateCalls.at(-1)).toEqual({ method: "openUrl", url: "https://example.com/a?b=1" });
+    expect(opened).not.toHaveBeenCalled();
+    // The host declines plain http, so the browser opens it.
+    await post(frame, { type: "bb-pages:open", url: "http://example.com/" });
+    expect(opened).toHaveBeenCalledWith("http://example.com/", "_blank", "noopener,noreferrer");
+    const before = slot.inspection.navigateCalls.length;
+    await post(frame, { type: "bb-pages:open", url: "javascript:alert(1)" });
+    await post(frame, { type: "bb-pages:open", url: "https://example.com/" }, window);
+    expect(slot.inspection.navigateCalls).toHaveLength(before);
+    expect(opened).toHaveBeenCalledTimes(1);
+    opened.mockRestore();
+    slot.lifecycle.unmount();
+  });
+
+  it("works for live ::inline-vis files", async () => {
+    const liveUrl = "/api/v1/plugins/pages/http/file?threadId=thread-a&source=workspace&file=chart.html";
+    const slot = renderSlot({ component: directiveComponent("inline-vis") }, { attributes: { file: "chart.html", display: "inline" }, message, source: "::inline-vis{}", openWorkspaceFile: null }, {
+      rpc: { resolveFile: () => ({ sourceKey: "workspace:chart.html", previewUrl: liveUrl, page: null }) } as never,
+      codeTheme: { mode: "light" },
+    });
+    expect((await slot.findByTitle("Page: chart.html")).getAttribute("src")).toBe(`${liveUrl}&theme=light&frame=inline`);
+    slot.lifecycle.unmount();
+  });
+});
+
+describe("frame messages", () => {
+  it("accepts only bounded heights and absolute http(s) links", () => {
+    expect(readFrameMessage({ type: "bb-pages:height", height: 10.1 })).toEqual({ type: "height", height: 11 });
+    for (const height of [0, -5, Number.NaN, Number.POSITIVE_INFINITY, 100_001, "300"]) expect(readFrameMessage({ type: "bb-pages:height", height })).toBeNull();
+    expect(readFrameMessage({ type: "bb-pages:open", url: "https://example.com/x y" })).toEqual({ type: "open", url: "https://example.com/x%20y" });
+    expect(readFrameMessage({ type: "bb-pages:open", url: "HTTP://Example.com" })).toEqual({ type: "open", url: "http://example.com/" });
+    for (const url of ["javascript:alert(1)", "data:text/html,x", "file:///etc/passwd", "/relative", "", `https://example.com/${"a".repeat(9_000)}`, 42]) {
+      expect(readFrameMessage({ type: "bb-pages:open", url })).toBeNull();
+    }
+    for (const data of [null, "bb-pages:open", { type: "bb-pages:theme", theme: "dark" }, { type: "other", url: "https://example.com" }]) expect(readFrameMessage(data)).toBeNull();
   });
 });
 

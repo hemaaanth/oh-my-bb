@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import type { PageAssetName } from "../contract.js";
+import { FRAME_BRIDGE } from "./frame-bridge.js";
 import { escapeHtml, scanHtml } from "./html.js";
 import { DATA_TABLE_RUNTIME, PAGE_RUNTIME, needsDataTableRuntime, needsPageRuntime } from "./page-runtime.js";
 
@@ -9,8 +11,11 @@ export type InjectOptions = {
   theme: "light" | "dark" | null;
   /** Add the chart runtime script. */
   hasCharts: boolean;
-  /** "card" marks the small inline chat preview (data-bb-frame="card"); the theme shows it zoomed out, like a thumbnail. */
-  frame?: "card" | null;
+  /**
+   * The chat frame, as data-bb-frame. "card" is the small framed preview; the theme shows it zoomed out, like a thumbnail.
+   * "inline" is the borderless preview that is part of the reply; it fits its height to the page and never scrolls.
+   */
+  frame?: "card" | "inline" | null;
   /** Content versions added as `?v=` to asset URLs, so the BB preview can cache them for good. Omitted for published sites. */
   assetVersions?: Partial<Record<PageAssetName, string>>;
   /** Self-contained assets for sandboxed BB previews. Omitted for published sites, which ship separate files. */
@@ -36,11 +41,14 @@ export const PAGE_CSP = [
   "form-action 'none'",
 ].join("; ");
 
+/** Changes when the scripts injectPage adds change, so a cached preview revalidates to the new shell after a plugin update. */
+export const PREVIEW_SHELL_VERSION = createHash("sha256").update(FRAME_BRIDGE).update(PAGE_RUNTIME).update(DATA_TABLE_RUNTIME).digest("base64url").slice(0, 8);
+
 type Insert = { at: number; text: string };
 
 /**
  * Add the theme link (first in <head>, so author styles win), the font preload,
- * data-bb-theme on <html>, and before </body> the page runtime (only when the
+ * data-bb-theme and data-bb-frame on <html>, the frame bridge (BB previews only), and before </body> the page runtime (only when the
  * page has tabs, contents, or zoomable images) and the chart runtime. Everything
  * else in the author's HTML stays byte-for-byte. Works on full documents,
  * documents without <html>/<head>/<body>, and bare fragments.
@@ -59,7 +67,9 @@ export function injectPage(html: string, options: InjectOptions): string {
     : `<link rel="stylesheet" href="${url("theme.css")}"><link rel="preload" href="${url("inter.roman.var.woff2")}" as="font" type="font/woff2" crossorigin>`;
   const inserts: Insert[] = [];
   const top = doctypeEnd < 0 ? 0 : doctypeEnd;
-  const attrs = `${options.theme ? ` data-bb-theme="${options.theme}"` : ""}${options.frame === "card" ? ` data-bb-frame="card"` : ""}`;
+  const attrs = `${options.theme ? ` data-bb-theme="${options.theme}"` : ""}${options.frame ? ` data-bb-frame="${options.frame}"` : ""}`;
+  // Only BB previews (theme or frame set) talk to the BB app. Published and shared sites never get the bridge.
+  const head = options.theme || options.frame ? `${assets}<script>${FRAME_BRIDGE}</script>` : assets;
 
   if (attrs && htmlTag) {
     // "<html" is 5 characters; ours come first, and the first duplicate attribute wins.
@@ -68,12 +78,12 @@ export function injectPage(html: string, options: InjectOptions): string {
   if (headTag) {
     // Author <head> before any <html> is impossible in a real document, so the <html> prefix (if needed) goes on top.
     if (attrs && !htmlTag) inserts.push({ at: top, text: `<html${attrs}>` });
-    inserts.push({ at: headTag.end, text: assets });
+    inserts.push({ at: headTag.end, text: head });
   } else if (htmlTag) {
-    inserts.push({ at: htmlTag.end, text: `<head>${assets}</head>` });
+    inserts.push({ at: htmlTag.end, text: `<head>${head}</head>` });
   } else {
     const open = attrs ? `<html${attrs}>` : "";
-    inserts.push({ at: top, text: `${open}<head>${assets}</head>` });
+    inserts.push({ at: top, text: `${open}<head>${head}</head>` });
   }
 
   const runtime = needsPageRuntime(html);

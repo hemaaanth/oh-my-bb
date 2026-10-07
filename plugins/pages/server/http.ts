@@ -1,14 +1,14 @@
 // Plugin HTTP routes. The host matches exact paths only, so ids travel in the
 // query string and every page shape resolves `./_page/<asset>` to the same
 // asset routes:
-//   GET /v?id=<versionId>[&theme=light|dark]                      stored version
-//   GET /file?threadId=&source=&file=[&theme=light|dark]           live file (::inline-vis)
+//   GET /v?id=<versionId>[&theme=light|dark][&frame=card|inline]            stored version
+//   GET /file?threadId=&source=&file=[&theme=light|dark][&frame=card|inline] live file (::inline-vis)
 //   GET /_page/theme.css | /_page/inter.roman.var.woff2 | /_page/charts.js   [?v=<content version>]
 // Preview HTML asks for assets with `?v=`, so the browser caches them for good; a stored version
 // never changes, so its HTML is cached briefly and revalidated by ETag. Live files are never cached.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { PAGE_ASSET_NAMES } from "../contract.js";
-import { PAGE_CSP, inlinedPageAssets, inspectCharts, injectPage, pageAssetVersions, servedPageAsset } from "../render/index.js";
+import { PAGE_CSP, PREVIEW_SHELL_VERSION, inlinedPageAssets, inspectCharts, injectPage, pageAssetVersions, servedPageAsset } from "../render/index.js";
 import { FileSourceError, readSourceFile } from "./files.js";
 import { sourceHtml } from "./service.js";
 import type { PageStore } from "./store.js";
@@ -24,13 +24,13 @@ const VERSION_CACHE = "private, no-cache";
 const IMMUTABLE = "public, max-age=31536000, immutable";
 const text = (status: number, body: string) => new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8", "x-content-type-options": "nosniff", "cache-control": "no-store" } });
 const themeOf = (value: string | undefined) => (value === "light" || value === "dark" ? value : null);
-const frameOf = (value: string | undefined) => (value === "card" ? "card" as const : null);
+const frameOf = (value: string | undefined) => (value === "card" || value === "inline" ? value : null);
 
 export function registerRoutes(bb: BbPluginApi, store: PageStore) {
   const assetVersions = (() => { try { return pageAssetVersions(); } catch { return {}; } })();
   const inlineAssets = (() => { try { return inlinedPageAssets(); } catch { return undefined; } })();
-  // Changes when the assets change, so a plugin update never revalidates to old HTML.
-  const assetsTag = `${inlineAssets ? "inline" : "linked"}.${Object.values(assetVersions).join(".").slice(0, 24) || "none"}`;
+  // Changes when the assets or injected scripts change, so a plugin update never revalidates to old HTML.
+  const assetsTag = `${inlineAssets ? "inline" : "linked"}.${Object.values(assetVersions).join(".").slice(0, 24) || "none"}.${PREVIEW_SHELL_VERSION}`;
 
   bb.http.route("GET", "/v", (c) => {
     const stored = store.storedHtml(c.req.query("id") ?? "");

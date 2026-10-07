@@ -17,8 +17,8 @@ export function usePreviewTheme(): "light" | "dark" {
 /** The page background, `--bb-bg` in assets/theme.css for a `body.auto` page. The panel chrome uses it so header and page read as one surface. */
 export const PAGE_BG = { light: "#f9fafb", dark: "#09090b" } as const;
 
-/** Preview routes take `&theme=light|dark`, which sets `data-bb-theme` for pages that follow the app. */
-export function themedUrl(url: string, theme: "light" | "dark", frame?: "card"): string {
+/** Preview routes take `&theme=light|dark`, which sets `data-bb-theme` for pages that follow the app, and `&frame=card|inline` for chat frames. */
+export function themedUrl(url: string, theme: "light" | "dark", frame?: "card" | "inline"): string {
   return `${url}${url.includes("?") ? "&" : "?"}theme=${theme}${frame ? `&frame=${frame}` : ""}`;
 }
 

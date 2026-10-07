@@ -1,6 +1,7 @@
 // `bb pages …`. The calling thread comes from the CLI context (`ctx.threadId`),
 // which the bb CLI fills from the invoking agent's BB_THREAD_ID.
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES, PluginCliError, cliCommand, defineCli, type BbPluginApi, type PluginCliCommand, type PluginCliContext, type PluginCliResult } from "@get-bb/plugin-sdk";
+import { directive } from "./contract.js";
 import { FileSourceError, mapCliPath } from "./server/files.js";
 import { PageInputError, type PageService } from "./server/service.js";
 import { StaleVersionError, type PageStore } from "./server/store.js";
@@ -57,6 +58,7 @@ export function registerPagesCli(bb: BbPluginApi, service: PageService, store: P
           folder: { type: "string", description: "Logical subfolder inside this BB project, e.g. Reports/Weekly", placeholder: "PATH" },
           key: { type: "string", description: "Stable page name, e.g. boost-daily. Keeps one page across runs and threads", placeholder: "NAME" },
           page: { type: "string", description: "Add a version to this page id", placeholder: "PAGE_ID" },
+          display: { type: "enum", values: ["card", "inline"] as const, description: "How the returned directive shows the page in chat (default: card)" },
           ...json,
         },
         constraints: [{ kind: "at-most-one", options: ["key", "page"] }],
@@ -65,7 +67,8 @@ export function registerPagesCli(bb: BbPluginApi, service: PageService, store: P
             const threadId = callingThread(ctx);
             const { source, file } = await mapCliPath(bb.sdk, threadId, positionals.file, ctx.cwd);
             const published = await service.publishFile({ threadId, file, source, title: options.title, label: options.label, folder: options.folder, key: options.key, pageId: options.page });
-            return ok({ ...published.result, changed: published.changed }, publishSummary(published), options.json);
+            const result = { ...published.result, directive: directive(published.result.page.id, published.result.version.id, options.display) };
+            return ok({ ...result, changed: published.changed }, publishSummary(published, options.display), options.json);
           });
         },
       }),

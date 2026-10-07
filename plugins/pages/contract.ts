@@ -22,6 +22,9 @@ export const folderPathSchema = z.string().trim().min(1).max(120).refine(
 /** A stable name chosen by the caller, e.g. "boost-daily". Maps to source_key "key:<name>". */
 export const pageKeySchema = z.string().trim().regex(/^[a-z0-9][a-z0-9._-]{0,79}$/u, "Use lowercase letters, digits, '.', '_' or '-'.");
 export const fileSourceSchema = z.enum(["workspace", "thread-storage"]);
+/** How a chat directive shows a page: "card" (framed thumbnail, the default) or "inline" (borderless, part of the reply). */
+export const displaySchema = z.enum(["card", "inline"]);
+export type PageDisplay = z.infer<typeof displaySchema>;
 /** Source-relative file path. No absolute paths, no "..". Validated again on the server. */
 export const relativeFileSchema = z.string().trim().min(1).max(1_000);
 
@@ -120,7 +123,8 @@ export const mutationResultSchema = pageDetailSchema.extend({
   created: z.boolean(),
 }).strict();
 
-export const directive = (pageId: string, versionId: string) => `::page{id="${pageId}" version="${versionId}"}`;
+export const directive = (pageId: string, versionId: string, display: PageDisplay = "card") =>
+  `::page{id="${pageId}" version="${versionId}"${display === "inline" ? ' display="inline"' : ""}}`;
 
 // ---- Inputs ---------------------------------------------------------------
 export const publishFileInputSchema = z.object({
@@ -186,18 +190,28 @@ export type PagesRpc = typeof rpcContract;
 // so their relative `_page/<asset>` URLs resolve to the shared asset routes.
 //   GET /v?id=<versionId>[&theme=light|dark]           themed page HTML (CSP header, theme injected)
 //   GET /file?threadId=&source=&file=[&theme=]         themed live preview of a workspace/thread-storage file (::inline-vis cards)
+//   BB previews (theme or frame set) also get the frame bridge; see FRAME_MESSAGE below.
 //   GET /_page/<asset>[?v=<version>]                   theme.css, inter.roman.var.woff2, charts.js (same bytes for every page;
 //                                                      preview pages add the content version, which makes them cacheable for good)
 export const PAGE_ASSET_NAMES = ["theme.css", "inter.roman.var.woff2", "charts.js"] as const;
 export type PageAssetName = (typeof PAGE_ASSET_NAMES)[number];
 
+/**
+ * The frame bridge between a BB preview and the BB app, over postMessage (render/frame-bridge.ts, app/bridge.ts).
+ *   host -> page  { type: theme, theme: "light" | "dark" }   later theme changes; the first theme rides in the URL
+ *   page -> host  { type: open, url }                        an http(s) link the reader clicked
+ *   page -> host  { type: height, height }                   content height in CSS pixels (inline frames only)
+ */
+export const FRAME_MESSAGE = { theme: "bb-pages:theme", open: "bb-pages:open", height: "bb-pages:height" } as const;
+
 // ---- Directives (T3) -------------------------------------------------------
-//   ::page{id version height?}          canonical
-//   ::artifact{id revision}             alias; imported artifact ids == page ids, revision ids == version ids
-//   ::inline-vis{file source? height?}  alias; live file preview + Share (snapshots via publishFile)
+//   ::page{id version height? display?}          canonical
+//   ::artifact{id revision height? display?}     alias; imported artifact ids == page ids, revision ids == version ids
+//   ::inline-vis{file source? height? display?}  alias; live file preview + Share (snapshots via publishFile)
+//   display="inline" drops the card chrome and fits the page height; the default is the card.
 
 // ---- Agent tools (T1 core, T4 share) ---------------------------------------
-//   page_publish  { file, source?, title?, label?, key?, pageId? }  -> directive text
+//   page_publish  { file, source?, title?, label?, key?, pageId?, display? }  -> directive text
 //   page_lookup   { pageId | producerKey | key }                     -> JSON (no HTML, no password)
 //   page_browse   { projectId?, folder?, query?, limit? }            -> bounded page and folder summaries
 //   page_share    { pageId, access, allowedDomains?, allowedEmails? } -> BB confirmation, then share

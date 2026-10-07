@@ -7,7 +7,8 @@ import { ShareButton } from "./share/SharePopover.js";
 import { pageDirective, usePageDetail } from "./data.js";
 import type { FileSource } from "./directives.js";
 import { useResolvedFile } from "./PageCard.js";
-import { PAGE_BG, PORTAL_SCOPE, focusRing, messageOf, relativeTime, themedUrl, usePreviewTheme } from "./ui.js";
+import { useFrameBridge } from "./bridge.js";
+import { PAGE_BG, PORTAL_SCOPE, focusRing, messageOf, relativeTime, usePreviewTheme } from "./ui.js";
 
 export const LIBRARY_PATH = "pages";
 
@@ -24,8 +25,10 @@ function PanelShell({ header, banner, children }: { header: ReactNode; banner?: 
   </div>;
 }
 
-function Preview({ title, src }: { title: string; src: string }) {
-  return <iframe title={title} src={src} sandbox="allow-scripts" className="absolute inset-0 size-full border-0 bg-transparent" />;
+/** The full page. The bridge keeps it in the app theme without a reload and opens its links. */
+function Preview({ title, previewUrl }: { title: string; previewUrl: string }) {
+  const bridge = useFrameBridge(previewUrl);
+  return <iframe ref={bridge.ref} title={title} src={bridge.src} onLoad={bridge.onLoad} style={bridge.style} sandbox="allow-scripts" className="absolute inset-0 size-full border-0 bg-transparent" />;
 }
 
 function RenameInput({ detail, onDone }: { detail: PageDetail; onDone: (error?: string) => void }) {
@@ -173,7 +176,6 @@ function DeleteDialog({ detail, open, onOpenChange, onDeleted }: { detail: PageD
 
 /** The page panel: used by the thread side panel and inside the library. `threadId` is the thread the panel is open in, if any. */
 export function PageView({ pageId, versionId = null, inLibrary = false, threadId = null, onDeleted }: { pageId: string; versionId?: string | null; inLibrary?: boolean; threadId?: string | null; onDeleted?: () => void }) {
-  const theme = usePreviewTheme();
   const latest = usePageDetail(pageId, null);
   const [viewing, setViewing] = useState<string | null>(versionId);
   const [renaming, setRenaming] = useState(false);
@@ -227,7 +229,7 @@ export function PageView({ pageId, versionId = null, inLibrary = false, threadId
       ? <><span className="tabular-nums">Viewing v{shown.version.n}</span><span aria-hidden>·</span><button type="button" className={`rounded-sm text-foreground underline-offset-2 hover:underline ${focusRing}`} onClick={() => setViewing(null)}>Back to latest</button></>
       : null;
   let body: ReactNode;
-  if (shown) body = <Preview title={`${shown.page.title}, version ${shown.version.n}`} src={themedUrl(shown.previewUrl, theme)} />;
+  if (shown) body = <Preview title={`${shown.page.title}, version ${shown.version.n}`} previewUrl={shown.previewUrl} />;
   else if (older.state.status === "error") body = <p role="alert" className={quiet}>{older.state.message}</p>;
   else if (older.state.status === "missing") body = <p role="status" className={quiet}>This version no longer exists.</p>;
   else body = <p role="status" className={quiet}>Loading version…</p>;
@@ -236,7 +238,6 @@ export function PageView({ pageId, versionId = null, inLibrary = false, threadId
 
 /** A live ::inline-vis file opened in the panel. Share snapshots it as a page first. */
 export function LiveFileView({ threadId, file, source }: { threadId: string; file: string; source: FileSource }) {
-  const theme = usePreviewTheme();
   const { state, publish } = useResolvedFile(threadId, file, source);
   if (state.status === "loading" || state.status === "idle") return <p role="status" className={quiet}>Loading {file}…</p>;
   if (state.status !== "ready") return <p role="alert" className={quiet}>{state.status === "error" ? state.message : "The file could not load."}</p>;
@@ -246,6 +247,6 @@ export function LiveFileView({ threadId, file, source }: { threadId: string; fil
     <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{page ? `live · v${page.version.n}` : "live"}</span>
     <div className="ml-auto flex shrink-0 items-center gap-1 pl-2"><ShareButton pageId={page?.page.id ?? null} share={page?.share ?? null} onNeedsPage={publish} /></div>
   </>}>
-    <Preview title={file} src={themedUrl(previewUrl, theme)} />
+    <Preview title={file} previewUrl={previewUrl} />
   </PanelShell>;
 }

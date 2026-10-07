@@ -711,3 +711,14 @@
  * click-to-open). */
 :where(:root[data-bb-frame="card"]) { zoom: 0.8; overflow: hidden; scrollbar-width: none; }
 :where(:root[data-bb-frame="card"] :is(.page, body:not(:has(.page)))) { padding-top: 1.25rem; }
+
+/* Borderless inline frame: the preview route adds data-bb-frame="inline". The
+ * page is part of the reply, so it has no outer padding (its left edge lines up
+ * with the reply text), fills the reply column, and never scrolls: the frame
+ * fits its height to the page. Where the page's colour scheme matches the app,
+ * its background is transparent, so it sits on the thread's own background. */
+:where(:root[data-bb-frame="inline"]) { overflow: hidden; scrollbar-width: none; }
+:where(:root[data-bb-frame="inline"] :is(.page, .page.wide, .page.dashboard, body:not(:has(.page)))) { width: auto; margin: 0; padding: 0; }
+:where(:root[data-bb-frame="inline"] body:not(:has(.page)) > :last-child) { margin-bottom: 0; }
+:where(:root[data-bb-frame="inline"]:is(:has(> body.auto), [data-bb-theme="light"]:not(:has(> body.dark)), [data-bb-theme="dark"]:has(> body.dark))),
+:where(:root[data-bb-frame="inline"]:is(:has(> body.auto), [data-bb-theme="light"]:not(:has(> body.dark)), [data-bb-theme="dark"]:has(> body.dark)) > body) { background: transparent; }

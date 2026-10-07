@@ -163,7 +163,11 @@ describe("follow latest", () => {
 
     const pinned = await rpc<Share>("setFollow", { pageId: first.page.id, follow: first.version.id });
     expect(pinned).toMatchObject({ follow: first.version.id, liveVersionId: first.version.id });
-    expect(fake.sites.get(shared.slug)!.live.get("index.html")!.toString()).toContain("BODY-ONE");
+    const site = fake.sites.get(shared.slug)!.live.get("index.html")!.toString();
+    expect(site).toContain("BODY-ONE");
+    // The frame bridge is for BB previews only. A shared site never talks to a parent window.
+    expect(site).not.toContain("bb-pages:");
+    expect(site).not.toContain("data-bb-frame");
     await publish("BODY-THREE");
     // setFollow queues behind the version hook, so the hook has run when it returns.
     await rpc("setFollow", { pageId: first.page.id, follow: first.version.id });
