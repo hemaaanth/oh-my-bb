@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - Publish a folder with `index.html` plus its images, CSS, fonts, scripts, and
   other pages (`page_publish { dir }`, `bb pages publish <dir>`). Limits: 200

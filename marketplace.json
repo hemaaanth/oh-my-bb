@@ -56,7 +56,7 @@
         "git": {
           "url": "https://github.com/hemaaanth/oh-my-bb.git",
           "subdir": "plugins/pages",
-          "range": "^0.2.0",
+          "range": "^0.3.0",
           "tagPrefix": "pages/"
         }
       }
