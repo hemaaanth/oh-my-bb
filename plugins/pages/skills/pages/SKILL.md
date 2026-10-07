@@ -26,8 +26,19 @@ the font, and the chart runtime. Every publish of changed bytes is a new version
 - **Project docs the user wants in the repo**: write inside the workspace.
 - `.html`, `.htm`, `.md`, and `.markdown` are accepted. Markdown is rendered
   with raw HTML off. Use HTML when you need charts or custom layout.
-- One file. Put CSS and JavaScript inline. Embed small images as `data:` URIs.
-- Keep the file under 10 MB.
+- One file. Put CSS and JavaScript inline.
+- **Reference local images by path. Do not base64-encode them yourself.**
+  Write `<img src="img/chart.png">`, `url("bg.png")` in CSS, or
+  `![Chart](img/chart.png)` in Markdown. Publishing reads each image and embeds
+  it in the stored page, so it still works when shared.
+  - Relative paths start at the page's folder. Absolute paths must be inside the
+    workspace or thread storage. A path that leaves both is rejected.
+  - PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, and SVG. Each image at most 5 MB.
+  - `src`, `srcset`, `poster`, SVG `<image href>`, and CSS `url()` in `<style>`
+    or `style=""` are read. Paths built in JavaScript are not.
+  - A missing or oversized image fails the publish with a list of the bad
+    paths. Fix them and publish again.
+- Keep the file under 10 MB, including its images.
 
 Start from this skeleton:
 
@@ -135,7 +146,7 @@ that breaks these rules looks fine on disk and blank in BB.
 - **No network from scripts.** `fetch`, XHR, WebSockets, and EventSource are blocked. Put the data in the file.
 - **No `eval` and no `new Function`.** Libraries that compile code at runtime fail.
 - **No remote scripts, stylesheets, or fonts.** Never load a library from a CDN.
-- **Images and media** may be `https:`, `data:`, or `blob:`. Prefer `data:` for anything the page needs.
+- **Images and media** may be `https:`, `data:`, or `blob:`. Local image paths are turned into `data:` at publish (see above).
 - **No forms that submit**, no access to the BB window, no storage you can rely on.
 - **Links** to `http:` and `https:` URLs open through BB, in the browser or
   a new tab. `#` links stay in the page.

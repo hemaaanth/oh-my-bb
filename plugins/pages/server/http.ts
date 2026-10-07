@@ -10,6 +10,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { PAGE_ASSET_NAMES } from "../contract.js";
 import { PAGE_CSP, PREVIEW_SHELL_VERSION, inlinedPageAssets, inspectCharts, injectPage, pageAssetVersions, servedPageAsset } from "../render/index.js";
 import { FileSourceError, readSourceFile } from "./files.js";
+import { inlineLocalImages } from "./images.js";
 import { sourceHtml } from "./service.js";
 import type { PageStore } from "./store.js";
 
@@ -51,7 +52,8 @@ export function registerRoutes(bb: BbPluginApi, store: PageStore) {
     if (source !== "workspace" && source !== "thread-storage") return text(400, "source must be workspace or thread-storage.");
     try {
       const read = await readSourceFile(bb.sdk, threadId, file, source);
-      const html = sourceHtml(read);
+      // Unusable images stay as written here; publish reports them.
+      const html = await inlineLocalImages(bb.sdk, threadId, read, sourceHtml(read), { strict: false });
       return new Response(injectPage(html, { assetBase: "./", theme: themeOf(c.req.query("theme")), frame: frameOf(c.req.query("frame")), hasCharts: inspectCharts(html).hasCharts, assetVersions, inlineAssets }), { headers: pageHeaders });
     } catch (error) {
       if (error instanceof FileSourceError) return text(error.status, error.message);

@@ -31,7 +31,7 @@ export function lookupView(detail: PageDetail) {
 export function registerTools(bb: BbPluginApi, service: PageService) {
   bb.agents.registerTool({
     name: "page_publish",
-    description: "Publish a workspace or thread-storage .html/.md file as a versioned page. Publishing the same file (or key, or pageId) again adds a version; unchanged bytes add nothing.",
+    description: "Publish a workspace or thread-storage .html/.md file as a versioned page. Publishing the same file (or key, or pageId) again adds a version; unchanged bytes add nothing. Local images referenced by path are embedded at publish.",
     instructions: "After page_publish, copy the returned ::page directive on its own line into your final reply. The reader sees the page there, so do not announce, describe, or restate it. Use display \"inline\" for one chart, a small table, a diagram, or a stat row; keep the default card for tabs, a contents list, several sections, or more than about one screen.",
     presentation: { label: { pending: "Publishing page", completed: "Published page" }, icon: { glyph: "FileText" } },
     parameters: z.object({

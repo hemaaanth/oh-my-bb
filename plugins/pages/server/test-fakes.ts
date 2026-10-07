@@ -8,7 +8,8 @@ export const storageOf = (threadId: string) => `/bb/threads/${threadId}/storage`
 
 /** A plugin host whose threads have a workspace at WORKSPACE and storage at storageOf(threadId). */
 export function pagesHost() {
-  const files = new Map<string, string>();
+  /** Text files as strings; binary files (images) as bytes, read back as base64. */
+  const files = new Map<string, string | Uint8Array>();
   /** Calls to other plugins (runProducerAction forwards to pr-review). */
   const rpcCalls: Array<{ pluginId: string; method: string; input: unknown }> = [];
   /** Threads that report archivedAt. */
@@ -36,7 +37,10 @@ export function pagesHost() {
         read: async ({ path }) => {
           const content = files.get(path);
           if (content === undefined) throw Object.assign(new Error("not found"), { status: 404 });
-          return { path, content, contentEncoding: "utf8", sizeBytes: Buffer.byteLength(content), sha256: createHash("sha256").update(content).digest("hex") };
+          const bytes = typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content);
+          return typeof content === "string"
+            ? { path, content, contentEncoding: "utf8" as const, sizeBytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") }
+            : { path, content: bytes.toString("base64"), contentEncoding: "base64" as const, sizeBytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
         },
       },
     },

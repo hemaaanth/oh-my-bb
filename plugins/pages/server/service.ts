@@ -6,6 +6,7 @@ import { z } from "zod";
 import { MAX_PAGE_HTML_BYTES, directive, type PageDetail, type PublishFileInput, type SourceKey, type mutationResultSchema, type publishDocumentInputSchema } from "../contract.js";
 import { inspectCharts, renderMarkdown, renderPrReview } from "../render/index.js";
 import { readSourceFile, relativeFile, resolveRoot, sourceKeyOf, type FileSource, type SourceFile } from "./files.js";
+import { inlineLocalImages } from "./images.js";
 import { HTTP_BASE, StaleVersionError, type PageStore } from "./store.js";
 
 export type MutationResult = z.infer<typeof mutationResultSchema>;
@@ -87,7 +88,8 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
   async function publishFile(input: PublishFileInput): Promise<PublishResult> {
     if (input.key && input.pageId) throw new PageInputError("Pass key or pageId, not both.");
     const source = await readSourceFile(sdk, input.threadId, input.file, input.source);
-    const html = sourceHtml(source, input.title);
+    // Stored and compared with local images inlined, so an image change adds a version.
+    const html = await inlineLocalImages(sdk, input.threadId, source, sourceHtml(source, input.title), { strict: true });
     const hasCharts = checkedHtml(html);
     const title = deriveTitle(html, source.file, input.title);
     const digest = sha256(html);
