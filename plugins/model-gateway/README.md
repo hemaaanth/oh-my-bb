@@ -26,13 +26,13 @@ Automatic Claude Code failover maps Fable to `gpt-6-astra`, Opus to
   thread is past chain entry 0.
 - RPC `thread.route({ threadId })` returns
   `{ harness, upstreamKind, accountLabel, model, chainIndex, chain, stickyUntil,
-  autoModel, auto } | null`; `chain` holds plain upstream names.
+  autoModel, auto, fallbackCause } | null`; `chain` holds plain upstream names.
+  The Sandboxes plugin reads it to show the route in its machine popover.
 - Realtime channel `model-gateway.route-changed`, payload `{ threadId }`, when
   a thread's binding changes.
-- Thread header badge (`app.tsx`), for example `ChatGPT · gpt-6-astra` or
-  `kimi · kimi-k3` (a key shows its label), on every routed thread. It is
-  quiet on the first chain entry and stronger on a fallback or a Jev pick
-  (`ChatGPT · auto → gpt-6-sol (jev 0.82)`). The tooltip shows the chain.
+- No thread header item of its own. The Sandboxes machine icon shows the
+  route (model, upstream, chain, fallback cause) in its popover and marks a
+  fallback with an amber dot.
 - Settings section `gateway` (`app.tsx`): a status line, one Upstreams list,
   one Routes row per harness (switch, chain in plain names, mapped models,
   Edit drawer with the chain and the per-route Auto (Jev) switch), and
@@ -142,7 +142,7 @@ sets Jev's OpenRouter model id (default `typesafe/jev-1.13`).
 - Fail open: an error, a confidence below 0.6, an unreadable answer, or no
   answer within 2 seconds keeps the client's model and the chain's normal order.
 - Shown in `bb gateway status --thread <id>` (`Auto: auto → gpt-6-sol (jev
-  0.82)`) and in the header badge (`auto → gpt-6-sol`).
+  0.82)`) and in the Sandboxes machine popover (`Jev: jev 0.82`).
 - Privacy: each Jev call sends OpenRouter only the last user message
   (truncated to 4,000 characters) and the candidate model names. No system
   prompt, history, tool output or file content. Prompts are never logged.

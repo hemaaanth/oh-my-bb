@@ -9,8 +9,8 @@ upstream during a tool loop, then can return to the primary account on a later
 turn after its limit resets.
 
 The Settings page shows accounts, routes, model mappings, holds, and active
-fallbacks. The thread header shows the upstream and model serving the current
-conversation. The same controls are available through `bb gateway` commands.
+fallbacks. The Sandboxes plugin's machine icon in the thread header shows the
+upstream and model serving the current conversation. The same controls are available through `bb gateway` commands.
 
 ## Protocol translation
 

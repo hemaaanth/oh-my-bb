@@ -31,7 +31,6 @@ import {
   useRpc,
 } from "@get-bb/plugin-sdk/app";
 import { FxIcon, GatewayChatGPTIcon, GatewayClaudeIcon, NanocodexIcon } from "./provider-icons";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -134,47 +133,6 @@ function upstreamName(
 /** `auto → claude-opus-5-5 (jev 0.82)` when Jev changed the model. */
 function autoPick(autoModel: string | null, reason: string | null): string {
   return `auto → ${autoModel}${reason === null ? "" : ` (${reason})`}`;
-}
-
-/** Shows the thread's route on every gateway thread; highlighted on a fallback or a Jev pick. */
-function RouteBadge({ threadId }: { threadId: string }) {
-  const rpc = useRpc<typeof accountPoolRpcContract>();
-  const [route, setRoute] = useState<Route | null>(null);
-  const load = useCallback(() => {
-    rpc.call("thread.route", { threadId }).then(setRoute, () => setRoute(null));
-  }, [rpc, threadId]);
-  useEffect(load, [load]);
-  useRealtime(MODEL_GATEWAY_ROUTE_CHANGED, (payload) => {
-    if ((payload as { threadId?: unknown } | null)?.threadId === threadId)
-      load();
-  });
-  if (route === null) return null;
-  const upstream = upstreamName(route.upstreamKind, route.accountLabel);
-  const title = [
-    `Model Gateway route for ${HARNESS_TITLES[route.harness]}: ${route.chain.join(" → ")}`,
-    `Now on step ${route.chainIndex + 1}: ${upstream}${route.accountLabel === null || route.accountLabel === upstream ? "" : ` (${route.accountLabel})`}`,
-    route.stickyUntil !== null && `Stays there until ${clock(route.stickyUntil)}`,
-    route.auto !== null && `Jev: ${route.auto}`,
-    route.fallbackCause !== null &&
-      `Fallback: ${route.fallbackCause.upstreamLabel} returned ${route.fallbackCause.category} (HTTP ${route.fallbackCause.status}) at ${clock(route.fallbackCause.at)}\n${route.fallbackCause.message}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  return (
-    <Badge
-      variant={
-        route.chainIndex > 0 || route.autoModel !== null
-          ? "secondary"
-          : "outline"
-      }
-      title={title}
-    >
-      {upstream} ·{" "}
-      {route.autoModel === null
-        ? (route.model ?? "unknown model")
-        : autoPick(route.autoModel, route.auto)}
-    </Badge>
-  );
 }
 
 interface RoutingState {
@@ -2812,11 +2770,6 @@ export default definePluginApp((app) => {
     label: "Model Gateway usage",
     icon: "ChartColumn",
     component: GatewayUsageFooter,
-  });
-  app.slots.experimental_threadHeaderAction({
-    id: "model-gateway-route",
-    title: "Model Gateway route",
-    component: RouteBadge,
   });
   app.slots.settingsSection({
     id: "gateway",

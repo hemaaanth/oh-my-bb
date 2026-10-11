@@ -329,66 +329,9 @@ describe("Model Gateway settings", () => {
   });
 });
 
-describe("Model Gateway thread badge", () => {
-  function renderBadge(route: unknown) {
-    return renderSlot(
-      app.threadHeaderActions[0]!,
-      { threadId: "thr_1" } as never,
-      { rpc: { "thread.route": () => route } as never },
-    );
-  }
-  const ROUTE = {
-    harness: "claude-code",
-    upstreamKind: "claude-oauth",
-    accountLabel: "max",
-    model: "claude-sonnet-5",
-    chainIndex: 0,
-    chain: ["Claude Max", "ChatGPT"],
-    stickyUntil: null,
-    autoModel: null,
-    auto: null,
-    fallbackCause: null,
-  };
-
-  it("shows the primary route quietly, with the chain in its tooltip", async () => {
-    const slot = renderBadge(ROUTE);
-    const badge = await slot.findByText(/Claude Max · claude-sonnet-5/);
-    expect(badge.getAttribute("title")).toContain(
-      "Model Gateway route for Claude Code: Claude Max → ChatGPT",
-    );
-  });
-
-  it("shows Jev's pick when auto changed the model", async () => {
-    const slot = renderBadge({
-      ...ROUTE,
-      model: "claude-opus-5-5",
-      autoModel: "claude-opus-5-5",
-      auto: "jev 0.82",
-    });
-    await slot.findByText(/auto → claude-opus-5-5 \(jev 0\.82\)/);
-  });
-
-  it("explains why a fallback crossed providers", async () => {
-    const slot = renderBadge({
-      ...ROUTE,
-      upstreamKind: "chatgpt-oauth",
-      accountLabel: "pro",
-      model: "gpt-6-sol",
-      chainIndex: 1,
-      fallbackCause: {
-        upstreamId: "claude-1",
-        upstreamLabel: "max",
-        category: "availability",
-        status: 529,
-        message: "temporarily overloaded",
-        at: Date.now(),
-      },
-    });
-    const badge = await slot.findByText(/ChatGPT · gpt-6-sol/);
-    expect(badge.getAttribute("title")).toContain(
-      "Fallback: max returned availability (HTTP 529)",
-    );
-    expect(badge.getAttribute("title")).toContain("temporarily overloaded");
+describe("Model Gateway thread header", () => {
+  it("leaves the route to the Sandboxes machine popover", () => {
+    expect(app.threadHeaderActions).toHaveLength(0);
   });
 });
 
