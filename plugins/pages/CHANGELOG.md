@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 - Forms on a page send their answers to the thread the page is shown in, as
   one queued message with the page id. Each answer goes under the label the

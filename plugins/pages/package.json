@@ -1,7 +1,7 @@
 {
   "name": "bb-plugin-pages",
-  "version": "0.3.0",
-  "description": "Publish versioned HTML and Markdown pages in project folders, browse them in BB, and share them securely.",
+  "version": "0.4.0",
+  "description": "Publish versioned HTML and Markdown pages in project folders, browse them in BB, ask questions with forms, and share them securely.",
   "license": "MIT",
   "author": "Hemanth Soni",
   "homepage": "https://github.com/hemaaanth/oh-my-bb/tree/main/plugins/pages",
@@ -28,7 +28,7 @@
   },
   "bb": {
     "name": "Pages",
-    "description": "Publish versioned pages in project folders, browse them in BB, and share them securely.",
+    "description": "Publish versioned pages in project folders, browse them in BB, ask questions with forms, and share them securely.",
     "branding": {
       "icon": "FileText"
     },
