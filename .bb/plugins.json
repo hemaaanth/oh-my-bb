@@ -4,6 +4,7 @@
   "name": "oh-my-bb",
   "plugins": [
     { "name": "model-gateway", "source": "./plugins/model-gateway" },
-    { "name": "pages", "source": "./plugins/pages" }
+    { "name": "pages", "source": "./plugins/pages" },
+    { "name": "webhooks", "source": "./plugins/webhooks" }
   ]
 }
