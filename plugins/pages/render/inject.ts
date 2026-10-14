@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { PageAssetName } from "../contract.js";
-import { FRAME_BRIDGE } from "./frame-bridge.js";
+import { FORMS_OFFLINE, FRAME_BRIDGE } from "./frame-bridge.js";
 import { escapeHtml, scanHtml } from "./html.js";
 import { DATA_TABLE_RUNTIME, PAGE_RUNTIME, needsDataTableRuntime, needsPageRuntime } from "./page-runtime.js";
 
@@ -50,7 +50,7 @@ type Insert = { at: number; text: string };
 
 /**
  * Add the theme link (first in <head>, so author styles win), the font preload,
- * data-bb-theme and data-bb-frame on <html>, the frame bridge (BB previews only), and before </body> the page runtime (only when the
+ * data-bb-theme and data-bb-frame on <html>, the frame bridge (BB previews only; other pages with a form get FORMS_OFFLINE), and before </body> the page runtime (only when the
  * page has tabs, contents, or zoomable images) and the chart runtime. Everything
  * else in the author's HTML stays byte-for-byte. Works on full documents,
  * documents without <html>/<head>/<body>, and bare fragments.
@@ -70,8 +70,9 @@ export function injectPage(html: string, options: InjectOptions): string {
   const inserts: Insert[] = [];
   const top = doctypeEnd < 0 ? 0 : doctypeEnd;
   const attrs = `${options.theme ? ` data-bb-theme="${options.theme}"` : ""}${options.frame ? ` data-bb-frame="${options.frame}"` : ""}`;
-  // Only BB previews (theme or frame set) talk to the BB app. Published and shared sites never get the bridge.
-  const head = options.theme || options.frame ? `${assets}<script>${FRAME_BRIDGE}</script>` : assets;
+  // Only BB previews (theme or frame set) talk to the BB app. Published and shared sites never get the bridge;
+  // a page with a form gets a note that answers are sent from BB.
+  const head = options.theme || options.frame ? `${assets}<script>${FRAME_BRIDGE}</script>` : /<form[\s>]/iu.test(html) ? `${assets}<script>${FORMS_OFFLINE}</script>` : assets;
 
   if (attrs && htmlTag) {
     // "<html" is 5 characters; ours come first, and the first duplicate attribute wins.

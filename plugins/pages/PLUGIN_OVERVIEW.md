@@ -25,6 +25,9 @@ To ask for changes, type a note in the page panel's feedback box. Pages sends it
 to the thread with the page id, so the agent updates the same page as a new
 version.
 
+An agent can also ask questions with a form on the page. When you send it, the
+answers go to the thread as one message, each under the label you saw.
+
 ## Standalone by default
 
 Pages does not require another BB plugin. If PR Review is installed separately,

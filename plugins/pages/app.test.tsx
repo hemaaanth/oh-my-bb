@@ -179,7 +179,7 @@ describe("borderless inline page", () => {
     const slot = render({ height: "300" });
     const frame = await slot.findByTitle("Page: Landing intent") as HTMLIFrameElement;
     expect(frame.getAttribute("src")).toBe(`/api/v1/plugins/pages/http/v?id=${v2}&theme=dark&frame=inline`);
-    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-forms");
     expect(frame.getAttribute("scrolling")).toBe("no");
     expect(frame.style.colorScheme).toBe("dark");
     expect(slot.queryByText("v2")).toBeNull();
@@ -187,6 +187,40 @@ describe("borderless inline page", () => {
     expect(slot.queryByTitle("Preview: Landing intent")).toBeNull();
     fireEvent.click(slot.getByRole("button", { name: "Open Landing intent in panel" }));
     expect(slot.inspection.navigateCalls.at(-1)).toMatchObject({ method: "openThreadPanel", options: { actionId: "page", params: { pageId } } });
+    slot.lifecycle.unmount();
+  });
+
+  it("sends a submitted form to the directive's thread and answers the frame", async () => {
+    const submitForm = vi.fn()
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: false, reason: "rate-limited", message: "Too many forms sent to this thread." });
+    const slot = renderSlot(pageSlot, { attributes: { id: pageId, version: v2, display: "inline" }, message, source: "::page{}", openWorkspaceFile: null }, { rpc: { getPage, submitForm } as never });
+    const frame = await slot.findByTitle("Page: Landing intent") as HTMLIFrameElement;
+    const replies = vi.spyOn(frame.contentWindow!, "postMessage");
+    const form = { submissionId: "f0000001", formTitle: "Plan", action: null, answers: [{ name: "go", label: "Go", value: true }] };
+    await post(frame, { type: "bb-pages:submit", ...form });
+    await waitFor(() => expect(replies).toHaveBeenCalledWith({ type: "bb-pages:submitted", submissionId: "f0000001", ok: true, message: "" }, "*"));
+    expect(submitForm).toHaveBeenCalledWith({ pageId, versionId: v2, threadId: "thread-a", ...form });
+    await post(frame, { type: "bb-pages:submit", ...form, submissionId: "f0000002" });
+    await waitFor(() => expect(replies).toHaveBeenCalledWith({ type: "bb-pages:submitted", submissionId: "f0000002", ok: false, message: "Too many forms sent to this thread." }, "*"));
+    // A form too large never reaches the server, but its status line still gets an answer.
+    await post(frame, { type: "bb-pages:submit", ...form, submissionId: "f0000003", answers: Array.from({ length: 6 }, (_, n) => ({ name: `n${n}`, label: "", value: "x".repeat(10_000) })) });
+    expect(replies).toHaveBeenLastCalledWith({ type: "bb-pages:submitted", submissionId: "f0000003", ok: false, message: "A form can send at most 50000 characters." }, "*");
+    expect(submitForm).toHaveBeenCalledTimes(2);
+    slot.lifecycle.unmount();
+  });
+
+  it("tells a live file's form to open the published page instead", async () => {
+    const liveUrl = "/api/v1/plugins/pages/http/file?threadId=thread-a&source=workspace&file=poll.html";
+    const submitForm = vi.fn();
+    const slot = renderSlot({ component: directiveComponent("inline-vis") }, { attributes: { file: "poll.html", display: "inline" }, message, source: "::inline-vis{}", openWorkspaceFile: null }, {
+      rpc: { resolveFile: () => ({ sourceKey: "workspace:poll.html", previewUrl: liveUrl, page: null }), submitForm } as never,
+    });
+    const frame = await slot.findByTitle("Page: poll.html") as HTMLIFrameElement;
+    const replies = vi.spyOn(frame.contentWindow!, "postMessage");
+    await post(frame, { type: "bb-pages:submit", submissionId: "f0000004", formTitle: null, action: null, answers: [] });
+    expect(replies).toHaveBeenLastCalledWith({ type: "bb-pages:submitted", submissionId: "f0000004", ok: false, message: "This view cannot send forms. Open the published page in the panel." }, "*");
+    expect(submitForm).not.toHaveBeenCalled();
     slot.lifecycle.unmount();
   });
 
@@ -251,6 +285,14 @@ describe("frame messages", () => {
     expect(readFrameMessage({ type: "bb-pages:page", url: "/api/v1/plugins/pages/http/a?id=x" })).toEqual({ type: "page", url: "/api/v1/plugins/pages/http/a?id=x" });
     for (const url of [42, `/${"a".repeat(9_000)}`]) expect(readFrameMessage({ type: "bb-pages:page", url })).toBeNull();
     for (const data of [null, "bb-pages:open", { type: "bb-pages:theme", theme: "dark" }, { type: "other", url: "https://example.com" }]) expect(readFrameMessage(data)).toBeNull();
+  });
+
+  it("reads a submitted form, and answers a bad one only when it can name it", () => {
+    const form = { submissionId: "f0000001", formTitle: " Plan ", action: null, answers: [{ name: "areas", label: "Areas", value: ["api"] }] };
+    expect(readFrameMessage({ type: "bb-pages:submit", ...form })).toEqual({ type: "submit", submission: { ...form, formTitle: "Plan" } });
+    expect(readFrameMessage({ type: "bb-pages:submit", ...form, answers: [{ name: "x", label: "x", value: 3 }] })).toEqual({ type: "submit-invalid", submissionId: "f0000001", message: "The form could not be read." });
+    expect(readFrameMessage({ type: "bb-pages:submit", ...form, extra: 1 })).toMatchObject({ type: "submit-invalid" });
+    for (const submissionId of [undefined, "short", "has space!", 7]) expect(readFrameMessage({ type: "bb-pages:submit", ...form, submissionId, answers: "x" })).toBeNull();
   });
 });
 

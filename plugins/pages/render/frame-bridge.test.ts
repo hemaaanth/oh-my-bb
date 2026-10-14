@@ -24,6 +24,7 @@ beforeAll(() => {
   window.history.replaceState(null, "", "/api/v1/plugins/pages/http/v?id=v1");
   Function(FRAME_BRIDGE)();
   window.addEventListener("click", (event) => { handled = event.defaultPrevented; event.preventDefault(); });
+  window.addEventListener("submit", (event) => { handled = event.defaultPrevented; event.preventDefault(); });
 });
 
 beforeEach(() => { posted.mockClear(); document.body.innerHTML = ""; });
@@ -98,5 +99,110 @@ describe("frame bridge height", () => {
     height = 500;
     resize();
     expect(posted).toHaveBeenLastCalledWith({ type: "bb-pages:height", height: 500 }, "*");
+  });
+});
+
+/** Submits the form with the button (if any) as the submitter, and returns the last post. */
+function submit(html: string, submitter?: string) {
+  document.body.innerHTML = html;
+  const form = document.querySelector("form")!;
+  form.requestSubmit(submitter ? document.querySelector<HTMLButtonElement>(submitter) : undefined);
+  return { form, post: posted.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined };
+}
+
+/** The host's answer for a submission, from the parent window. */
+function answer(data: Record<string, unknown>, source: Window = parent) {
+  window.dispatchEvent(new MessageEvent("message", { data: { type: "bb-pages:submitted", ...data }, source }));
+}
+
+describe("frame bridge forms", () => {
+  it("sends every named field under the label the reader saw", () => {
+    const { post } = submit(`<form>
+      <h2>Launch review</h2>
+      <label>Your name <input name="who" value="Ada"></label>
+      <input name="team" aria-label="Team" value="Core">
+      <input name="email" placeholder="Email address">
+      <textarea name="notes" data-label="Notes for the agent">Ship it</textarea>
+      <fieldset><legend>Risk</legend>
+        <label><input type="radio" name="risk" value="low">Low</label>
+        <label><input type="radio" name="risk" checked>High risk</label>
+      </fieldset>
+      <fieldset><legend>Areas</legend>
+        <label><input type="checkbox" name="area" value="api" checked>API</label>
+        <label><input type="checkbox" name="area" value="ui">UI</label>
+        <label><input type="checkbox" name="area" value="docs" checked>Docs</label>
+      </fieldset>
+      <label><input type="checkbox" name="urgent" checked> Urgent</label>
+      <label>Regions <select name="regions" multiple><option value="us" selected>US</option><option value="eu" selected>EU</option><option>Asia</option></select></label>
+      <input name="off" value="x" disabled><input type="file" name="upload"><input type="hidden" name="token" value="t1"><input value="no name">
+      <button>Send</button>
+    </form>`);
+    expect(post).toMatchObject({ type: "bb-pages:submit", formTitle: "Launch review", action: null });
+    expect(post!.submissionId).toMatch(/^[A-Za-z0-9_-]{8,64}$/u);
+    expect(post!.answers).toEqual([
+      { name: "who", label: "Your name", value: "Ada" },
+      { name: "team", label: "Team", value: "Core" },
+      { name: "email", label: "Email address", value: "" },
+      { name: "notes", label: "Notes for the agent", value: "Ship it" },
+      { name: "risk", label: "Risk", value: "High risk" },
+      { name: "area", label: "Areas", value: ["api", "docs"] },
+      { name: "urgent", label: "Urgent", value: true },
+      { name: "regions", label: "Regions", value: ["us", "eu"] },
+      { name: "token", label: "token", value: "t1" },
+    ]);
+  });
+
+  it("names the action only when the clicked button names one", () => {
+    expect(submit('<form data-title="Plan"><button name="choice" value="approve">Looks good</button></form>', "button").post).toMatchObject({ formTitle: "Plan", action: "approve" });
+    expect(submit('<form><button>Approve</button><button>Reject</button></form>', "button:last-child").post).toMatchObject({ formTitle: null, action: "Reject" });
+    expect(submit('<form aria-label="Single"><button>Send</button></form>', "button").post).toMatchObject({ formTitle: "Single", action: null });
+  });
+
+  it("locks the form while it sends, then shows the host's answer", () => {
+    const { form, post } = submit('<form><input name="a" value="1"><button>Send</button></form>');
+    const status = () => form.querySelector("[data-bb-pages-status]")!;
+    expect(form.getAttribute("aria-busy")).toBe("true");
+    expect(form.querySelector("input")!.disabled).toBe(true);
+    expect(status().textContent).toBe("Sending…");
+    expect(status().getAttribute("role")).toBe("status");
+    // A second submit while busy is held; an answer from another window is ignored.
+    form.requestSubmit();
+    expect(posted).toHaveBeenCalledTimes(1);
+    answer({ submissionId: post!.submissionId, ok: true }, window);
+    expect(form.getAttribute("aria-busy")).toBe("true");
+    answer({ submissionId: post!.submissionId, ok: true });
+    expect(form.hasAttribute("aria-busy")).toBe(false);
+    expect(form.querySelector("input")!.disabled).toBe(false);
+    expect(status().textContent).toBe("Sent to the thread.");
+  });
+
+  it("shows why a form was not sent, in the page's own status line", () => {
+    const { form, post } = submit('<form><input name="a"><p data-bb-pages-status class="mine"></p><button>Send</button></form>');
+    answer({ submissionId: post!.submissionId, ok: false, message: "Too many forms sent to this thread." });
+    expect(form.querySelectorAll("[data-bb-pages-status]")).toHaveLength(1);
+    expect(form.querySelector(".mine")!.textContent).toBe("Too many forms sent to this thread.");
+  });
+
+  it("gives up after 20 seconds without an answer", () => {
+    vi.useFakeTimers();
+    try {
+      const { form } = submit('<form><input name="a"><button>Send</button></form>');
+      vi.advanceTimersByTime(20_000);
+      expect(form.hasAttribute("aria-busy")).toBe(false);
+      expect(form.querySelector("[data-bb-pages-status]")!.textContent).toBe("BB did not answer. Send again.");
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("leaves manual, cancelled, and dialog forms to the page", () => {
+    submit('<form data-bb-pages-manual><input name="a"></form>');
+    expect(handled).toBe(false);
+    submit('<form method="dialog"><button>Close</button></form>');
+    expect(handled).toBe(false);
+    document.body.innerHTML = '<form><input name="a"></form>';
+    const form = document.querySelector("form")!;
+    form.addEventListener("submit", (event) => event.preventDefault());
+    form.requestSubmit();
+    expect(form.hasAttribute("aria-busy")).toBe(false);
+    expect(posted).not.toHaveBeenCalled();
   });
 });

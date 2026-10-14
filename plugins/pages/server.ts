@@ -26,6 +26,7 @@ export const coreRpcContract = defineRpcContract({
   deletePage: rpcContract.deletePage,
   runProducerAction: rpcContract.runProducerAction,
   sendFeedback: rpcContract.sendFeedback,
+  submitForm: rpcContract.submitForm,
 });
 
 export default function plugin(bb: BbPluginApi) {
@@ -98,6 +99,7 @@ export default function plugin(bb: BbPluginApi) {
     deletePage: ({ pageId }) => service.deletePage(pageId),
     runProducerAction: (input) => service.runProducerAction(input),
     sendFeedback: (input) => service.sendFeedback(input),
+    submitForm: (input) => service.submitForm(input),
   });
   registerRoutes(bb, store);
   registerTools(bb, service);

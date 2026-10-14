@@ -90,6 +90,15 @@ describe("injectPage", () => {
     expect(out.indexOf("bb-pages:open")).toBeLessThan(out.indexOf("author()"));
   });
 
+  it("adds only the offline form note to a published or shared page that has a form", () => {
+    const shared = inject('<body><form><input name="a"><button>Send</button></form></body>');
+    expect(shared).toContain("Open this page in BB to send your answers.");
+    expect(shared).not.toContain("bb-pages:");
+    expect(inject("<body><p>formal</p></body>")).not.toContain("<script>");
+    // A BB preview has the full bridge, which sends forms; it never gets the offline note.
+    expect(inject('<body><form></form></body>', "dark")).not.toContain("Open this page in BB");
+  });
+
   it("escapes the asset base", () => {
     expect(injectPage("<p>x</p>", { assetBase: '"><script>', theme: null, hasCharts: false })).not.toContain('"><script>_page');
   });

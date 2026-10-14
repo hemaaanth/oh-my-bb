@@ -1,6 +1,6 @@
 ---
 name: pages
-description: "Make a page: write an HTML or Markdown file, or a folder with index.html and its images, CSS, and other pages (a report, summary, plan, notes, comparison, dashboard, or chart), publish it with page_publish or `bb pages publish`, and show it inline with the ::page directive. Use whenever the user should see a document, a chart, or data that reads better as a page than as chat text, when they ask for a report, a chart, a preview, or a link, or when you update a page you published before. Replaces inline-vis and flint-chart."
+description: "Make a page: write an HTML or Markdown file, or a folder with index.html and its images, CSS, and other pages (a report, summary, plan, notes, comparison, dashboard, or chart), publish it with page_publish or `bb pages publish`, and show it inline with the ::page directive. Use whenever the user should see a document, a chart, or data that reads better as a page than as chat text, when they ask for a report, a chart, a preview, or a link, when you need the user to answer a short form, or when you update a page you published before. Replaces inline-vis and flint-chart."
 ---
 
 # Pages
@@ -194,9 +194,61 @@ that breaks these rules looks fine on disk and blank in BB.
 - **No `eval` and no `new Function`.** Libraries that compile code at runtime fail.
 - **No remote scripts, stylesheets, or fonts.** Never load a library from a CDN.
 - **Images and media** may be `https:`, `data:`, `blob:`, or files of a folder page. Local image paths in a single file are turned into `data:` at publish (see above).
-- **No forms that submit**, no access to the BB window, no storage you can rely on.
+- **Forms send to the thread** (see Forms below). They never navigate. No access to the BB window, and no storage you can rely on.
 - **Links** to `http:` and `https:` URLs open through BB, in the browser or
   a new tab. `#` links stay in the page.
+
+## Forms
+
+A `<form>` on a page sends its answers to the thread as your next message. Use
+one when you need several answers at once: a choice between options, a
+checklist to confirm, or a few fields to fill in. Do not use a form for one
+yes-or-no question. Ask it in chat.
+
+```html
+<form data-title="Launch plan">
+  <fieldset>
+    <legend>Rollout</legend>
+    <label><input type="radio" name="rollout" value="staged" checked> Staged</label>
+    <label><input type="radio" name="rollout" value="all"> All at once</label>
+  </fieldset>
+  <label>Anything else? <textarea name="notes"></textarea></label>
+  <button name="decision" value="approve">Approve</button>
+  <button name="decision" value="revise">Ask for changes</button>
+</form>
+```
+
+- **Every named field is sent**, blank ones included: `input`, `select`, and
+  `textarea`. Fields without a `name`, disabled fields, and file inputs are
+  skipped.
+- **Labels.** Each answer is sent under the label the user saw: `data-label`,
+  then `aria-label`, then its `<label>`, then the `<legend>`, then the
+  placeholder, then the name. Radio and checkbox groups use `data-label` or the
+  `<legend>`.
+- **Values.** A radio group sends the checked value. A single checkbox sends
+  Yes or No. A checkbox group or a multi-select sends a list. Give choices a
+  `value`; without one, the label text is sent.
+- **Action.** Give buttons a `name` and `value` when they mean different
+  things, like Approve and Ask for changes. The clicked button is sent as the
+  action.
+- **Title.** `data-title` names the form in the message. Without it, the
+  form's `aria-label` or first heading is used.
+- **Status.** While sending, the form is locked. Then a status line says
+  "Sent to the thread." or why it failed. Put an element with
+  `data-bb-pages-status` in the form to choose where that line goes;
+  otherwise it is added at the end of the form.
+- **Your own handling.** A form whose submit your script cancels
+  (`event.preventDefault()`), or a form marked `data-bb-pages-manual`, is left
+  to your script and sends nothing.
+
+The answers go to the thread the page is shown in, as a queued message with
+the page id. Forms send from the page panel and from inline pages. A card
+preview only opens the panel. A live `::inline-vis` file and a shared site do
+not send; a shared site tells the reader to open the page in BB. One thread
+takes at most ten forms a minute.
+
+When you republish a page after its form was answered, show the result and
+drop the form, so the user does not answer twice.
 
 ## The theme
 

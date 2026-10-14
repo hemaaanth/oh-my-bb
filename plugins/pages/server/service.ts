@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { MAX_PAGE_HTML_BYTES, directive, type PageDetail, type PublishFileInput, type SourceKey, type mutationResultSchema, type publishDocumentInputSchema } from "../contract.js";
+import { MAX_PAGE_HTML_BYTES, directive, type FormSubmission, type PageDetail, type PublishFileInput, type SourceKey, type mutationResultSchema, type publishDocumentInputSchema } from "../contract.js";
 import { inspectCharts, renderMarkdown, renderPrReview } from "../render/index.js";
 import { readSourceFile, readSourceFolder, relativeFile, resolveRoot, sourceKeyOf, type FileSource, type SourceFile } from "./files.js";
 import { inlineLocalImages } from "./images.js";
@@ -24,19 +24,50 @@ export const ARCHIVED_THREAD_RESULT = { ok: false, reason: "thread-archived", me
 const producerOkSchema = z.object({ ok: z.literal(true) });
 const archivedError = (error: unknown) => /thread is archived/iu.test(error instanceof Error ? error.message : String(error));
 
-/** The thread message for panel feedback: the note, then how to republish the same page. */
-export function feedbackMessage({ page, version, versions }: PageDetail, text: string): string {
+/** "page ID …, version N (the current version is M), published from x.html": which page and version the user saw. */
+function pageVersionText({ page, version, versions }: PageDetail): string {
   const current = versions.find((entry) => entry.id === page.currentVersionId)?.n;
   const seen = `version ${version.n}${current !== undefined && current !== version.n ? ` (the current version is ${current})` : ""}`;
   const source = version.sourcePath ? `, published from ${version.sourcePath}` : "";
+  return `page ID ${page.id}, ${seen}${source}`;
+}
+
+/** The thread message for panel feedback: the note, then how to republish the same page. */
+export function feedbackMessage(detail: PageDetail, text: string): string {
   return [
-    `Feedback on the page "${page.title}" (page ID ${page.id}, ${seen}${source}):`,
+    `Feedback on the page "${detail.page.title}" (${pageVersionText(detail)}):`,
     "",
     text.trim(),
     "",
-    `Update the page, then republish it with page_publish and pageId "${page.id}", so it stays one page with a new version.`,
+    `Update the page, then republish it with page_publish and pageId "${detail.page.id}", so it stays one page with a new version.`,
   ].join("\n");
 }
+
+function answerText(value: FormSubmission["answers"][number]["value"]): string {
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "(none selected)";
+  return value.trim() ? value : "(left blank)";
+}
+
+/**
+ * The thread message for a form the user sent from a page: which form and page, the clicked action,
+ * then every answer under the label the user saw. Blank answers are kept. `threadId` is where it goes:
+ * when that is not the thread that published the version, a line says so.
+ */
+export function formMessage(detail: PageDetail, { formTitle, action, answers }: FormSubmission, threadId: string): string {
+  const form = formTitle ? `the form "${formTitle}"` : "a form";
+  const lines = [`The user sent ${form} on the page "${detail.page.title}" (${pageVersionText(detail)}).`];
+  if (detail.version.threadId && detail.version.threadId !== threadId) lines.push(`The page was published in thread ${detail.version.threadId}. The user sent this form from this thread.`);
+  if (action) lines.push("", "**Action**", action);
+  for (const answer of answers) lines.push("", `**${answer.label.trim() || answer.name}**`, answerText(answer.value));
+  if (!action && !answers.length) lines.push("", "The form has no named fields.");
+  lines.push("", `If you update the page, republish it with page_publish and pageId "${detail.page.id}", so it stays one page with a new version.`);
+  return lines.join("\n");
+}
+
+/** Forms one thread can take per minute. A page's own script can submit without a click, so this caps a runaway page. */
+export const FORM_SUBMISSIONS_PER_MINUTE = 10;
+const RATE_LIMITED_RESULT = { ok: false, reason: "rate-limited", message: "Too many forms sent to this thread. Wait a minute and send again." } as const;
 
 export const sha256 = (html: string) => createHash("sha256").update(html, "utf8").digest("hex");
 
@@ -223,17 +254,54 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
 
   /**
    * Sends the user's note from the panel to a thread, with what the agent needs to
-   * republish the same page. Producer pages are left to their producer's actions.
-   * An archived thread returns ARCHIVED_THREAD_RESULT, like runProducerAction.
+   * republish the same page.
    */
   async function sendFeedback({ pageId, versionId, threadId, text }: { pageId: string; versionId: string; threadId: string; text: string }) {
+    return sendToThread(threadId, feedbackMessage(userDetail(pageId, versionId), text));
+  }
+
+  /** Thread id → times of its recent form submissions. */
+  const recentForms = new Map<string, number[]>();
+  /** "threadId submissionId" of recent submissions, oldest first, so a resent submission is not sent twice. */
+  const sentForms = new Set<string>();
+
+  /**
+   * Sends a form the user submitted from a page to the thread the page is shown in.
+   * Same checks as sendFeedback, plus a per-thread rate limit and a repeat check on the submission id.
+   */
+  async function submitForm({ pageId, versionId, threadId, ...submission }: FormSubmission & { pageId: string; versionId: string; threadId: string }) {
+    const detail = userDetail(pageId, versionId);
+    const key = `${threadId} ${submission.submissionId}`;
+    if (sentForms.has(key)) return { ok: true as const };
+    const now = Date.now();
+    const recent = (recentForms.get(threadId) ?? []).filter((time) => now - time < 60_000);
+    if (recent.length >= FORM_SUBMISSIONS_PER_MINUTE) return RATE_LIMITED_RESULT;
+    recentForms.set(threadId, [...recent, now]);
+    // Held before the send, so the same submission sent twice at once is sent once. A failed send can be retried.
+    sentForms.add(key);
+    if (sentForms.size > 500) sentForms.delete(sentForms.values().next().value!);
+    const result = await sendToThread(threadId, formMessage(detail, submission, threadId)).catch((error: unknown) => {
+      sentForms.delete(key);
+      throw error;
+    });
+    if (!result.ok) sentForms.delete(key);
+    return result;
+  }
+
+  /** A page version the user can send notes or forms about. Producer pages are left to their producer's actions. */
+  function userDetail(pageId: string, versionId: string) {
     const detail = store.detail(pageId, versionId);
     if (!detail) throw new PageInputError(`Page not found: ${pageId}`);
     if (detail.page.producer) throw new PageInputError(`Page ${pageId} is made by ${detail.page.producer}; use its actions instead.`);
+    return detail;
+  }
+
+  /** Queues a message in a thread. An archived thread returns ARCHIVED_THREAD_RESULT, like runProducerAction. */
+  async function sendToThread(threadId: string, text: string) {
     const thread = await sdk.threads.get({ threadId }).catch(() => null);
     if (thread?.archivedAt) return ARCHIVED_THREAD_RESULT;
     try {
-      await sdk.threads.send({ threadId, mode: "queue-if-active", input: [{ type: "text", text: feedbackMessage(detail, text), mentions: [] }] });
+      await sdk.threads.send({ threadId, mode: "queue-if-active", input: [{ type: "text", text, mentions: [] }] });
       return { ok: true as const };
     } catch (error) {
       if (archivedError(error)) return ARCHIVED_THREAD_RESULT;
@@ -241,7 +309,7 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
     }
   }
 
-  return { publishFile, publishDocument, findPage, resolveFile, renamePage, deletePage, runProducerAction, sendFeedback, getPage: store.detail, listPages: store.list, listFolders: store.listFolders };
+  return { publishFile, publishDocument, findPage, resolveFile, renamePage, deletePage, runProducerAction, sendFeedback, submitForm, getPage: store.detail, listPages: store.list, listFolders: store.listFolders };
 }
 
 export const filePreviewUrl = (threadId: string, source: FileSource, file: string) => `${HTTP_BASE}/file?${new URLSearchParams({ threadId, source, file }).toString()}`;

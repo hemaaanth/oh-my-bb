@@ -1,19 +1,37 @@
 // The host side of the frame bridge. Protocol: FRAME_MESSAGE in contract.ts. Page side: render/frame-bridge.ts.
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { useBbNavigate } from "@get-bb/plugin-sdk/app";
-import { FRAME_MESSAGE } from "../contract.js";
-import { themedUrl, usePreviewTheme } from "./ui.js";
+import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
+import { FRAME_MESSAGE, formSubmissionSchema, type FormSubmission, type PagesRpc } from "../contract.js";
+import { messageOf, themedUrl, usePreviewTheme } from "./ui.js";
 
 /** Far taller than any page a chat frame shows. A larger report is noise. */
 const MAX_REPORTED_HEIGHT = 100_000;
 const MAX_URL_LENGTH = 8_192;
 
-export type FrameMessage = { type: "open" | "page"; url: string } | { type: "height"; height: number };
+export type FrameMessage =
+  | { type: "open" | "page"; url: string }
+  | { type: "height"; height: number }
+  | { type: "submit"; submission: FormSubmission }
+  | { type: "submit-invalid"; submissionId: string; message: string };
+
+/** Where a frame's forms go: the page version it shows, and the thread it is shown in. */
+export type FormTarget = { pageId: string; versionId: string; threadId: string };
+const NO_FORM_TARGET = "This view cannot send forms. Open the published page in the panel.";
 
 /** A page's message, checked. Anything else, including a link that is not http(s), is null. */
 export function readFrameMessage(data: unknown): FrameMessage | null {
   if (typeof data !== "object" || data === null) return null;
   const { type, url, height } = data as Record<string, unknown>;
+  if (type === FRAME_MESSAGE.submit) {
+    const { type: _type, ...fields } = data as Record<string, unknown>;
+    const parsed = formSubmissionSchema.safeParse(fields);
+    if (parsed.success) return { type: "submit", submission: parsed.data };
+    // A form too large or malformed still gets an answer, so its status line does not wait.
+    const { submissionId } = fields;
+    return typeof submissionId === "string" && /^[A-Za-z0-9_-]{8,64}$/u.test(submissionId)
+      ? { type: "submit-invalid", submissionId, message: parsed.error.issues.find((issue) => issue.code === "custom")?.message ?? "The form could not be read." }
+      : null;
+  }
   if (type === FRAME_MESSAGE.open) {
     if (typeof url !== "string" || url.length > MAX_URL_LENGTH) return null;
     try {
@@ -58,9 +76,11 @@ export const themeMessage = (theme: "light" | "dark") => ({ type: FRAME_MESSAGE.
  * One preview iframe's side of the bridge. The first theme rides in the URL, so the page paints themed.
  * Later theme changes are posted, so the src stays the same and the page does not reload.
  * Only messages from this iframe's own window count. The frame stays sandboxed without allow-same-origin.
+ * A submitted form goes to `forms` with submitForm; without a target, the form is told why it cannot send.
  */
-export function useFrameBridge(previewUrl: string, frame?: "card" | "inline", onHeight?: (height: number) => void) {
+export function useFrameBridge(previewUrl: string, frame?: "card" | "inline", onHeight?: (height: number) => void, forms?: FormTarget | null) {
   const navigate = useBbNavigate();
+  const rpc = useRpc<PagesRpc>();
   const theme = usePreviewTheme();
   const ref = useRef<HTMLIFrameElement>(null);
   // A new page or version loads with the theme of that moment.
@@ -84,11 +104,22 @@ export function useFrameBridge(previewUrl: string, frame?: "card" | "inline", on
         if (!navigate.openUrl(message.url)) window.open(message.url, "_blank", "noopener,noreferrer");
       } else if (message?.type === "height") {
         onHeight?.(message.height);
+      } else if (message?.type === "submit" || message?.type === "submit-invalid") {
+        const reply = (submissionId: string, ok: boolean, text = "") => own.postMessage({ type: FRAME_MESSAGE.submitted, submissionId, ok, message: text }, "*");
+        if (message.type === "submit-invalid") reply(message.submissionId, false, message.message);
+        else if (!forms) reply(message.submission.submissionId, false, NO_FORM_TARGET);
+        else {
+          const { submissionId } = message.submission;
+          rpc.call("submitForm", { ...forms, ...message.submission }).then(
+            (result) => reply(submissionId, result.ok, result.ok ? "" : result.message),
+            (error: unknown) => reply(submissionId, false, messageOf(error, "The form could not be sent.")),
+          );
+        }
       }
     };
     window.addEventListener("message", listen);
     return () => window.removeEventListener("message", listen);
-  }, [navigate, onHeight, previewUrl, theme, frame]);
+  }, [navigate, onHeight, previewUrl, theme, frame, rpc, forms?.pageId, forms?.versionId, forms?.threadId]);
   // The frame's colour scheme matches the app's. A mismatch makes the browser paint an opaque backdrop behind the page.
   const style: CSSProperties = { colorScheme: theme };
   const src = page?.previewUrl === previewUrl ? page.src : themedUrl(loaded.previewUrl, loaded.theme, frame);

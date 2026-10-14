@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Forms on a page send their answers to the thread the page is shown in, as
+  one queued message with the page id. Each answer goes under the label the
+  reader saw, and the clicked button is the action. Forms send from the page
+  panel and inline pages. A form marked `data-bb-pages-manual`, or cancelled
+  by the page's own script, sends nothing.
+- A retried form is sent once. One thread takes at most ten forms a minute.
+- Shared sites keep forms from navigating and tell the reader to open the page
+  in BB.
+
 ## 0.3.0
 
 - Publish a folder with `index.html` plus its images, CSS, fonts, scripts, and

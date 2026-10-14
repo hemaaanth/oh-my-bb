@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PAGE_CSP } from "../render/index.js";
+import { FORM_SUBMISSIONS_PER_MINUTE } from "./service.js";
 import { DIRECTIVE_RULE, RESTATE_RULE } from "./tools.js";
 import { WORKSPACE, pagesHost, storageOf } from "./test-fakes.js";
 
@@ -122,6 +123,68 @@ describe("publishDocument", () => {
     const review = await harness.behavior.callRpc("publishDocument", documentInput) as Result;
     await expect(harness.behavior.callRpc("sendFeedback", { pageId: review.page.id, versionId: review.version.id, threadId: "thr_view", text: "x" })).rejects.toThrow(/use its actions/u);
     expect(sent).toHaveLength(1);
+    await harness.lifecycle.dispose();
+  });
+
+  it("sends a submitted form to the thread the page is shown in, once per submission", async () => {
+    const { harness, files, sent, archived } = pagesHost();
+    files.set(`${WORKSPACE}/plan.html`, html("<h1>Plan</h1>"));
+    const page = await harness.behavior.callRpc("publishFile", { threadId: "thr_a", file: "plan.html" }) as Result;
+    const pageId = page.page.id;
+    const form = {
+      pageId, versionId: page.version.id, threadId: "thr_a", submissionId: "fabc12345", formTitle: "Launch review", action: "Approve",
+      answers: [
+        { name: "notes", label: "Notes", value: "Ship it" },
+        { name: "areas", label: "Areas", value: ["api", "docs"] },
+        { name: "urgent", label: "Urgent", value: true },
+        { name: "none", label: "", value: [] },
+        { name: "blank", label: "Anything else", value: "  " },
+      ],
+    };
+    expect(await harness.behavior.callRpc("submitForm", form)).toEqual({ ok: true });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ threadId: "thr_a", mode: "queue-if-active" });
+    expect(sent[0]!.text).toBe([
+      `The user sent the form "Launch review" on the page "Plan" (page ID ${pageId}, version 1, published from plan.html).`,
+      "", "**Action**", "Approve",
+      "", "**Notes**", "Ship it",
+      "", "**Areas**", "api, docs",
+      "", "**Urgent**", "Yes",
+      "", "**none**", "(none selected)",
+      "", "**Anything else**", "(left blank)",
+      "", `If you update the page, republish it with page_publish and pageId "${pageId}", so it stays one page with a new version.`,
+    ].join("\n"));
+
+    // The same submission again (a retry, or two at once) is not sent twice; in another thread it is a different send.
+    expect(await Promise.all([harness.behavior.callRpc("submitForm", form), harness.behavior.callRpc("submitForm", form)])).toEqual([{ ok: true }, { ok: true }]);
+    expect(sent).toHaveLength(1);
+    expect(await harness.behavior.callRpc("submitForm", { ...form, threadId: "thr_view", formTitle: null, action: null, answers: [] })).toEqual({ ok: true });
+    expect(sent[1]!.threadId).toBe("thr_view");
+    expect(sent[1]!.text).toContain(`The user sent a form on the page "Plan"`);
+    expect(sent[1]!.text).toContain("The page was published in thread thr_a. The user sent this form from this thread.");
+    expect(sent[1]!.text).toContain("The form has no named fields.");
+
+    archived.add("thr_old");
+    expect(await harness.behavior.callRpc("submitForm", { ...form, threadId: "thr_old" })).toMatchObject({ ok: false, reason: "thread-archived" });
+    // A failed send is not remembered, so sending again tries again.
+    expect(await harness.behavior.callRpc("submitForm", { ...form, threadId: "thr_old" })).toMatchObject({ ok: false, reason: "thread-archived" });
+    await expect(harness.behavior.callRpc("submitForm", { ...form, submissionId: "bad id" })).rejects.toThrow();
+    await expect(harness.behavior.callRpc("submitForm", { ...form, answers: [{ name: "x", label: "x", value: "y".repeat(10_001) }] })).rejects.toThrow();
+    const review = await harness.behavior.callRpc("publishDocument", documentInput) as Result;
+    await expect(harness.behavior.callRpc("submitForm", { ...form, pageId: review.page.id, versionId: review.version.id })).rejects.toThrow(/use its actions/u);
+    expect(sent).toHaveLength(2);
+    await harness.lifecycle.dispose();
+  });
+
+  it("limits how many forms one thread takes in a minute", async () => {
+    const { harness, files, sent } = pagesHost();
+    files.set(`${WORKSPACE}/poll.html`, html("<h1>Poll</h1>"));
+    const page = await harness.behavior.callRpc("publishFile", { threadId: "thr_a", file: "poll.html" }) as Result;
+    const send = (n: number, threadId = "thr_a") => harness.behavior.callRpc("submitForm", { pageId: page.page.id, versionId: page.version.id, threadId, submissionId: `form-${String(n).padStart(4, "0")}`, formTitle: null, action: null, answers: [] });
+    for (let n = 0; n < FORM_SUBMISSIONS_PER_MINUTE; n += 1) expect(await send(n)).toEqual({ ok: true });
+    expect(await send(99)).toMatchObject({ ok: false, reason: "rate-limited" });
+    expect(await send(100, "thr_b")).toEqual({ ok: true });
+    expect(sent).toHaveLength(FORM_SUBMISSIONS_PER_MINUTE + 1);
     await harness.lifecycle.dispose();
   });
 

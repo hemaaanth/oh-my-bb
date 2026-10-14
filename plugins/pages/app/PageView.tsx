@@ -8,7 +8,7 @@ import { ShareButton } from "./share/SharePopover.js";
 import { pageDirective, usePageDetail } from "./data.js";
 import type { FileSource } from "./directives.js";
 import { useResolvedFile } from "./PageCard.js";
-import { useFrameBridge } from "./bridge.js";
+import { useFrameBridge, type FormTarget } from "./bridge.js";
 import { PAGE_BG, PORTAL_SCOPE, focusRing, messageOf, relativeTime, usePreviewTheme } from "./ui.js";
 
 export const LIBRARY_PATH = "pages";
@@ -26,10 +26,13 @@ function PanelShell({ header, banner, children }: { header: ReactNode; banner?: 
   </div>;
 }
 
-/** The full page. The bridge keeps it in the app theme without a reload, opens its links, and loads folder pages it links to. */
-function Preview({ title, previewUrl }: { title: string; previewUrl: string }) {
-  const bridge = useFrameBridge(previewUrl);
-  return <iframe ref={bridge.ref} title={title} src={bridge.src} onLoad={bridge.onLoad} style={bridge.style} sandbox="allow-scripts" className="absolute inset-0 size-full border-0 bg-transparent" />;
+/**
+ * The full page. The bridge keeps it in the app theme without a reload, opens its links, loads folder pages it links to,
+ * and sends its forms to `forms`. A live file has no published version to name, so it sends none.
+ */
+function Preview({ title, previewUrl, forms = null }: { title: string; previewUrl: string; forms?: FormTarget | null }) {
+  const bridge = useFrameBridge(previewUrl, undefined, undefined, forms);
+  return <iframe ref={bridge.ref} title={title} src={bridge.src} onLoad={bridge.onLoad} style={bridge.style} sandbox="allow-scripts allow-forms" className="absolute inset-0 size-full border-0 bg-transparent" />;
 }
 
 function RenameInput({ detail, onDone }: { detail: PageDetail; onDone: (error?: string) => void }) {
@@ -259,7 +262,7 @@ export function PageView({ pageId, versionId = null, inLibrary = false, threadId
   const detail = latest.state.value;
   const shown = olderId ? older.state.status === "ready" ? older.state.value : null : detail;
 
-  // Producer actions and feedback go to the thread the panel is open in; the library has none, so use the thread that made the version.
+  // Producer actions, feedback, and forms go to the thread the panel is open in; the library has none, so use the thread that made the version.
   const actionThreadId = threadId ?? detail.version.threadId;
   const header = <>
     {renaming
@@ -290,7 +293,7 @@ export function PageView({ pageId, versionId = null, inLibrary = false, threadId
       ? <><span className="tabular-nums">Viewing v{shown.version.n}</span><span aria-hidden>·</span><button type="button" className={`rounded-sm text-foreground underline-offset-2 hover:underline ${focusRing}`} onClick={() => setViewing(null)}>Back to latest</button></>
       : null;
   let body: ReactNode;
-  if (shown) body = <Preview title={`${shown.page.title}, version ${shown.version.n}`} previewUrl={shown.previewUrl} />;
+  if (shown) body = <Preview title={`${shown.page.title}, version ${shown.version.n}`} previewUrl={shown.previewUrl} forms={!shown.page.producer && actionThreadId ? { pageId: shown.page.id, versionId: shown.version.id, threadId: actionThreadId } : null} />;
   else if (older.state.status === "error") body = <p role="alert" className={quiet}>{older.state.message}</p>;
   else if (older.state.status === "missing") body = <p role="status" className={quiet}>This version no longer exists.</p>;
   else body = <p role="status" className={quiet}>Loading version…</p>;

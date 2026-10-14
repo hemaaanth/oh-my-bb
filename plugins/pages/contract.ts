@@ -164,6 +164,27 @@ export const shareInputSchema = z.object({
 }).strict().refine((v) => v.access !== "restricted" || (v.allowedDomains?.length ?? 0) + (v.allowedEmails?.length ?? 0) > 0, { message: "Restricted access needs at least one domain or email" });
 export type ShareInput = z.infer<typeof shareInputSchema>;
 
+// ---- Forms ----------------------------------------------------------------
+/** At most this many characters across every answer value of one submission. */
+export const MAX_FORM_CHARS = 50_000;
+const answerValueSchema = z.union([z.string().max(10_000), z.array(z.string().max(1_000)).max(100), z.boolean()]);
+/** One named field: its name, the label the reader saw, and its value. A checkbox is a boolean; a group or multi-select is a list. */
+export const formAnswerSchema = z.object({ name: z.string().min(1).max(200), label: z.string().max(300), value: answerValueSchema }).strict();
+export type FormAnswer = z.infer<typeof formAnswerSchema>;
+/** What the frame bridge posts for a submitted form. `action` is the clicked button, when it says which. */
+const formSubmissionShape = {
+  submissionId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/u),
+  formTitle: z.string().trim().max(300).nullable(),
+  action: z.string().trim().max(300).nullable(),
+  answers: z.array(formAnswerSchema).max(200),
+};
+const formChars = ({ answers }: { answers: FormAnswer[] }) =>
+  answers.reduce((sum, { value }) => sum + (typeof value === "string" ? value.length : Array.isArray(value) ? value.join("").length : 0), 0);
+const withinFormLimit = [(v: { answers: FormAnswer[] }) => formChars(v) <= MAX_FORM_CHARS, { message: `A form can send at most ${MAX_FORM_CHARS} characters.` }] as const;
+export const formSubmissionSchema = z.object(formSubmissionShape).strict().refine(...withinFormLimit);
+export type FormSubmission = z.infer<typeof formSubmissionSchema>;
+const submitFormInputSchema = z.object({ ...formSubmissionShape, pageId: uuid, versionId: uuid, threadId: z.string().min(1) }).strict().refine(...withinFormLimit);
+
 // ---- RPC ------------------------------------------------------------------
 // Core methods: T1. Share methods: T4. The app (T3) calls both.
 export const rpcContract = defineRpcContract({
@@ -183,6 +204,8 @@ export const rpcContract = defineRpcContract({
   runProducerAction: { input: z.object({ pageId: uuid, threadId: z.string().min(1), action: z.enum(["explain", "fix", "rerun"]), findingId: z.string().trim().min(1).max(100).optional() }).strict(), output: z.union([z.object({ ok: z.literal(true) }).strict(), z.object({ ok: z.literal(false), reason: z.literal("thread-archived"), message: z.string() }).strict()]) },
   /** The panel's Send feedback box. Sends the note to the thread with the page ID, so the agent republishes the same page. Not for producer pages. */
   sendFeedback: { input: z.object({ pageId: uuid, versionId: uuid, threadId: z.string().min(1), text: z.string().trim().min(1).max(4_000) }).strict(), output: z.union([z.object({ ok: z.literal(true) }).strict(), z.object({ ok: z.literal(false), reason: z.literal("thread-archived"), message: z.string() }).strict()]) },
+  /** A form the reader sent from a page (FRAME_MESSAGE.submit). Queues one message in the thread the page is shown in. Not for producer pages. */
+  submitForm: { input: submitFormInputSchema, output: z.union([z.object({ ok: z.literal(true) }).strict(), z.object({ ok: z.literal(false), reason: z.enum(["thread-archived", "rate-limited"]), message: z.string() }).strict()]) },
   // T4
   getShare: { input: z.object({ pageId: uuid }).strict(), output: z.object({ configured: z.boolean(), share: shareSchema.nullable(), defaults: z.object({ access: accessSchema, allowedDomains: z.array(z.string()) }).strict() }).strict() },
   sharePage: { input: shareInputSchema, output: shareSchema },
@@ -215,8 +238,12 @@ export type PageAssetName = (typeof PAGE_ASSET_NAMES)[number];
  *   page -> host  { type: height, height }                   content height in CSS pixels (inline frames only)
  *   page -> host  { type: page, url }                        a link to another page of the same folder version (/v or /a);
  *                                                            the host loads it into the same frame
+ *   page -> host  { type: submit, ...FormSubmission }        a form the reader sent; the host calls submitForm
+ *   host -> page  { type: submitted, submissionId, ok, message }  the outcome, shown in the form's status line
  */
-export const FRAME_MESSAGE = { theme: "bb-pages:theme", open: "bb-pages:open", height: "bb-pages:height", page: "bb-pages:page" } as const;
+export const FRAME_MESSAGE = { theme: "bb-pages:theme", open: "bb-pages:open", height: "bb-pages:height", page: "bb-pages:page", submit: "bb-pages:submit", submitted: "bb-pages:submitted" } as const;
+/** A form with this attribute is left to the page's own script. */
+export const MANUAL_FORM_ATTRIBUTE = "data-bb-pages-manual";
 
 // ---- Directives (T3) -------------------------------------------------------
 //   ::page{id version height? display?}          canonical

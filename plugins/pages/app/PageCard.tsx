@@ -1,7 +1,7 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { useBbNavigate, useRpc, type PluginMessageDirectiveProps } from "@get-bb/plugin-sdk/app";
 import type { PageDetail, PageDisplay, PagesRpc } from "../contract.js";
-import { useFrameBridge } from "./bridge.js";
+import { useFrameBridge, type FormTarget } from "./bridge.js";
 import { ShareButton } from "./share/SharePopover.js";
 import { pageTag, sourceTag, updateCached, useCachedQuery, usePageDetail, type Load } from "./data.js";
 import { parseDirective, type DirectiveName, type FileSource } from "./directives.js";
@@ -16,7 +16,8 @@ function readCollapsed() {
   try { return window.localStorage.getItem(COLLAPSED_KEY) === "true"; } catch { return false; }
 }
 
-type FrameProps = { title: string; version: string | null; share: ReactNode; height: number; previewUrl: string; display: PageDisplay; onOpen: () => void };
+/** `forms` is where the inline frame sends a submitted form. The card is a thumbnail and sends none. */
+type FrameProps = { title: string; version: string | null; share: ReactNode; height: number; previewUrl: string; display: PageDisplay; forms?: FormTarget | null; onOpen: () => void };
 
 /** Every directive renders through one of the two frames. */
 function PageFrame({ display, ...props }: FrameProps) {
@@ -24,7 +25,7 @@ function PageFrame({ display, ...props }: FrameProps) {
 }
 
 /** The 32px bar plus a zoomed-out live preview. A click anywhere opens the panel. The compact ShareButton shows the shared dot. */
-function CardFrame({ title, version, share, height, previewUrl, onOpen }: Omit<FrameProps, "display">) {
+function CardFrame({ title, version, share, height, previewUrl, onOpen }: Omit<FrameProps, "display" | "forms">) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const bridge = useFrameBridge(previewUrl, "card");
   const toggle = () => {
@@ -51,14 +52,14 @@ function CardFrame({ title, version, share, height, previewUrl, onOpen }: Omit<F
 
 /**
  * The borderless preview: the page itself, on the thread's background, as part of the reply. It is interactive and
- * fits the page's reported height. Until the first report it holds the directive height.
+ * fits the page's reported height. Until the first report it holds the directive height. Its forms send to `forms`.
  */
-function InlineFrame({ title, height, previewUrl, onOpen }: Omit<FrameProps, "display">) {
+function InlineFrame({ title, height, previewUrl, forms, onOpen }: Omit<FrameProps, "display">) {
   const [contentHeight, setContentHeight] = useState<number | null>(null);
-  const bridge = useFrameBridge(previewUrl, "inline", setContentHeight);
+  const bridge = useFrameBridge(previewUrl, "inline", setContentHeight, forms);
   const clipped = contentHeight !== null && contentHeight > MAX_INLINE_HEIGHT;
   return <div className="group/page relative my-2" style={{ height: contentHeight === null ? height : Math.min(contentHeight, MAX_INLINE_HEIGHT) }}>
-    <iframe ref={bridge.ref} title={`Page: ${title}`} src={bridge.src} onLoad={bridge.onLoad} style={bridge.style} sandbox="allow-scripts" loading="lazy" scrolling="no" className="block size-full border-0 bg-transparent" />
+    <iframe ref={bridge.ref} title={`Page: ${title}`} src={bridge.src} onLoad={bridge.onLoad} style={bridge.style} sandbox="allow-scripts allow-forms" loading="lazy" scrolling="no" className="block size-full border-0 bg-transparent" />
     {clipped ? <>
       <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-transparent to-background" />
       <button type="button" onClick={onOpen} className={`absolute bottom-2 left-1/2 h-7 -translate-x-1/2 cursor-pointer rounded-md border border-border bg-background px-2.5 text-xs text-foreground hover:bg-state-hover ${focusRing}`}>Open full page</button>
@@ -67,7 +68,8 @@ function InlineFrame({ title, height, previewUrl, onOpen }: Omit<FrameProps, "di
   </div>;
 }
 
-function PageCard({ pageId, versionId, height, display, source }: { pageId: string; versionId: string | null; height: number; display: PageDisplay; source: string }) {
+/** `threadId` is the thread the directive is in: the page's forms send there. */
+function PageCard({ pageId, versionId, threadId, height, display, source }: { pageId: string; versionId: string | null; threadId: string; height: number; display: PageDisplay; source: string }) {
   const navigate = useBbNavigate();
   const { state } = usePageDetail(pageId, versionId);
   if (state.status === "loading" || state.status === "idle") return <QuietLine>Loading page…</QuietLine>;
@@ -83,6 +85,7 @@ function PageCard({ pageId, versionId, height, display, source }: { pageId: stri
     height={height}
     previewUrl={previewUrl}
     display={display}
+    forms={page.producer ? null : { pageId: page.id, versionId: version.id, threadId }}
     onOpen={() => navigate.openThreadPanel({ actionId: PANEL_ACTION_ID, title: page.title, params: pinnedOlder ? { pageId: page.id, versionId: version.id } : { pageId: page.id } })}
   />;
 }
@@ -135,7 +138,7 @@ export function directiveComponent(name: DirectiveName) {
     if (!parsed.ok) return <QuietLine tone="error" source={props.source}>{parsed.message}</QuietLine>;
     const card = parsed.ref;
     return card.kind === "page"
-      ? <PageCard pageId={card.pageId} versionId={card.versionId} height={card.height} display={card.display} source={props.source} />
+      ? <PageCard pageId={card.pageId} versionId={card.versionId} threadId={props.message.threadId} height={card.height} display={card.display} source={props.source} />
       : <FileCard threadId={props.message.threadId} file={card.file} source={card.source} height={card.height} display={card.display} directiveSource={props.source} />;
   };
 }
