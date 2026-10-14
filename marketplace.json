@@ -60,6 +60,35 @@
           "tagPrefix": "pages/"
         }
       }
+    },
+    {
+      "id": "webhooks",
+      "displayName": "Webhooks",
+      "description": "Receive webhooks from PostHog, Slack, and other services, and turn them into thread messages, new threads, or automation runs. Supports Standard Webhooks signatures (as PostHog sends), Slack request signatures, and bearer tokens. Automation runs use their saved prompt; payload fields are not forwarded. Needs a public HTTPS route to one path on your BB server.",
+      "icon": { "url": "plugins/webhooks/icons/webhook.svg" },
+      "tags": [
+        "automations",
+        "events",
+        "ingress",
+        "posthog",
+        "slack",
+        "standard-webhooks",
+        "threads",
+        "webhooks"
+      ],
+      "author": {
+        "name": "Hemanth Soni",
+        "github": "hemaaanth",
+        "url": "https://github.com/hemaaanth"
+      },
+      "source": {
+        "git": {
+          "url": "https://github.com/hemaaanth/oh-my-bb.git",
+          "subdir": "plugins/webhooks",
+          "range": "^0.1.0",
+          "tagPrefix": "webhooks/"
+        }
+      }
     }
   ]
 }
