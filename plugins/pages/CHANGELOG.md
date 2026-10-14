@@ -24,6 +24,8 @@
   keep the browser's control. A focused field shows an accent border and no outer ring, so nothing
   is cut off at the edge of an inline page. Chosen options in a multi-select
   keep the theme's colours while it has focus.
+- Inline pages keep a 2px side inset, so a full-width field's border is not
+  cut off at the frame's right edge on a fractional display scale.
 - `page_publish` shows a page with a form inline by default, since a card
   cannot send forms.
 
