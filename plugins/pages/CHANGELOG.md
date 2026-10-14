@@ -21,7 +21,9 @@
   browser's: a list with groups and a check on the chosen option, a month
   calendar with Today and Clear, and a list of times at the field's step.
   Number fields get − and + buttons. Mark a field `data-bb-pages-native` to
-  keep the browser's control. Text fields no longer show two focus rings.
+  keep the browser's control. A focused field shows an accent border and no outer ring, so nothing
+  is cut off at the edge of an inline page. Chosen options in a multi-select
+  keep the theme's colours while it has focus.
 - `page_publish` shows a page with a form inline by default, since a card
   cannot send forms.
 

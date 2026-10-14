@@ -303,18 +303,15 @@
   line-height: 1.5;
   font-variation-settings: "opsz" 14;
   font-variant-numeric: tabular-nums;
-  transition: border-color 150ms, box-shadow 150ms, background-color 150ms;
+  transition: border-color 150ms, background-color 150ms;
 }
 :where(textarea) { min-height: 6.5rem; resize: vertical; field-sizing: content; max-height: 24rem; }
 :where(input, textarea)::placeholder { color: var(--bb-muted); opacity: 0.8; }
 :where(input:hover, select:hover, textarea:hover):where(:not(:disabled, :focus)) { border-color: var(--bb-link-line); }
-:where(input, select, textarea):where(:focus-visible, :focus) {
-  outline: none;
-  border-color: var(--bb-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bb-accent) 22%, transparent);
-}
+/* Focus is the border only. A ring outside the field is cut off at the edge
+ * of an inline frame, which has no side padding. */
+:where(input, select, textarea):where(:focus-visible, :focus) { outline: none; border-color: var(--bb-accent); }
 :where(input, select, textarea):where(:user-invalid, [aria-invalid="true"]) { border-color: var(--bb-negative); }
-:where(input, select, textarea):where(:user-invalid, [aria-invalid="true"]):where(:focus) { box-shadow: 0 0 0 3px color-mix(in srgb, var(--bb-negative) 22%, transparent); }
 :where(input:disabled, select:disabled, textarea:disabled, button:disabled) { cursor: not-allowed; opacity: 0.55; }
 :where(input[type="date"], input[type="time"], input[type="datetime-local"], input[type="month"], input[type="week"])::-webkit-calendar-picker-indicator { opacity: 0.5; cursor: pointer; }
 :where(input[type="search"])::-webkit-search-cancel-button { opacity: 0.5; }
@@ -332,7 +329,9 @@
 }
 :where(select[multiple]) { padding: 0.25rem; overflow-y: auto; scrollbar-width: thin; }
 :where(select[multiple] option) { padding: 0.3125rem 0.5rem; border-radius: 0.3125rem; }
-:where(select[multiple] option:checked) { background: var(--bb-hover); color: var(--bb-strong); }
+/* Chromium paints its own fill on a chosen option in a focused list box; a
+ * gradient image draws over it. */
+:where(select[multiple] option:checked) { background: linear-gradient(var(--bb-hover), var(--bb-hover)); color: var(--bb-strong); -webkit-text-fill-color: var(--bb-strong); }
 
 /* Checkbox and radio: drawn, so they share the field surface and edge.
  * Checked fills with the heading colour; the mark is the page colour. */
@@ -526,10 +525,7 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238a8a8a' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='5.75'/%3E%3Cpath d='M8 5v3.25l2.25 1.25'/%3E%3C/svg%3E");
 }
 :where(form[data-bb-pages-state="sent"]) :where(input:is([type="date"], [type="time"]):disabled) { background-image: none; }
-:where(select[aria-expanded="true"], input[aria-expanded="true"]) {
-  border-color: var(--bb-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bb-accent) 22%, transparent);
-}
+:where(select[aria-expanded="true"], input[aria-expanded="true"]) { border-color: var(--bb-accent); }
 
 :where(.bb-picker) {
   position: fixed;
