@@ -3,6 +3,7 @@ import type { PageAssetName } from "../contract.js";
 import { FORMS_OFFLINE, FRAME_BRIDGE } from "./frame-bridge.js";
 import { escapeHtml, scanHtml } from "./html.js";
 import { DATA_TABLE_RUNTIME, PAGE_RUNTIME, needsDataTableRuntime, needsPageRuntime } from "./page-runtime.js";
+import { FORM_RUNTIME, needsFormRuntime } from "./form-runtime.js";
 
 export type InjectOptions = {
   /** Base URL (absolute or relative) under which `_page/<asset>` resolves. */
@@ -44,7 +45,7 @@ export const PAGE_CSP = [
 ].join("; ");
 
 /** Changes when the scripts injectPage adds change, so a cached preview revalidates to the new shell after a plugin update. */
-export const PREVIEW_SHELL_VERSION = createHash("sha256").update(FRAME_BRIDGE).update(PAGE_RUNTIME).update(DATA_TABLE_RUNTIME).digest("base64url").slice(0, 8);
+export const PREVIEW_SHELL_VERSION = createHash("sha256").update(FRAME_BRIDGE).update(PAGE_RUNTIME).update(FORM_RUNTIME).update(DATA_TABLE_RUNTIME).digest("base64url").slice(0, 8);
 
 type Insert = { at: number; text: string };
 
@@ -54,7 +55,8 @@ export const hasForm = (html: string) => /<form[\s>]/iu.test(html);
 /**
  * Add the theme link (first in <head>, so author styles win), the font preload,
  * data-bb-theme and data-bb-frame on <html>, the frame bridge (BB previews only; other pages with a form get FORMS_OFFLINE), and before </body> the page runtime (only when the
- * page has tabs, contents, or zoomable images) and the chart runtime. Everything
+ * page has tabs, contents, or zoomable images), the form runtime (only when it has a select, date, time, or
+ * number field), and the chart runtime. Everything
  * else in the author's HTML stays byte-for-byte. Works on full documents,
  * documents without <html>/<head>/<body>, and bare fragments.
  */
@@ -93,8 +95,9 @@ export function injectPage(html: string, options: InjectOptions): string {
   }
 
   const runtime = needsPageRuntime(html);
+  const formRuntime = needsFormRuntime(html);
   const dataTable = needsDataTableRuntime(html);
-  if (runtime || dataTable || options.hasCharts) {
+  if (runtime || formRuntime || dataTable || options.hasCharts) {
     const hasBodyEnd = tags.some((tag) => tag.kind === "end" && tag.name === "body");
     let at = html.length;
     for (const tag of tags) {
@@ -103,6 +106,7 @@ export function injectPage(html: string, options: InjectOptions): string {
     }
     // Inline, so a shared page needs no extra file. It runs before the charts, which then draw the visible tab.
     if (runtime) inserts.push({ at, text: `<script>${PAGE_RUNTIME}</script>` });
+    if (formRuntime) inserts.push({ at, text: `<script>${FORM_RUNTIME}</script>` });
     if (dataTable) inserts.push({ at, text: `<script>${DATA_TABLE_RUNTIME}</script>` });
     if (options.hasCharts) inserts.push({ at, text: options.inlineAssets ? `<script>${options.inlineAssets.chartsJs}</script>` : `<script src="${url("charts.js")}" defer></script>` });
   }

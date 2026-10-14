@@ -23,7 +23,8 @@ and provides a searchable library for finding earlier work.
   files, and in the page panel; shared sites ask the reader to open the page
   in BB. A sent form stays locked as sent, with an Edit answers button, and
   stays sent after a reload. A page with a form is published inline by
-  default.
+  default. Select, date, and time fields open themed pickers, and
+  number fields get − and + buttons.
 
 ## Install
 

@@ -17,6 +17,11 @@
   and shows Edit answers to send again. It stays sent after a reload, per
   thread and page version (or file content).
 - Forms in live `::inline-vis` files send to the thread too.
+- Select, date, and time fields open themed pickers in place of the
+  browser's: a list with groups and a check on the chosen option, a month
+  calendar with Today and Clear, and a list of times at the field's step.
+  Number fields get − and + buttons. Mark a field `data-bb-pages-native` to
+  keep the browser's control. Text fields no longer show two focus rings.
 - `page_publish` shows a page with a form inline by default, since a card
   cannot send forms.
 

@@ -255,6 +255,16 @@ checkbox, radio, and range. Use these classes for layout:
 - `aria-invalid="true"` marks a field red. `required` fields turn red only
   after the user has touched them.
 
+**Pickers.** A single `select`, a `date`, and a `time` field open a themed
+picker instead of the browser's: a list, a month calendar, or a list of
+times. The time list uses the field's `step` when it is 5 minutes or more,
+else 15 minutes. `min` and `max` limit both. A `number` field gets − and +
+buttons; hold one to repeat. The field stays the real input, so typing,
+`value`, and the sent answer do not change. `select multiple`,
+`datetime-local`, `month`, and `week` stay native. Put
+`data-bb-pages-native` on a field, or on an element around it, to keep the
+browser's control.
+
 **How the form sends:**
 
 - **Every named field is sent**, blank ones included: `input`, `select`, and

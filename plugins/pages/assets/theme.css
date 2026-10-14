@@ -437,7 +437,7 @@
   color: var(--bb-strong);
 }
 :where(form :is(button:not([type]), button[type="submit"], input[type="submit"]):not(.secondary) ~ :is(button:not([type]), button[type="submit"], input[type="submit"])):where(:hover:not(:disabled)) { background: var(--bb-hover); opacity: 1; }
-:where(form button, form input, .button):where(:focus-visible) { outline: 2px solid var(--bb-accent); outline-offset: 2px; }
+:where(form button, form input:is([type="submit"], [type="button"], [type="reset"]), .button):where(:focus-visible) { outline: 2px solid var(--bb-accent); outline-offset: 2px; }
 :where(.danger:is(button, input, .button)) { color: var(--bb-negative); }
 
 :where(.actions) {
@@ -506,6 +506,163 @@
   background: var(--bb-strong);
   color: var(--bb-bg);
 }
+
+/* Pickers. The page runtime replaces the browser popups of select, date, and
+ * time fields with these, and marks <html> with data-bb-pickers. The field
+ * keeps its value; the picker is a sheet on the page colour with a hairline
+ * edge. data-bb-pages-native on a field or an ancestor keeps the browser's. */
+:where(:root[data-bb-pickers] :is(input[type="date"], input[type="time"]):not([data-bb-pages-native], [data-bb-pages-native] *))::-webkit-calendar-picker-indicator { display: none; }
+:where(:root[data-bb-pickers] :is(input[type="date"], input[type="time"]):not([data-bb-pages-native], [data-bb-pages-native] *)) {
+  padding-right: 2.25rem;
+  background-position: right 0.625rem center;
+  background-repeat: no-repeat;
+  background-size: 1rem;
+  cursor: text;
+}
+:where(:root[data-bb-pickers] input[type="date"]:not([data-bb-pages-native], [data-bb-pages-native] *)) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238a8a8a' stroke-width='1.25' stroke-linecap='round'%3E%3Crect x='2.5' y='3.25' width='11' height='10.25' rx='2'/%3E%3Cpath d='M2.5 6.75h11M5.5 1.75v2.5M10.5 1.75v2.5'/%3E%3C/svg%3E");
+}
+:where(:root[data-bb-pickers] input[type="time"]:not([data-bb-pages-native], [data-bb-pages-native] *)) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238a8a8a' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='5.75'/%3E%3Cpath d='M8 5v3.25l2.25 1.25'/%3E%3C/svg%3E");
+}
+:where(form[data-bb-pages-state="sent"]) :where(input:is([type="date"], [type="time"]):disabled) { background-image: none; }
+:where(select[aria-expanded="true"], input[aria-expanded="true"]) {
+  border-color: var(--bb-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bb-accent) 22%, transparent);
+}
+
+:where(.bb-picker) {
+  position: fixed;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.25rem;
+  border: 1px solid light-dark(var(--bb-rule), var(--bb-hover));
+  border-radius: var(--bb-radius-sm);
+  background: light-dark(var(--bb-bg), var(--bb-surface));
+  color: var(--bb-text);
+  font-family: var(--bb-font-sans);
+  font-size: var(--bb-size-small);
+  line-height: 1.5;
+  font-feature-settings: "kern" on, "cv05" on, "cv10" on;
+  font-variation-settings: "opsz" 14;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.3)), 0 12px 32px -8px light-dark(rgb(0 0 0 / 0.16), rgb(0 0 0 / 0.6));
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bb-scrollbar) transparent;
+  outline: none;
+  animation: bb-picker-in 120ms ease-out;
+}
+:where(.bb-picker *) { box-sizing: border-box; }
+@keyframes bb-picker-in { from { opacity: 0; transform: translateY(-2px); } }
+:where(.bb-picker-spacer) { display: block; pointer-events: none; }
+
+/* List picker: select options and times. The active row takes the hover
+ * fill; the chosen row is in the heading colour with a check. */
+:where(.bb-picker-list) { min-width: 10rem; max-height: 18rem; }
+:where(.bb-picker-option) {
+  position: relative;
+  padding: 0.375rem 2rem 0.375rem 0.625rem;
+  border-radius: calc(var(--bb-radius-sm) - 0.1875rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  user-select: none;
+}
+:where(.bb-picker-option.is-active) { background: var(--bb-hover); color: var(--bb-strong); }
+:where(.bb-picker-option[aria-selected="true"]) { color: var(--bb-strong); font-variation-settings: "opsz" 14, "wght" 500; }
+:where(.bb-picker-option[aria-selected="true"])::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  width: 1rem;
+  height: 1rem;
+  margin-top: -0.5rem;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.75 8.25 6.5 11l5.75-6' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+:where(.bb-picker-option[aria-disabled="true"]) { color: var(--bb-muted); opacity: 0.6; cursor: not-allowed; }
+:where(.bb-picker-option[aria-disabled="true"].is-active) { background: transparent; }
+:where(.bb-picker-group) {
+  padding: 0.5rem 0.625rem 0.25rem;
+  color: var(--bb-muted);
+  font-size: var(--bb-size-micro);
+  font-variation-settings: "opsz" 12, "wght" 500;
+  user-select: none;
+}
+:where(.bb-picker-group:not(:first-child)) { margin-top: 0.25rem; border-top: 1px solid var(--bb-line); }
+
+/* Date picker: the month, six weeks of days, and Clear and Today. Today has
+ * a hairline ring; the chosen day is solid in the heading colour. */
+:where(.bb-picker-calendar) { width: 17.25rem; padding: 0.625rem; }
+:where(.bb-picker-calendar button) {
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--bb-radius-sm) - 0.125rem);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 120ms, color 120ms;
+}
+:where(.bb-picker-calendar button:hover:not(:disabled)) { background: var(--bb-hover); color: var(--bb-strong); }
+:where(.bb-picker-calendar button:focus-visible) { outline: 2px solid var(--bb-accent); outline-offset: -2px; }
+:where(.bb-picker-calendar button:disabled) { opacity: 0.3; cursor: default; }
+:where(.bb-picker-calendar svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+:where(.bb-picker-head) { display: flex; align-items: center; gap: 0.125rem; margin: 0 0 0.375rem; padding: 0 0 0 0.375rem; }
+:where(.bb-picker-title) { flex: 1; color: var(--bb-strong); font-variation-settings: "opsz" 14, "wght" 550; }
+:where(.bb-picker-nav) { width: 1.75rem; height: 1.75rem; color: var(--bb-muted); }
+:where(.bb-picker-weekdays, .bb-picker-days) { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.125rem; }
+:where(.bb-picker-weekdays > span) { padding: 0.25rem 0; color: var(--bb-muted); font-size: var(--bb-size-micro); text-align: center; user-select: none; }
+:where(.bb-picker-day) { width: 100%; height: 2.125rem; }
+:where(.bb-picker-day.is-outside) { color: var(--bb-muted); opacity: 0.55; }
+:where(.bb-picker-day[aria-current="date"]) { color: var(--bb-strong); font-variation-settings: "opsz" 14, "wght" 550; box-shadow: inset 0 0 0 1px var(--bb-link-line); }
+:where(.bb-picker-calendar .bb-picker-day[aria-pressed="true"]) { background: var(--bb-strong); color: var(--bb-bg); opacity: 1; font-variation-settings: "opsz" 14, "wght" 550; box-shadow: none; }
+:where(.bb-picker-foot) { display: flex; justify-content: space-between; margin: 0.375rem 0 0; padding: 0.375rem 0 0; border-top: 1px solid var(--bb-line); }
+:where(.bb-picker-text) { height: 1.75rem; padding: 0 0.5rem; color: var(--bb-muted); }
+
+/* Number steppers: the runtime wraps a number field in span.bb-number and
+ * puts - and + inside its right edge, in place of the spin buttons. */
+:where(.bb-number) { position: relative; display: block; }
+:where(:root[data-bb-pickers] .bb-number > input[type="number"]) { padding-right: 4.25rem; appearance: textfield; }
+:where(:root[data-bb-pickers] .bb-number > input[type="number"])::-webkit-inner-spin-button,
+:where(:root[data-bb-pickers] .bb-number > input[type="number"])::-webkit-outer-spin-button { appearance: none; margin: 0; }
+:where(.bb-number > .bb-number-step) {
+  position: absolute;
+  top: 0.3125rem;
+  bottom: 0.3125rem;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--bb-radius-sm) - 0.1875rem);
+  background: transparent;
+  color: var(--bb-muted);
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: background-color 120ms, color 120ms;
+}
+:where(.bb-number > .bb-number-step:first-of-type) { right: 2.1875rem; }
+:where(.bb-number > .bb-number-step:last-of-type) { right: 0.3125rem; }
+:where(.bb-number > .bb-number-step:first-of-type)::after { content: ""; position: absolute; top: 0.375rem; bottom: 0.375rem; right: -0.25rem; border-right: 1px solid var(--bb-rule); }
+:where(.bb-number > .bb-number-step):where(:hover:not(:disabled)) { background: var(--bb-hover); color: var(--bb-strong); }
+:where(.bb-number > .bb-number-step:active:not(:disabled)) { background: var(--bb-line); }
+:where(.bb-number > .bb-number-step svg) { width: 0.875rem; height: 0.875rem; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+:where(.bb-number:has(> input:disabled, > input:read-only) > .bb-number-step) { opacity: 0.4; pointer-events: none; }
+:where(form[data-bb-pages-state="sending"], form[data-bb-pages-state="sent"]) :where(.bb-number > .bb-number-step) { display: none; }
+:where(form[data-bb-pages-state="sending"], form[data-bb-pages-state="sent"]) :where(.bb-number > input) { padding-right: 0.75rem; }
 
 /* ---- Tables: flush, hairline rows, small step. ----------------------- */
 :where(table) {
