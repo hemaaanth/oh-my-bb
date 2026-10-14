@@ -27,6 +27,7 @@ export const coreRpcContract = defineRpcContract({
   runProducerAction: rpcContract.runProducerAction,
   sendFeedback: rpcContract.sendFeedback,
   submitForm: rpcContract.submitForm,
+  sentForms: rpcContract.sentForms,
 });
 
 export default function plugin(bb: BbPluginApi) {
@@ -100,6 +101,7 @@ export default function plugin(bb: BbPluginApi) {
     runProducerAction: (input) => service.runProducerAction(input),
     sendFeedback: (input) => service.sendFeedback(input),
     submitForm: (input) => service.submitForm(input),
+    sentForms: (input) => service.listSentForms(input),
   });
   registerRoutes(bb, store);
   registerTools(bb, service);

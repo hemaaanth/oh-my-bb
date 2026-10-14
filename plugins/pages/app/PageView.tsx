@@ -28,7 +28,7 @@ function PanelShell({ header, banner, children }: { header: ReactNode; banner?: 
 
 /**
  * The full page. The bridge keeps it in the app theme without a reload, opens its links, loads folder pages it links to,
- * and sends its forms to `forms`. A live file has no published version to name, so it sends none.
+ * and sends its forms to `forms`.
  */
 function Preview({ title, previewUrl, forms = null }: { title: string; previewUrl: string; forms?: FormTarget | null }) {
   const bridge = useFrameBridge(previewUrl, undefined, undefined, forms);
@@ -311,6 +311,6 @@ export function LiveFileView({ threadId, file, source }: { threadId: string; fil
     <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{page ? `live · v${page.version.n}` : "live"}</span>
     <div className="ml-auto flex shrink-0 items-center gap-1 pl-2"><ShareButton pageId={page?.page.id ?? null} share={page?.share ?? null} onNeedsPage={publish} /></div>
   </>}>
-    <Preview title={file} previewUrl={previewUrl} />
+    <Preview title={file} previewUrl={previewUrl} forms={{ threadId, source, file }} />
   </PanelShell>;
 }

@@ -107,10 +107,13 @@ The tool bakes it into the returned directive.
 
 - **`inline`**: the page itself, borderless, on the thread background, as part
   of the reply. It is interactive and grows to fit its content. Use it for one
-  chart, a small table, a diagram, or a stat row.
+  chart, a small table, a diagram, a stat row, or a form.
 - **`card`** (default): a framed, zoomed-out preview with a header. A click
   opens the full page in the panel. Use it for pages with tabs, a contents
   list, several sections, or more than about one screen of content.
+
+Without `display`, a page with a `<form>` is inline and any other page is a
+card. A card cannot send forms.
 
 ```text
 ::page{id="<page id>" version="<version id>" display="inline"}
@@ -194,7 +197,7 @@ that breaks these rules looks fine on disk and blank in BB.
 - **No `eval` and no `new Function`.** Libraries that compile code at runtime fail.
 - **No remote scripts, stylesheets, or fonts.** Never load a library from a CDN.
 - **Images and media** may be `https:`, `data:`, `blob:`, or files of a folder page. Local image paths in a single file are turned into `data:` at publish (see above).
-- **Forms send to the thread** (see Forms below). They never navigate. No access to the BB window, and no storage you can rely on.
+- **Forms send to the thread** (see Forms below), from inline views and the panel. They never navigate. No access to the BB window, and no storage you can rely on.
 - **Links** to `http:` and `https:` URLs open through BB, in the browser or
   a new tab. `#` links stay in the page.
 
@@ -205,18 +208,54 @@ one when you need several answers at once: a choice between options, a
 checklist to confirm, or a few fields to fill in. Do not use a form for one
 yes-or-no question. Ask it in chat.
 
+Publish a page with a form inline. `page_publish` does this by default when
+the page has a `<form>`. A card preview cannot send; it only opens the panel.
+
 ```html
-<form data-title="Launch plan">
+<form id="launch" data-title="Launch plan">
+  <div class="field-row">
+    <div class="field">
+      <label for="owner">Owner</label>
+      <input id="owner" name="owner" placeholder="Name">
+    </div>
+    <div class="field">
+      <label for="date">Ship date</label>
+      <input id="date" name="date" type="date">
+    </div>
+  </div>
   <fieldset>
     <legend>Rollout</legend>
-    <label><input type="radio" name="rollout" value="staged" checked> Staged</label>
-    <label><input type="radio" name="rollout" value="all"> All at once</label>
+    <div class="choices">
+      <label><input type="radio" name="rollout" value="staged" checked> Staged <small>10%, then everyone</small></label>
+      <label><input type="radio" name="rollout" value="all"> All at once</label>
+    </div>
   </fieldset>
-  <label>Anything else? <textarea name="notes"></textarea></label>
-  <button name="decision" value="approve">Approve</button>
-  <button name="decision" value="revise">Ask for changes</button>
+  <div class="field">
+    <label for="notes">Anything else?</label>
+    <textarea id="notes" name="notes"></textarea>
+    <small>Optional.</small>
+  </div>
+  <div class="actions">
+    <button name="decision" value="approve">Approve</button>
+    <button name="decision" value="revise">Ask for changes</button>
+  </div>
 </form>
 ```
+
+**Form classes.** The theme styles every input type: text, email, number,
+date, time, `select`, `select multiple`, `textarea` (it grows with its text),
+checkbox, radio, and range. Use these classes for layout:
+
+- `.field` stacks a label, a control, and an optional `<small>` hint.
+- `.field-row` puts fields side by side. It wraps on narrow pages.
+- `.choices` turns radio or checkbox labels into tiles. `.choices.row` puts
+  them in a row. A `<small>` in a tile is its description.
+- `.actions` is the button row. The first submit button is solid. Later
+  buttons, and `button.secondary`, are quiet. `button.danger` is red.
+- `aria-invalid="true"` marks a field red. `required` fields turn red only
+  after the user has touched them.
+
+**How the form sends:**
 
 - **Every named field is sent**, blank ones included: `input`, `select`, and
   `textarea`. Fields without a `name`, disabled fields, and file inputs are
@@ -233,19 +272,27 @@ yes-or-no question. Ask it in chat.
   action.
 - **Title.** `data-title` names the form in the message. Without it, the
   form's `aria-label` or first heading is used.
-- **Status.** While sending, the form is locked. Then a status line says
-  "Sent to the thread." or why it failed. Put an element with
-  `data-bb-pages-status` in the form to choose where that line goes;
-  otherwise it is added at the end of the form.
+- **Name.** Give each form an `id`. It is how a sent form is found again
+  after a reload. Without one, the form's place on the page is used.
+- **States.** The form gets `data-bb-pages-state`: `sending`, then `sent` or
+  `error`. While sending, it is locked. Once sent, it stays locked with the
+  user's answers, the clicked button stays marked, and the status line says
+  "Sent to the thread." with an **Edit answers** button. Edit answers unlocks
+  it so the user can send again. On error it unlocks and says why. Put an
+  element with `data-bb-pages-status` in the form to choose where the status
+  line goes; otherwise it goes in `.actions`, or at the end of the form.
+- **Sent stays sent.** A sent form shows as sent after a reload, per thread.
+  For a page this lasts for the page version. For a live file it lasts until
+  the file changes.
 - **Your own handling.** A form whose submit your script cancels
   (`event.preventDefault()`), or a form marked `data-bb-pages-manual`, is left
   to your script and sends nothing.
 
 The answers go to the thread the page is shown in, as a queued message with
-the page id. Forms send from the page panel and from inline pages. A card
-preview only opens the panel. A live `::inline-vis` file and a shared site do
-not send; a shared site tells the reader to open the page in BB. One thread
-takes at most ten forms a minute.
+the page id, or the file name for a live `::inline-vis` file. Forms send from
+inline pages, inline live files, and the page panel. A shared site does not
+send; it tells the reader to open the page in BB. One thread takes at most ten
+forms a minute.
 
 When you republish a page after its form was answered, show the result and
 drop the form, so the user does not answer twice.

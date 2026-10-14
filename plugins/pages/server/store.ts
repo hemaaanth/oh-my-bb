@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { z } from "zod";
-import { HTTP_BASE, type Page, type PageDetail, type PageDocument, type Provenance, type Share, type Version, type pageListItemSchema, type versionSummarySchema } from "../contract.js";
+import { HTTP_BASE, type FormAnswer, type Page, type PageDetail, type PageDocument, type Provenance, type SentForm, type Share, type Version, type pageListItemSchema, type versionSummarySchema } from "../contract.js";
 
 export { HTTP_BASE };
 export const previewUrl = (versionId: string) => `${HTTP_BASE}/v?id=${encodeURIComponent(versionId)}`;
@@ -165,6 +165,15 @@ export function createPageStore(db: Database.Database) {
       WHERE deleted_at IS NULL AND (? IS NULL OR project_id = ?)
       GROUP BY project_id, folder_path ORDER BY project_id, folder_path
     `).all(projectId ?? null, projectId ?? null).map((row) => ({ projectId: row.project_id, path: row.folder_path, count: row.count })),
+
+    /** Records a form sent from `subject` in a thread. A later send of the same form replaces it. */
+    saveSentForm: (threadId: string, subject: string, form: { formKey: string; action: string | null; answers: FormAnswer[] }) => db.prepare(
+      "INSERT OR REPLACE INTO page_form_sends (thread_id, subject, form_key, action, answers_json, sent_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run(threadId, subject, form.formKey, form.action, JSON.stringify(form.answers), new Date().toISOString()),
+    /** Forms sent from `subject` in a thread, oldest first. */
+    sentForms: (threadId: string, subject: string): SentForm[] => db.prepare<[string, string], { form_key: string; action: string | null; answers_json: string; sent_at: string }>(
+      "SELECT form_key, action, answers_json, sent_at FROM page_form_sends WHERE thread_id = ? AND subject = ? ORDER BY sent_at",
+    ).all(threadId, subject).map((row) => ({ formKey: row.form_key, action: row.action, answers: JSON.parse(row.answers_json) as FormAnswer[], sentAt: row.sent_at })),
   };
 }
 

@@ -127,6 +127,7 @@ function FileCard({ threadId, file, source, height, display, directiveSource }: 
     height={height}
     previewUrl={previewUrl}
     display={display}
+    forms={{ threadId, source, file }}
     onOpen={() => navigate.openThreadPanel({ actionId: PANEL_ACTION_ID, title, params: { threadId, source, file } })}
   />;
 }

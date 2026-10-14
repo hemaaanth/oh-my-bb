@@ -33,7 +33,7 @@ export function registerTools(bb: BbPluginApi, service: PageService) {
   bb.agents.registerTool({
     name: "page_publish",
     description: "Publish a workspace or thread-storage .html/.md file, or a folder with index.html plus its images, CSS, fonts, scripts, and other pages, as a versioned page. Publishing the same file or folder (or key, or pageId) again adds a version; unchanged bytes add nothing. Local images referenced by path are embedded at publish.",
-    instructions: "After page_publish, copy the returned ::page directive on its own line into your final reply. The reader sees the page there, so do not announce, describe, or restate it. Use display \"inline\" for one chart, a small table, a diagram, or a stat row; keep the default card for tabs, a contents list, several sections, or more than about one screen.",
+    instructions: "After page_publish, copy the returned ::page directive on its own line into your final reply. The reader sees the page there, so do not announce, describe, or restate it. Use display \"inline\" for one chart, a small table, a diagram, or a stat row; keep the default card for tabs, a contents list, several sections, or more than about one screen. A page with a form shows inline unless you pass display \"card\".",
     presentation: { label: { pending: "Publishing page", completed: "Published page" }, icon: { glyph: "FileText" } },
     parameters: z.object({
       file: relativeFileSchema.optional().describe("An .html or .md file, relative to the source root, e.g. reports/summary.html"),
@@ -43,10 +43,12 @@ export function registerTools(bb: BbPluginApi, service: PageService) {
       folder: folderPathSchema.optional().describe("Logical subfolder inside this BB project, e.g. Reports/Weekly"),
       key: pageKeySchema.optional().describe("Stable page name, e.g. boost-daily. Use when the path changes between runs"),
       pageId: z.string().uuid().optional().describe("Add a version to this existing page"),
-      display: displaySchema.optional().describe("How the returned directive shows the page in chat. card (default): a framed, zoomed-out preview. inline: the page itself, borderless, for one chart, small table, diagram, or stat row"),
+      display: displaySchema.optional().describe("How the returned directive shows the page in chat. card (default): a framed, zoomed-out preview. inline: the page itself, borderless, for one chart, small table, diagram, or stat row. Default for a page with a form: inline"),
     }).strict(),
     async execute({ display, ...input }, { threadId }) {
-      return publishSummary(await service.publishFile({ ...input, source: input.source ?? "workspace", threadId }), display);
+      const published = await service.publishFile({ ...input, source: input.source ?? "workspace", threadId });
+      // A form is answered in the reply, so a page with one shows inline unless the agent asks for the card.
+      return publishSummary(published, display ?? (service.versionHasForm(published.result.version.id) ? "inline" : "card"));
     },
   });
 

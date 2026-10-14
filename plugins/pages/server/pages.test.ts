@@ -132,7 +132,7 @@ describe("publishDocument", () => {
     const page = await harness.behavior.callRpc("publishFile", { threadId: "thr_a", file: "plan.html" }) as Result;
     const pageId = page.page.id;
     const form = {
-      pageId, versionId: page.version.id, threadId: "thr_a", submissionId: "fabc12345", formTitle: "Launch review", action: "Approve",
+      pageId, versionId: page.version.id, threadId: "thr_a", submissionId: "fabc12345", formKey: "launch", formTitle: "Launch review", action: "Approve",
       answers: [
         { name: "notes", label: "Notes", value: "Ship it" },
         { name: "areas", label: "Areas", value: ["api", "docs"] },
@@ -176,11 +176,57 @@ describe("publishDocument", () => {
     await harness.lifecycle.dispose();
   });
 
+  it("remembers a sent form per thread and page version, so the view shows it sent", async () => {
+    const { harness, files, archived } = pagesHost();
+    files.set(`${WORKSPACE}/plan.html`, html("<form><input name=a></form>"));
+    const page = await harness.behavior.callRpc("publishFile", { threadId: "thr_a", file: "plan.html" }) as Result;
+    const target = { pageId: page.page.id, versionId: page.version.id, threadId: "thr_a" };
+    const form = { ...target, submissionId: "fsent0001", formKey: "plan", formTitle: null, action: "Approve", answers: [{ name: "a", label: "a", value: "1" }] };
+    expect(await harness.behavior.callRpc("sentForms", target)).toEqual({ forms: [] });
+    await harness.behavior.callRpc("submitForm", form);
+    // Sending again replaces the first answers.
+    await harness.behavior.callRpc("submitForm", { ...form, submissionId: "fsent0002", action: "Reject" });
+    const { forms } = await harness.behavior.callRpc("sentForms", target) as { forms: { formKey: string; action: string; sentAt: string }[] };
+    expect(forms).toEqual([{ formKey: "plan", action: "Reject", answers: form.answers, sentAt: expect.any(String) }]);
+    expect(Number.isNaN(Date.parse(forms[0]!.sentAt))).toBe(false);
+    // Another thread, or a new version, starts with nothing sent. A failed send is not remembered.
+    expect(await harness.behavior.callRpc("sentForms", { ...target, threadId: "thr_b" })).toEqual({ forms: [] });
+    archived.add("thr_old");
+    await harness.behavior.callRpc("submitForm", { ...form, threadId: "thr_old" });
+    expect(await harness.behavior.callRpc("sentForms", { ...target, threadId: "thr_old" })).toEqual({ forms: [] });
+    files.set(`${WORKSPACE}/plan.html`, html("<form><input name=b></form>"));
+    const next = await harness.behavior.callRpc("publishFile", { threadId: "thr_a", file: "plan.html" }) as Result;
+    expect(await harness.behavior.callRpc("sentForms", { ...target, versionId: next.version.id })).toEqual({ forms: [] });
+    await harness.lifecycle.dispose();
+  });
+
+  it("sends a live file's form, and remembers it until the file changes", async () => {
+    const { harness, files, sent } = pagesHost();
+    files.set(`${storageOf("thr_a")}/poll.html`, html("<form><input name=pick></form>"));
+    const target = { threadId: "thr_a", source: "thread-storage", file: "./poll.html" };
+    expect(await harness.behavior.callRpc("submitForm", { ...target, submissionId: "flive0001", formKey: "form-0", formTitle: "Poll", action: null, answers: [{ name: "pick", label: "Pick", value: "B" }] })).toEqual({ ok: true });
+    expect(sent[0]!.text).toBe([
+      'The user sent the form "Poll" in the live file poll.html (thread-storage).',
+      "", "**Pick**", "B",
+      "", "The ::inline-vis view shows the file as it is now. To change the form, edit poll.html.",
+    ].join("\n"));
+    expect(await harness.behavior.callRpc("sentForms", target)).toMatchObject({ forms: [{ formKey: "form-0" }] });
+    const page = await harness.behavior.callRpc("publishFile", { threadId: "thr_a", file: "poll.html", source: "thread-storage" }) as Result;
+    await harness.behavior.callRpc("submitForm", { ...target, submissionId: "flive0002", formKey: "form-0", formTitle: null, action: null, answers: [] });
+    expect(sent[1]!.text).toContain(`in the live file poll.html (thread-storage, also published as page ID ${page.page.id})`);
+    files.set(`${storageOf("thr_a")}/poll.html`, html("<form><input name=pick><input name=why></form>"));
+    expect(await harness.behavior.callRpc("sentForms", target)).toEqual({ forms: [] });
+    await expect(harness.behavior.callRpc("submitForm", { ...target, file: "missing.html", submissionId: "flive0003", formKey: "x", formTitle: null, action: null, answers: [] })).rejects.toThrow();
+    // A target is a page or a file, never both.
+    await expect(harness.behavior.callRpc("sentForms", { ...target, pageId: page.page.id, versionId: page.version.id })).rejects.toThrow();
+    await harness.lifecycle.dispose();
+  });
+
   it("limits how many forms one thread takes in a minute", async () => {
     const { harness, files, sent } = pagesHost();
     files.set(`${WORKSPACE}/poll.html`, html("<h1>Poll</h1>"));
     const page = await harness.behavior.callRpc("publishFile", { threadId: "thr_a", file: "poll.html" }) as Result;
-    const send = (n: number, threadId = "thr_a") => harness.behavior.callRpc("submitForm", { pageId: page.page.id, versionId: page.version.id, threadId, submissionId: `form-${String(n).padStart(4, "0")}`, formTitle: null, action: null, answers: [] });
+    const send = (n: number, threadId = "thr_a") => harness.behavior.callRpc("submitForm", { pageId: page.page.id, versionId: page.version.id, threadId, submissionId: `form-${String(n).padStart(4, "0")}`, formKey: "poll", formTitle: null, action: null, answers: [] });
     for (let n = 0; n < FORM_SUBMISSIONS_PER_MINUTE; n += 1) expect(await send(n)).toEqual({ ok: true });
     expect(await send(99)).toMatchObject({ ok: false, reason: "rate-limited" });
     expect(await send(100, "thr_b")).toEqual({ ok: true });
@@ -337,6 +383,15 @@ describe("agent tool and CLI", () => {
     expect(text.split("\n")[1]).toMatch(/^::page\{id="[0-9a-f-]{36}" version="[0-9a-f-]{36}" display="inline"\}$/u);
     expect(text).toContain(RESTATE_RULE);
     await expect(harness.behavior.callAgentTool("page_publish", { file: "chart.html", source: "thread-storage", display: "wide" }, { threadId: "thr_a", projectId: "proj_test" })).rejects.toThrow();
+    await harness.lifecycle.dispose();
+  });
+
+  it("page_publish shows a page with a form inline unless display is given", async () => {
+    const { harness, files } = pagesHost();
+    files.set(`${storageOf("thr_a")}/ask.html`, html("<h1>Pick one</h1><form><button>Go</button></form>"));
+    const publish = (input: Record<string, string> = {}) => harness.behavior.callAgentTool("page_publish", { file: "ask.html", source: "thread-storage", ...input }, { threadId: "thr_a", projectId: "proj_test" }).then((text) => String(text).split("\n")[1]);
+    expect(await publish()).toMatch(/ display="inline"\}$/u);
+    expect(await publish({ display: "card" })).not.toContain("display=");
     await harness.lifecycle.dispose();
   });
 

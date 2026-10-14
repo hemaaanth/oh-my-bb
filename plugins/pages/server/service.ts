@@ -3,8 +3,8 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { MAX_PAGE_HTML_BYTES, directive, type FormSubmission, type PageDetail, type PublishFileInput, type SourceKey, type mutationResultSchema, type publishDocumentInputSchema } from "../contract.js";
-import { inspectCharts, renderMarkdown, renderPrReview } from "../render/index.js";
+import { MAX_PAGE_HTML_BYTES, directive, type FormSubmission, type FormTarget, type PageDetail, type PublishFileInput, type SourceKey, type mutationResultSchema, type publishDocumentInputSchema } from "../contract.js";
+import { hasForm, inspectCharts, renderMarkdown, renderPrReview } from "../render/index.js";
 import { readSourceFile, readSourceFolder, relativeFile, resolveRoot, sourceKeyOf, type FileSource, type SourceFile } from "./files.js";
 import { inlineLocalImages } from "./images.js";
 import { HTTP_BASE, StaleVersionError, type PageStore } from "./store.js";
@@ -50,18 +50,36 @@ function answerText(value: FormSubmission["answers"][number]["value"]): string {
 }
 
 /**
- * The thread message for a form the user sent from a page: which form and page, the clicked action,
+ * Where a form was sent from. `where` finishes "The user sent the form … ", `publishedIn` is the thread
+ * that published a page version, and `update` tells the agent how to change what the user saw.
+ */
+export type FormPlace = { where: string; publishedIn: string | null; update: string };
+
+export const pageFormPlace = (detail: PageDetail): FormPlace => ({
+  where: `on the page "${detail.page.title}" (${pageVersionText(detail)})`,
+  publishedIn: detail.version.threadId,
+  update: `If you update the page, republish it with page_publish and pageId "${detail.page.id}", so it stays one page with a new version.`,
+});
+
+export const fileFormPlace = (file: string, source: FileSource, pageId: string | null): FormPlace => ({
+  where: `in the live file ${file} (${source}${pageId ? `, also published as page ID ${pageId}` : ""})`,
+  publishedIn: null,
+  update: `The ::inline-vis view shows the file as it is now. To change the form, edit ${file}.`,
+});
+
+/**
+ * The thread message for a form the user sent: which form and page or file, the clicked action,
  * then every answer under the label the user saw. Blank answers are kept. `threadId` is where it goes:
  * when that is not the thread that published the version, a line says so.
  */
-export function formMessage(detail: PageDetail, { formTitle, action, answers }: FormSubmission, threadId: string): string {
+export function formMessage(place: FormPlace, { formTitle, action, answers }: Pick<FormSubmission, "formTitle" | "action" | "answers">, threadId: string): string {
   const form = formTitle ? `the form "${formTitle}"` : "a form";
-  const lines = [`The user sent ${form} on the page "${detail.page.title}" (${pageVersionText(detail)}).`];
-  if (detail.version.threadId && detail.version.threadId !== threadId) lines.push(`The page was published in thread ${detail.version.threadId}. The user sent this form from this thread.`);
+  const lines = [`The user sent ${form} ${place.where}.`];
+  if (place.publishedIn && place.publishedIn !== threadId) lines.push(`The page was published in thread ${place.publishedIn}. The user sent this form from this thread.`);
   if (action) lines.push("", "**Action**", action);
   for (const answer of answers) lines.push("", `**${answer.label.trim() || answer.name}**`, answerText(answer.value));
   if (!action && !answers.length) lines.push("", "The form has no named fields.");
-  lines.push("", `If you update the page, republish it with page_publish and pageId "${detail.page.id}", so it stays one page with a new version.`);
+  lines.push("", place.update);
   return lines.join("\n");
 }
 
@@ -266,12 +284,24 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
   const sentForms = new Set<string>();
 
   /**
-   * Sends a form the user submitted from a page to the thread the page is shown in.
-   * Same checks as sendFeedback, plus a per-thread rate limit and a repeat check on the submission id.
+   * What a frame's forms are about. `subject` keys the forms sent from it: a page version, or a live
+   * file at its current content, so an edited file shows its forms fresh.
    */
-  async function submitForm({ pageId, versionId, threadId, ...submission }: FormSubmission & { pageId: string; versionId: string; threadId: string }) {
-    const detail = userDetail(pageId, versionId);
-    const key = `${threadId} ${submission.submissionId}`;
+  async function formSubject(target: FormTarget): Promise<{ subject: string; place: FormPlace }> {
+    if ("pageId" in target) return { subject: `version:${target.versionId}`, place: pageFormPlace(userDetail(target.pageId, target.versionId)) };
+    const read = await readSourceFile(sdk, target.threadId, target.file, target.source);
+    return { subject: `file:${read.sourceKey}:${sha256(read.content)}`, place: fileFormPlace(read.file, read.source, store.pageIdBySourceKey(read.sourceKey)) };
+  }
+
+  /**
+   * Sends a form the user submitted from a page or live file to the thread it is shown in.
+   * Same checks as sendFeedback, plus a per-thread rate limit and a repeat check on the submission id.
+   * A sent form is recorded, so the view shows it sent after a reload.
+   */
+  async function submitForm(input: FormSubmission & FormTarget) {
+    const { threadId, submissionId, formKey, formTitle, action, answers } = input;
+    const { subject, place } = await formSubject(input);
+    const key = `${threadId} ${submissionId}`;
     if (sentForms.has(key)) return { ok: true as const };
     const now = Date.now();
     const recent = (recentForms.get(threadId) ?? []).filter((time) => now - time < 60_000);
@@ -280,12 +310,19 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
     // Held before the send, so the same submission sent twice at once is sent once. A failed send can be retried.
     sentForms.add(key);
     if (sentForms.size > 500) sentForms.delete(sentForms.values().next().value!);
-    const result = await sendToThread(threadId, formMessage(detail, submission, threadId)).catch((error: unknown) => {
+    const result = await sendToThread(threadId, formMessage(place, { formTitle, action, answers }, threadId)).catch((error: unknown) => {
       sentForms.delete(key);
       throw error;
     });
     if (!result.ok) sentForms.delete(key);
+    else store.saveSentForm(threadId, subject, { formKey, action, answers });
     return result;
+  }
+
+  /** Forms already sent from a page version or live file in a thread. */
+  async function listSentForms(target: FormTarget) {
+    const { subject } = await formSubject(target);
+    return { forms: store.sentForms(target.threadId, subject) };
   }
 
   /** A page version the user can send notes or forms about. Producer pages are left to their producer's actions. */
@@ -309,7 +346,10 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
     }
   }
 
-  return { publishFile, publishDocument, findPage, resolveFile, renamePage, deletePage, runProducerAction, sendFeedback, submitForm, getPage: store.detail, listPages: store.list, listFolders: store.listFolders };
+  /** True when a stored version's index HTML has a form. */
+  const versionHasForm = (versionId: string) => hasForm(store.storedHtml(versionId)?.html ?? "");
+
+  return { publishFile, publishDocument, versionHasForm, findPage, resolveFile, renamePage, deletePage, runProducerAction, sendFeedback, submitForm, listSentForms, getPage: store.detail, listPages: store.list, listFolders: store.listFolders };
 }
 
 export const filePreviewUrl = (threadId: string, source: FileSource, file: string) => `${HTTP_BASE}/file?${new URLSearchParams({ threadId, source, file }).toString()}`;

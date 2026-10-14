@@ -158,10 +158,12 @@ describe("frame bridge forms", () => {
     expect(submit('<form aria-label="Single"><button>Send</button></form>', "button").post).toMatchObject({ formTitle: "Single", action: null });
   });
 
-  it("locks the form while it sends, then shows the host's answer", () => {
-    const { form, post } = submit('<form><input name="a" value="1"><button>Send</button></form>');
+  it("locks the form while it sends, and keeps it locked and marked sent after", () => {
+    const { form, post } = submit('<form id="review"><input name="a" value="1"><button>Send</button></form>');
     const status = () => form.querySelector("[data-bb-pages-status]")!;
+    expect(post).toMatchObject({ formKey: "review" });
     expect(form.getAttribute("aria-busy")).toBe("true");
+    expect(form.getAttribute("data-bb-pages-state")).toBe("sending");
     expect(form.querySelector("input")!.disabled).toBe(true);
     expect(status().textContent).toBe("Sending…");
     expect(status().getAttribute("role")).toBe("status");
@@ -172,8 +174,58 @@ describe("frame bridge forms", () => {
     expect(form.getAttribute("aria-busy")).toBe("true");
     answer({ submissionId: post!.submissionId, ok: true });
     expect(form.hasAttribute("aria-busy")).toBe(false);
+    expect(form.getAttribute("data-bb-pages-state")).toBe("sent");
+    expect(form.querySelector("input")!.disabled).toBe(true);
+    expect(form.querySelector("button")!.hasAttribute("data-bb-pages-chosen")).toBe(true);
+    expect(status().textContent).toBe("Sent to the thread. Edit answers");
+    // Edit answers unlocks the form, so it can be sent again.
+    status().querySelector<HTMLButtonElement>("[data-bb-pages-edit]")!.click();
+    expect(form.hasAttribute("data-bb-pages-state")).toBe(false);
     expect(form.querySelector("input")!.disabled).toBe(false);
-    expect(status().textContent).toBe("Sent to the thread.");
+    expect(status().textContent).toBe("Change your answers, then send again.");
+    form.requestSubmit();
+    expect(posted).toHaveBeenCalledTimes(2);
+  });
+
+  it("names a form by its id, its name, or its place on the page", () => {
+    document.body.innerHTML = '<form name="first"><button>Go</button></form><form><button>Go</button></form>';
+    document.forms[1]!.requestSubmit();
+    expect(posted.mock.calls.at(-1)?.[0]).toMatchObject({ formKey: "form-1" });
+    document.forms[0]!.requestSubmit();
+    expect(posted.mock.calls.at(-1)?.[0]).toMatchObject({ formKey: "first" });
+  });
+
+  it("shows a form sent before as sent, with its answers and button", () => {
+    document.body.innerHTML = `<form id="plan"><input name="who"><textarea name="notes"></textarea>
+      <label><input type="radio" name="risk" value="low">Low</label><label><input type="radio" name="risk" value="high">High</label>
+      <label><input type="checkbox" name="area" value="api">API</label><label><input type="checkbox" name="area" value="ui">UI</label>
+      <label><input type="checkbox" name="urgent"> Urgent</label>
+      <select name="regions" multiple><option value="us">US</option><option value="eu">EU</option></select>
+      <button>Approve</button><button>Reject</button></form><form id="other"><input name="x"></form>`;
+    const form = document.forms[0]!;
+    const restore = (forms: unknown[], source: Window = parent) => window.dispatchEvent(new MessageEvent("message", { data: { type: "bb-pages:restore", forms }, source }));
+    const sent = { formKey: "plan", action: "Reject", sentAt: "2026-10-14T09:30:00.000Z", answers: [
+      { name: "who", label: "who", value: "Ada" }, { name: "notes", label: "notes", value: "Later" },
+      { name: "risk", label: "Risk", value: "high" }, { name: "area", label: "Areas", value: ["ui"] },
+      { name: "urgent", label: "Urgent", value: true }, { name: "regions", label: "Regions", value: ["eu"] },
+      { name: "gone", label: "Gone", value: "x" },
+    ] };
+    restore([sent], window);
+    expect(form.hasAttribute("data-bb-pages-state")).toBe(false);
+    restore([sent, { formKey: "missing", action: null, answers: [], sentAt: "" }]);
+    expect(form.getAttribute("data-bb-pages-state")).toBe("sent");
+    expect(document.forms[1]!.hasAttribute("data-bb-pages-state")).toBe(false);
+    expect(form.querySelector<HTMLInputElement>("[name=who]")!.value).toBe("Ada");
+    expect(form.querySelector("textarea")!.value).toBe("Later");
+    expect(Array.from(form.querySelectorAll<HTMLInputElement>("[type=radio]"), (item) => item.checked)).toEqual([false, true]);
+    expect(Array.from(form.querySelectorAll<HTMLInputElement>("[type=checkbox]"), (item) => item.checked)).toEqual([false, true, true]);
+    expect(Array.from(form.querySelector("select")!.selectedOptions, (option) => option.value)).toEqual(["eu"]);
+    expect(Array.from(form.querySelectorAll("button:not([data-bb-pages-edit])"), (button) => button.hasAttribute("data-bb-pages-chosen"))).toEqual([false, true]);
+    expect(form.querySelector<HTMLInputElement>("[name=who]")!.disabled).toBe(true);
+    expect(form.querySelector("[data-bb-pages-status]")!.textContent).toMatch(/^Sent to the thread .+2026.+\. Edit answers$/u);
+    // A second restore, as on every load, changes nothing.
+    restore([{ ...sent, answers: [{ name: "who", label: "who", value: "Bob" }] }]);
+    expect(form.querySelector<HTMLInputElement>("[name=who]")!.value).toBe("Ada");
   });
 
   it("shows why a form was not sent, in the page's own status line", () => {
@@ -189,6 +241,8 @@ describe("frame bridge forms", () => {
       const { form } = submit('<form><input name="a"><button>Send</button></form>');
       vi.advanceTimersByTime(20_000);
       expect(form.hasAttribute("aria-busy")).toBe(false);
+      expect(form.getAttribute("data-bb-pages-state")).toBe("error");
+      expect(form.querySelector("input")!.disabled).toBe(false);
       expect(form.querySelector("[data-bb-pages-status]")!.textContent).toBe("BB did not answer. Send again.");
     } finally { vi.useRealTimers(); }
   });

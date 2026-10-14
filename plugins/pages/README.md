@@ -19,8 +19,11 @@ and provides a searchable library for finding earlier work.
 - Send feedback from the page panel to the thread. The message carries the
   page id, so the agent republishes the same page.
 - Answer forms on a page. A submitted form goes to the thread as one message,
-  with each answer under its label. Forms work in the page panel and inline
-  pages; shared sites ask the reader to open the page in BB.
+  with each answer under its label. Forms work inline, in live `::inline-vis`
+  files, and in the page panel; shared sites ask the reader to open the page
+  in BB. A sent form stays locked as sent, with an Edit answers button, and
+  stays sent after a reload. A page with a form is published inline by
+  default.
 
 ## Install
 

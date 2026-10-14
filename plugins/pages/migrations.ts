@@ -77,4 +77,15 @@ export const PAGE_MIGRATIONS = [
     PRIMARY KEY (version_id, path)
   );
   CREATE INDEX page_version_files_sha ON page_version_files(sha256);`,
+  // The latest send of each form, per thread and per thing shown, so a sent form stays sent after a reload.
+  // subject is "version:<versionId>" or "file:<sourceKey>:<sha256 of the file>".
+  `CREATE TABLE page_form_sends (
+    thread_id TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    form_key TEXT NOT NULL,
+    action TEXT,
+    answers_json TEXT NOT NULL,
+    sent_at TEXT NOT NULL,
+    PRIMARY KEY (thread_id, subject, form_key)
+  );`,
 ] as const;

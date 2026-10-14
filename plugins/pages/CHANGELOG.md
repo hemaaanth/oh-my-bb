@@ -10,6 +10,15 @@
 - A retried form is sent once. One thread takes at most ten forms a minute.
 - Shared sites keep forms from navigating and tell the reader to open the page
   in BB.
+- The theme styles forms: text, date, number, select, multi-select, textarea,
+  checkbox, radio, and range, plus `.field`, `.field-row`, `.choices`, and
+  `.actions` for layout, and a look for each form state.
+- A sent form stays locked with its answers and the clicked button marked,
+  and shows Edit answers to send again. It stays sent after a reload, per
+  thread and page version (or file content).
+- Forms in live `::inline-vis` files send to the thread too.
+- `page_publish` shows a page with a form inline by default, since a card
+  cannot send forms.
 
 ## 0.3.0
 

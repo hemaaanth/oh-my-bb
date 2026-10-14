@@ -48,6 +48,9 @@ export const PREVIEW_SHELL_VERSION = createHash("sha256").update(FRAME_BRIDGE).u
 
 type Insert = { at: number; text: string };
 
+/** True when the HTML has a <form>. Such a page gets the forms note when shared, and is shown inline in chat by default. */
+export const hasForm = (html: string) => /<form[\s>]/iu.test(html);
+
 /**
  * Add the theme link (first in <head>, so author styles win), the font preload,
  * data-bb-theme and data-bb-frame on <html>, the frame bridge (BB previews only; other pages with a form get FORMS_OFFLINE), and before </body> the page runtime (only when the
@@ -72,7 +75,7 @@ export function injectPage(html: string, options: InjectOptions): string {
   const attrs = `${options.theme ? ` data-bb-theme="${options.theme}"` : ""}${options.frame ? ` data-bb-frame="${options.frame}"` : ""}`;
   // Only BB previews (theme or frame set) talk to the BB app. Published and shared sites never get the bridge;
   // a page with a form gets a note that answers are sent from BB.
-  const head = options.theme || options.frame ? `${assets}<script>${FRAME_BRIDGE}</script>` : /<form[\s>]/iu.test(html) ? `${assets}<script>${FORMS_OFFLINE}</script>` : assets;
+  const head = options.theme || options.frame ? `${assets}<script>${FRAME_BRIDGE}</script>` : hasForm(html) ? `${assets}<script>${FORMS_OFFLINE}</script>` : assets;
 
   if (attrs && htmlTag) {
     // "<html" is 5 characters; ours come first, and the first duplicate attribute wins.

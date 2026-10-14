@@ -1,7 +1,7 @@
 // The host side of the frame bridge. Protocol: FRAME_MESSAGE in contract.ts. Page side: render/frame-bridge.ts.
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
-import { FRAME_MESSAGE, formSubmissionSchema, type FormSubmission, type PagesRpc } from "../contract.js";
+import { FRAME_MESSAGE, formSubmissionSchema, type FormSubmission, type FormTarget, type PagesRpc, type SentForm } from "../contract.js";
 import { messageOf, themedUrl, usePreviewTheme } from "./ui.js";
 
 /** Far taller than any page a chat frame shows. A larger report is noise. */
@@ -14,9 +14,8 @@ export type FrameMessage =
   | { type: "submit"; submission: FormSubmission }
   | { type: "submit-invalid"; submissionId: string; message: string };
 
-/** Where a frame's forms go: the page version it shows, and the thread it is shown in. */
-export type FormTarget = { pageId: string; versionId: string; threadId: string };
-const NO_FORM_TARGET = "This view cannot send forms. Open the published page in the panel.";
+export type { FormTarget };
+const NO_FORM_TARGET = "This view cannot send forms. Open the page in a thread.";
 
 /** A page's message, checked. Anything else, including a link that is not http(s), is null. */
 export function readFrameMessage(data: unknown): FrameMessage | null {
@@ -77,6 +76,7 @@ export const themeMessage = (theme: "light" | "dark") => ({ type: FRAME_MESSAGE.
  * Later theme changes are posted, so the src stays the same and the page does not reload.
  * Only messages from this iframe's own window count. The frame stays sandboxed without allow-same-origin.
  * A submitted form goes to `forms` with submitForm; without a target, the form is told why it cannot send.
+ * Forms already sent to `forms` are posted on each load, so the page shows them sent.
  */
 export function useFrameBridge(previewUrl: string, frame?: "card" | "inline", onHeight?: (height: number) => void, forms?: FormTarget | null) {
   const navigate = useBbNavigate();
@@ -90,6 +90,28 @@ export function useFrameBridge(previewUrl: string, frame?: "card" | "inline", on
   const [page, setPage] = useState<{ previewUrl: string; src: string } | null>(null);
   const postTheme = useCallback(() => { ref.current?.contentWindow?.postMessage(themeMessage(theme), "*"); }, [theme]);
   useEffect(postTheme, [postTheme]);
+  // One key per target, so a new object with the same fields does not refetch or rebind.
+  const formsKey = forms ? JSON.stringify(forms) : "";
+  const target = useRef(forms);
+  target.current = forms;
+  const sent = useRef<SentForm[]>([]);
+  const postSent = useCallback(() => {
+    if (sent.current.length) ref.current?.contentWindow?.postMessage({ type: FRAME_MESSAGE.restore, forms: sent.current }, "*");
+  }, []);
+  const loadSent = useCallback(() => {
+    const forms = target.current;
+    if (!forms) return;
+    rpc.call("sentForms", forms).then(
+      (result) => {
+        // A late answer for an old target is dropped.
+        if (JSON.stringify(target.current) !== JSON.stringify(forms)) return;
+        sent.current = result.forms;
+        postSent();
+      },
+      () => {},
+    );
+  }, [rpc, postSent]);
+  useEffect(() => { sent.current = []; loadSent(); }, [formsKey, loadSent]);
   useEffect(() => {
     const listen = (event: MessageEvent) => {
       const own = ref.current?.contentWindow;
@@ -111,7 +133,11 @@ export function useFrameBridge(previewUrl: string, frame?: "card" | "inline", on
         else {
           const { submissionId } = message.submission;
           rpc.call("submitForm", { ...forms, ...message.submission }).then(
-            (result) => reply(submissionId, result.ok, result.ok ? "" : result.message),
+            (result) => {
+              reply(submissionId, result.ok, result.ok ? "" : result.message);
+              // The frame shows the form sent. Reload the list, so a later load of the frame does too.
+              if (result.ok) loadSent();
+            },
             (error: unknown) => reply(submissionId, false, messageOf(error, "The form could not be sent.")),
           );
         }
@@ -119,9 +145,11 @@ export function useFrameBridge(previewUrl: string, frame?: "card" | "inline", on
     };
     window.addEventListener("message", listen);
     return () => window.removeEventListener("message", listen);
-  }, [navigate, onHeight, previewUrl, theme, frame, rpc, forms?.pageId, forms?.versionId, forms?.threadId]);
+  // formsKey stands for forms.
+  }, [navigate, onHeight, previewUrl, theme, frame, rpc, formsKey, loadSent]);
   // The frame's colour scheme matches the app's. A mismatch makes the browser paint an opaque backdrop behind the page.
   const style: CSSProperties = { colorScheme: theme };
   const src = page?.previewUrl === previewUrl ? page.src : themedUrl(loaded.previewUrl, loaded.theme, frame);
-  return { ref, src, onLoad: postTheme, style };
+  const onLoad = useCallback(() => { postTheme(); postSent(); }, [postTheme, postSent]);
+  return { ref, src, onLoad, style };
 }

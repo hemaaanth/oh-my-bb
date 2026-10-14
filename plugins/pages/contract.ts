@@ -171,9 +171,13 @@ const answerValueSchema = z.union([z.string().max(10_000), z.array(z.string().ma
 /** One named field: its name, the label the reader saw, and its value. A checkbox is a boolean; a group or multi-select is a list. */
 export const formAnswerSchema = z.object({ name: z.string().min(1).max(200), label: z.string().max(300), value: answerValueSchema }).strict();
 export type FormAnswer = z.infer<typeof formAnswerSchema>;
-/** What the frame bridge posts for a submitted form. `action` is the clicked button, when it says which. */
+/**
+ * What the frame bridge posts for a submitted form. `action` is the clicked button, when it says which.
+ * `formKey` names the form on its page (its id, its name, or its place), so a sent form can be shown sent again.
+ */
 const formSubmissionShape = {
   submissionId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/u),
+  formKey: z.string().min(1).max(200),
   formTitle: z.string().trim().max(300).nullable(),
   action: z.string().trim().max(300).nullable(),
   answers: z.array(formAnswerSchema).max(200),
@@ -183,7 +187,21 @@ const formChars = ({ answers }: { answers: FormAnswer[] }) =>
 const withinFormLimit = [(v: { answers: FormAnswer[] }) => formChars(v) <= MAX_FORM_CHARS, { message: `A form can send at most ${MAX_FORM_CHARS} characters.` }] as const;
 export const formSubmissionSchema = z.object(formSubmissionShape).strict().refine(...withinFormLimit);
 export type FormSubmission = z.infer<typeof formSubmissionSchema>;
-const submitFormInputSchema = z.object({ ...formSubmissionShape, pageId: uuid, versionId: uuid, threadId: z.string().min(1) }).strict().refine(...withinFormLimit);
+/**
+ * Where a frame's forms go: the thread the frame is shown in, and what it shows.
+ * A page version, or a live ::inline-vis file (named by source and path, read when the form is sent).
+ */
+const pageFormTargetShape = { threadId: z.string().min(1), pageId: uuid, versionId: uuid };
+const fileFormTargetShape = { threadId: z.string().min(1), source: fileSourceSchema, file: relativeFileSchema };
+export const formTargetSchema = z.union([z.object(pageFormTargetShape).strict(), z.object(fileFormTargetShape).strict()]);
+export type FormTarget = z.infer<typeof formTargetSchema>;
+const submitFormInputSchema = z.union([
+  z.object({ ...formSubmissionShape, ...pageFormTargetShape }).strict(),
+  z.object({ ...formSubmissionShape, ...fileFormTargetShape }).strict(),
+]).refine(...withinFormLimit);
+/** A form already sent from this view in this thread: the bridge shows it sent and locked. */
+export const sentFormSchema = z.object({ formKey: z.string(), action: z.string().nullable(), answers: z.array(formAnswerSchema), sentAt: z.string() }).strict();
+export type SentForm = z.infer<typeof sentFormSchema>;
 
 // ---- RPC ------------------------------------------------------------------
 // Core methods: T1. Share methods: T4. The app (T3) calls both.
@@ -206,6 +224,8 @@ export const rpcContract = defineRpcContract({
   sendFeedback: { input: z.object({ pageId: uuid, versionId: uuid, threadId: z.string().min(1), text: z.string().trim().min(1).max(4_000) }).strict(), output: z.union([z.object({ ok: z.literal(true) }).strict(), z.object({ ok: z.literal(false), reason: z.literal("thread-archived"), message: z.string() }).strict()]) },
   /** A form the reader sent from a page (FRAME_MESSAGE.submit). Queues one message in the thread the page is shown in. Not for producer pages. */
   submitForm: { input: submitFormInputSchema, output: z.union([z.object({ ok: z.literal(true) }).strict(), z.object({ ok: z.literal(false), reason: z.enum(["thread-archived", "rate-limited"]), message: z.string() }).strict()]) },
+  /** Forms already sent from this page version or live file in this thread, latest send per form. */
+  sentForms: { input: formTargetSchema, output: z.object({ forms: z.array(sentFormSchema) }).strict() },
   // T4
   getShare: { input: z.object({ pageId: uuid }).strict(), output: z.object({ configured: z.boolean(), share: shareSchema.nullable(), defaults: z.object({ access: accessSchema, allowedDomains: z.array(z.string()) }).strict() }).strict() },
   sharePage: { input: shareInputSchema, output: shareSchema },
@@ -240,10 +260,13 @@ export type PageAssetName = (typeof PAGE_ASSET_NAMES)[number];
  *                                                            the host loads it into the same frame
  *   page -> host  { type: submit, ...FormSubmission }        a form the reader sent; the host calls submitForm
  *   host -> page  { type: submitted, submissionId, ok, message }  the outcome, shown in the form's status line
+ *   host -> page  { type: restore, forms: SentForm[] }       forms already sent in this thread; the page shows them sent
  */
-export const FRAME_MESSAGE = { theme: "bb-pages:theme", open: "bb-pages:open", height: "bb-pages:height", page: "bb-pages:page", submit: "bb-pages:submit", submitted: "bb-pages:submitted" } as const;
+export const FRAME_MESSAGE = { theme: "bb-pages:theme", open: "bb-pages:open", height: "bb-pages:height", page: "bb-pages:page", submit: "bb-pages:submit", submitted: "bb-pages:submitted", restore: "bb-pages:restore" } as const;
 /** A form with this attribute is left to the page's own script. */
 export const MANUAL_FORM_ATTRIBUTE = "data-bb-pages-manual";
+/** The bridge sets this on a form: "sending", "sent", or "error". The theme styles each state. */
+export const FORM_STATE_ATTRIBUTE = "data-bb-pages-state";
 
 // ---- Directives (T3) -------------------------------------------------------
 //   ::page{id version height? display?}          canonical
