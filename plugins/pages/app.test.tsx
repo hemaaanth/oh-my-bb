@@ -444,6 +444,11 @@ describe("side panel", () => {
 });
 
 describe("library", () => {
+  /** Opens a filter menu and picks one of its options. The menu renders in a portal, outside the slot. */
+  const pick = async (slot: RenderedSlot, trigger: string, option: string) => {
+    fireEvent.keyDown(await slot.findByRole("button", { name: trigger }), { key: "Enter" });
+    fireEvent.click(await slot.findByRole("menuitemradio", { name: option }));
+  };
   const library = app.navPanels.find(({ id }) => id === "pages")!;
   const item = { page: detail().page, version: summaries[1], share: null, previewUrl: `/api/v1/plugins/pages/http/v?id=${v2}` };
 
@@ -457,7 +462,7 @@ describe("library", () => {
     expect(preview.getAttribute("scrolling")).toBe("no");
     fireEvent.click(slot.getByRole("button", { name: "Load more" }));
     await slot.findByText("Second");
-    fireEvent.change(slot.getByLabelText("Project"), { target: { value: "project-1" } });
+    await pick(slot, "Project: All projects", "Growth");
     await waitFor(() => expect(listPages).toHaveBeenLastCalledWith({ offset: 0, projectId: "project-1" }));
     fireEvent.click(await slot.findByRole("button", { name: "Open First" }));
     expect(slot.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", path: "pages", options: { subPath: pageId } });
@@ -469,10 +474,8 @@ describe("library", () => {
     const listFolders = vi.fn(() => ({ folders: [{ projectId: "project-1", path: "Reports/Weekly", count: 1 }] }));
     const slot = renderSlot(library, { subPath: "" }, { rpc: { listPages, listFolders } as never, sidebarThreads: { projects: [{ id: "project-1", name: "Growth", isPersonal: false, href: "", settingsHref: "" }] } });
     await slot.findByText("Growth / Reports/Weekly");
-    fireEvent.change(slot.getByLabelText("Project"), { target: { value: "project-1" } });
-    const folder = await slot.findByLabelText("Folder");
-    expect(folder.textContent).toContain("Reports/Weekly (1)");
-    fireEvent.change(folder, { target: { value: "Reports/Weekly" } });
+    await pick(slot, "Project: All projects", "Growth");
+    await pick(slot, "Folder: All folders", "Reports/Weekly (1)");
     await waitFor(() => expect(listPages).toHaveBeenLastCalledWith({ offset: 0, projectId: "project-1", folder: "Reports/Weekly" }));
     slot.lifecycle.unmount();
   });

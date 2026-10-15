@@ -1,12 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { experimental_useSidebarThreads, useBbNavigate, useRealtime, useRpc, type PluginNavPanelProps, type PluginRpcResult } from "@get-bb/plugin-sdk/app";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { experimental_Icon as Icon, experimental_useSidebarThreads, useBbNavigate, useRealtime, useRpc, type PluginNavPanelProps, type PluginRpcResult } from "@get-bb/plugin-sdk/app";
 import type { PagesRpc } from "../contract.js";
 import { REALTIME_CHANNEL } from "./data.js";
 import { UUID } from "./directives.js";
 import { LIBRARY_PATH, PageView } from "./PageView.js";
-import { SharedDot, focusRing, messageOf, relativeTime, themedUrl, usePreviewTheme } from "./ui.js";
+import { PORTAL_SCOPE, SharedDot, focusRing, messageOf, relativeTime, themedUrl, usePreviewTheme } from "./ui.js";
 
 type ListItem = PluginRpcResult<PagesRpc["listPages"]>["pages"][number];
+
+/** A quiet filter in BB's own menu style. A native select opens the system list, which does not match the app. */
+function FilterMenu({ label, value, options, onChange }: { label: string; value: string; options: { value: string; label: string }[]; onChange: (value: string) => void }) {
+  const shown = options.find((option) => option.value === value)?.label ?? options[0]?.label ?? "";
+  return <DropdownMenu.Root>
+    <DropdownMenu.Trigger asChild>
+      <button type="button" aria-label={`${label}: ${shown}`} className={`inline-flex h-7 min-w-0 max-w-full items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-state-hover hover:text-foreground data-[state=open]:bg-state-hover data-[state=open]:text-foreground ${focusRing}`}>
+        <span className="truncate">{shown}</span><Icon name="ChevronDown" aria-hidden className="size-3 shrink-0" />
+      </button>
+    </DropdownMenu.Trigger>
+    <DropdownMenu.Portal>
+      <DropdownMenu.Content {...PORTAL_SCOPE} align="start" sideOffset={4} collisionPadding={8} style={{ zIndex: 75 }} className="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] min-w-44 max-w-[calc(100vw-16px)] overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md">
+        <DropdownMenu.RadioGroup value={value} onValueChange={onChange}>
+          {options.map((option) => <DropdownMenu.RadioItem key={option.value} value={option.value} className="flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-state-hover">
+            <span className="flex w-3.5 shrink-0 justify-center"><DropdownMenu.ItemIndicator><Icon name="Check" aria-hidden className="size-3.5" /></DropdownMenu.ItemIndicator></span>
+            <span className="min-w-0 truncate">{option.label}</span>
+          </DropdownMenu.RadioItem>)}
+        </DropdownMenu.RadioGroup>
+      </DropdownMenu.Content>
+    </DropdownMenu.Portal>
+  </DropdownMenu.Root>;
+}
 
 /** Loads the iframe only once its card scrolls into view. */
 function Thumbnail({ title, src }: { title: string; src: string }) {
@@ -94,16 +117,9 @@ export function Library({ selectedId, onSelect, inPanel = false }: { selectedId:
     groups.set(key, group);
   }
   return <main aria-label="Pages library" className="h-full overflow-y-auto">
-    <div className={`flex items-center gap-2 pb-3 ${inPanel ? "px-3 pt-3" : "px-5 pt-4"}`}>
-      <label className="sr-only" htmlFor="pages-project-filter">Project</label>
-      <select id="pages-project-filter" value={projectId} onChange={(event) => { setItems(null); setFolder(""); setProjectId(event.target.value); }} className={`h-8 max-w-full rounded-md border border-border bg-background px-2 text-sm ${focusRing}`}>
-        <option value="">All projects</option>
-        {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-      </select>
-      {projectId ? <><label className="sr-only" htmlFor="pages-folder-filter">Folder</label><select id="pages-folder-filter" value={folder} onChange={(event) => { setItems(null); setFolder(event.target.value); }} className={`h-8 max-w-full rounded-md border border-border bg-background px-2 text-sm ${focusRing}`}>
-        <option value="">All folders</option>
-        {folders.filter((entry) => entry.path).map((entry) => <option key={entry.path!} value={entry.path!}>{entry.path} ({entry.count})</option>)}
-      </select></> : null}
+    <div className={`flex min-w-0 items-center gap-1 pb-2 ${inPanel ? "px-1.5 pt-2" : "px-3.5 pt-3"}`}>
+      <FilterMenu label="Project" value={projectId} onChange={(value) => { setItems(null); setFolder(""); setProjectId(value); }} options={[{ value: "", label: "All projects" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} />
+      {projectId ? <FilterMenu label="Folder" value={folder} onChange={(value) => { setItems(null); setFolder(value); }} options={[{ value: "", label: "All folders" }, ...folders.filter((entry) => entry.path).map((entry) => ({ value: entry.path!, label: `${entry.path} (${entry.count})` }))]} /> : null}
     </div>
     {error ? <p role="alert" className={`py-2 text-sm text-destructive ${inPanel ? "px-3" : "px-5"}`}>{error}</p> : null}
     {items === null && !error ? <p role="status" className={`py-2 text-sm text-muted-foreground ${inPanel ? "px-3" : "px-5"}`}>Loading pages…</p> : null}
