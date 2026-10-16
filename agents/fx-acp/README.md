@@ -18,16 +18,22 @@ It is a standalone Node package, not a BB plugin. Model Gateway does not install
 Node 22.13 or later, and `fx` on `PATH`. `fx-acp` has no runtime dependencies.
 
 ```bash
-git clone --depth 1 --branch fx-acp/v0.1.0 https://github.com/hemaaanth/oh-my-bb.git
+git clone --depth 1 https://github.com/hemaaanth/oh-my-bb.git
 npm pack --pack-destination . ./oh-my-bb/agents/fx-acp
 npm install --global ./fx-acp-0.1.0.tgz
 ```
 
 The tarball produces a copy instead of a symlink to the checkout.
 
-Sign FX in to Codex once on every host that runs FX threads, including each sandbox:
-`fx login codex`. FX refuses its codex provider without that login, and then `session/new`
-fails with `fx-acp could not select the codex provider: ...`.
+Routed BB turns do not need `fx login codex`.
+When both gateway URLs are present, the adapter selects FX's native
+`FX_AUTH_MODE=host-managed`. It forwards model requests through private loopback
+endpoints because FX only accepts loopback HTTP in its endpoint overrides.
+The relay then uses the host-reachable gateway URLs. The query token is not
+written to disk. No OAuth file is copied or fabricated.
+
+Without gateway env, standalone FX keeps its existing local login behavior.
+One missing URL is an error, not a fallback to local auth.
 
 ## Register in BB
 
@@ -62,6 +68,6 @@ entry.
 
 ```bash
 npm install
-npm test          # vitest, against test/fake-fx.mjs; no real FX, no network
+npm test          # vitest, fake FX and a local HTTP server; no paid requests
 npm run typecheck
 ```

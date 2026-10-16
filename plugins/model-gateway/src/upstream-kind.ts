@@ -8,6 +8,7 @@ export const HARNESSES = [
   "acp-omp",
   "acp-fx",
   "acp-nanocodex",
+  "acp-prime-agent",
   "pi",
 ] as const;
 

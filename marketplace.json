@@ -8,7 +8,7 @@
     {
       "id": "model-gateway",
       "displayName": "Model Gateway",
-      "description": "Keep coding when a Claude or ChatGPT account reaches its limit. Route Claude Code, Codex, omp, FX, nanocodex, and Pi through ordered accounts and optional API-key fallbacks. Translate Messages and Responses requests when a fallback uses another protocol. FX and nanocodex require their separate optional adapters. Claude Max accounts are restricted to Claude Code; API-key fallbacks bill per token. Optional Jev routing sends the truncated last user message and candidate model names to OpenRouter.",
+      "description": "Keep coding when a Claude or ChatGPT account reaches its limit. Route Claude Code, Codex, omp, FX, nanocodex, Prime Agent, and Pi (including Hempi and agent profiles) through ordered accounts and optional API-key fallbacks. Translate Messages and Responses requests when a fallback uses another protocol. FX, nanocodex, and Prime Agent require their separate optional adapters; routed FX and Prime Agent need no local provider login. Claude Max accounts are restricted to Claude Code; API-key fallbacks bill per token. Optional Jev routing sends the truncated last user message and candidate model names to OpenRouter.",
       "icon": "Route",
       "tags": [
         "accounts",

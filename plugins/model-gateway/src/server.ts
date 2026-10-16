@@ -338,9 +338,10 @@ export function createAccountPoolPlugin(
     // coexistence gate. omp and Pi also need `bb gateway setup omp|pi`.
     const http = "/api/v1/plugins/model-gateway/http";
     const acpEnv: Record<
-      "acp-omp" | "acp-fx" | "acp-nanocodex" | "pi",
+      "acp-omp" | "acp-fx" | "acp-nanocodex" | "acp-prime-agent" | "pi",
       (token: string) => ExperimentalPluginProviderEnvEntry[]
     > = {
+      "acp-prime-agent": (token) => acpEnv.pi(token),
       "acp-omp": (token) => [
         {
           name: "MODEL_GATEWAY_TOKEN",
@@ -415,6 +416,53 @@ export function createAccountPoolPlugin(
           : null,
       );
     }
+    // Exact provider ids only; removed registrations cannot be unregistered.
+    const registeredPi = new Set<string>();
+    let activePi = new Set<string>();
+    let scan = Promise.resolve();
+    let disposed = false;
+    const rescanPi = () => {
+      scan = scan.then(async () => {
+        if (disposed) return;
+        const catalog = await bb.sdk.providers.catalog();
+        if (disposed) return;
+        activePi = new Set(catalog
+          .filter((provider) => provider.info?.family === "agents" &&
+            (provider.id === "hempi" || /^agent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(provider.id)))
+          .map((provider) => provider.id));
+        for (const id of activePi) {
+          if (registeredPi.has(id)) continue;
+          bb.providers.experimental_contributeEnv(id, async (context) => {
+            if (!activePi.has(id) || !(await operations.isRoutingEnabled("pi")) ||
+                !(await chainUsable("pi")) || await routing.isBypassed(context.threadId)) return [];
+            return acpEnv.pi(await hubTokens.forThread({
+              hostId: context.hostId, threadId: context.threadId, harness: "pi",
+            }));
+          });
+          registeredPi.add(id);
+        }
+      }).catch(() => {
+        activePi.clear();
+        bb.log.warn("Model Gateway could not rescan Pi provider registrations.");
+      });
+      return scan;
+    };
+    bb.background.service("pi-providers", {
+      start: async (signal) => {
+        const unsubscribe = bb.sdk.subscribe({
+          event: "system:changed",
+          callback: (event) => {
+            if (event.changes.includes("provider-registrations-changed")) void rescanPi();
+          },
+        });
+        try {
+          await rescanPi();
+          if (!signal.aborted) await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+        } finally { unsubscribe(); }
+      },
+    });
+    bb.onDispose(() => { disposed = true; activePi.clear(); });
+    await rescanPi();
     bb.onDispose(async () => {
       codexLogin.dispose();
       let timer: ReturnType<typeof setTimeout> | null = null;

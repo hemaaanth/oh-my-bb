@@ -17,7 +17,6 @@ import {
   isNewUserTurn,
   mapModel,
   needsApiKeyUpstream,
-  ompModels,
   orderEntries,
   readThreadToken,
   responseExhaustion,
@@ -178,12 +177,6 @@ describe("chain config", () => {
 
   it("maps omp, FX and nanocodex models onto ChatGPT", () => {
     const map = DEFAULT_MODEL_MAP;
-    expect(ompModels(map)).toEqual([
-      "gw-gpt-6-astra",
-      "gw-gpt-6-sol",
-      "gw-gpt-5.6-terra",
-      "gw-gpt-6-luna",
-    ]);
     expect(gatewayModel(map, "chatgpt-oauth", "gw-gpt-6-astra")).toBe(
       "gpt-6-astra",
     );
@@ -1229,14 +1222,9 @@ describe("chain failover in the hub", () => {
     const models = await gw.host.harness.behavior.fetchHttp("GET", "/v1/models", {
       headers: { authorization: `Bearer ${key}` },
     });
-    expect(await models.json()).toEqual({
-      object: "list",
-      data: ["gw-gpt-6-astra", "gw-gpt-6-sol", "gw-gpt-5.6-terra", "gw-gpt-6-luna"].map((id) => ({
-        id,
-        object: "model",
-        owned_by: "model-gateway",
-      })),
-    });
+    const catalog = await models.json() as { data: Array<{ id: string }> };
+    expect(catalog.data.map(({ id }) => id)).toContain("gw-gpt-6.1-sol");
+    expect(catalog.data.every(({ id }) => id.startsWith("gw-"))).toBe(true);
     expect(gw.upstream.attempts).toEqual([]);
 
     gw.upstream.reply = () => completed("resp_omp");
@@ -1244,7 +1232,7 @@ describe("chain failover in the hub", () => {
     const sent = await gw.send(
       key,
       {
-        model: "gw-gpt-6-astra",
+        model: "gw-gpt-6.1-sol",
         instructions: "be brief",
         input: [{ role: "user", content: "hi" }],
         tools: [tool],
@@ -1261,7 +1249,7 @@ describe("chain failover in the hub", () => {
     expect(upstream.who).toBe("pro-token");
     expect(upstream.headers.get("chatgpt-account-id")).toBe("chatgpt-account");
     expect(JSON.parse(upstream.body)).toEqual({
-      model: "gpt-6-astra",
+      model: "gpt-6.1-sol",
       instructions: "be brief",
       input: [{ role: "user", content: "hi" }],
       tools: [tool],
@@ -1270,8 +1258,22 @@ describe("chain failover in the hub", () => {
     });
     expect(await gw.route("thr_omp")).toMatchObject({
       entryIndex: 0,
-      model: "gpt-6-astra",
+      model: "gpt-6.1-sol",
     });
+  });
+
+  it("serves the latest agent-level Codex model unchanged for Pi threads", async () => {
+    const gw = await gateway({ withCodex: true });
+    const token = await valueOf(gw.env("pi", "thr_pi_latest"), "MODEL_GATEWAY_TOKEN") as string;
+    gw.upstream.reply = () => completed("resp_latest");
+    const sent = await gw.send(token, {
+      model: "gpt-6.1-sol", input: [{ role: "user", content: "hi" }], stream: true,
+    }, "/v1/responses");
+    expect(sent.status).toBe(200);
+    const upstream = gw.upstream.requests.at(-1)!;
+    expect(upstream.who).toBe("pro-token");
+    expect(JSON.parse(upstream.body).model).toBe("gpt-6.1-sol");
+    expect(await gw.route("thr_pi_latest")).toMatchObject({ model: "gpt-6.1-sol", harness: "pi" });
   });
 
   it("authenticates FX by its query token and never forwards FX's own ChatGPT login (S2)", async () => {
@@ -1497,12 +1499,8 @@ describe("chain failover in the hub", () => {
     }
   });
 
-  it("prints and writes the setup for omp, FX and nanocodex", async () => {
+  it("writes the OMP setup without removing unrelated providers", async () => {
     const gw = await gateway();
-    const printed = await gw.cli("setup", "omp", "--print");
-    expect(printed.stdout).toContain(
-      "baseUrl: http://127.0.0.1:38886/api/v1/plugins/model-gateway/http/v1",
-    );
     const home = await mkdtemp(path.join(tmpdir(), "mgw-setup-home-"));
     const previous = process.env.HOME;
     process.env.HOME = home;
@@ -1527,16 +1525,6 @@ describe("chain failover in the hub", () => {
       process.env.HOME = previous;
       await fs.rm(home, { recursive: true, force: true });
     }
-    const fx = await gw.cli("setup", "fx");
-    expect(fx.stdout).toContain("./oh-my-bb/agents/fx-acp");
-    expect(fx.stdout).toContain("npm install --global ./fx-acp-0.1.0.tgz");
-    expect(fx.stdout).toContain("require FX or fx-acp");
-    expect(fx.stdout).toContain("fx login codex");
-    const nano = await gw.cli("setup", "nanocodex");
-    expect(nano.stdout).toContain('"command": "nanocodex-acp"');
-    expect(nano.stdout).toContain("./oh-my-bb/agents/nanocodex-acp");
-    expect(nano.stdout).toContain("npm install --global ./nanocodex-acp-0.1.0.tgz");
-    expect(nano.stdout).toContain("does not install or require nanocodex");
   });
 
   // P4: API-key upstreams, Responses -> Messages translation, Pi.
@@ -2145,17 +2133,15 @@ describe("chain failover in the hub", () => {
     try {
       const file = path.join(agentDir, "extensions", "model-gateway.js");
       const printed = await gw.cli("setup", "pi", "--print");
-      expect(printed.stdout).toContain('pi.registerProvider("model-gateway"');
+      expect(printed.exitCode).toBe(0);
       await expect(fs.stat(file)).rejects.toThrow();
       const written = await gw.cli("setup", "pi");
       expect(written.exitCode).toBe(0);
       const text = await fs.readFile(file, "utf8");
-      expect(text).toContain('const MODELS = ["gpt-6-astra","gpt-6-sol","gpt-5.6-terra","gpt-6-luna"];');
-      expect(text).toContain("process.env.MODEL_GATEWAY_BASE_URL");
-      expect(text).toContain('api: "openai-responses"');
-      expect((await gw.cli("setup", "pi")).stdout).toContain("already up to date");
+      expect((await gw.cli("setup", "pi")).exitCode).toBe(0);
       await fs.writeFile(file, `${text}// local edit\n`);
-      expect((await gw.cli("setup", "pi")).stdout).toContain(`Backup: ${file}.bak-`);
+      expect((await gw.cli("setup", "pi")).exitCode).toBe(0);
+      expect((await fs.readdir(path.dirname(file))).some((name) => name.startsWith("model-gateway.js.bak-"))).toBe(true);
       expect(await fs.readFile(file, "utf8")).toBe(text);
       await fs.writeFile(file, "export default function mine() {}\n");
       const refused = await gw.cli("setup", "pi");

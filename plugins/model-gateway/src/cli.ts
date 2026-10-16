@@ -35,6 +35,7 @@ import type { CodexDeviceLogin } from "./upstreams/codex-device-login.js";
 import type { ImportPoolResult } from "./import-pool.js";
 import {
   expandChain,
+  gatewayModels,
   type AutoSettings,
   harnessSchema,
   HARNESSES,
@@ -45,6 +46,10 @@ import type { ThreadRouteStatus } from "./hub.js";
 import {
   FX_SETUP,
   NANOCODEX_SETUP,
+  PRIME_SETUP,
+  hostSetupFiles,
+  applySetupFiles,
+  checkSetupFiles,
   gatewayBaseUrl,
   ompSnippet,
   piExtension,
@@ -84,7 +89,7 @@ const HELP = [
   "  bb gateway auto [show]",
   "  bb gateway auto <harness> [--key <label>] [--model <id>] [--off]   Jev picks the model per user turn",
   "  bb gateway account hold <id> --until <+1h|ISO time> | --clear   Test hook: treat the account as exhausted",
-  "  bb gateway routing <claude|codex|acp-omp|acp-fx|acp-nanocodex|pi> [--off]",
+  "  bb gateway routing <claude|codex|acp-omp|acp-fx|acp-nanocodex|acp-prime-agent|pi> [--off]",
   "  bb gateway config",
   "  bb gateway config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>",
   "  bb gateway token rotate --machine <id-or-name>",
@@ -92,6 +97,8 @@ const HELP = [
   "  bb gateway doctor",
   "  bb gateway import-pool",
   "  bb gateway setup omp [--print] [--server-url <url>]   Writes the gateway provider into ~/.omp/agent/models.yml on the BB server machine",
+  "  bb gateway setup host [--print] [--check]   Reconcile OMP and Pi gateway files on this machine",
+  "  bb gateway setup prime-agent   Prints optional standalone Prime ACP setup",
   "  bb gateway setup fx   Prints optional standalone fx-acp setup",
   "  bb gateway setup nanocodex   Prints optional standalone nanocodex-acp setup",
   "  bb gateway setup pi [--print]   Writes the gateway provider extension into ~/.pi/agent/extensions on the BB server machine",
@@ -475,7 +482,7 @@ export function registerPoolCli(
         name: "routing",
         summary: "Enable or disable Model Gateway routing for one provider or ACP harness",
         usage:
-          "bb gateway routing <claude|codex|acp-omp|acp-fx|acp-nanocodex|pi> [--off]",
+          "bb gateway routing <claude|codex|acp-omp|acp-fx|acp-nanocodex|acp-prime-agent|pi> [--off]",
       },
       {
         name: "config",
@@ -513,9 +520,9 @@ export function registerPoolCli(
       {
         name: "setup",
         summary:
-          "Set up omp and Pi, or print the steps for FX and nanocodex, to run through the gateway",
+          "Reconcile host gateway files, or print optional ACP adapter setup",
         usage:
-          "bb gateway setup omp [--print] [--server-url <url>]\nbb gateway setup fx\nbb gateway setup nanocodex\nbb gateway setup pi [--print]",
+          "bb gateway setup host [--print] [--check]\nbb gateway setup omp [--print] [--server-url <url>]\nbb gateway setup fx\nbb gateway setup nanocodex\nbb gateway setup prime-agent\nbb gateway setup pi [--print]",
       },
     ],
     async run(argv, ctx): Promise<PluginCliResult> {
@@ -919,16 +926,31 @@ export function registerPoolCli(
           }
           return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
         }
+        if (argv[0] === "setup" && argv[1] === "prime-agent" && argv.length === 2)
+          return { exitCode: 0, stdout: PRIME_SETUP };
+        if (argv[0] === "setup" && argv[1] === "host") {
+          const flags = parseFlags(argv.slice(2), ["print", "check"], []);
+          const setup = hostSetupFiles({
+            hostId: "local",
+            serverBaseUrl: process.env.BB_SERVER_URL ?? bb.server.loopbackBaseUrl,
+            piAgentDirs: process.env.PI_CODING_AGENT_DIR
+              ? [path.relative(homedir(), process.env.PI_CODING_AGENT_DIR)] : undefined,
+          }, config.get().modelMap);
+          if (flags.booleans.has("print")) return { exitCode: 0, stdout: `${JSON.stringify(setup, null, 2)}\n` };
+          const check = flags.booleans.has("check");
+          const result = await (check ? checkSetupFiles : applySetupFiles)(homedir(), setup.files);
+          return {
+            exitCode: check && result.files.some((file) => file.status !== "current") ? 1 : 0,
+            stdout: `${result.files.map((file) => `${file.status}: ${file.path}${file.changed ? " (updated)" : ""}`).join("\n")}\n`,
+          };
+        }
         if (argv[0] === "setup" && argv[1] === "fx" && argv.length === 2)
           return { exitCode: 0, stdout: FX_SETUP };
         if (argv[0] === "setup" && argv[1] === "nanocodex" && argv.length === 2)
           return { exitCode: 0, stdout: NANOCODEX_SETUP };
         if (argv[0] === "setup" && argv[1] === "pi") {
           const flags = parseFlags(argv.slice(2), ["print"], []);
-          // Pi threads pick the ChatGPT models of the model map; the chain decides the upstream.
-          const models = [
-            ...new Set(Object.values(config.get().modelMap["chatgpt-oauth"] ?? {})),
-          ];
+          const models = gatewayModels(config.get().modelMap);
           if (flags.booleans.has("print"))
             return {
               exitCode: 0,

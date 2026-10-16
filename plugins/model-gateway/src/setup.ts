@@ -3,69 +3,18 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const BEGIN = "# >>> model-gateway (managed by bb gateway setup omp)";
-const END = "# <<< model-gateway";
-const PROVIDERS = /^providers:[ \t]*(?:#.*)?$/mu;
+import {
+  BEGIN, ompSnippet, upsertOmpProvider, sha256, validateSetupPath, type SetupFile,
+} from "../scripts/apply-setup-files.mjs";
+export { ompSnippet, upsertOmpProvider, applySetupFiles, checkSetupFiles } from "../scripts/apply-setup-files.mjs";
+import { gatewayModels, type ModelMap } from "./chain.js";
+import { CODEX_MODELS } from "./model-catalog.js";
 
 export function gatewayBaseUrl(serverUrl: string): string {
-  return `${serverUrl.replace(/\/+$/u, "")}/api/v1/plugins/model-gateway/http/v1`;
-}
-
-function ompBlock(baseUrl: string, indent: string): string {
-  return [
-    BEGIN,
-    `${indent}model-gateway:`,
-    `${indent.repeat(2)}baseUrl: ${baseUrl}`,
-    `${indent.repeat(2)}apiKey: MODEL_GATEWAY_TOKEN`,
-    `${indent.repeat(2)}authHeader: true`,
-    `${indent.repeat(2)}api: openai-responses`,
-    `${indent.repeat(2)}discovery:`,
-    `${indent.repeat(3)}type: openai-models-list`,
-    END,
-  ].join("\n");
-}
-
-export function ompSnippet(baseUrl: string): string {
-  return `providers:\n${ompBlock(baseUrl, "  ")}\n`;
-}
-
-/**
- * Adds or replaces only the managed `model-gateway` provider block under the
- * top-level `providers:` key. Every other byte of the file stays as it was.
- */
-export function upsertOmpProvider(text: string, baseUrl: string): string {
-  const begin = text.indexOf(BEGIN);
-  const end = text.indexOf(END, begin);
-  if (begin >= 0 && end >= 0) {
-    const indent = /\n([ \t]+)model-gateway:/u.exec(text.slice(begin))?.[1] ?? "  ";
-    return (
-      text.slice(0, begin) +
-      ompBlock(baseUrl, indent) +
-      text.slice(end + END.length)
-    );
-  }
-  if (/^[ \t]+model-gateway:/mu.test(text))
-    throw new Error(
-      "models.yml already has an unmanaged model-gateway provider. Remove it, or edit it by hand with bb gateway setup omp --print.",
-    );
-  const providers = PROVIDERS.exec(text);
-  if (providers === null) {
-    if (/^providers:/mu.test(text))
-      throw new Error(
-        "models.yml writes providers: in a form this command cannot edit. Add the block by hand; see bb gateway setup omp --print.",
-      );
-    const separator = text === "" || text.endsWith("\n") ? "" : "\n";
-    return `${text}${separator}${ompSnippet(baseUrl)}`;
-  }
-  const after = providers.index + providers[0].length;
-  // Match the indent of the first existing provider so siblings line up.
-  const child = text
-    .slice(after)
-    .split("\n")
-    .slice(1)
-    .find((line) => line.trim() !== "" && !line.trim().startsWith("#"));
-  const indent = /^([ \t]+)/u.exec(child ?? "")?.[1] ?? "  ";
-  return `${text.slice(0, after)}\n${ompBlock(baseUrl, indent)}${text.slice(after)}`;
+  const url = new URL(serverUrl);
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash)
+    throw new Error("Expected an HTTP(S) server URL without credentials, query, or fragment.");
+  return `${url.href.replace(/\/+$/u, "")}/api/v1/plugins/model-gateway/http/v1`;
 }
 
 /** Writes the block into `<home>/.omp/agent/models.yml`, backing up an existing file first. */
@@ -101,7 +50,7 @@ hides the Vercel AI Gateway and Grok providers.
 
 1. Install the adapter:
 
-   git clone --depth 1 --branch fx-acp/v0.1.0 https://github.com/hemaaanth/oh-my-bb.git
+   git clone --depth 1 https://github.com/hemaaanth/oh-my-bb.git
    npm pack --pack-destination . ./oh-my-bb/agents/fx-acp
    npm install --global ./fx-acp-0.1.0.tgz
 
@@ -111,12 +60,11 @@ hides the Vercel AI Gateway and Grok providers.
 
    { "id": "fx", "displayName": "FX", "command": "fx-acp" }
 
-3. Sign FX in once on every host that runs FX threads, including each sandbox:
+3. No FX login is needed for routed BB turns. The adapter uses FX's native
+   host-managed auth mode and relays its loopback-only endpoint overrides to
+   the gateway URLs. No OAuth file is copied or fabricated.
 
-   fx login codex
-
-   FX refuses its codex provider without that login. The gateway never forwards
-   FX's own ChatGPT login: it serves FX from the gateway's ChatGPT accounts.
+Without both contributed URLs, standalone FX keeps its existing login behavior.
 
 The gateway sets FX_E2E_OPENAI_CODEX_RESPONSES_URL and FX_E2E_OPENAI_CODEX_MODELS_URL
 for each acp-fx thread. Turn this off with bb gateway routing acp-fx --off.
@@ -165,6 +113,20 @@ acp-nanocodex chain, for example:
   bb gateway chain set acp-nanocodex chatgpt-oauth:* anthropic-compatible-key:kimi
 `;
 
+export const PRIME_SETUP = `Optional integration: install agents/prime-agent-acp from oh-my-bb on every host.
+Prime Agent 0.10.0 must be on PATH. The gateway does not install either package.
+Use this entry in provider-acp customAgents, keeping every other entry:
+
+${JSON.stringify({
+  id: "prime-agent", displayName: "Prime Agent", command: "prime-agent-acp",
+  args: ["--mode", "acp"],
+  modelCli: { listArgs: ["model-list"], selectFlag: "--model" },
+}, null, 2)}
+
+The adapter requires MODEL_GATEWAY_BASE_URL and MODEL_GATEWAY_TOKEN for inference.
+It uses a private config and daemon socket for each launch. No local login fallback.
+`;
+
 const PI_MARKER = "// >>> model-gateway (managed by bb gateway setup pi)";
 
 /**
@@ -177,21 +139,21 @@ export function piExtension(models: readonly string[]): string {
   return `${PI_MARKER}. Rerun that command to update; edits are overwritten.
 // Routes Pi through the BB Model Gateway. BB sets MODEL_GATEWAY_BASE_URL and
 // MODEL_GATEWAY_TOKEN for each Pi thread it routes.
-const MODELS = ${JSON.stringify(models)};
+const MODELS = ${JSON.stringify(models.map((id) => ({ id, input: ["text", "image"], ...(Object.hasOwn(CODEX_MODELS, id) ? CODEX_MODELS[id] : { contextWindow: 272000, maxTokens: 128000 }) })))};
 
 export default function modelGateway(pi) {
   pi.registerProvider("model-gateway", {
     baseUrl: process.env.MODEL_GATEWAY_BASE_URL ?? "http://127.0.0.1:9/model-gateway-not-routed",
     apiKey: process.env.MODEL_GATEWAY_TOKEN ?? "model-gateway-not-routed",
     api: "openai-responses",
-    models: MODELS.map((id) => ({
+    models: MODELS.map(({ id, input, contextWindow, maxTokens }) => ({
       id,
       name: \`\${id} (Model Gateway)\`,
       reasoning: true,
-      input: ["text", "image"],
+      input,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: 272000,
-      maxTokens: 128000,
+      contextWindow,
+      maxTokens,
     })),
   });
 }
@@ -234,13 +196,34 @@ export async function writePiExtension(
 
 /** One-time setup text per harness for the settings pane. The pane shows it; it never runs it. */
 export function setupGuides(serverUrl: string): Record<
-  "acp-omp" | "acp-fx" | "acp-nanocodex" | "pi",
+  "acp-omp" | "acp-fx" | "acp-nanocodex" | "acp-prime-agent" | "pi",
   string
 > {
   return {
     "acp-omp": `Run once on the BB server machine:\n\n   bb gateway setup omp\n\nOr add this under providers: in ~/.omp/agent/models.yml:\n\n${ompSnippet(gatewayBaseUrl(serverUrl))}\nOther hosts: bb gateway setup omp --print --server-url <that host's BB_SERVER_URL>.\n`,
     "acp-fx": FX_SETUP,
     "acp-nanocodex": NANOCODEX_SETUP,
+    "acp-prime-agent": PRIME_SETUP,
     pi: "Run once on the BB server machine:\n\n   bb gateway setup pi\n\nOther hosts and sandboxes: save the output of bb gateway setup pi --print as ~/.pi/agent/extensions/model-gateway.js. Run it again after the model map changes.\n",
   };
+}
+
+export function hostSetupFiles(
+  input: { hostId: string; serverBaseUrl: string; piAgentDirs?: string[] },
+  modelMap: ModelMap,
+): { revision: string; files: SetupFile[] } {
+  const content = ompSnippet(gatewayBaseUrl(input.serverBaseUrl));
+  const files: SetupFile[] = [{
+    path: ".omp/agent/models.yml", op: "managed-block", marker: BEGIN,
+    content, sha256: sha256(content),
+  }];
+  for (const dir of new Set(input.piAgentDirs ?? [".pi/agent"])) {
+    validateSetupPath(dir);
+    const content = piExtension(gatewayModels(modelMap));
+    files.push({
+      path: `${dir}/extensions/model-gateway.js`, op: "managed-file",
+      marker: PI_MARKER, content, sha256: sha256(content),
+    });
+  }
+  return { revision: sha256(JSON.stringify({ files: files.map(({ path, sha256 }) => [path, sha256]), modelMap })), files };
 }

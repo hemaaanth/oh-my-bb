@@ -1,0 +1,14 @@
+{
+  "name": "prime-agent-acp",
+  "version": "0.1.0",
+  "description": "Run Prime Agent ACP through BB Model Gateway with an isolated daemon.",
+  "license": "MIT",
+  "author": "Hemanth Soni",
+  "type": "module",
+  "bin": { "prime-agent-acp": "./prime-agent-acp.mjs" },
+  "files": ["prime-agent-acp.mjs"],
+  "engines": { "node": ">=22.13.0" },
+  "repository": { "type": "git", "url": "git+https://github.com/hemaaanth/oh-my-bb.git", "directory": "agents/prime-agent-acp" },
+  "scripts": { "build": "node --check prime-agent-acp.mjs", "typecheck": "tsc -p .", "test": "vitest run" },
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.7.0", "vitest": "^3.2.4" }
+}

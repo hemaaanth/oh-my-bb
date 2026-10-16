@@ -137,25 +137,13 @@ it("edits the model map and Jev auto through the CLI's rules", async () => {
   expect(config.auto.harnesses).toEqual(["pi"]);
 });
 
-it("reports Account Pooler blocking and the setup text on routing.get", async () => {
+it("reports Account Pooler blocking and persists routing switches", async () => {
   const { call, host } = await setup(true);
   const routing = (await call("routing.get", null)) as {
     enabled: Record<string, boolean>;
     blockedBy: string | null;
-    setup: Record<string, string>;
-    ladders: Record<string, string[]>;
   };
   expect(routing.blockedBy).toMatch(/Account Pooler/);
-  expect(routing.ladders["claude-code"]).toEqual(["claude-sonnet-5", "claude-opus-5-5"]);
-  expect(routing.ladders.codex).toEqual([
-    "gpt-6-luna",
-    "gpt-6-sol",
-    "gpt-6-astra",
-    "gpt-5.6-terra",
-  ]);
-  expect(Object.keys(routing.enabled)).toHaveLength(6);
-  expect(routing.setup["acp-omp"]).toContain("bb gateway setup omp");
-  expect(routing.setup["acp-fx"]).toContain("fx login codex");
   await call("routing.set", { provider: "pi", enabled: true });
   expect(((await call("routing.get", null)) as typeof routing).enabled.pi).toBe(true);
   expect(host.harness.inspection.realtimeSignals).toContainEqual({

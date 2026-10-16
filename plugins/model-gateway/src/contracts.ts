@@ -348,6 +348,7 @@ export const routingTargetSchema = z.enum([
   "acp-omp",
   "acp-fx",
   "acp-nanocodex",
+  "acp-prime-agent",
   "pi",
 ]);
 export type RoutingTarget = z.infer<typeof routingTargetSchema>;

@@ -7,6 +7,7 @@ import type { Account, AccountQuota, ModelFamily } from "./contracts.js";
 import type { ProviderAdapter } from "./upstreams/provider-adapter.js";
 import { isQuotaExhausted } from "./upstreams/quota.js";
 import { ANTHROPIC_REPLAY, CHATGPT_REPLAY } from "./translate/reasoning-envelope.js";
+import { CODEX_MODELS } from "./model-catalog.js";
 import {
   HARNESSES,
   KEY_LABEL,
@@ -41,6 +42,7 @@ export const DEFAULT_CHAINS: Record<Harness, string[]> = {
   "acp-omp": ["chatgpt-oauth:*"],
   "acp-fx": ["chatgpt-oauth:*"],
   "acp-nanocodex": ["chatgpt-oauth:*"],
+  "acp-prime-agent": ["chatgpt-oauth:*"],
   pi: ["chatgpt-oauth:*"],
 };
 
@@ -51,6 +53,7 @@ export const chainsSchema = z
     "acp-omp": chainSchema.default(DEFAULT_CHAINS["acp-omp"]),
     "acp-fx": chainSchema.default(DEFAULT_CHAINS["acp-fx"]),
     "acp-nanocodex": chainSchema.default(DEFAULT_CHAINS["acp-nanocodex"]),
+    "acp-prime-agent": chainSchema.default(DEFAULT_CHAINS["acp-prime-agent"]),
     pi: chainSchema.default(DEFAULT_CHAINS.pi),
   })
   .strict();
@@ -223,9 +226,14 @@ export function mapModel(
  */
 export const OMP_MODEL_PREFIX = "gw-";
 
-/** The `gw-` ids omp discovers: one per ChatGPT model in the model map. */
+/** Model-map additions extend the current Codex catalog, rather than hiding it. */
+export function gatewayModels(modelMap: ModelMap): string[] {
+  return [...new Set([...Object.keys(CODEX_MODELS), ...Object.values(modelMap["chatgpt-oauth"] ?? {})])];
+}
+
+/** The `gw-` ids OMP discovers cover the same models as Pi. */
 export function ompModels(modelMap: ModelMap): string[] {
-  return [...new Set(Object.values(modelMap["chatgpt-oauth"] ?? {}))].map(
+  return gatewayModels(modelMap).map(
     (model) => OMP_MODEL_PREFIX + model,
   );
 }
@@ -562,6 +570,7 @@ export function contextWindow(
     headers.get("anthropic-beta")?.includes("context-1m") === true
   )
     return 1_000_000;
+  if (Object.hasOwn(CODEX_MODELS, model)) return CODEX_MODELS[model]!.contextWindow;
   return CONTEXT_WINDOWS.find(([pattern]) => pattern.test(model))?.[1] ?? null;
 }
 

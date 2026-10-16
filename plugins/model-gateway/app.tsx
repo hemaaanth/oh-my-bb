@@ -86,7 +86,7 @@ import {
 
 type Harness = (typeof HARNESSES)[number];
 type KeyKind = KeyAddInput["kind"];
-type SetupTarget = "acp-omp" | "acp-fx" | "acp-nanocodex" | "pi";
+type SetupTarget = "acp-omp" | "acp-fx" | "acp-nanocodex" | "acp-prime-agent" | "pi";
 
 type Route = {
   harness: Harness;
@@ -116,6 +116,7 @@ const HARNESS_TITLES: Record<Harness, string> = {
   "acp-omp": "omp",
   "acp-fx": "FX",
   "acp-nanocodex": "nanocodex",
+  "acp-prime-agent": "Prime Agent",
   pi: "Pi",
 };
 
@@ -239,6 +240,7 @@ const ROUTING_TARGETS: Array<{ target: RoutingTarget; harness: Harness }> = [
   { target: "acp-omp", harness: "acp-omp" },
   { target: "acp-fx", harness: "acp-fx" },
   { target: "acp-nanocodex", harness: "acp-nanocodex" },
+  { target: "acp-prime-agent", harness: "acp-prime-agent" },
   { target: "pi", harness: "pi" },
 ];
 const CLAUDE_ONLY =

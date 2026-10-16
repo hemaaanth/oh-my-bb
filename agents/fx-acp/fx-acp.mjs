@@ -7,6 +7,9 @@ import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import { createServer } from "node:http";
+import { Readable } from "node:stream";
+import { randomUUID } from "node:crypto";
 
 export const PROVIDER_OPTION = "provider";
 export const PINNED_PROVIDER = "codex";
@@ -151,9 +154,55 @@ export function createRelay(io) {
   };
 }
 
-function main() {
+/** @param {NodeJS.ProcessEnv} env */
+export async function gatewayEnvironment(env) {
+  const responses = env.FX_E2E_OPENAI_CODEX_RESPONSES_URL;
+  const models = env.FX_E2E_OPENAI_CODEX_MODELS_URL;
+  if (!responses && !models) return { env, close: () => {} };
+  if (!responses || !models) throw new Error("Both FX gateway URLs are required.");
+  for (const value of [responses, models]) {
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password)
+      throw new Error("FX gateway URLs must be HTTP(S) without embedded credentials.");
+  }
+  // FX's native override URLs accept only loopback HTTP, even on remote hosts.
+  const prefix = `/${randomUUID()}`;
+  const server = createServer(async (req, res) => {
+    const target = req.method === "GET" && req.url === `${prefix}/models` ? models
+      : req.method === "POST" && req.url === `${prefix}/responses` ? responses : null;
+    if (target === null) { res.writeHead(404).end(); return; }
+    const abort = new AbortController();
+    res.on("close", () => abort.abort());
+    try {
+      const upstream = await fetch(target, {
+        method: req.method, signal: abort.signal, redirect: "error",
+        headers: { "content-type": "application/json", accept: req.method === "GET" ? "application/json" : "text/event-stream" },
+        ...(req.method === "POST" ? { body: Readable.toWeb(req), duplex: "half" } : {}),
+      });
+      res.writeHead(upstream.status, { "content-type": upstream.headers.get("content-type") ?? "application/json" });
+      if (upstream.body) Readable.fromWeb(upstream.body).on("error", () => res.destroy()).pipe(res);
+      else res.end();
+    } catch {
+      if (!res.headersSent) res.writeHead(502);
+      res.end();
+    }
+  });
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", () => resolve(undefined)); });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Cannot bind FX gateway relay.");
+  const base = `http://127.0.0.1:${address.port}${prefix}`;
+  return {
+    env: { ...env, FX_AUTH_MODE: "host-managed", FX_PROVIDER: "gateway",
+      FX_E2E_OPENAI_CODEX_RESPONSES_URL: `${base}/responses`,
+      FX_E2E_OPENAI_CODEX_MODELS_URL: `${base}/models` },
+    close: () => { server.closeAllConnections(); server.close(); },
+  };
+}
+
+async function main() {
+  const gateway = await gatewayEnvironment(process.env);
   const child = spawn(process.env.FX_BIN || "fx", ["acp", ...process.argv.slice(2)], {
-    stdio: ["pipe", "pipe", "inherit"],
+    env: gateway.env, stdio: ["pipe", "pipe", "inherit"],
   });
   const relay = createRelay({
     toClient: (line) => process.stdout.write(`${line}\n`),
@@ -164,11 +213,13 @@ function main() {
   child.stdin.on("error", () => {});
   for (const signal of /** @type {const} */ (["SIGINT", "SIGTERM", "SIGHUP"])) process.on(signal, () => child.kill(signal));
   child.on("error", (error) => {
+    gateway.close();
     process.stderr.write(`fx-acp: cannot start ${process.env.FX_BIN || "fx"}: ${error.message}\n`);
     process.exit(127);
   });
   // `close` waits for fx's stdout to drain, so no frame is lost before we exit.
   child.on("close", (code, signal) => {
+    gateway.close();
     if (signal !== null) {
       process.removeAllListeners(signal);
       process.kill(process.pid, signal);
@@ -176,4 +227,5 @@ function main() {
   });
 }
 
-if (process.argv[1] !== undefined && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] !== undefined && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url))
+  main().catch(() => { console.error("fx-acp: cannot configure gateway relay."); process.exitCode = 1; });

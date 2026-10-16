@@ -84,6 +84,7 @@ const CONFIG: AccountPoolConfig = {
     "acp-omp": ["chatgpt-oauth:*"],
     "acp-fx": ["chatgpt-oauth:*"],
     "acp-nanocodex": ["chatgpt-oauth:*"],
+    "acp-prime-agent": ["chatgpt-oauth:*"],
     pi: ["chatgpt-oauth:*"],
   },
   modelMap: {},
@@ -96,6 +97,7 @@ const HARNESSES = [
   "acp-omp",
   "acp-fx",
   "acp-nanocodex",
+  "acp-prime-agent",
   "pi",
 ] as const;
 
@@ -146,6 +148,7 @@ function render(extraRpc: Record<string, (input: unknown) => unknown> = {}) {
             "acp-omp": false,
             "acp-fx": false,
             "acp-nanocodex": false,
+            "acp-prime-agent": false,
             pi: false,
           },
           blockedBy: null,
@@ -153,6 +156,7 @@ function render(extraRpc: Record<string, (input: unknown) => unknown> = {}) {
             "acp-omp": "bb gateway setup omp",
             "acp-fx": "fx login codex",
             "acp-nanocodex": "nanocodex setup",
+            "acp-prime-agent": "bb gateway setup prime-agent",
             pi: "bb gateway setup pi",
           },
           ladders: Object.fromEntries(

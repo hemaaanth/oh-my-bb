@@ -1,6 +1,6 @@
 ---
 name: model-gateway
-description: Manage the Model Gateway, which routes Claude Code, Codex, omp, FX, nanocodex and Pi through pooled Claude and ChatGPT accounts and paid API keys (Anthropic, Kimi, GLM, OpenAI, OpenRouter), and fails a running thread over to the next upstream in its chain, translating between Messages and Responses when needed. Use whenever the user asks about gateway accounts, API keys, chains, the model map, fallback, the `bb gateway` CLI, Pi routing, or migrating off the core Account Pooler.
+description: Manage the Model Gateway, which routes Claude Code, Codex, omp, FX, nanocodex, Prime Agent and Pi (including Hempi and agent profiles) through pooled Claude and ChatGPT accounts and paid API keys (Anthropic, Kimi, GLM, OpenAI, OpenRouter), and fails a running thread over to the next upstream in its chain, translating between Messages and Responses when needed. Use whenever the user asks about gateway accounts, API keys, chains, the model map, fallback, the `bb gateway` CLI, Pi routing, or migrating off the core Account Pooler.
 ---
 
 # Model Gateway
@@ -37,7 +37,7 @@ Sticky rules:
 
 When the client and the upstream speak different protocols the gateway
 translates: Claude Code (Messages) on a ChatGPT or Responses-key entry, and
-Codex, omp, FX, nanocodex or Pi (Responses) on an Anthropic or
+Codex, omp, FX, nanocodex, Prime Agent or Pi (Responses) on an Anthropic or
 Anthropic-compatible key. Thinking or reasoning the gateway minted from the
 other vendor is removed when the thread goes back. While a thread is on
 ChatGPT or a compatible key, `count_tokens` is answered from a local estimate.
@@ -91,12 +91,12 @@ a key, an unmatched model passes through unchanged. Examples:
 - `bb gateway model-map set anthropic-compatible-key:kimi 'gpt-6-*' kimi-k3` (Codex on Kimi)
 - `bb gateway model-map set responses-compatible-key:openrouter 'gpt-6-*' openai/<model>`
 
-omp, FX, nanocodex and Pi send ChatGPT model names already. omp sees them as
+omp, FX, nanocodex, Prime Agent and Pi send ChatGPT model names already. omp sees them as
 `gw-gpt-6-astra` and so on (omp would route a known id to its own provider);
 the gateway strips `gw-`. nanocodex's `kimi-k3`, `@cf/zai-org/glm-5.3` and
 `mimo-v2.6-pro` skip ChatGPT entries and need a key entry that serves them.
 
-## omp, FX, nanocodex and Pi
+## omp, FX, nanocodex, Prime Agent and Pi
 
 - omp: run `bb gateway setup omp` once. It adds only a `model-gateway`
   provider to `~/.omp/agent/models.yml` on the BB server machine and keeps a
@@ -105,11 +105,15 @@ the gateway strips `gw-`. nanocodex's `kimi-k3`, `@cf/zai-org/glm-5.3` and
 - FX (optional): `bb gateway setup fx` prints installation of the standalone
   `fx-acp` package and its custom agent entry. Model Gateway does not install
   or require it. The adapter pins FX to its Codex provider and hides Vercel AI
-  Gateway and Grok. FX still needs
-  `fx login codex` once per host; the gateway never forwards that login.
+  Gateway and Grok. Routed FX uses native host-managed auth and a private loopback
+  relay. No `fx login codex` or OAuth file is needed. Standalone FX is unchanged.
 - nanocodex (optional): `bb gateway setup nanocodex` prints installation of the
   standalone `nanocodex-acp` package and the custom agent entry. Model Gateway
   does not install or require it. The command changes no BB settings.
+- Prime Agent (optional): `bb gateway setup prime-agent` prints the custom agent
+  entry using the bare `prime-agent-acp` command. The adapter requires gateway
+  env, creates a private config and daemon socket per ACP launch, and shuts that
+  daemon down at disconnect. It never falls back to a local login.
 - Pi: run `bb gateway setup pi` once per host. It writes
   `~/.pi/agent/extensions/model-gateway.js`, a small extension that registers
   a `model-gateway` provider from the per-thread env. It never edits
@@ -117,14 +121,22 @@ the gateway strips `gw-`. nanocodex's `kimi-k3`, `@cf/zai-org/glm-5.3` and
   changed one. Other hosts and sandboxes: save `bb gateway setup pi --print`
   there; the file is the same everywhere. Then pick a `model-gateway` model in
   the Pi thread.
-- `bb gateway routing <acp-omp|acp-fx|acp-nanocodex|pi> --off` stops routing one.
+- Hempi and current `agent-<uuid>` provider declarations use Pi's chain and routing.
+  The gateway discovers exact ids and rescans when provider registrations change.
+- Pi and OMP list the full current Codex catalog plus model-map additions. This
+  includes `gpt-6.1-sol` with 500,000 context and 128,000 output tokens.
+- `bb gateway setup host [--print] [--check]` reconciles both OMP and Pi files.
+  `--print` returns a nonsecret manifest; `--check` reports missing/stale files
+  without writes. Remote hosts use `host.setupFiles` with their own reachable BB
+  URL and the standalone `scripts/apply-setup-files.mjs` applier.
+- `bb gateway routing <acp-omp|acp-fx|acp-nanocodex|acp-prime-agent|pi> --off` stops routing one.
 
 ## Legal rule
 
 Claude Max OAuth accounts (`claude-oauth`) serve only Claude Code. The hub
 enforces this per request. `bb gateway chain set` rejects a chain that puts a
 Claude OAuth account behind any other harness. Do not try to work around it.
-For Codex, omp, FX, nanocodex and Pi, the only cross-vendor fallback is a paid
+For Codex, omp, FX, nanocodex, Prime Agent and Pi, the only cross-vendor fallback is a paid
 API key.
 
 ## Visibility
@@ -194,7 +206,7 @@ bb gateway account remove|enable|disable <id>
 bb gateway account priority <id> <n>
 bb gateway account reorder <claude|codex> <id>...
 bb gateway account hold <id> --until <+1h|ISO time> | --clear   (test hook: treat as exhausted)
-bb gateway routing <claude|codex|acp-omp|acp-fx|acp-nanocodex|pi> [--off]
+bb gateway routing <claude|codex|acp-omp|acp-fx|acp-nanocodex|acp-prime-agent|pi> [--off]
 bb gateway config
 bb gateway config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>
 bb gateway token rotate --machine <id-or-name>
@@ -204,5 +216,7 @@ bb gateway import-pool
 bb gateway setup omp [--print] [--server-url <url>]
 bb gateway setup fx
 bb gateway setup nanocodex
+bb gateway setup prime-agent
 bb gateway setup pi [--print]
+bb gateway setup host [--print] [--check]
 ```

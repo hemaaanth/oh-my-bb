@@ -47,7 +47,7 @@ import {
   setModelMapEntry,
   type PoolOperations,
 } from "./operations.js";
-import { setupGuides } from "./setup.js";
+import { setupGuides, hostSetupFiles } from "./setup.js";
 import type { ClaudeOAuthLogin } from "./upstreams/oauth-login.js";
 import type { CodexDeviceLogin } from "./upstreams/codex-device-login.js";
 
@@ -63,6 +63,21 @@ const fallbackCauseRpcSchema = z
   .strict();
 
 export const accountPoolRpcContract = defineRpcContract({
+  "host.setupFiles": {
+    input: z.object({
+      hostId: z.string().min(1),
+      serverBaseUrl: z.string().url(),
+      piAgentDirs: z.array(z.string().min(1)).optional(),
+    }).strict(),
+    output: z.object({
+      revision: z.string(),
+      files: z.array(z.object({
+        path: z.string(), op: z.enum(["managed-block", "managed-file", "json-merge"]),
+        marker: z.string().optional(), key: z.string().optional(),
+        content: z.string(), sha256: z.string(),
+      }).strict()),
+    }).strict(),
+  },
   "account.add": {
     input: accountAddInputSchema,
     output: accountSchema,
@@ -109,7 +124,7 @@ export const accountPoolRpcContract = defineRpcContract({
         /** Set while the core Account Pooler is enabled: the gateway routes nothing. */
         blockedBy: z.string().nullable(),
         /** One-time setup per ACP or Pi harness. Shown, never run. */
-        setup: z.record(z.enum(["acp-omp", "acp-fx", "acp-nanocodex", "pi"]), z.string()),
+        setup: z.record(z.enum(["acp-omp", "acp-fx", "acp-nanocodex", "acp-prime-agent", "pi"]), z.string()),
         /** Models Jev auto picks among, per harness, cheapest first. */
         ladders: z.record(harnessSchema, z.array(z.string())),
       })
@@ -278,6 +293,8 @@ export function createRpcHandlers(
   },
 ) {
   return {
+    "host.setupFiles": (input: Parameters<typeof hostSetupFiles>[0]) =>
+      hostSetupFiles(input, config.get().modelMap),
     "account.add": (input: Parameters<PoolOperations["add"]>[0]) =>
       operations.add(input),
     "account.list": () => operations.list(),

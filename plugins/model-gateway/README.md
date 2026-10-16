@@ -5,7 +5,7 @@ behind one hub in the BB server. Each
 harness has a chain of upstreams. When one runs out, the next request of the
 running thread goes to the next chain entry. When the client and the upstream
 speak different protocols, the hub translates: Claude Code (Messages) behind a
-ChatGPT or Responses-key entry, and Codex, omp, FX, nanocodex or Pi
+ChatGPT or Responses-key entry, and Codex, omp, FX, nanocodex, Prime Agent or Pi
 (Responses) behind an Anthropic-compatible key.
 
 Operator guide (commands, chains, model map, legal rule, Pooler cutover):
@@ -20,8 +20,9 @@ Automatic Claude Code failover maps Fable to `gpt-6-astra`, Opus to
   `POST /v1/messages`, `POST /v1/messages/count_tokens`, `POST /v1/responses`,
   `WS /v1/responses`, `GET /v1/models`, `HEAD /api/hello`.
 - `bb gateway ...` CLI.
-- Env for `claude-code`, `codex`, `acp-omp`, `acp-fx`, `acp-nanocodex` and
-  `pi`, with a per-thread hub token. See "ACP harnesses and Pi" below.
+- Env for `claude-code`, `codex`, `acp-omp`, `acp-fx`, `acp-nanocodex`,
+  `acp-prime-agent`, `pi`, `hempi`, and current `agent-<uuid>` providers, with
+  a per-thread hub token. See "ACP harnesses and Pi" below.
 - Health label `Gateway`, or `Gateway: on fallback` when a recently routed
   thread is past chain entry 0.
 - RPC `thread.route({ threadId })` returns
@@ -149,26 +150,33 @@ sets Jev's OpenRouter model id (default `typesafe/jev-1.13`).
 - Known limit: a Claude Code subagent's first request looks like a new user
   turn, so it asks Jev again (the same rule the failback uses).
 
-## ACP harnesses and Pi (omp, FX, nanocodex, Pi)
+## ACP harnesses and Pi
 
-All four speak OpenAI Responses and default to `chatgpt-oauth:*`. Any key
-kind can follow in their chains; Claude OAuth never can.
+omp, FX, nanocodex, Prime Agent, and Pi speak OpenAI Responses and default to
+`chatgpt-oauth:*`. Any key kind can follow in their chains; Claude OAuth never can.
 
 | Harness | Env | Hub token | Setup |
 |---|---|---|---|
 | `acp-omp` | `MODEL_GATEWAY_TOKEN` | `Authorization: Bearer` | `bb gateway setup omp` writes a `model-gateway` provider into `~/.omp/agent/models.yml` (omp cannot read `baseUrl` from env) |
-| `acp-fx` | `FX_E2E_OPENAI_CODEX_RESPONSES_URL`, `FX_E2E_OPENAI_CODEX_MODELS_URL` | query `?gateway_token=` | Optional: `bb gateway setup fx` prints standalone `fx-acp` setup; FX needs its own `fx login codex` per host |
+| `acp-fx` | `FX_E2E_OPENAI_CODEX_RESPONSES_URL`, `FX_E2E_OPENAI_CODEX_MODELS_URL` | query `?gateway_token=` | Optional `fx-acp` adapter; its host-managed auth and loopback relay need no FX login |
 | `acp-nanocodex` | `NANOCODEX_API_BASE_URL`, `MODEL_GATEWAY_TOKEN` | `Authorization: Bearer`, over `WS /v1/responses` | Optional: `bb gateway setup nanocodex` prints standalone `nanocodex-acp` setup |
+| `acp-prime-agent` | `MODEL_GATEWAY_BASE_URL`, `MODEL_GATEWAY_TOKEN` | `Authorization: Bearer` | Optional `prime-agent-acp` adapter and Prime Agent 0.10.0; no host setup file or Prime login |
 | `pi` | `MODEL_GATEWAY_BASE_URL`, `MODEL_GATEWAY_TOKEN` | `Authorization: Bearer` | `bb gateway setup pi` writes `~/.pi/agent/extensions/model-gateway.js` (or under `PI_CODING_AGENT_DIR`) |
 
 - FX's token rides in the query because core matches plugin routes by exact
-  path, so a `/t/<token>/` path segment would never reach the plugin. FX also
-  sends its own ChatGPT bearer, `chatgpt-account-id` and `originator`; the hub
-  replaces all three and drops the query token before the upstream call.
+  path. The adapter uses FX's native host-managed auth and private loopback
+  endpoints, then relays to the contributed host-reachable URLs. The hub drops
+  the query token before the upstream call. No FX OAuth file is needed.
 - Codex sends its token as `x-bb-account-pool-token` (core's pool config); the
   hub also accepts `x-bb-model-gateway-token` and a bearer.
 - omp sees ChatGPT models as `gw-<model>` (omp routes known ids to its
   built-in provider). `GET /v1/models` for an omp token lists them.
+- Pi and OMP discovery include the current nine-model Codex catalog, not only
+  model-map targets. This includes `gpt-6.1-sol` (500,000 context, 128,000 output)
+  and Spark (128,000 context/output, text only). Other current models use
+  272,000 context and 128,000 output. Custom model-map targets extend this list.
+  `src/model-catalog.ts` is the shared snapshot; refresh host setup files after
+  changing it. Unknown custom targets retain the previous 272,000/128,000 defaults.
 - Bodies from these harnesses are fitted to the ChatGPT Codex backend on a
   ChatGPT entry: the model is mapped, and `max_output_tokens`, `temperature`,
   `top_p`, `stop` and `user` are dropped. Everything else, including
@@ -184,16 +192,42 @@ kind can follow in their chains; Claude OAuth never can.
   catalog (spawned without thread env) lists the models; outside a routed
   thread they cannot connect. `setup pi` refuses to overwrite a file it did not
   write and backs up a changed one.
-- `bb gateway routing <acp-omp|acp-fx|acp-nanocodex|pi> --off` stops the env.
+- Hempi and family `agents` declarations named `agent-<uuid>` share Pi's chain
+  and routing switch. Exact ids come from the provider catalog. The gateway
+  rescans on `provider-registrations-changed`; removed ids contribute no env.
+- Prime's adapter builds a private per-launch config and daemon socket. Its
+  config stores only the `MODEL_GATEWAY_TOKEN` env reference. Concurrent ACP
+  clients do not share worker credentials. The adapter shuts down its private
+  daemon at disconnect. `bb gateway setup prime-agent` prints registration.
+- `bb gateway routing <acp-omp|acp-fx|acp-nanocodex|acp-prime-agent|pi> --off` stops the env.
   These harnesses get env only while their chain names an enabled account they
   may use.
+
+### Reconcile host setup files
+
+`bb gateway setup host` applies the same OMP and Pi files used on sandboxes.
+`--print` returns the nonsecret JSON file manifest. `--check` writes nothing and
+reports `current`, `missing`, or `stale`; it exits 1 if any file needs an update.
+The local command uses `BB_SERVER_URL`, or the BB server's loopback URL.
+
+RPC `host.setupFiles({ hostId, serverBaseUrl, piAgentDirs? })` returns
+`{ revision, files }`. Pass the URL the target host uses to reach BB, not the
+server's loopback address. Pi dirs are home-relative; the default is `.pi/agent`.
+The revision covers file content digests and the model map. No token is returned.
+
+`scripts/apply-setup-files.mjs` is the standalone Node applier for remote hosts.
+Copy that one file and pass `{ home?, files, check? }` as JSON on stdin.
+Its stdout is `{ files: [{ path, status, changed, backup }] }`.
+It validates all files before writing, rejects traversal and symlinks, preserves
+unrelated config, refuses unmanaged conflicts, and backs up changed files.
+Run it as the host user. A check creates no directories or backups.
 
 ## Legal rule
 
 Claude Max OAuth accounts serve only Claude Code on `/v1/messages*`. This is
 checked per request (`isLegalUpstream` in `src/chain.ts`), and chain settings
-that break it are rejected. So for Codex, omp, FX, nanocodex and Pi the only
-cross-vendor fallback is a paid API key.
+that break it are rejected. So for Codex, omp, FX, nanocodex, Prime Agent and Pi
+the only cross-vendor fallback is a paid API key.
 
 ## BB upgrade caveat
 
