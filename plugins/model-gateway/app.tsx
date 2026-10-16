@@ -534,7 +534,7 @@ function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
     }
   }
   return (
-    <section aria-label="Model Gateway usage" className="bg-surface">
+    <section aria-label="Model usage" className="bg-surface">
       <div className="flex items-center justify-between border-b border-border px-3 py-1">
         <h2 className="text-xs font-semibold">Gateway usage</h2>
         <div className="flex items-center gap-1">
@@ -2767,7 +2767,7 @@ export default definePluginApp((app) => {
   app.experimental_sidebarFooter.register({
     kind: "disclosure",
     id: "gateway-usage",
-    label: "Model Gateway usage",
+    label: "Model usage",
     icon: "ChartColumn",
     component: GatewayUsageFooter,
   });

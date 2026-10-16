@@ -335,7 +335,7 @@ describe("Model Gateway thread header", () => {
   });
 });
 
-describe("Model Gateway usage footer", () => {
+describe("Model usage footer", () => {
   it("shows one row per provider account across duplicate logins", async () => {
     const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
     expect(footer?.kind).toBe("disclosure");
