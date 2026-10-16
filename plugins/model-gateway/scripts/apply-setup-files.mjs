@@ -152,7 +152,8 @@ async function reconcile(home, files, check) {
 export const applySetupFiles = (home, files) => reconcile(home, files, false);
 export const checkSetupFiles = (home, files) => reconcile(home, files, true);
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// No top-level await: BB bundles this file into the plugin server as CommonJS.
+async function main() {
   try {
     let stdin = "";
     for await (const chunk of process.stdin) stdin += chunk;
@@ -164,3 +165,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exitCode = 1;
   }
 }
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) void main();
