@@ -1,9 +1,9 @@
 // Runs an endpoint's configured action. Targets (thread, project, environment,
-// automation) come only from the saved endpoint config. The payload supplies
-// field values for templates and nothing else.
+// automation, receiver plugin) come only from the saved endpoint config. The
+// payload supplies field values for templates or the receiver, and nothing else.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import type { ActionSpec, EnvironmentSpec } from "../contract.js";
+import { PLUGIN_ID, RECEIVE_METHOD, receiveOutputSchema, type ActionSpec, type EnvironmentSpec, type ReceiveInput } from "../contract.js";
 import type { DeliveryResult } from "./store.js";
 import { renderMessage, renderTitle, type TemplateContext } from "./template.js";
 
@@ -56,10 +56,23 @@ export async function runAction(bb: BbPluginApi, input: ActionInput): Promise<De
       });
       return { automationRunId: run.id, automationRunStatus: run.status, ...(run.threadId ? { threadId: run.threadId } : {}) };
     }
+    case "plugin": {
+      // Only the declared field values go over. The receiver decides what they mean.
+      const receive: ReceiveInput = {
+        endpointId: input.endpointId,
+        endpointName: context.endpointName,
+        deliveryId: context.deliveryId,
+        receivedAt: context.receivedAt,
+        idempotencyKey: automationIdempotencyKey(input.endpointId, input.dedupeHash),
+        fields: context.values,
+      };
+      const result = await bb.sdk.plugins.callRpc({ pluginId: action.pluginId, method: RECEIVE_METHOD, input: receive, outputSchema: receiveOutputSchema });
+      return result.threadId ? { threadId: result.threadId } : {};
+    }
   }
 }
 
-/** At most 200 characters, as automations_run requires. */
+/** At most 200 characters, as automations_run requires. Receiver plugins get the same key. */
 export const automationIdempotencyKey = (endpointId: string, dedupeHash: string) => `webhooks:${endpointId}:${dedupeHash}`;
 
 type SpawnEnvironment = Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0]["environment"];
@@ -110,6 +123,15 @@ export async function checkTargets(bb: BbPluginApi, action: ActionSpec): Promise
         problem = automation.problem ?? null;
         break;
       }
+      case "plugin": {
+        if (action.pluginId === PLUGIN_ID) {
+          problem = "an endpoint cannot deliver to the Webhooks plugin itself";
+          break;
+        }
+        const published = await bb.sdk.plugins.experimental_discoverRpc({ pluginId: action.pluginId, method: RECEIVE_METHOD });
+        if (published.length === 0) problem = `it does not publish a ${RECEIVE_METHOD} method`;
+        break;
+      }
     }
   } catch (error) {
     throw new TargetError(targetProblem(action), { cause: error });
@@ -119,8 +141,30 @@ export async function checkTargets(bb: BbPluginApi, action: ActionSpec): Promise
 
 export class TargetError extends Error {}
 
-const targetLabel = (action: ActionSpec) =>
-  action.type === "send" ? `Thread ${action.threadId}` : action.type === "spawn" ? `Project ${action.projectId}` : `Automation ${action.automationId}`;
+/** Plugins that publish a discoverable receive method. Empty when discovery fails. */
+export async function listReceivers(bb: BbPluginApi): Promise<Array<{ pluginId: string; name: string; description: string | null }>> {
+  try {
+    const published = await bb.sdk.plugins.experimental_discoverRpc({ method: RECEIVE_METHOD });
+    return published
+      .filter((entry) => entry.pluginId !== PLUGIN_ID)
+      .map((entry) => ({ pluginId: entry.pluginId, name: entry.displayName || entry.pluginId, description: entry.methodDescription ?? entry.registrationDescription }));
+  } catch {
+    return [];
+  }
+}
+
+function targetLabel(action: ActionSpec): string {
+  switch (action.type) {
+    case "send":
+      return `Thread ${action.threadId}`;
+    case "spawn":
+      return `Project ${action.projectId}`;
+    case "automation":
+      return `Automation ${action.automationId}`;
+    case "plugin":
+      return `Plugin ${action.pluginId}`;
+  }
+}
 
 function targetProblem(action: ActionSpec): string {
   switch (action.type) {
@@ -130,5 +174,7 @@ function targetProblem(action: ActionSpec): string {
       return `Project ${action.projectId} was not found.`;
     case "automation":
       return `Automation ${action.automationId} was not found in project ${action.projectId}, or the Automations plugin is not installed and enabled.`;
+    case "plugin":
+      return `Plugin ${action.pluginId} could not be checked. Make sure it is installed and enabled.`;
   }
 }

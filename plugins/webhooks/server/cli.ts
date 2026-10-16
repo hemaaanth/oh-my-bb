@@ -40,6 +40,7 @@ const describeAction = (endpoint: EndpointView) => {
   const action = endpoint.action;
   if (action.type === "send") return `send to thread ${action.threadId}`;
   if (action.type === "spawn") return `spawn in project ${action.projectId} (${action.environment.type})`;
+  if (action.type === "plugin") return `hand to plugin ${action.pluginId}`;
   return `run automation ${action.automationId} in project ${action.projectId}`;
 };
 
@@ -77,7 +78,7 @@ export function registerCli(bb: BbPluginApi, service: Service, urlOf: (endpoint:
       name: "webhooks",
       summary: "Manage inbound webhook endpoints",
       description:
-        "Each endpoint authenticates a request (Standard Webhooks signature, Slack request signature, or bearer token), checks its JSON against declared fields, drops duplicates, and runs one fixed action: send to a thread, spawn a thread, or run an Automations automation (saved prompt only; no payload).",
+        "Each endpoint authenticates a request (Standard Webhooks signature, Slack request signature, or bearer token), checks its JSON against declared fields, drops duplicates, and runs one fixed action: send to a thread, spawn a thread, run an Automations automation (saved prompt only; no payload), or hand the declared fields to a plugin that publishes webhooks_receive.",
       commands: {
         list: cliCommand({
           summary: "List endpoints",

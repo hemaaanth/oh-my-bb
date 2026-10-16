@@ -14,7 +14,11 @@ import { SLACK_PRESETS, configFromDraft, draftFromEndpoint, emptyField, newDraft
 import { SecretReveal } from "./SecretReveal.js";
 import { Choice, Field, Notice, WEBHOOK_ICON, messageOf, type ChoiceOption } from "./ui.js";
 
-type Targets = { projects: { id: string; name: string }[]; automations: { available: boolean; items: { id: string; name: string }[]; message: string | null } };
+type Targets = {
+  projects: { id: string; name: string }[];
+  automations: { available: boolean; items: { id: string; name: string }[]; message: string | null };
+  receivers: { pluginId: string; name: string; description: string | null }[];
+};
 const fieldTypes: ChoiceOption[] = (["string", "integer", "number", "boolean"] satisfies FieldSpec["type"][]).map((type) => ({ value: type, label: type }));
 // Name, JSON path, type, required, remove. The header row and every field row share it.
 const fieldGrid = "sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_7rem_5.5rem_1.5rem]";
@@ -43,7 +47,7 @@ export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: Endpo
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [issued, setIssued] = useState<{ endpointId: string; secret: string } | null>(null);
-  const targets = useTargets(draft.actionType === "send" ? "" : draft.projectId);
+  const targets = useTargets(draft.actionType === "spawn" || draft.actionType === "automation" ? draft.projectId : "");
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const setField = (index: number, patch: Partial<FieldDraft>) =>
     setDraft((current) => ({ ...current, fields: current.fields.map((field, at) => (at === index ? { ...field, ...patch } : field)) }));
@@ -225,6 +229,7 @@ export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: Endpo
                       { value: "send", label: "Send to a thread" },
                       { value: "spawn", label: "Start a thread" },
                       { value: "automation", label: "Run an automation" },
+                      { value: "plugin", label: "Hand to a plugin" },
                     ]}
                   />
                 )}
@@ -235,6 +240,8 @@ export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: Endpo
                 >
                   {(control) => <Input {...control} value={draft.threadId} placeholder="thr_…" onChange={(event) => set("threadId", event.target.value)} />}
                 </Field>
+              ) : draft.actionType === "plugin" ? (
+                <ReceiverPicker value={draft.pluginId} targets={targets} onChange={(value) => set("pluginId", value)} />
               ) : (
                 <ProjectPicker value={draft.projectId} targets={targets} onChange={(value) => set("projectId", value)} />
               )}
@@ -249,6 +256,8 @@ export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: Endpo
                 <Notice tone="warning" className="sm:col-span-2">
                   Runs the saved prompt. Payload fields are not passed in.
                 </Notice>
+              ) : draft.actionType === "plugin" ? (
+                <p className="text-xs leading-snug text-muted-foreground sm:col-span-2">The plugin gets the declared field values and decides what to do. No message is sent.</p>
               ) : (
                 <Field
                   label="Message"
@@ -380,6 +389,31 @@ function AutomationPicker({ value, targets, onChange }: { value: string; targets
           placeholder="Choose an automation"
           onChange={onChange}
           options={withCurrent(value, automations.items.map((item) => ({ value: item.id, label: item.name })))}
+        />
+      )}
+    </Field>
+  );
+}
+
+function ReceiverPicker({ value, targets, onChange }: { value: string; targets: Targets | null; onChange: (value: string) => void }) {
+  const receivers = targets?.receivers ?? [];
+  if (receivers.length === 0) {
+    return (
+      <Field label="Plugin id" hint="No installed plugin accepts webhook deliveries.">
+        {(control) => <Input {...control} value={value} onChange={(event) => onChange(event.target.value)} />}
+      </Field>
+    );
+  }
+  const chosen = receivers.find((receiver) => receiver.pluginId === value);
+  return (
+    <Field label="Plugin" hint={chosen?.description ?? undefined}>
+      {(control) => (
+        <Choice
+          {...control}
+          value={value}
+          placeholder="Choose a plugin"
+          onChange={onChange}
+          options={withCurrent(value, receivers.map((receiver) => ({ value: receiver.pluginId, label: receiver.name })))}
         />
       )}
     </Field>

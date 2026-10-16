@@ -49,5 +49,6 @@ export function describeAction(endpoint: EndpointView): string {
   const action = endpoint.action;
   if (action.type === "send") return `Send to thread ${action.threadId}`;
   if (action.type === "spawn") return `Spawn a thread in project ${action.projectId}`;
+  if (action.type === "plugin") return `Hand to plugin ${action.pluginId}`;
   return `Run automation ${action.automationId}`;
 }

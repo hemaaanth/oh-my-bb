@@ -4,6 +4,11 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const PLUGIN_ID = "webhooks";
+/**
+ * The one method a receiver plugin registers, with `experimental_discoverable`,
+ * to take deliveries from a "plugin" action. Webhooks never calls another method.
+ */
+export const RECEIVE_METHOD = "webhooks_receive";
 /** The one inbound route. The endpoint id travels in the query string. */
 export const DELIVER_ROUTE = "/deliver";
 export const DELIVER_PATH = `/api/v1/plugins/${PLUGIN_ID}/http/deliver`;
@@ -111,6 +116,8 @@ export const actionSchema = z.discriminatedUnion("type", [
   z
     .object({ type: z.literal("automation"), projectId: targetId("projectId"), automationId: targetId("automationId") })
     .strict(),
+  /** Hands the declared field values to another plugin's `webhooks_receive` method. */
+  z.object({ type: z.literal("plugin"), pluginId: targetId("pluginId") }).strict(),
 ]);
 export type ActionSpec = z.infer<typeof actionSchema>;
 
@@ -165,7 +172,7 @@ export const endpointConfigSchema = z
       }
     }
     const action = config.action;
-    const templates: [string, string][] = action.type === "automation" ? [] : [["message", action.message]];
+    const templates: [string, string][] = action.type === "send" || action.type === "spawn" ? [["message", action.message]] : [];
     if (action.type === "spawn" && action.title !== undefined) templates.push(["title", action.title]);
     for (const [key, template] of templates) {
       for (const name of templatePlaceholders(template)) {
@@ -281,7 +288,26 @@ export const rpcContract = defineRpcContract({
         items: z.array(z.object({ id: z.string(), name: z.string() })),
         message: z.string().nullable(),
       }),
+      /** Plugins that publish a discoverable `webhooks_receive` method. */
+      receivers: z.array(z.object({ pluginId: z.string(), name: z.string(), description: z.string().nullable() })),
     }),
   },
 });
+
+/**
+ * What a "plugin" action sends to the receiver's `webhooks_receive` method.
+ * Receivers should check `experimental_caller` is the `webhooks` plugin and
+ * treat `fields` as untrusted data. `idempotencyKey` is the same on retries.
+ */
+export const receiveInputSchema = z.object({
+  endpointId: z.string(),
+  endpointName: z.string(),
+  deliveryId: z.string(),
+  receivedAt: z.string(),
+  idempotencyKey: z.string(),
+  fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])),
+});
+export type ReceiveInput = z.infer<typeof receiveInputSchema>;
+/** A receiver may name a thread it started or messaged; the delivery links to it. */
+export const receiveOutputSchema = z.looseObject({ threadId: z.string().optional() });
 export type RpcContract = typeof rpcContract;

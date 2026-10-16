@@ -262,6 +262,46 @@ describe("automation action", () => {
   });
 });
 
+describe("plugin action", () => {
+  const pluginConfig = sendConfig({ action: { type: "plugin", pluginId: "receiver" } });
+
+  it("hands only the declared fields to webhooks_receive with an event idempotency key", async () => {
+    const host = await webhooksHost();
+    const { endpoint, secret } = await createEndpoint(host, pluginConfig);
+    expect((await postSigned(host, endpoint.id, secret!, payload, { id: "msg_plugin" })).status).toBe(200);
+    const calls = host.rpcCalls.filter((call) => call.pluginId === "receiver");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.method).toBe("webhooks_receive");
+    expect(calls[0]!.input).toMatchObject({ endpointId: endpoint.id, endpointName: "PostHog alerts", fields: { event: "user signed up", person: "ada@example.com" } });
+    expect(Object.keys(calls[0]!.input.fields as object).sort()).toEqual(["event", "person"]);
+    expect(String(calls[0]!.input.idempotencyKey)).toMatch(new RegExp(`^webhooks:${endpoint.id}:[a-f0-9]{64}$`));
+    expect(JSON.stringify(calls)).not.toContain("thr_attacker");
+    expect((await deliveries(host, endpoint.id))[0]).toMatchObject({ status: "succeeded", actionType: "plugin", threadId: "thr_received" });
+
+    // A receiver failure answers 502 so the sender retries with the same key.
+    host.failure.error = new Error("busy");
+    expect((await postSigned(host, endpoint.id, secret!, payload, { id: "msg_plugin_2" })).status).toBe(502);
+    host.failure.error = null;
+    expect((await postSigned(host, endpoint.id, secret!, payload, { id: "msg_plugin_2" })).status).toBe(200);
+    const keys = host.rpcCalls.filter((call) => call.pluginId === "receiver").map((call) => call.input.idempotencyKey);
+    expect(keys).toHaveLength(3);
+    expect(keys[1]).toBe(keys[2]);
+    await host.harness.lifecycle.dispose();
+  });
+
+  it("refuses plugins that do not publish webhooks_receive, and Webhooks itself", async () => {
+    const host = await webhooksHost();
+    await expect(createEndpoint(host, sendConfig({ action: { type: "plugin", pluginId: "other" } }))).rejects.toThrow(/does not publish a webhooks_receive method/);
+    await expect(createEndpoint(host, sendConfig({ action: { type: "plugin", pluginId: "webhooks" } }))).rejects.toThrow(/itself/);
+    await expect(createEndpoint(host, sendConfig({ action: { type: "plugin", pluginId: "receiver", message: "hi" } }))).rejects.toThrow(/Invalid endpoint config/);
+    const targets = (await host.harness.behavior.callRpc("webhooks_targets", {})) as { receivers: unknown[] };
+    expect(targets.receivers).toEqual([{ pluginId: "receiver", name: "Receiver", description: "Takes test deliveries." }]);
+    host.receivers.plugins = [];
+    expect(((await host.harness.behavior.callRpc("webhooks_targets", {})) as { receivers: unknown[] }).receivers).toEqual([]);
+    await host.harness.lifecycle.dispose();
+  });
+});
+
 describe("configuration safety", () => {
   it("refuses an archived send target and unknown placeholders", async () => {
     const host = await webhooksHost();

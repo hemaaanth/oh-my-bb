@@ -112,7 +112,7 @@ function EndpointList({ overview, error, onRetry, onOpen }: { overview: Overview
   return (
     <ResourceCollectionPage
       id="webhooks-endpoints"
-      description="Turn incoming webhooks into thread messages, new threads, or automation runs."
+      description="Turn incoming webhooks into thread messages, new threads, automation runs, or plugin calls."
       actions={
         <Button size="sm" onClick={() => onOpen("new")}>
           <Icon name="Plus" aria-hidden className="size-4" />

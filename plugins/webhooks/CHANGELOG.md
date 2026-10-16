@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- A plugin action. It hands the declared field values to another plugin's
+  discoverable `webhooks_receive` method, with an event-based idempotency key.
+  The panel lists the plugins that publish it. Endpoints are refused at save
+  when the chosen plugin does not.
+
 ## 0.1.0
 
 - Configurable inbound endpoints on one route,

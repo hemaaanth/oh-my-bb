@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { DELIVER_PATH, endpointConfigSchema, type AuthMode, type DeliveryView, type EndpointConfig, type EndpointView } from "../contract.js";
-import { AUTOMATIONS_PLUGIN_ID, TargetError, automationSummary, checkTargets } from "./actions.js";
+import { AUTOMATIONS_PLUGIN_ID, TargetError, automationSummary, checkTargets, listReceivers } from "./actions.js";
 import {
   SecretInputError,
   checkBearerToken,
@@ -201,10 +201,11 @@ export function createService(deps: {
       return { status: response.status, body: z.json().catch(null).parse(parsed) };
     },
 
-    /** Projects, and automations in one project when the Automations plugin answers. */
+    /** Projects, automations in one project when the Automations plugin answers, and receiver plugins. */
     async targets(input: { projectId?: string }) {
       const projects = (await bb.sdk.projects.list()).map((project) => ({ id: project.id, name: project.name }));
-      if (!input.projectId) return { projects, automations: { available: false, items: [], message: null } };
+      const receivers = await listReceivers(bb);
+      if (!input.projectId) return { projects, automations: { available: false, items: [], message: null }, receivers };
       try {
         const items = await bb.sdk.plugins.callRpc({
           pluginId: AUTOMATIONS_PLUGIN_ID,
@@ -215,9 +216,10 @@ export function createService(deps: {
         return {
           projects,
           automations: { available: true, items: items.filter((item) => !item.problem).map((item) => ({ id: item.id, name: item.name })), message: null },
+          receivers,
         };
       } catch {
-        return { projects, automations: { available: false, items: [], message: "The Automations plugin did not answer. Install and enable it to use automation actions." } };
+        return { projects, automations: { available: false, items: [], message: "The Automations plugin did not answer. Install and enable it to use automation actions." }, receivers };
       }
     },
   };

@@ -1,5 +1,5 @@
 Receive webhooks from PostHog, Slack, and other services, and turn them into
-thread messages, new threads, or automation runs. Each endpoint checks who
+thread messages, new threads, automation runs, or plugin calls. Each endpoint checks who
 sent the request, accepts only the JSON fields you declare, and drops
 duplicates before it acts.
 
@@ -13,8 +13,10 @@ and one fixed action:
 - **Spawn** a new thread in a project and environment you choose.
 - **Run** a saved automation from the Automations plugin. A retried event
   cannot start a second run.
+- **Hand** the declared fields to a plugin that publishes a
+  `webhooks_receive` method. The plugin decides what to do.
 
-The payload never chooses the thread, project, automation, or permissions.
+The payload never chooses the thread, project, automation, plugin, or permissions.
 Only declared fields reach the message, quoted and marked as external data.
 
 ## Signed by default
@@ -39,4 +41,5 @@ Secrets are shown once. Logs and delivery records never hold payload values.
 ## Standalone by default
 
 Webhooks does not require another BB plugin. The automation action works only
-when the Automations plugin is installed separately.
+when the Automations plugin is installed separately. The plugin action works
+only with a plugin that opts in by publishing `webhooks_receive`.

@@ -1,4 +1,4 @@
-// Test-only plugin host with recorded thread, project, and Automations calls.
+// Test-only plugin host with recorded thread, project, Automations, and receiver plugin calls.
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { vi } from "vitest";
 import plugin from "../server.js";
@@ -21,6 +21,8 @@ export async function webhooksHost(options: { settings?: Record<string, string>;
   const automations: { items: Array<{ id: string; name: string; problem?: string }> | null } = {
     items: [{ id: "auto_daily", name: "Daily triage" }, { id: "auto_broken", name: "Broken", problem: "missing-agent-prompt" }],
   };
+  /** Plugins that publish webhooks_receive. A receiver answers with `{ threadId }`. */
+  const receivers: { plugins: Array<{ pluginId: string; displayName: string }> } = { plugins: [{ pluginId: "receiver", displayName: "Receiver" }] };
   let runs = 0;
 
   const { bb, harness } = createFakePluginHost({
@@ -53,8 +55,17 @@ export async function webhooksHost(options: { settings?: Record<string, string>;
         list: async () => [{ id: PROJECT, name: "Test Project" }] as never,
       },
       plugins: {
+        experimental_discoverRpc: async ({ pluginId, method } = {}) =>
+          receivers.plugins
+            .filter((plugin) => (pluginId === undefined || plugin.pluginId === pluginId) && (method === undefined || method === "webhooks_receive"))
+            .map((plugin) => ({ ...plugin, method: "webhooks_receive", methodDescription: null, registrationDescription: "Takes test deliveries.", inputSchema: {}, outputSchema: {} })),
         callRpc: async ({ pluginId, method, input }) => {
           rpcCalls.push({ pluginId, method, input: input as Record<string, unknown> });
+          if (receivers.plugins.some((plugin) => plugin.pluginId === pluginId)) {
+            if (method !== "webhooks_receive") throw new Error(`unexpected method ${method}`);
+            if (failure.error) throw failure.error;
+            return { threadId: "thr_received" };
+          }
           if (pluginId !== "automations" || automations.items === null) throw new Error("plugin automations is not available");
           const { automationId } = input as { automationId?: string };
           if (method === "automations_list") return automations.items;
@@ -83,7 +94,7 @@ export async function webhooksHost(options: { settings?: Record<string, string>;
     return harness.behavior.fetchHttp(init?.method ?? "GET", href.slice(prefix.length), init);
   });
 
-  return { bb, harness, sent, spawned, rpcCalls, archived, failure, automations };
+  return { bb, harness, sent, spawned, rpcCalls, archived, failure, automations, receivers };
 }
 
 export type Host = Awaited<ReturnType<typeof webhooksHost>>;

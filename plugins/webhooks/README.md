@@ -2,7 +2,7 @@
 
 Webhooks receives signed webhooks, including Slack events and slash commands,
 on configured endpoints and turns approved fields into a thread message, a new
-thread, or an Automations run.
+thread, an Automations run, or a call to a plugin that accepts deliveries.
 
 ## Features
 
@@ -25,12 +25,14 @@ thread, or an Automations run.
   allowed values. Undeclared fields are ignored.
 - Duplicates are dropped by `webhook-id`, by a declared id field, or by body
   hash. A failed action runs again on the sender's retry.
-- Three fixed actions:
+- Four fixed actions:
   - **Send** a turn to one existing thread.
   - **Spawn** a thread in a configured project and environment.
   - **Run an automation** from the Automations plugin, with an event-based
     idempotency key.
-- The payload never chooses the target thread, project, automation, or
+  - **Hand to a plugin** that publishes a `webhooks_receive` method. It gets
+    the declared field values and decides what to do.
+- The payload never chooses the target thread, project, automation, plugin, or
   permissions.
 - A Webhooks panel: create and edit endpoints, see each secret once, copy the
   URL, send a signed test, follow deliveries live, and open the thread a
@@ -44,6 +46,33 @@ thread, or an Automations run.
 The automation action runs the automation's **saved prompt**. Payload fields are
 not forwarded, because `automations_run` has no input for event data. Use the
 send or spawn action when the agent needs the values.
+
+## Receiver plugins
+
+Another plugin can take deliveries without any change to Webhooks. It
+registers one RPC method named `webhooks_receive`, marked discoverable:
+
+```ts
+bb.rpc.register(
+  defineRpcContract({ webhooks_receive: { input: receiveInput, output: z.object({ threadId: z.string().optional() }) } }),
+  {
+    webhooks_receive: async (input, { experimental_caller }) => {
+      if (experimental_caller.kind !== "plugin" || experimental_caller.pluginId !== "webhooks") throw new Error("Only the Webhooks plugin may call this.");
+      // input: { endpointId, endpointName, deliveryId, receivedAt, idempotencyKey, fields }
+      return {};
+    },
+  },
+  { experimental_discoverable: true, experimental_description: "What this plugin does with a delivery." },
+);
+```
+
+- Webhooks calls no other method, and only a plugin chosen in the endpoint
+  config. The payload cannot pick the plugin.
+- `fields` holds only the declared values. Treat them as untrusted data.
+- `idempotencyKey` stays the same when the sender retries one event.
+- Answer within BB's 75-second RPC limit. Throwing makes the delivery fail,
+  so the sender retries. Return `threadId` to link the delivery to a thread.
+- An endpoint is refused at save when the plugin does not publish the method.
 
 ## Install
 
@@ -154,7 +183,9 @@ How slack endpoints behave:
 
 ## Optional integration
 
-Webhooks runs without any other plugin. The automation action calls the
+Webhooks runs without any other plugin. A plugin action calls only the
+chosen plugin's `webhooks_receive`, and the panel lists plugins that publish
+it. The automation action calls the
 Automations plugin's `automations_get`, `automations_list`, and
 `automations_run` RPCs only when you choose an automation target or an endpoint
 uses one. The plugin never installs,

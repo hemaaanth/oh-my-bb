@@ -151,6 +151,20 @@ describe("Webhooks panel", () => {
     expect(endpoints[0]!.action).toEqual({ type: "automation", projectId: PROJECT, automationId: "auto_daily" });
   });
 
+  it("hands the fields to a receiver plugin picked from the published list", async () => {
+    const slot = renderPanel("new");
+    const form = await slot.findByRole("form", { name: "New endpoint" });
+    fireEvent.change(slot.getAllByLabelText("Name")[0]!, { target: { value: "Calls" } });
+    await choose(slot.getByLabelText("Do"), "Hand to a plugin");
+    expect(slot.getByText(/No message is sent/)).toBeTruthy();
+    expect(slot.queryByLabelText("Message")).toBeNull();
+    await choose(await slot.findByLabelText("Plugin"), "Receiver");
+    fireEvent.submit(form);
+    await slot.findByRole("region", { name: "Signing secret" });
+    const { endpoints } = (await host.harness.behavior.callRpc("webhooks_overview", null)) as { endpoints: Array<{ action: unknown }> };
+    expect(endpoints[0]!.action).toEqual({ type: "plugin", pluginId: "receiver" });
+  });
+
   it("shows an endpoint's URL and deliveries, and opens the thread a delivery reached", async () => {
     const { endpoint, secret } = await createEndpoint(host, sendConfig({ action: { type: "spawn", projectId: PROJECT, message: "{{event}}" } }));
     await postSigned(host, endpoint.id, secret!, { event: { event: "signup" }, person: { properties: { email: "ada@example.com" } } });

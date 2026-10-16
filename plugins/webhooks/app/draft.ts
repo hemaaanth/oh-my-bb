@@ -12,10 +12,11 @@ export type Draft = {
   fields: FieldDraft[];
   dedupeSource: "webhook-id" | "field" | "body-hash";
   dedupeField: string;
-  actionType: "send" | "spawn" | "automation";
+  actionType: "send" | "spawn" | "automation" | "plugin";
   threadId: string;
   projectId: string;
   automationId: string;
+  pluginId: string;
   message: string;
   title: string;
   environmentType: "project-default" | "reuse" | "worktree" | "provider";
@@ -94,6 +95,7 @@ export function newDraft(): Draft {
     threadId: "",
     projectId: "",
     automationId: "",
+    pluginId: "",
     message: DEFAULT_MESSAGE,
     title: "",
     environmentType: "project-default",
@@ -128,9 +130,10 @@ export function draftFromEndpoint(endpoint: EndpointView): Draft {
     dedupeField: endpoint.dedupe.source === "field" ? endpoint.dedupe.field : "",
     actionType: action.type,
     threadId: action.type === "send" ? action.threadId : "",
-    projectId: action.type === "send" ? "" : action.projectId,
+    projectId: action.type === "spawn" || action.type === "automation" ? action.projectId : "",
     automationId: action.type === "automation" ? action.automationId : "",
-    message: action.type === "automation" ? DEFAULT_MESSAGE : action.message,
+    pluginId: action.type === "plugin" ? action.pluginId : "",
+    message: action.type === "send" || action.type === "spawn" ? action.message : DEFAULT_MESSAGE,
     title: action.type === "spawn" ? (action.title ?? "") : "",
     environmentType: environment.type,
     environmentId: environment.type === "reuse" ? environment.environmentId : "",
@@ -170,6 +173,7 @@ export function configFromDraft(draft: Draft): EndpointConfigInput {
 function actionFromDraft(draft: Draft): EndpointConfigInput["action"] {
   if (draft.actionType === "send") return { type: "send", threadId: draft.threadId.trim(), message: draft.message };
   if (draft.actionType === "automation") return { type: "automation", projectId: draft.projectId.trim(), automationId: draft.automationId.trim() };
+  if (draft.actionType === "plugin") return { type: "plugin", pluginId: draft.pluginId.trim() };
   return {
     type: "spawn",
     projectId: draft.projectId.trim(),
