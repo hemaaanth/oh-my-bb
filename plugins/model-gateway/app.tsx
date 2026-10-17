@@ -474,6 +474,8 @@ function resetCreditsLabel({ available, usable }: ResetCredits): string {
 
 function GatewayAccountPanel({ account }: { account: AccountSummary }) {
   const windows = footerWindows(account);
+  // Snapshots cached before reset credits existed have no such field.
+  const resetCredits = account.resetCredits ?? null;
   return (
     <div className="px-3 py-2">
       <div className="flex min-w-0 items-center gap-2">
@@ -487,9 +489,9 @@ function GatewayAccountPanel({ account }: { account: AccountSummary }) {
       </p> : <div className="mt-1.5 space-y-1">
         {windows.map((window) => <FooterUsageBar key={window.label} {...window} account={account.label} />)}
       </div>}
-      {account.observedAt === null && account.resetCredits === null ? null : <div className="mt-1.5 flex justify-between gap-2 text-2xs text-muted-foreground">
-        <span title={account.resetCredits === null ? undefined : "One-off resets that set a usage limit back to zero"}>
-          {account.resetCredits === null ? null : resetCreditsLabel(account.resetCredits)}
+      {account.observedAt === null && resetCredits === null ? null : <div className="mt-1.5 flex justify-between gap-2 text-2xs text-muted-foreground">
+        <span title={resetCredits === null ? undefined : "One-off resets that set a usage limit back to zero"}>
+          {resetCredits === null ? null : resetCreditsLabel(resetCredits)}
         </span>
         {account.observedAt === null ? null : <span>Updated {relative(account.observedAt)}</span>}
       </div>}
@@ -497,7 +499,7 @@ function GatewayAccountPanel({ account }: { account: AccountSummary }) {
   );
 }
 
-const FOOTER_USAGE_CACHE_KEY = "model-gateway.footer-usage.v2";
+const FOOTER_USAGE_CACHE_KEY = "model-gateway.footer-usage.v3";
 const FOOTER_USAGE_CACHE_MS = 5 * 60_000;
 type FooterUsageSnapshot = { accounts: AccountSummary[]; fetchedAt: number };
 function cachedFooterUsage(): FooterUsageSnapshot | null {

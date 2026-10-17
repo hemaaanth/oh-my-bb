@@ -378,6 +378,16 @@ describe("Model usage footer", () => {
     expect(slot.getByRole("progressbar", { name: "pro 7d usage" }).getAttribute("aria-valuenow")).toBe("76");
   });
 
+  it("renders accounts cached before reset credits existed", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    const { resetCredits: _, ...legacy } = account({ provider: "codex", label: "pro" });
+    const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: {
+      "account.list": () => [legacy],
+    } as never });
+    await slot.findByText("person@example.com");
+  });
+
   it("shows Codex one-off reset credits", async () => {
     const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
     if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
