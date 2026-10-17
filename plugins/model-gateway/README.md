@@ -47,7 +47,7 @@ Automatic Claude Code failover maps Fable to `gpt-6-astra`, Opus to
   account methods. `chain.set` rejects Claude OAuth outside `claude-code`.
 - The sidebar footer shows usage limits for each authenticated Gateway account.
   It opens from a short-lived cache and refreshes limits on demand. Codex
-  accounts also show their one-off reset credits, and how many are usable now.
+  accounts also show how many one-off reset credits they have.
 
 ## Failover rules
 

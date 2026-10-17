@@ -467,9 +467,8 @@ function FooterUsageBar({ label, utilization, resetAt, account }: {
   );
 }
 
-function resetCreditsLabel({ available, usable }: ResetCredits): string {
-  const label = `${available} ${available === 1 ? "reset" : "resets"}`;
-  return usable === available ? label : `${label} · ${usable} usable now`;
+function resetCreditsLabel({ available }: ResetCredits): string {
+  return `${available} ${available === 1 ? "reset" : "resets"} available`;
 }
 
 function GatewayAccountPanel({ account }: { account: AccountSummary }) {

@@ -180,9 +180,7 @@ function formatLimitWindows(windows: readonly LimitWindow[]): string {
 }
 
 function formatResetCredits(credits: ResetCredits | null): string {
-  return credits === null
-    ? "-"
-    : `${credits.available} (${credits.usable} usable)`;
+  return credits === null ? "-" : String(credits.available);
 }
 
 function formatFamilyQuota(quota: FamilyQuota | null): string {

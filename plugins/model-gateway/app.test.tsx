@@ -398,8 +398,8 @@ describe("Model usage footer", () => {
           email: "other@example.com", resetCredits: { available: 1, usable: 1 } }),
       ],
     } as never });
-    await slot.findByText("3 resets · 0 usable now");
-    expect(slot.getByText("1 reset")).toBeTruthy();
+    await slot.findByText("3 resets available");
+    expect(slot.getByText("1 reset available")).toBeTruthy();
   });
 
   it("shows all accounts and their limits together", async () => {

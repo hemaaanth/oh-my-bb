@@ -123,7 +123,11 @@ export const limitWindowSchema = z
 
 export type LimitWindow = z.infer<typeof limitWindowSchema>;
 
-/** One-off ChatGPT credits that reset a usage limit to zero. `usable` can be used now. */
+/**
+ * One-off ChatGPT credits that reset a usage limit to zero. `available` is the
+ * count ChatGPT shows. `usable` mirrors `applicable_available_count`, which
+ * ChatGPT's own app does not read, so the UI does not show it.
+ */
 export const resetCreditsSchema = z
   .object({
     available: z.number().int().nonnegative(),

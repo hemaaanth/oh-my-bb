@@ -153,7 +153,7 @@ API key.
   entries are set with `bb gateway chain set`.
 - The sidebar footer shows usage limits per authenticated account. Refresh it
   to fetch current limits from the providers. Codex accounts also show their
-  one-off reset credits ("3 resets · 0 usable now"); `bb gateway account list`
+  one-off reset credits ("3 resets available"); `bb gateway account list`
   has the same count in its `Resets` column. Claude does not report these.
 - `bb gateway status --thread <id>` shows the upstream, model, chain entry,
   sticky time, and the Jev pick with its reason.
