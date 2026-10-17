@@ -24,6 +24,7 @@ function emptyQuota(): AccountQuota {
       other: null,
     },
     limitWindows: [],
+    resetCredits: null,
     observedAt: null,
     heldUntil: null,
     error: null,
@@ -107,6 +108,30 @@ describe("codexQuotaFromUsage", () => {
     });
     if (refreshed === null) throw new Error("Expected a quota.");
     expect(isQuotaExhausted(refreshed, "other", 0.9, 2_000)).toBe(false);
+  });
+
+  it("reads one-off reset credits, and clears them when ChatGPT stops sending them", () => {
+    const rate_limit = {
+      primary_window: { used_percent: 11, limit_window_seconds: 604_800 },
+    };
+    const quota = codexQuotaFromUsage(
+      ACCOUNT_ID,
+      {
+        rate_limit,
+        rate_limit_reset_credits: {
+          available_count: 3,
+          applicable_available_count: 0,
+        },
+      },
+      emptyQuota(),
+      1_000,
+    );
+    expect(quota?.resetCredits).toEqual({ available: 3, usable: 0 });
+    if (quota === null) throw new Error("Expected a quota.");
+    expect(
+      codexQuotaFromUsage(ACCOUNT_ID, { rate_limit }, quota, 2_000)
+        ?.resetCredits,
+    ).toBeNull();
   });
 
   it("returns null for a payload without rate limits", () => {

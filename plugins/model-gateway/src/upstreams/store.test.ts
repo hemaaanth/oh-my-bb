@@ -128,11 +128,17 @@ describe("QuotaStore", () => {
       );
     database.exec(familyMigration);
     database.exec(windowMigration);
+    database.exec(QUOTA_MIGRATIONS.at(-1) ?? "");
     const quotas = new QuotaStore(database);
 
     const migrated = quotas.get("11111111-1111-4111-8111-111111111111");
     expect(migrated.sevenDayUtilization).toBe(0.5);
     expect(migrated.limitWindows).toEqual([]);
+    expect(migrated.resetCredits).toBeNull();
+    quotas.put({ ...migrated, resetCredits: { available: 3, usable: 1 } });
+    expect(
+      quotas.get("11111111-1111-4111-8111-111111111111").resetCredits,
+    ).toEqual({ available: 3, usable: 1 });
     expect(migrated.familyWeekly).toEqual({
       fable: null,
       sonnet: null,

@@ -126,6 +126,7 @@ export function quotaFromHeaders(
     representativeClaim: representativeClaim ?? previous.representativeClaim,
     familyWeekly,
     limitWindows: previous.limitWindows,
+    resetCredits: previous.resetCredits,
     observedAt: observed ? now : previous.observedAt,
     heldUntil: previous.heldUntil,
     error: previous.error,

@@ -67,6 +67,7 @@ import type {
   ModelFamily,
   PoolProvider,
   PoolStatus,
+  ResetCredits,
   RoutingTarget,
 } from "./src/contracts.js";
 import {
@@ -466,6 +467,11 @@ function FooterUsageBar({ label, utilization, resetAt, account }: {
   );
 }
 
+function resetCreditsLabel({ available, usable }: ResetCredits): string {
+  const label = `${available} ${available === 1 ? "reset" : "resets"}`;
+  return usable === available ? label : `${label} · ${usable} usable now`;
+}
+
 function GatewayAccountPanel({ account }: { account: AccountSummary }) {
   const windows = footerWindows(account);
   return (
@@ -481,7 +487,12 @@ function GatewayAccountPanel({ account }: { account: AccountSummary }) {
       </p> : <div className="mt-1.5 space-y-1">
         {windows.map((window) => <FooterUsageBar key={window.label} {...window} account={account.label} />)}
       </div>}
-      {account.observedAt === null ? null : <div className="mt-1.5 text-right text-2xs text-muted-foreground">Updated {relative(account.observedAt)}</div>}
+      {account.observedAt === null && account.resetCredits === null ? null : <div className="mt-1.5 flex justify-between gap-2 text-2xs text-muted-foreground">
+        <span title={account.resetCredits === null ? undefined : "One-off resets that set a usage limit back to zero"}>
+          {account.resetCredits === null ? null : resetCreditsLabel(account.resetCredits)}
+        </span>
+        {account.observedAt === null ? null : <span>Updated {relative(account.observedAt)}</span>}
+      </div>}
     </div>
   );
 }

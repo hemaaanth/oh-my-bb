@@ -590,6 +590,7 @@ const quotaRowSchema = z
     bucket_exhaustion_json: z.string(),
     family_weekly_json: z.string(),
     limit_windows_json: z.string(),
+    reset_credits_json: z.string(),
     observed_at: z.number().int().nullable(),
     held_until: z.number().int().nullable(),
     error: z.string().nullable(),
@@ -612,6 +613,7 @@ export const EMPTY_QUOTA: Omit<AccountQuota, "accountId"> = {
     other: null,
   },
   limitWindows: [],
+  resetCredits: null,
   observedAt: null,
   heldUntil: null,
   error: null,
@@ -642,6 +644,7 @@ export class QuotaStore {
       representativeClaim: row.representative_claim,
       familyWeekly: JSON.parse(row.family_weekly_json),
       limitWindows: JSON.parse(row.limit_windows_json),
+      resetCredits: JSON.parse(row.reset_credits_json),
       observedAt: row.observed_at,
       heldUntil: row.held_until,
       error: row.error,
@@ -656,8 +659,9 @@ export class QuotaStore {
           account_id, five_hour_utilization, five_hour_reset_at,
           five_hour_status, seven_day_utilization, seven_day_reset_at,
           seven_day_status, representative_claim, bucket_exhaustion_json,
-          family_weekly_json, limit_windows_json, observed_at, held_until, error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?)
+          family_weekly_json, limit_windows_json, reset_credits_json,
+          observed_at, held_until, error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?)
         ON CONFLICT(account_id) DO UPDATE SET
           five_hour_utilization = excluded.five_hour_utilization,
           five_hour_reset_at = excluded.five_hour_reset_at,
@@ -668,6 +672,7 @@ export class QuotaStore {
           representative_claim = excluded.representative_claim,
           family_weekly_json = excluded.family_weekly_json,
           limit_windows_json = excluded.limit_windows_json,
+          reset_credits_json = excluded.reset_credits_json,
           observed_at = excluded.observed_at,
           held_until = excluded.held_until,
           error = excluded.error`,
@@ -683,6 +688,7 @@ export class QuotaStore {
         value.representativeClaim,
         JSON.stringify(value.familyWeekly),
         JSON.stringify(value.limitWindows),
+        JSON.stringify(value.resetCredits),
         value.observedAt,
         value.heldUntil,
         value.error,
@@ -974,4 +980,5 @@ export const QUOTA_MIGRATIONS = [
   id INTEGER PRIMARY KEY CHECK (id = 1), fetched_at INTEGER NOT NULL, data TEXT NOT NULL
 )`,
   `ALTER TABLE thread_route ADD COLUMN fallback_cause_json TEXT`,
+  `ALTER TABLE account_quota ADD COLUMN reset_credits_json TEXT NOT NULL DEFAULT 'null'`,
 ];

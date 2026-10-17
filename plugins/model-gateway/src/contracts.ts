@@ -123,6 +123,16 @@ export const limitWindowSchema = z
 
 export type LimitWindow = z.infer<typeof limitWindowSchema>;
 
+/** One-off ChatGPT credits that reset a usage limit to zero. `usable` can be used now. */
+export const resetCreditsSchema = z
+  .object({
+    available: z.number().int().nonnegative(),
+    usable: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export type ResetCredits = z.infer<typeof resetCreditsSchema>;
+
 export const accountSchema = z
   .object({
     id: z.string().uuid(),
@@ -182,6 +192,7 @@ export const quotaSchema = z
     representativeClaim: z.string().nullable(),
     familyWeekly: familyWeeklySchema,
     limitWindows: z.array(limitWindowSchema),
+    resetCredits: resetCreditsSchema.nullable(),
     observedAt: z.number().int().nullable(),
     heldUntil: z.number().int().nullable(),
     error: z.string().nullable(),
@@ -201,6 +212,7 @@ export const accountSummarySchema = accountSchema.extend({
   representativeClaim: z.string().nullable(),
   familyWeekly: familyWeeklySchema,
   limitWindows: z.array(limitWindowSchema),
+  resetCredits: resetCreditsSchema.nullable(),
   observedAt: z.number().int().nullable(),
   heldUntil: z.number().int().nullable(),
   error: z.string().nullable(),

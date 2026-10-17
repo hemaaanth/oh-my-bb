@@ -52,6 +52,7 @@ function account(overrides: Partial<AccountSummary> = {}): AccountSummary {
       other: null,
     },
     limitWindows: [],
+    resetCredits: null,
     observedAt: null,
     heldUntil: null,
     error: null,
@@ -375,6 +376,20 @@ describe("Model usage footer", () => {
     await slot.findByText("person@example.com");
     expect(slot.getAllByRole("progressbar")).toHaveLength(1);
     expect(slot.getByRole("progressbar", { name: "pro 7d usage" }).getAttribute("aria-valuenow")).toBe("76");
+  });
+
+  it("shows Codex one-off reset credits", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: {
+      "account.list": () => [
+        account({ provider: "codex", label: "pro", resetCredits: { available: 3, usable: 0 } }),
+        account({ id: "22222222-2222-4222-8222-222222222222", provider: "codex", label: "lite",
+          email: "other@example.com", resetCredits: { available: 1, usable: 1 } }),
+      ],
+    } as never });
+    await slot.findByText("3 resets · 0 usable now");
+    expect(slot.getByText("1 reset")).toBeTruthy();
   });
 
   it("shows all accounts and their limits together", async () => {

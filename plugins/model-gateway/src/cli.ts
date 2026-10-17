@@ -21,6 +21,7 @@ import {
   type AccountSummary,
   type FamilyQuota,
   type LimitWindow,
+  type ResetCredits,
   type ModelFamily,
   type PoolStatus,
 } from "./contracts.js";
@@ -178,6 +179,12 @@ function formatLimitWindows(windows: readonly LimitWindow[]): string {
     .join("; ");
 }
 
+function formatResetCredits(credits: ResetCredits | null): string {
+  return credits === null
+    ? "-"
+    : `${credits.available} (${credits.usable} usable)`;
+}
+
 function formatFamilyQuota(quota: FamilyQuota | null): string {
   if (quota === null) return "-";
   return [
@@ -207,6 +214,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
       "7d",
       "7d reset",
       "Windows",
+      "Resets",
       ...families.map(familyLabel),
       "Status",
     ].join("\t"),
@@ -226,6 +234,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
         formatUtilization(account.sevenDayUtilization),
         formatReset(account.sevenDayResetAt),
         formatLimitWindows(account.limitWindows),
+        formatResetCredits(account.resetCredits),
         ...families.map((family) =>
           formatFamilyQuota(account.familyWeekly[family]),
         ),

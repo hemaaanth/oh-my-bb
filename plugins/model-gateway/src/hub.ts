@@ -664,6 +664,7 @@ export class AccountPoolHub {
           representativeClaim: quota.representativeClaim,
           familyWeekly: quota.familyWeekly,
           limitWindows: quota.limitWindows,
+          resetCredits: quota.resetCredits,
           observedAt: quota.observedAt,
           heldUntil: quota.heldUntil,
           error: quota.error,

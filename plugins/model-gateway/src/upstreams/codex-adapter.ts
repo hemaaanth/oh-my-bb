@@ -187,6 +187,13 @@ const usageResponseSchema = z
       })
       .passthrough()
       .nullish(),
+    rate_limit_reset_credits: z
+      .object({
+        available_count: z.number().int().nonnegative(),
+        applicable_available_count: z.number().int().nonnegative().nullish(),
+      })
+      .passthrough()
+      .nullish(),
   })
   .passthrough();
 
@@ -230,6 +237,7 @@ export function codexQuotaFromUsage(
 ): AccountQuota | null {
   const parsed = usageResponseSchema.safeParse(payload);
   if (!parsed.success || parsed.data.rate_limit == null) return null;
+  const credits = parsed.data.rate_limit_reset_credits;
   return {
     ...withoutClaudeSlots(previous),
     accountId,
@@ -241,6 +249,13 @@ export function codexQuotaFromUsage(
         now,
       ),
     ]),
+    resetCredits:
+      credits == null
+        ? null
+        : {
+            available: credits.available_count,
+            usable: credits.applicable_available_count ?? 0,
+          },
     observedAt: now,
   };
 }
