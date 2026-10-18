@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import { REALTIME_CHANNEL as CONTRACT_CHANNEL, directive } from "./contract.js";
 import { parseDirective } from "./app/directives.js";
@@ -24,7 +24,7 @@ Object.defineProperty(window, "localStorage", { configurable: true, value: {
 const app = await loadPluginApp(() => import("./app.js"));
 // These import the SDK app runtime, which loadPluginApp installs.
 const { REALTIME_CHANNEL, pageDirective, resetPagesCache } = await import("./app/data.js");
-const { directiveComponent, MAX_INLINE_HEIGHT } = await import("./app/PageCard.js");
+const { directiveComponent } = await import("./app/PageCard.js");
 const { readFrameMessage } = await import("./app/bridge.js");
 const pageId = "123e4567-e89b-42d3-a456-426614174000";
 const v1 = "123e4567-e89b-42d3-a456-426614174001";
@@ -235,7 +235,7 @@ describe("borderless inline page", () => {
     slot.lifecycle.unmount();
   });
 
-  it("holds the directive height, then fits the reported height up to the cap", async () => {
+  it("holds the directive height, then fits the full reported height", async () => {
     const slot = render({ height: "300" });
     const frame = await slot.findByTitle("Page: Landing intent") as HTMLIFrameElement;
     const box = frame.parentElement as HTMLElement;
@@ -247,10 +247,10 @@ describe("borderless inline page", () => {
     await post(frame, { type: "bb-pages:height", height: 200 }, window);
     await post(frame, { type: "bb-pages:height", height: -1 });
     expect(box.style.height).toBe("413px");
+    // A tall page is never clipped: the reply grows with it.
     await post(frame, { type: "bb-pages:height", height: 4_000 });
-    expect(box.style.height).toBe(`${MAX_INLINE_HEIGHT}px`);
-    fireEvent.click(slot.getByRole("button", { name: "Open full page" }));
-    expect(slot.inspection.navigateCalls.at(-1)).toMatchObject({ method: "openThreadPanel" });
+    expect(box.style.height).toBe("4000px");
+    expect(slot.queryByRole("button", { name: "Open full page" })).toBeNull();
     slot.lifecycle.unmount();
   });
 
@@ -294,6 +294,7 @@ describe("frame messages", () => {
       expect(readFrameMessage({ type: "bb-pages:open", url })).toBeNull();
     }
     expect(readFrameMessage({ type: "bb-pages:page", url: "/api/v1/plugins/pages/http/a?id=x" })).toEqual({ type: "page", url: "/api/v1/plugins/pages/http/a?id=x" });
+    expect(readFrameMessage({ type: "bb-pages:ready" })).toEqual({ type: "ready" });
     for (const url of [42, `/${"a".repeat(9_000)}`]) expect(readFrameMessage({ type: "bb-pages:page", url })).toBeNull();
     for (const data of [null, "bb-pages:open", { type: "bb-pages:theme", theme: "dark" }, { type: "other", url: "https://example.com" }]) expect(readFrameMessage(data)).toBeNull();
   });
@@ -492,5 +493,161 @@ describe("library", () => {
     const empty = renderSlot(library, { subPath: "" }, { rpc: { listPages: () => ({ pages: [], nextOffset: null }) } as never });
     await empty.findByText(/No pages yet/u);
     empty.lifecycle.unmount();
+  });
+});
+
+describe("openui-lang fences", () => {
+  const fence = app.codeFenceRenderers.find(({ id }) => id === "pages-spec")!;
+  const Original = () => <pre>original code block</pre>;
+  const program = `root = Stack([title, note, stats, table, progress, form])
+title = Heading("Launch check")
+note = Callout("warning", "Two blockers", "Fix them before Friday.")
+stats = Stats([Stat("Signups", 1240, "+12%", "up"), Stat("Churn", "2.1%")])
+table = Table(["Task", "Days"], [["Copy", 2], ["QA", null]])
+progress = Progress("Done", 3, 5)
+form = Form("launch", [Text("Pick a plan.", "muted"), Choice("channel", ["Email", "Ads"], "Channel"), Slider("budget", 0, 100, 5, "Budget"), Toggle("notify", "Notify me"), Input("note", "Note")], [Button("Approve")])`;
+  const props = (code: string, status: "closed" | "streaming" = "closed") => ({ code, language: "openui-lang", status, index: 0, message, Original });
+  const views = `root = Stack([tabs])
+tabs = Tabs([Tab("Trend", [chart]), Tab("Code", [Code("const a = 1", "ts"), Diff("@@ -1 +1 @@\\n-a\\n+b", "src/a.ts")])])
+chart = Chart("bar", ["Mon", "Tue"], [Series("Signups", [4, 9]), Series("Churn", [1, 2])])`;
+  // Fence state lives in localStorage under the message id, so each test starts clean.
+  beforeEach(() => localStorage.clear());
+
+  it("claims openui-lang and openui, not GenUI's ui", () => {
+    expect(fence.languages).toEqual(["openui-lang", "openui"]);
+  });
+
+  it("renders every component of a finished fence", async () => {
+    const slot = renderSlot(fence, props(program));
+    expect(await slot.findByText("Launch check")).toBeTruthy();
+    for (const text of ["Two blockers", "1240", "+12%", "QA", "3 / 5", "Pick a plan.", "Email", "Notify me", "Approve"]) expect(slot.getByText(text)).toBeTruthy();
+    expect(slot.getByRole("progressbar", { name: "Done" })).toBeTruthy();
+    expect(slot.queryByText("original code block")).toBeNull();
+    slot.lifecycle.unmount();
+  });
+
+  it("renders each streaming prefix without falling back", () => {
+    for (const source of [program, views]) {
+      for (let end = 1; end <= source.length; end += 7) {
+        const slot = renderSlot(fence, props(source.slice(0, end), "streaming"));
+        expect(slot.queryByText("original code block")).toBeNull();
+        slot.lifecycle.unmount();
+      }
+    }
+  });
+
+  it("switches tabs and renders charts, code, and diffs with BB's viewers", async () => {
+    const slot = renderSlot(fence, props(views));
+    const chart = await slot.findByRole("img", { name: "Bar chart of Signups, Churn over Mon, Tue" });
+    // Highcharts draws each series in styled mode, with the chart CSS in place. jsdom has no layout, so no bars.
+    await waitFor(() => expect(chart.querySelectorAll(".highcharts-series.highcharts-column-series")).toHaveLength(2));
+    expect(document.querySelector("style[data-bb-spec-charts]")?.textContent).toContain(".bb-spec-chart");
+    expect(slot.getByText("Churn")).toBeTruthy();
+    const codeTab = slot.getByRole("tab", { name: "Code" });
+    fireEvent.keyDown(slot.getByRole("tab", { name: "Trend" }), { key: "ArrowRight" });
+    expect(codeTab.getAttribute("aria-selected")).toBe("true");
+    expect(slot.getByTestId("bb-source-code").getAttribute("data-path")).toBe("snippet.ts");
+    expect(slot.getByTestId("bb-diff").getAttribute("data-path")).toBe("src/a.ts");
+    expect(slot.queryByRole("img")).toBeNull();
+    slot.lifecycle.unmount();
+  });
+
+  it("rounds the chart scale up to 1, 2, 2.5, or 5 times a power of ten", async () => {
+    const { niceMax } = await import("./app/spec/groups/charts.js");
+    expect([0, 0.3, 7, 9, 11, 240, 5000].map(niceMax)).toEqual([1, 0.5, 10, 10, 20, 250, 5000]);
+  });
+
+  it("writes object answers as JSON in the sent message", async () => {
+    const { messageFor } = await import("./app/SpecFence.js");
+    const event = { humanFriendlyMessage: "Save", formName: "f", formState: { f: { rows: { value: [{ item: "Tea", qty: 2 }] }, tags: { value: ["a", "b"] } } } };
+    expect(messageFor(event as never)).toBe(`Save\n- rows: {"item":"Tea","qty":2}\n- tags: a, b`);
+  });
+
+  it("sends the clicked button and the form's answers to the thread", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const slot = renderSlot(fence, props(program), { sdk: { threads: { send } } as never });
+    fireEvent.click(await slot.findByText("Ads"));
+    fireEvent.change(slot.getByRole("slider"), { target: { value: "35" } });
+    fireEvent.click(slot.getByRole("switch", { name: "Notify me" }));
+    fireEvent.click(slot.getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    const [{ threadId, mode, input }] = send.mock.calls[0];
+    expect({ threadId, mode }).toEqual({ threadId: "thread-a", mode: "queue-if-active" });
+    expect(input[0].text.split("\n")).toEqual(expect.arrayContaining(["Approve", "- channel: Ads", "- budget: 35", "- notify: true"]));
+    // Sent: the form locks, so a second click sends nothing, and it stays locked after a reload.
+    const approve = slot.getByRole("button", { name: "Approve" });
+    expect(approve.hasAttribute("disabled")).toBe(true);
+    expect(approve.getAttribute("aria-pressed")).toBe("true");
+    expect(slot.getByRole("slider").hasAttribute("disabled")).toBe(true);
+    fireEvent.click(approve);
+    expect(send).toHaveBeenCalledTimes(1);
+    slot.lifecycle.unmount();
+    const reloaded = renderSlot(fence, props(program), { sdk: { threads: { send } } as never });
+    expect((await reloaded.findByRole("button", { name: "Approve" })).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(reloaded.getByRole("button", { name: "Edit answers" }));
+    expect(reloaded.getByRole("button", { name: "Approve" }).hasAttribute("disabled")).toBe(false);
+    reloaded.lifecycle.unmount();
+  });
+
+  it("unlocks the form when the send fails", async () => {
+    const send = vi.fn().mockRejectedValue(new Error("offline"));
+    const slot = renderSlot(fence, props(program), { sdk: { threads: { send } } as never });
+    fireEvent.click(await slot.findByRole("button", { name: "Approve" }));
+    expect(await slot.findByText("offline")).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Approve" }).hasAttribute("disabled")).toBe(false);
+    slot.lifecycle.unmount();
+  });
+
+  it("keeps the skill reference in step with the library", async () => {
+    // OpenUI's prompt telemetry skips browser windows (jsdom) and honours DO_NOT_TRACK.
+    vi.stubEnv("DO_NOT_TRACK", "1");
+    const { specReference } = await import("./app/spec/reference.js");
+    const files = specReference();
+    vi.unstubAllEnvs();
+    for (const [file, text] of Object.entries(files)) await expect(text).toMatchFileSnapshot(`./skills/pages/references/${file}`);
+    // No group file outlives its group.
+    const { readdirSync } = await import("node:fs");
+    expect(readdirSync("skills/pages/references/openui").map((name) => `openui/${name}`).sort()).toEqual(Object.keys(files).filter((file) => file.startsWith("openui/")).sort());
+    const example = /```openui-lang\n([\s\S]*?)```/u.exec(files["openui.md"]!)![1];
+    const slot = renderSlot(fence, props(example));
+    expect(await slot.findByText("Next focus")).toBeTruthy();
+    expect(slot.getByText("Open bugs")).toBeTruthy();
+    slot.lifecycle.unmount();
+  });
+
+  it("shows every component in the settings gallery, live, with its source", async () => {
+    const gallery = app.settingsSections.find(({ id }) => id === "components")!;
+    const slot = renderSlot(gallery, {});
+    expect(await slot.findByRole("tab", { name: "Layout" })).toBeTruthy();
+    expect(slot.getByText("Shipped on time.")).toBeTruthy();
+    fireEvent.click(slot.getByRole("tab", { name: "Inputs" }));
+    fireEvent.click(slot.getAllByRole("button", { name: "Approve" })[0]!);
+    // Look only: a sent form locks but nothing goes to a thread.
+    expect(await slot.findByText(/Sent to the thread/u)).toBeTruthy();
+    fireEvent.change(slot.getByRole("searchbox", { name: "Search components" }), { target: { value: "diff" } });
+    expect(slot.getByRole("region", { name: "Diff" })).toBeTruthy();
+    expect(slot.queryByRole("tab")).toBeNull();
+    slot.lifecycle.unmount();
+  });
+
+  it("shows the gallery in the shared-site look, where replies are read-only", async () => {
+    const gallery = app.settingsSections.find(({ id }) => id === "components")!;
+    const slot = renderSlot(gallery, {});
+    fireEvent.click(await slot.findByRole("tab", { name: "Inputs" }));
+    expect((slot.getAllByRole("button", { name: "Approve" })[0] as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(slot.getByRole("radio", { name: "Site" }));
+    expect(slot.getByRole("radio", { name: "Site" }).getAttribute("aria-checked")).toBe("true");
+    expect(document.querySelector(".bb-site-look")).toBeTruthy();
+    expect(Array.from(document.querySelectorAll("style")).some((style) => style.textContent?.includes(".bb-site-look {") && style.textContent.includes("--bb-bg"))).toBe(true);
+    expect((slot.getAllByRole("button", { name: "Approve" })[0] as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(slot.getByRole("radio", { name: "BB" }));
+    expect(document.querySelector(".bb-site-look")).toBeNull();
+    slot.lifecycle.unmount();
+  });
+
+  it("shows BB's code block for a finished fence that does not parse", async () => {
+    const slot = renderSlot(fence, props("this is not openui"));
+    expect(await slot.findByText("original code block")).toBeTruthy();
+    slot.lifecycle.unmount();
   });
 });

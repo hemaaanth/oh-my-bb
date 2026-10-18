@@ -1,6 +1,6 @@
 ---
 name: pages
-description: "Make a page: write an HTML or Markdown file, or a folder with index.html and its images, CSS, and other pages (a report, summary, plan, notes, comparison, dashboard, or chart), publish it with page_publish or `bb pages publish`, and show it inline with the ::page directive. Use whenever the user should see a document, a chart, or data that reads better as a page than as chat text, when they ask for a report, a chart, a preview, or a link, when you need the user to answer a short form, or when you update a page you published before. Replaces inline-vis and flint-chart."
+description: "Make a page: write an HTML or Markdown file, or a folder with index.html and its images, CSS, and other pages (a report, summary, plan, notes, comparison, dashboard, or chart), publish it with page_publish or `bb pages publish`, and show it inline with the ::page directive. Use whenever the user should see a document, a chart, or data that reads better as a page than as chat text, when they ask for a report, a chart, a preview, or a link, when you need the user to answer a short form, or when you update a page you published before. Also use it to put small live UI in a reply as an openui-lang fence: stats, a short table or chart, tabs, code, or a question. Replaces inline-vis and flint-chart."
 ---
 
 # Pages
@@ -19,6 +19,11 @@ changed bytes is a new version.
 - Do not use a page for files that belong in the repo, such as source, docs,
   and config. Commit those instead.
 - PR review pages come from the PR Review plugin. Do not write them by hand.
+- For a small UI that belongs to one reply, such as a few numbers, a short
+  table, or a quick choice for the user, write an `openui-lang` fence in the
+  reply instead. BB renders it in place as it streams. It needs no file and no
+  publish. Read `references/openui.md` in this skill before you write one.
+  Pages can hold the same components; see [Live UI on a page](#live-ui-on-a-page).
 
 ### Offer before you are asked
 
@@ -108,8 +113,8 @@ The tool bakes it into the returned directive.
 - **`inline`**: the page itself, borderless, on the thread background, as part
   of the reply. It is interactive and grows to fit its content. Use it for one
   chart, a small table, a diagram, a stat row, or a form.
-- **`card`** (default): a framed, zoomed-out preview with a header. A click
-  opens the full page in the panel. Use it for pages with tabs, a contents
+- **`card`** (default): a framed preview of the top of the page, with a
+  header. A click opens the full page in the panel. Use it for pages with tabs, a contents
   list, several sections, or more than about one screen of content.
 
 Without `display`, a page with a `<form>` is inline and any other page is a
@@ -122,8 +127,12 @@ card. A card cannot send forms.
 An inline page takes the width of the reply: `.page`, `.page.wide`, and
 `.page.dashboard` lose their max width and outer padding. Keep the page's
 background on `body.auto` (or the matching `body.dark`) so it blends with the
-thread. A very tall inline page is clipped with a fade and an "Open full page"
-button, so publish long pages as cards.
+thread. An inline page shows at its full height, however long, as part of the
+reply.
+
+An inline page reads as part of the reply, at chat text size. Start with the
+content: no `h1`, lede, or meta line, since the reply already says what it is.
+Use `h2` or `h3` only to split it into parts.
 
 Use `folder` (CLI: `--folder`) for a logical subfolder such as `Reports/Weekly`.
 The Pages library groups pages by project and folder. When shared, Here.now files
@@ -186,6 +195,35 @@ In the BB preview, Pages rewrites relative references in HTML and CSS: `src`,
 `@import`. **Paths that scripts build at runtime are not rewritten**, and scripts
 have no network, so `fetch("data.json")` fails. Put data the script needs inline
 in a `<script type="application/json">` block.
+
+## Live UI on a page
+
+A page draws the same components as an `openui-lang` fence in chat. Read
+`references/openui.md` for the language and the components.
+
+- In Markdown, write an `openui-lang` fence.
+- In HTML, put the program in a script tag:
+
+  ```html
+  <script type="text/openui-lang">
+  root = Stack([Stats([Stat("Signups", 1240, "+12%", "up"), Stat("Churn", "2.1%")])])
+  </script>
+  ```
+
+  The block draws where the tag is. Write `<\/script>` for a literal
+  `</script>` inside a string.
+- Pages adds the runtime only to pages that have a block.
+- A page cannot send to the thread. Buttons, Forms, and other answer
+  components show, but read-only. Use an HTML `<form>` (see Forms) when the
+  reader must answer.
+- Publishing runs each block's lookups once and saves the answers in the page:
+  `Query("file")` inside the root the page came from (`changes` and the other
+  git tools only for workspace pages), place names, photo searches, and the
+  map tiles of each map's opening view. A Query the publish cannot read shows
+  an error on the page. Publish again to refresh the data.
+- Map tiles are saved as images. A reader who pans, zooms, or uses another
+  width may see blank tiles. With Web lookups off in the Pages settings,
+  maps and photos are not saved.
 
 ## Sandbox and CSP
 
@@ -315,7 +353,8 @@ wins. **The theme is a floor, not a cage.** Use it for the ordinary parts. Style
 what makes this page itself.
 
 **Light and dark.** Put `class="auto"` on `<body>`. The page then follows the
-BB theme in the preview and the reader's system when shared. `class="dark"`
+BB theme in the preview, with BB's own colours, fonts, and smaller type, and
+the reader's system with the full theme when shared. `class="dark"`
 forces dark. With no class the page is light. If you set a colour, use a token
 so both themes keep working.
 

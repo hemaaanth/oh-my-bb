@@ -150,7 +150,7 @@
   font-variation-settings: "opsz" 15;
 }
 
-::selection { background: var(--bb-accent); color: #fff; }
+::selection { background: var(--bb-accent); color: var(--bb-on-accent, #fff); }
 
 /* ---- Headings ---------------------------------------------------------
  * Weight 500 through font-variation-settings, never bold. opsz follows size.
@@ -1115,10 +1115,10 @@
   :where(.page, .page.wide, .page.dashboard, body:not(:has(.page))) { width: min(100% - 2.5rem, var(--bb-dashboard)); padding: 1.5rem 0 3rem; }
 }
 
-/* Inline chat card: the preview route adds data-bb-frame="card". Show the page
- * zoomed out like a thumbnail, with a tight top, and no scrollbar (the card is
+/* Inline chat card: the preview route adds data-bb-frame="card". Show the top
+ * of the page like a thumbnail, with a tight top, and no scrollbar (the card is
  * click-to-open). */
-:where(:root[data-bb-frame="card"]) { zoom: 0.8; overflow: hidden; scrollbar-width: none; }
+:where(:root[data-bb-frame="card"]) { overflow: hidden; scrollbar-width: none; }
 :where(:root[data-bb-frame="card"] :is(.page, body:not(:has(.page)))) { padding-top: 1.25rem; }
 
 /* Borderless inline frame: the preview route adds data-bb-frame="inline". The
@@ -1127,9 +1127,95 @@
  * fits its height to the page. Where the page's colour scheme matches the app,
  * its background is transparent, so it sits on the thread's own background. */
 :where(:root[data-bb-frame="inline"]) { overflow: hidden; scrollbar-width: none; }
-/* The 2px side inset keeps a full-width field's border inside the frame. At a
- * fractional display scale the frame can round its page up past its own edge. */
-:where(:root[data-bb-frame="inline"] :is(.page, .page.wide, .page.dashboard, body:not(:has(.page)))) { width: auto; margin: 0; padding: 0 2px; }
+/* The form's 2px side inset keeps a full-width field's border inside the frame.
+ * At a fractional display scale the frame can round its page up past its own
+ * edge. Text keeps no inset, so it lines up with the reply's. */
+:where(:root[data-bb-frame="inline"] :is(.page, .page.wide, .page.dashboard, body:not(:has(.page)))) { width: auto; margin: 0; padding: 0; }
+:where(:root[data-bb-frame="inline"] form) { padding: 0 2px; }
 :where(:root[data-bb-frame="inline"] body:not(:has(.page)) > :last-child) { margin-bottom: 0; }
 :where(:root[data-bb-frame="inline"]:is(:has(> body.auto), [data-bb-theme="light"]:not(:has(> body.dark)), [data-bb-theme="dark"]:has(> body.dark))),
 :where(:root[data-bb-frame="inline"]:is(:has(> body.auto), [data-bb-theme="light"]:not(:has(> body.dark)), [data-bb-theme="dark"]:has(> body.dark)) > body) { background: transparent; }
+
+/* ---- Inside BB ----------------------------------------------------------
+ * Every BB preview has data-bb-theme on <html>; published and shared sites
+ * never do, so they keep the site's look above. Inside BB the panel and card
+ * sit one step above chat text, and an inline frame is set exactly like the
+ * reply around it. */
+:where(:root[data-bb-theme]) {
+  --bb-size-title: 1.375rem;
+  --bb-size-section: 1.125rem;
+  --bb-size-subsection: 1rem;
+  --bb-leading: 1.6;
+  --bb-space-block: 1rem;
+  --bb-space-sub: 1.5rem;
+  --bb-space-section: 2rem;
+}
+/* BB's Inter is fixed at optical size 14 and uses no alternates. Headings are
+ * semibold, bold is 700, and links underline in the text colour. */
+:where(:root[data-bb-theme] body) { font-feature-settings: normal; text-rendering: auto; font-variation-settings: "opsz" 14; }
+:where(:root[data-bb-theme] :is(h1, h2, h3)) { letter-spacing: normal; font-variation-settings: "opsz" 14, "wght" 600; }
+:where(:root[data-bb-theme] h4) { font-variation-settings: "opsz" 14, "wght" 500; }
+:where(:root[data-bb-theme] :is(strong, b)) { font-variation-settings: "opsz" 14, "wght" 700; }
+:where(:root[data-bb-theme] a) { font-variation-settings: "opsz" 14; text-decoration-color: currentColor; text-decoration-thickness: auto; text-underline-offset: 2px; }
+
+/* An inline frame copies BB's chat markdown: a text-sm, leading-relaxed body
+ * (13px on 1.625) with mb-2 blocks, and h1-h4 at text-lg, text-base, text-sm. */
+:where(:root[data-bb-frame="inline"]) {
+  --bb-size-title: 1.125rem;
+  --bb-size-section: 0.9375rem;
+  --bb-size-subsection: 0.8125rem;
+  --bb-size-body: 0.8125rem;
+  --bb-size-small: 0.75rem;
+  --bb-size-mono: 0.75rem;
+  --bb-leading: 1.625;
+  --bb-space-tight: 0.25rem;
+  --bb-space-group: 0.75rem;
+  --bb-space-block: 0.5rem;
+  --bb-space-sub: 0.75rem;
+  --bb-space-section: 1rem;
+}
+:where(:root[data-bb-frame="inline"] h1) { line-height: 1.75rem; margin: 1rem 0 0.5rem; }
+:where(:root[data-bb-frame="inline"] h2) { line-height: 1.375rem; margin: 1rem 0 0.5rem; padding-top: 0; border-top: 0; }
+:where(:root[data-bb-frame="inline"] h3) { line-height: calc(1.25 / 0.875); margin: 0.75rem 0 0.5rem; }
+:where(:root[data-bb-frame="inline"] h4) { font-size: 0.8125rem; line-height: calc(1.25 / 0.875); margin: 0.75rem 0 0.25rem; }
+:where(:root[data-bb-frame="inline"] :is(h1, h2, h3, h4):first-child) { margin-top: 0; }
+:where(:root[data-bb-frame="inline"] :is(ul, ol)) { padding-left: 1.25rem; }
+:where(:root[data-bb-frame="inline"] :is(p, ul, ol):last-child) { margin-bottom: 0; }
+:where(:root[data-bb-theme]:not([data-bb-frame]) :is(.page, .page.wide, .page.dashboard, body:not(:has(.page)))) { padding: 1.5rem 0 3rem; }
+
+/* A page that follows the app takes the app's colours, fonts, and radius. The
+ * frame bridge sets --bb-host-* and data-bb-host on <html> only when it has
+ * every token, so a missing one keeps the site's look instead of a hole. */
+:where(:root[data-bb-host]:has(> body.auto)) {
+  --bb-bg: var(--bb-host-background);
+  --bb-surface: var(--bb-host-secondary);
+  --bb-text: var(--bb-host-foreground);
+  --bb-strong: var(--bb-host-foreground);
+  --bb-muted: var(--bb-host-muted-foreground);
+  --bb-rule: var(--bb-host-border);
+  --bb-line: var(--bb-host-border);
+  --bb-link-line: var(--bb-host-input);
+  --bb-link-line-hover: var(--bb-host-muted-foreground);
+  --bb-code-bg: var(--bb-host-secondary);
+  --bb-code-text: var(--bb-host-foreground);
+  --bb-badge-bg: var(--bb-host-secondary);
+  --bb-hover: var(--bb-host-accent);
+  --bb-positive: var(--bb-host-success);
+  --bb-negative: var(--bb-host-destructive);
+  --bb-warning: var(--bb-host-warning);
+  --bb-accent: var(--bb-host-primary);
+  --bb-on-accent: var(--bb-host-primary-foreground);
+  /* BB has no chart palette, so the series come from its own theme colours. */
+  --bb-chart-1: var(--bb-host-primary);
+  --bb-chart-2: var(--bb-host-muted-foreground);
+  --bb-chart-3: var(--bb-host-success);
+  --bb-chart-4: var(--bb-host-warning);
+  --bb-chart-5: var(--bb-host-destructive);
+  --bb-chart-6: color-mix(in oklch, var(--bb-host-primary) 50%, var(--bb-host-background));
+  --bb-chart-grid: var(--bb-host-border);
+  --bb-chart-axis: var(--bb-host-muted-foreground);
+  --bb-font-sans: var(--bb-host-font-sans);
+  --bb-font-mono: var(--bb-host-font-mono);
+  --bb-radius: var(--bb-host-radius);
+  --bb-radius-sm: var(--bb-host-radius);
+}

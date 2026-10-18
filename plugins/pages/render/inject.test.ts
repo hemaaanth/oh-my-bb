@@ -59,11 +59,19 @@ describe("injectPage", () => {
   });
 
   it("can inline every preview asset without changing published-page output", () => {
-    const out = injectPage("<p>x</p>", { assetBase: "./", theme: null, hasCharts: true, inlineAssets: { themeCss: "body { color: red; }", chartsJs: "globalThis.chart = true;" } });
+    const out = injectPage("<p>x</p>", { assetBase: "./", theme: null, hasCharts: true, inlineAssets: { themeCss: "body { color: red; }", chartsJs: "globalThis.chart = true;", specJs: "globalThis.spec = true;" } });
     expect(out).toContain("<style>body { color: red; }</style>");
     expect(out).toContain("<script>globalThis.chart = true;</script>");
     expect(out).not.toContain("_page/");
     expect(inject("<p>x</p>")).toContain(THEME);
+  });
+
+  it("adds the spec runtime only to pages with openui-lang blocks", () => {
+    const block = '<script type="text/openui-lang">root = TextContent("x")</script>';
+    expect(inject(`<p>x</p>${block}`)).toContain('<script src="./_page/spec.js" defer></script>');
+    expect(inject("<p>x</p>")).not.toContain("spec.js");
+    const inlined = injectPage(block, { assetBase: "./", theme: null, hasCharts: false, inlineAssets: { themeCss: "", chartsJs: "", specJs: "globalThis.spec = true;" } });
+    expect(inlined).toContain("<script>globalThis.spec = true;</script>");
   });
 
   it("adds component runtimes only when needed, before the charts", () => {

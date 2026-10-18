@@ -203,6 +203,14 @@ const submitFormInputSchema = z.union([
 export const sentFormSchema = z.object({ formKey: z.string(), action: z.string().nullable(), answers: z.array(formAnswerSchema), sentAt: z.string() }).strict();
 export type SentForm = z.infer<typeof sentFormSchema>;
 
+// ---- Spec fences (openui-lang) ------------------------------------------------
+/** Web lookups the Pages server runs for spec components (Map, Gallery, ImageSearch). */
+export const WEB_METHODS = ["tile", "geocode", "search", "image"] as const;
+/** A spec call's answer. `ok: false` carries text the component shows, so errors do not throw. */
+const specResultSchema = z.union([z.object({ ok: z.literal(true), data: z.unknown() }).strict(), z.object({ ok: z.literal(false), message: z.string() }).strict()]);
+export type SpecResult = z.infer<typeof specResultSchema>;
+const specArgsSchema = z.record(z.string(), z.unknown());
+
 // ---- RPC ------------------------------------------------------------------
 // Core methods: T1. Share methods: T4. The app (T3) calls both.
 export const rpcContract = defineRpcContract({
@@ -226,6 +234,10 @@ export const rpcContract = defineRpcContract({
   submitForm: { input: submitFormInputSchema, output: z.union([z.object({ ok: z.literal(true) }).strict(), z.object({ ok: z.literal(false), reason: z.enum(["thread-archived", "rate-limited"]), message: z.string() }).strict()]) },
   /** Forms already sent from this page version or live file in this thread, latest send per form. */
   sentForms: { input: formTargetSchema, output: z.object({ forms: z.array(sentFormSchema) }).strict() },
+  /** A Query("tool", {args}) from a spec fence. threadId names the thread the fence is in (absent in the gallery). server/spec/data.ts. */
+  specTool: { input: z.object({ threadId: z.string().min(1).optional(), tool: z.string().trim().min(1).max(80), args: specArgsSchema }).strict(), output: specResultSchema },
+  /** A web lookup for a spec component. Off when the "Web lookups" setting is off. server/spec/web.ts. */
+  specWeb: { input: z.object({ method: z.enum(WEB_METHODS), input: specArgsSchema }).strict(), output: specResultSchema },
   // T4
   getShare: { input: z.object({ pageId: uuid }).strict(), output: z.object({ configured: z.boolean(), share: shareSchema.nullable(), defaults: z.object({ access: accessSchema, allowedDomains: z.array(z.string()) }).strict() }).strict() },
   sharePage: { input: shareInputSchema, output: shareSchema },
@@ -244,16 +256,17 @@ export type PagesRpc = typeof rpcContract;
 //   GET /a?id=<versionId>&path=<file>[&theme=]          one file of a folder version (HTML pages themed like /v)
 //   GET /file?threadId=&source=&file=[&theme=]         themed live preview of a workspace/thread-storage file (::inline-vis cards; single files only)
 //   BB previews (theme or frame set) also get the frame bridge; see FRAME_MESSAGE below.
-//   GET /_page/<asset>[?v=<version>]                   theme.css, inter.roman.var.woff2, charts.js (same bytes for every page;
+//   GET /_page/<asset>[?v=<version>]                   theme.css, inter.roman.var.woff2, charts.js, spec.js (same bytes for every page;
 //                                                      preview pages add the content version, which makes them cacheable for good)
 // Folder previews inline their files as data: URLs: a sandboxed frame's subrequests carry no BB session cookie,
 // so they fail through the remote BB tunnel. Links to other pages of the folder go through /a, loaded by the parent.
-export const PAGE_ASSET_NAMES = ["theme.css", "inter.roman.var.woff2", "charts.js"] as const;
+export const PAGE_ASSET_NAMES = ["theme.css", "inter.roman.var.woff2", "charts.js", "spec.js"] as const;
 export type PageAssetName = (typeof PAGE_ASSET_NAMES)[number];
 
 /**
  * The frame bridge between a BB preview and the BB app, over postMessage (render/frame-bridge.ts, app/bridge.ts).
- *   host -> page  { type: theme, theme: "light" | "dark" }   later theme changes; the first theme rides in the URL
+ *   page -> host  { type: ready }                            the bridge started, before the body paints; the host answers with theme
+ *   host -> page  { type: theme, theme: "light" | "dark", tokens? }  the app theme and its HOST_TOKENS values; the first theme also rides in the URL
  *   page -> host  { type: open, url }                        an http(s) link the reader clicked
  *   page -> host  { type: height, height }                   content height in CSS pixels (inline frames only)
  *   page -> host  { type: page, url }                        a link to another page of the same folder version (/v or /a);
@@ -262,7 +275,15 @@ export type PageAssetName = (typeof PAGE_ASSET_NAMES)[number];
  *   host -> page  { type: submitted, submissionId, ok, message }  the outcome, shown in the form's status line
  *   host -> page  { type: restore, forms: SentForm[] }       forms already sent in this thread; the page shows them sent
  */
-export const FRAME_MESSAGE = { theme: "bb-pages:theme", open: "bb-pages:open", height: "bb-pages:height", page: "bb-pages:page", submit: "bb-pages:submit", submitted: "bb-pages:submitted", restore: "bb-pages:restore" } as const;
+export const FRAME_MESSAGE = { ready: "bb-pages:ready", theme: "bb-pages:theme", open: "bb-pages:open", height: "bb-pages:height", page: "bb-pages:page", submit: "bb-pages:submit", submitted: "bb-pages:submitted", restore: "bb-pages:restore" } as const;
+/**
+ * The BB app's CSS variables a preview takes on, so a page that follows the app (body.auto) looks native.
+ * The bridge sets each as `--bb-host-<name>` on the page root; assets/theme.css maps them onto its own tokens.
+ */
+export const HOST_TOKENS = ["background", "foreground", "muted-foreground", "secondary", "border", "input", "accent", "primary", "primary-foreground", "success", "destructive", "warning", "font-sans", "font-mono", "radius"] as const;
+/** A token value the bridge takes: plain CSS, no url(), escapes, or rule breaks. */
+export const HOST_TOKEN_VALUE = /^(?!.*url\()[^;{}<>\\]{1,200}$/iu;
+
 /** A form with this attribute is left to the page's own script. */
 export const MANUAL_FORM_ATTRIBUTE = "data-bb-pages-manual";
 /** The bridge sets this on a form: "sending", "sent", or "error". The theme styles each state. */

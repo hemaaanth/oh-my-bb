@@ -9,8 +9,6 @@ import { IconButton, QuietLine, focusRing, messageOf } from "./ui.js";
 
 export const PANEL_ACTION_ID = "page";
 const COLLAPSED_KEY = "bb.pages.collapsed";
-/** The tallest an inline page grows. Past it the page is clipped with a fade, never scrolled: a frame that scrolls inside the thread traps the reader's scroll. */
-export const MAX_INLINE_HEIGHT = 960;
 
 function readCollapsed() {
   try { return window.localStorage.getItem(COLLAPSED_KEY) === "true"; } catch { return false; }
@@ -24,7 +22,7 @@ function PageFrame({ display, ...props }: FrameProps) {
   return display === "inline" ? <InlineFrame {...props} /> : <CardFrame {...props} />;
 }
 
-/** The 32px bar plus a zoomed-out live preview. A click anywhere opens the panel. The compact ShareButton shows the shared dot. */
+/** The 32px bar plus the top of a live preview. A click anywhere opens the panel. The compact ShareButton shows the shared dot. */
 function CardFrame({ title, version, share, height, previewUrl, onOpen }: Omit<FrameProps, "display" | "forms">) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const bridge = useFrameBridge(previewUrl, "card");
@@ -52,18 +50,14 @@ function CardFrame({ title, version, share, height, previewUrl, onOpen }: Omit<F
 
 /**
  * The borderless preview: the page itself, on the thread's background, as part of the reply. It is interactive and
- * fits the page's reported height. Until the first report it holds the directive height. Its forms send to `forms`.
+ * fits the page's full reported height, never clipped or scrolled, so it reads like the reply. Until the first report
+ * it holds the directive height. Its forms send to `forms`.
  */
 function InlineFrame({ title, height, previewUrl, forms, onOpen }: Omit<FrameProps, "display">) {
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   const bridge = useFrameBridge(previewUrl, "inline", setContentHeight, forms);
-  const clipped = contentHeight !== null && contentHeight > MAX_INLINE_HEIGHT;
-  return <div className="group/page relative my-2" style={{ height: contentHeight === null ? height : Math.min(contentHeight, MAX_INLINE_HEIGHT) }}>
+  return <div className="group/page relative my-2" style={{ height: contentHeight ?? height }}>
     <iframe ref={bridge.ref} title={`Page: ${title}`} src={bridge.src} onLoad={bridge.onLoad} style={bridge.style} sandbox="allow-scripts allow-forms" loading="lazy" scrolling="no" className="block size-full border-0 bg-transparent" />
-    {clipped ? <>
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-transparent to-background" />
-      <button type="button" onClick={onOpen} className={`absolute bottom-2 left-1/2 h-7 -translate-x-1/2 cursor-pointer rounded-md border border-border bg-background px-2.5 text-xs text-foreground hover:bg-state-hover ${focusRing}`}>Open full page</button>
-    </> : null}
     <IconButton label={`Open ${title} in panel`} icon="ExternalLink" onClick={onOpen} className="absolute right-1 top-1 border border-border bg-background opacity-0 transition-opacity focus-visible:opacity-100 group-hover/page:opacity-100 [@media(hover:none)]:opacity-100" />
   </div>;
 }

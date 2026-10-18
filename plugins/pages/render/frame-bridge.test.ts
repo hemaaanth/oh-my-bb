@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { HOST_TOKENS } from "../contract.js";
 import { FRAME_BRIDGE } from "./frame-bridge.js";
 
 // The bridge runs as if inside a BB preview frame. Its parent is a second jsdom window, so posts and sources are real windows.
@@ -10,6 +11,7 @@ const posted = vi.fn();
 let resize: () => void = () => undefined;
 // What the bridge decided. Listeners after it then cancel every click, since jsdom cannot navigate.
 let handled = false;
+let firstPost: unknown;
 
 beforeAll(() => {
   Object.defineProperty(window, "parent", { configurable: true, get: () => parent });
@@ -23,6 +25,7 @@ beforeAll(() => {
   document.documentElement.setAttribute("data-bb-frame", "inline");
   window.history.replaceState(null, "", "/api/v1/plugins/pages/http/v?id=v1");
   Function(FRAME_BRIDGE)();
+  firstPost = posted.mock.calls[0];
   window.addEventListener("click", (event) => { handled = event.defaultPrevented; event.preventDefault(); });
   window.addEventListener("submit", (event) => { handled = event.defaultPrevented; event.preventDefault(); });
 });
@@ -84,6 +87,26 @@ describe("frame bridge theme", () => {
     expect(root.getAttribute("data-bb-theme")).toBe("light");
     window.dispatchEvent(new MessageEvent("message", { data: { type: "bb-pages:theme", theme: "dark" }, source: parent }));
     expect(root.getAttribute("data-bb-theme")).toBe("dark");
+  });
+
+  it("asks for the theme as soon as it starts", () => {
+    expect(firstPost).toEqual([{ type: "bb-pages:ready" }, "*"]);
+  });
+
+  it("takes the app's tokens only when every one is safe", () => {
+    const root = document.documentElement;
+    const tokens = Object.fromEntries(HOST_TOKENS.map((name) => [name, "oklch(50% 0 0)"]));
+    const send = (values: Record<string, unknown>) => window.dispatchEvent(new MessageEvent("message", { data: { type: "bb-pages:theme", theme: "dark", tokens: values }, source: parent }));
+    send({ ...tokens, "font-sans": '"Inter Variable", Inter, sans-serif' });
+    expect(root.hasAttribute("data-bb-host")).toBe(true);
+    expect(root.style.getPropertyValue("--bb-host-font-sans")).toBe('"Inter Variable", Inter, sans-serif');
+    for (const unsafe of ["url(https://example.com/x.png)", "red; } body { display: none", "<b>", ""]) {
+      send({ ...tokens, background: unsafe });
+      expect(root.hasAttribute("data-bb-host")).toBe(false);
+      expect(root.style.getPropertyValue("--bb-host-background")).toBe("");
+    }
+    send({ ...tokens, extra: "red" });
+    expect(root.style.getPropertyValue("--bb-host-extra")).toBe("");
   });
 });
 

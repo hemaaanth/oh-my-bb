@@ -4,7 +4,7 @@
 //   GET /v?id=<versionId>[&theme=light|dark][&frame=card|inline]               stored version
 //   GET /a?id=<versionId>&path=<file>[&theme=light|dark][&frame=card|inline]   one file of a folder version
 //   GET /file?threadId=&source=&file=[&theme=light|dark][&frame=card|inline]    live file (::inline-vis; single files only)
-//   GET /_page/theme.css | /_page/inter.roman.var.woff2 | /_page/charts.js   [?v=<content version>]
+//   GET /_page/theme.css | /_page/inter.roman.var.woff2 | /_page/charts.js | /_page/spec.js   [?v=<content version>]
 // Preview HTML asks for assets with `?v=`, so the browser caches them for good; a stored version
 // never changes, so its HTML is cached briefly and revalidated by ETag. Live files are never cached.
 // Folder HTML (and CSS) is served with its relative subresources inlined as data: URLs and its

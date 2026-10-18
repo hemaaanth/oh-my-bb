@@ -37,7 +37,7 @@
     {
       "id": "pages",
       "displayName": "Pages",
-      "description": "Publish versioned pages in project folders, browse them in BB, ask questions with forms, and share them securely. Chart support bundles Highcharts; users must obtain and manage their own Highcharts license.",
+      "description": "Publish and share pages, with the same live UI in chat and on pages. Chart support bundles Highcharts; users must obtain and manage their own Highcharts license.",
       "icon": "FileText",
       "tags": [
         "artifacts",
@@ -56,7 +56,7 @@
         "git": {
           "url": "https://github.com/hemaaanth/oh-my-bb.git",
           "subdir": "plugins/pages",
-          "range": "^0.4.0",
+          "range": "^0.5.0",
           "tagPrefix": "pages/"
         }
       }

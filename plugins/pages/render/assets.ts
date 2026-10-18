@@ -9,6 +9,7 @@ const CONTENT_TYPES: Record<PageAssetName, string> = {
   "theme.css": "text/css; charset=utf-8",
   "inter.roman.var.woff2": "font/woff2",
   "charts.js": "text/javascript; charset=utf-8",
+  "spec.js": "text/javascript; charset=utf-8",
 };
 
 let assetDirectory: string | undefined;
@@ -54,7 +55,8 @@ export function inlinedPageAssets(): InlinePageAssets {
   const font = readPageAsset(FONT).bytes.toString("base64");
   const themeCss = readPageAsset("theme.css").bytes.toString("utf8").replaceAll(`url("${FONT}")`, `url("data:font/woff2;base64,${font}")`);
   const chartsJs = readPageAsset("charts.js").bytes.toString("utf8");
-  return (inlined = { themeCss, chartsJs });
+  const specJs = readPageAsset("spec.js").bytes.toString("utf8");
+  return (inlined = { themeCss, chartsJs, specJs });
 }
 
 /**
@@ -77,5 +79,5 @@ export function servedPageAsset(name: PageAssetName): ServedAsset {
 
 /** `?v=` versions for every asset, for injectPage in the BB preview routes. */
 export function pageAssetVersions(): Record<PageAssetName, string> {
-  return { "theme.css": servedPageAsset("theme.css").version, "inter.roman.var.woff2": servedPageAsset(FONT).version, "charts.js": servedPageAsset("charts.js").version };
+  return { "theme.css": servedPageAsset("theme.css").version, "inter.roman.var.woff2": servedPageAsset(FONT).version, "charts.js": servedPageAsset("charts.js").version, "spec.js": servedPageAsset("spec.js").version };
 }

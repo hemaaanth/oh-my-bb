@@ -9,6 +9,11 @@ describe("renderMarkdown", () => {
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
   });
 
+  it("turns openui-lang fences into blocks the spec runtime draws, so no string can close the script", () => {
+    const html = renderMarkdown('```openui-lang\nroot = TextContent("</script><b>x")\n```', { title: "t" });
+    expect(html).toContain('<script type="text/openui-lang">root = TextContent("<\\/script><b>x")\n</script>');
+  });
+
   it("uses a leading h1 as the title, otherwise adds the given title", () => {
     expect(renderMarkdown("# Own title\n\ntext", { title: "file.md" }).match(/<h1>/gu)).toHaveLength(1);
     expect(renderMarkdown("# Own title", { title: "file.md" })).toContain("<h1>Own title</h1>");

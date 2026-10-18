@@ -55,10 +55,21 @@ function installStyles(): void {
   else document.head.prepend(style);
 }
 
+/** Any CSS colour as rgba(), which Highcharts can parse: BB's tokens are oklch() and color-mix(). */
+function toRgb(value: string): string {
+  const context = value ? document.createElement("canvas").getContext("2d", { willReadFrequently: true }) : null;
+  if (!context) return value;
+  context.fillStyle = "#000";
+  context.fillStyle = value;
+  context.fillRect(0, 0, 1, 1);
+  const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+  return `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
+}
+
 /** Colour-axis charts (heatmaps) get real colours: Highcharts interpolates them, so CSS variables cannot. */
 function colorAxisTheme(): JsonObject {
   const root = getComputedStyle(document.documentElement);
-  const read = (name: string, fallback: string) => root.getPropertyValue(name).trim() || fallback;
+  const read = (name: string, fallback: string) => toRgb(root.getPropertyValue(name).trim()) || fallback;
   return { minColor: read("--bb-surface", "#f0f1f3"), maxColor: read("--bb-chart-1", "#7c84e0") };
 }
 
@@ -106,7 +117,9 @@ function renderFigure(figure: HTMLElement, charts: ChartWithAxis[]): void {
   if (!figure.hasAttribute("aria-label")) figure.setAttribute("aria-label", text.alt);
   if (!figure.hasAttribute("role")) figure.setAttribute("role", "group");
 
-  const colorAxis = "colorAxis" in options || (Array.isArray(options.series) && options.series.some((series) => isObject(series) && series.type === "heatmap"));
+  // A heatmap named by chart.type or a series type needs a colour axis, or every cell takes series colour 0.
+  const isHeatmap = (item: unknown) => isObject(item) && item.type === "heatmap";
+  const colorAxis = "colorAxis" in options || isHeatmap(options.chart) || (Array.isArray(options.series) && options.series.some(isHeatmap));
   const chartOptions = colorAxis ? merge(options, { colorAxis: colorAxisTheme() }) : options;
   try {
     const chart = Highcharts.chart(inner, chartOptions as Highcharts.Options);
@@ -125,12 +138,12 @@ function start(): void {
   for (const figure of Array.from(document.querySelectorAll<HTMLElement>("figure.chart"))) renderFigure(figure, charts);
   if (!charts.some((item) => item.colorAxis)) return;
   // Everything else follows the theme through CSS variables. Colour axes are
-  // numbers inside Highcharts, so repaint them when the theme changes.
+  // numbers inside Highcharts, so repaint them when the theme or BB's tokens (root style) change.
   const repaint = () => {
     const theme = colorAxisTheme();
     for (const item of charts) if (item.colorAxis) item.chart.update({ colorAxis: theme } as Highcharts.Options);
   };
-  new MutationObserver(repaint).observe(document.documentElement, { attributes: true, attributeFilter: ["data-bb-theme", "class"] });
+  new MutationObserver(repaint).observe(document.documentElement, { attributes: true, attributeFilter: ["data-bb-theme", "data-bb-host", "class", "style"] });
   if (document.body) new MutationObserver(repaint).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", repaint);
 }

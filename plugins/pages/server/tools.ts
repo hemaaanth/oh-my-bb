@@ -99,6 +99,6 @@ export function registerTools(bb: BbPluginApi, service: PageService) {
     // page_share is registered by server/share (T4); BB allows one configure callback, so it is selected here.
     tools: ["page_publish", "page_lookup", "page_browse", "page_share"],
     skills: ["pages"],
-    instructions: "Pages: use page_browse to find prior project artifacts in fresh threads. Write an .html or .md file (or a folder with index.html and its assets), publish it with page_publish (or `bb pages publish <path>`), and copy the returned ::page directive into your reply without restating the page. Read the pages skill for the theme, folder, chart, and inline-or-card rules.",
+    instructions: "Pages: use page_browse to find prior project artifacts in fresh threads. Write an .html or .md file (or a folder with index.html and its assets), publish it with page_publish (or `bb pages publish <path>`), and copy the returned ::page directive into your reply without restating the page. Read the pages skill for the theme, folder, chart, and inline-or-card rules. For small UI that belongs to one reply (a few stats, a short table or chart, tabs, code, or a question for the user), write an ```openui-lang fence instead of a page; read the skill's references/openui.md first.",
   }));
 }

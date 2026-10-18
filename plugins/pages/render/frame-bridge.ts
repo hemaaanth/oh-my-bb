@@ -2,7 +2,7 @@
 // (protocol in contract.ts FRAME_MESSAGE, host side in app/bridge.ts). injectPage adds it only to
 // BB previews, never to published or shared sites; those get FORMS_OFFLINE when they have a form.
 // Like the page runtime, both are plain strings.
-import { FORM_STATE_ATTRIBUTE, FRAME_MESSAGE, MANUAL_FORM_ATTRIBUTE } from "../contract.js";
+import { FORM_STATE_ATTRIBUTE, FRAME_MESSAGE, HOST_TOKENS, HOST_TOKEN_VALUE, MANUAL_FORM_ATTRIBUTE } from "../contract.js";
 
 /** The form status line. The bridge adds one to a form that has none, so a page can place its own. */
 export const FORM_STATUS_ATTRIBUTE = "data-bb-pages-status";
@@ -26,12 +26,25 @@ export const FRAME_BRIDGE = String.raw`(() => {
   const root = document.documentElement;
   const post = (message) => window.parent.postMessage(message, "*");
 
-  // ---- Theme: later app theme changes arrive here, so the frame never reloads --
+  // ---- Theme: app theme changes and the app's tokens arrive here, so the frame never reloads --
+  // theme.css maps the --bb-host-* tokens onto its own, for pages that follow the app.
+  const TOKENS = ${JSON.stringify(HOST_TOKENS)};
+  const VALUE = ${HOST_TOKEN_VALUE};
   window.addEventListener("message", (event) => {
     const data = event.data;
     if (event.source !== window.parent || !data || data.type !== ${JSON.stringify(FRAME_MESSAGE.theme)}) return;
     if (data.theme === "light" || data.theme === "dark") root.setAttribute("data-bb-theme", data.theme);
+    if (!data.tokens || typeof data.tokens !== "object") return;
+    let all = true;
+    for (const name of TOKENS) {
+      const value = data.tokens[name];
+      if (typeof value === "string" && VALUE.test(value)) root.style.setProperty("--bb-host-" + name, value);
+      else { root.style.removeProperty("--bb-host-" + name); all = false; }
+    }
+    root.toggleAttribute("data-bb-host", all);
   });
+  // Ask for the theme now, so the tokens can land before the body paints.
+  post({ type: ${JSON.stringify(FRAME_MESSAGE.ready)} });
 
   // ---- Links: the sandbox cannot open windows, so the host opens http(s) links --
   // Bubble phase, so a page that handles its own clicks (preventDefault) keeps them. In-page links stay here.

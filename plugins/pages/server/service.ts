@@ -5,8 +5,10 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { MAX_PAGE_HTML_BYTES, directive, type FormSubmission, type FormTarget, type PageDetail, type PublishFileInput, type SourceKey, type mutationResultSchema, type publishDocumentInputSchema } from "../contract.js";
 import { hasForm, inspectCharts, renderMarkdown, renderPrReview } from "../render/index.js";
+import { hasSpecBlocks } from "../render/spec-baked.js";
 import { readSourceFile, readSourceFolder, relativeFile, resolveRoot, sourceKeyOf, type FileSource, type SourceFile } from "./files.js";
 import { inlineLocalImages } from "./images.js";
+import type { SpecBaker } from "./spec/index.js";
 import { HTTP_BASE, StaleVersionError, type PageStore } from "./store.js";
 
 export type MutationResult = z.infer<typeof mutationResultSchema>;
@@ -132,9 +134,11 @@ type ServiceDeps = {
   versionCreated(pageId: string, versionId: string): void;
   /** Share cleanup after a soft delete (removes the Here.now site). Never throws. */
   pageDeleted(pageId: string): Promise<void>;
+  /** Stores what a page's openui-lang blocks need (server/spec/bake.ts). Without it, blocks show no data. */
+  bake?: SpecBaker;
 };
 
-export function createPageService({ sdk, store, changed, versionCreated, pageDeleted }: ServiceDeps) {
+export function createPageService({ sdk, store, changed, versionCreated, pageDeleted, bake }: ServiceDeps) {
   const result = (pageId: string, versionId: string, created: boolean, didChange: boolean): PublishResult => {
     const detail = store.detail(pageId, versionId);
     if (!detail) throw new Error(`Page ${pageId} disappeared while publishing.`);
@@ -148,17 +152,21 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
     return charts.hasCharts;
   };
 
+  /** The page with its openui-lang blocks' data baked in. Compared baked, so new data adds a version. */
+  const baked = (html: string, input: PublishFileInput) => bake && hasSpecBlocks(html) ? bake(html, { threadId: input.threadId, source: input.source }) : Promise.resolve(html);
+
   /** What a publish stores: the page HTML, a folder's other files, and the digest that decides "unchanged". */
   async function readContent(input: PublishFileInput) {
     if (input.dir) {
       const folder = await readSourceFolder(sdk, input.threadId, input.dir, input.source);
+      const index = await baked(folder.index, input);
       const manifest = folder.files.map((file) => `${file.path}\0${file.contentType}\0${createHash("sha256").update(file.bytes).digest("hex")}`);
-      return { html: folder.index, files: folder.files, sourceKey: folder.sourceKey, sourcePath: folder.dir, digest: sha256([folder.index, ...manifest].join("\0\0")) };
+      return { html: index, files: folder.files, sourceKey: folder.sourceKey, sourcePath: folder.dir, digest: sha256([index, ...manifest].join("\0\0")) };
     }
     if (!input.file) throw new PageInputError("Pass file or dir.");
     const source = await readSourceFile(sdk, input.threadId, input.file, input.source);
     // Stored and compared with local images inlined, so an image change adds a version. Folders store their images as files.
-    const html = await inlineLocalImages(sdk, input.threadId, source, sourceHtml(source, input.title), { strict: true });
+    const html = await baked(await inlineLocalImages(sdk, input.threadId, source, sourceHtml(source, input.title), { strict: true }), input);
     return { html, files: [], sourceKey: source.sourceKey, sourcePath: source.file, digest: sha256(html) };
   }
 

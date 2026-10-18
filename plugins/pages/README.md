@@ -25,6 +25,15 @@ and provides a searchable library for finding earlier work.
   stays sent after a reload. A page with a form is published inline by
   default. Select, date, and time fields open themed pickers, and
   number fields get − and + buttons.
+- Show live UI in a reply. An agent writes an `openui-lang` code fence, and
+  BB draws it in place as the reply streams: stats, tables, bar and line
+  charts, tabs, code, diffs, and forms with choices, sliders, toggles, and
+  text fields. Buttons send to the thread, and a sent form locks. A fence
+  that does not parse shows as code.
+- Put the same live UI on a page. A Markdown page takes the same fence, and
+  an HTML page takes `<script type="text/openui-lang">`. Publishing saves the
+  data, place names, photos, and map tiles the blocks need, so shared sites
+  work offline from BB. Buttons and forms there are read-only.
 
 ## Install
 
@@ -50,13 +59,14 @@ bb plugin install git:https://github.com/hemaaanth/oh-my-bb.git@^0.1.0 \
 
 ## Highcharts license
 
-Pages includes a bundled Highcharts runtime for its chart feature. Highcharts
+Pages includes a bundled Highcharts runtime for its charts, on pages and in chat. Highcharts
 is not licensed under MIT. **You must obtain and manage your own Highcharts
 license for your intended use.** Installing Pages does not grant a commercial
 Highcharts license. See [Highcharts licensing](https://www.highcharts.com/license)
 and [THIRD_PARTY.md](THIRD_PARTY.md).
 
-Pages without charts does not invoke the Highcharts runtime.
+Highcharts loads only when a chart draws. See [THIRD_PARTY.md](THIRD_PARTY.md)
+for OpenUI, Generative UI, and the other credits.
 
 ## Optional integrations
 

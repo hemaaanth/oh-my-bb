@@ -1,7 +1,7 @@
 // The host side of the frame bridge. Protocol: FRAME_MESSAGE in contract.ts. Page side: render/frame-bridge.ts.
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
-import { FRAME_MESSAGE, formSubmissionSchema, type FormSubmission, type FormTarget, type PagesRpc, type SentForm } from "../contract.js";
+import { FRAME_MESSAGE, HOST_TOKENS, HOST_TOKEN_VALUE, formSubmissionSchema, type FormSubmission, type FormTarget, type PagesRpc, type SentForm } from "../contract.js";
 import { messageOf, themedUrl, usePreviewTheme } from "./ui.js";
 
 /** Far taller than any page a chat frame shows. A larger report is noise. */
@@ -9,6 +9,7 @@ const MAX_REPORTED_HEIGHT = 100_000;
 const MAX_URL_LENGTH = 8_192;
 
 export type FrameMessage =
+  | { type: "ready" }
   | { type: "open" | "page"; url: string }
   | { type: "height"; height: number }
   | { type: "submit"; submission: FormSubmission }
@@ -31,6 +32,7 @@ export function readFrameMessage(data: unknown): FrameMessage | null {
       ? { type: "submit-invalid", submissionId, message: parsed.error.issues.find((issue) => issue.code === "custom")?.message ?? "The form could not be read." }
       : null;
   }
+  if (type === FRAME_MESSAGE.ready) return { type: "ready" };
   if (type === FRAME_MESSAGE.open) {
     if (typeof url !== "string" || url.length > MAX_URL_LENGTH) return null;
     try {
@@ -69,11 +71,23 @@ export function folderPageUrl(url: string, frameSrc: string): string | null {
   }
 }
 
-export const themeMessage = (theme: "light" | "dark") => ({ type: FRAME_MESSAGE.theme, theme });
+/** The app's current HOST_TOKENS values, read from its root. An empty or unsafe value is left out. */
+export function hostTokens(): Record<string, string> {
+  const style = getComputedStyle(document.documentElement);
+  const tokens: Record<string, string> = {};
+  for (const name of HOST_TOKENS) {
+    const value = style.getPropertyValue(`--${name}`).trim();
+    if (HOST_TOKEN_VALUE.test(value)) tokens[name] = value;
+  }
+  return tokens;
+}
+
+export const themeMessage = (theme: "light" | "dark") => ({ type: FRAME_MESSAGE.theme, theme, tokens: hostTokens() });
 
 /**
  * One preview iframe's side of the bridge. The first theme rides in the URL, so the page paints themed.
- * Later theme changes are posted, so the src stays the same and the page does not reload.
+ * The theme and the app's tokens are posted when the page asks (ready), on load, and when the app theme changes,
+ * so the src stays the same and the page does not reload.
  * Only messages from this iframe's own window count. The frame stays sandboxed without allow-same-origin.
  * A submitted form goes to `forms` with submitForm; without a target, the form is told why it cannot send.
  * Forms already sent to `forms` are posted on each load, so the page shows them sent.
@@ -89,7 +103,13 @@ export function useFrameBridge(previewUrl: string, frame?: "card" | "inline", on
   // A folder page the reader opened from a link. A new page or version drops it.
   const [page, setPage] = useState<{ previewUrl: string; src: string } | null>(null);
   const postTheme = useCallback(() => { ref.current?.contentWindow?.postMessage(themeMessage(theme), "*"); }, [theme]);
-  useEffect(postTheme, [postTheme]);
+  useEffect(() => {
+    postTheme();
+    // The app sets its theme class and custom palette on its root. Read the tokens again when they change.
+    const observer = new MutationObserver(postTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style"] });
+    return () => observer.disconnect();
+  }, [postTheme]);
   // One key per target, so a new object with the same fields does not refetch or rebind.
   const formsKey = forms ? JSON.stringify(forms) : "";
   const target = useRef(forms);
@@ -117,7 +137,9 @@ export function useFrameBridge(previewUrl: string, frame?: "card" | "inline", on
       const own = ref.current?.contentWindow;
       if (!own || event.source !== own) return;
       const message = readFrameMessage(event.data);
-      if (message?.type === "page") {
+      if (message?.type === "ready") {
+        postTheme();
+      } else if (message?.type === "page") {
         const url = folderPageUrl(message.url, ref.current?.getAttribute("src") ?? "");
         // The theme goes before the fragment, so a link to a section keeps it.
         const cut = url?.indexOf("#") ?? -1;
@@ -146,7 +168,7 @@ export function useFrameBridge(previewUrl: string, frame?: "card" | "inline", on
     window.addEventListener("message", listen);
     return () => window.removeEventListener("message", listen);
   // formsKey stands for forms.
-  }, [navigate, onHeight, previewUrl, theme, frame, rpc, formsKey, loadSent]);
+  }, [navigate, onHeight, previewUrl, theme, frame, rpc, formsKey, loadSent, postTheme]);
   // The frame's colour scheme matches the app's. A mismatch makes the browser paint an opaque backdrop behind the page.
   const style: CSSProperties = { colorScheme: theme };
   const src = page?.previewUrl === previewUrl ? page.src : themedUrl(loaded.previewUrl, loaded.theme, frame);

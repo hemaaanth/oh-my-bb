@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.5.0
+
+- Pages now needs BB 0.46.1 or later.
+- An ```` ```openui-lang ```` fence in an assistant reply renders in place as
+  Pages components, live while it streams: Stack, Heading, Text, Callout,
+  Stat, Stats, Table, Progress, Chart (bar or line), Tabs, Code, Diff,
+  Input, Slider, Toggle, Choice, Button, and Form. Code and Diff use BB's
+  own viewers. A button sends its label and its form's answers to the
+  thread. A sent form locks with the clicked button marked, stays locked
+  after a reload, and shows Edit answers. A failed send unlocks it. A
+  fence that does not parse shows as code.
+- Chat charts draw with Highcharts, the same as page charts. Treemap,
+  CalendarHeatmap, Gauge, Sparkline, Waterfall, and a Benchmark ranking
+  draw with Highcharts too, through the same loader and theme.
+- Published pages and shared sites draw every chat component. Write an
+  `openui-lang` fence in a Markdown page, or
+  `<script type="text/openui-lang">` in an HTML page. A test renders every
+  gallery example through the page runtime, so chat cannot show a component
+  a page cannot. Pages that have a block load `_page/spec.js`; others do not.
+- On a page, components that send to the thread are read-only. Publishing
+  saves each block's Query answers (only the files and git data the publish
+  can read), place names, photo searches, and the map tiles of each map's
+  opening view. Tiles are saved as images, so the Mapbox token stays on the
+  server.
+- The settings Components gallery has a BB and Site switch. Site shows each
+  example the way a shared site draws it.
+- The skill ships `references/openui.md`, generated from the component
+  library and checked by a test. Agents are told to use a fence for small UI
+  in one reply and a page for the rest.
+- Inside BB, pages use a smaller type scale. Inline pages match the chat text.
+  The panel and cards are one step larger. Shared sites keep the full scale.
+- `body.auto` pages take BB's own colours, fonts, and radius in previews, and
+  follow theme changes live. A page's own token overrides still win.
+- The accent and chart colours follow BB's theme too.
+- Inline text matches BB's chat text exactly: size, line height, spacing, and
+  the same Inter cut.
+- Inline pages show at their full height. They are never clipped and have no
+  "Open full page" button.
+- Heatmaps named by `chart.type` now get a colour scale. Before, every
+  cell took one colour.
+- The page panel uses BB's background.
+- Cards show the top of the page at full size instead of zoomed out.
+- The library's project and folder filters open themed menus instead of the
+  browser's selects.
+
 ## 0.4.0
 
 - Forms on a page send their answers to the thread the page is shown in, as

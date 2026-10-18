@@ -1,0 +1,3837 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "type": "object",
+ "properties": {
+  "Stack": {
+   "$ref": "#/$defs/Stack"
+  },
+  "Card": {
+   "$ref": "#/$defs/Card"
+  },
+  "Row": {
+   "$ref": "#/$defs/Row"
+  },
+  "Grid": {
+   "$ref": "#/$defs/Grid"
+  },
+  "Carousel": {
+   "$ref": "#/$defs/Carousel"
+  },
+  "Details": {
+   "$ref": "#/$defs/Details"
+  },
+  "Divider": {
+   "$ref": "#/$defs/Divider"
+  },
+  "Accordion": {
+   "$ref": "#/$defs/Accordion"
+  },
+  "AccordionItem": {
+   "$ref": "#/$defs/AccordionItem"
+  },
+  "Modal": {
+   "$ref": "#/$defs/Modal"
+  },
+  "Tabs": {
+   "$ref": "#/$defs/Tabs"
+  },
+  "Tab": {
+   "$ref": "#/$defs/Tab"
+  },
+  "Heading": {
+   "$ref": "#/$defs/Heading"
+  },
+  "Text": {
+   "$ref": "#/$defs/Text"
+  },
+  "Callout": {
+   "$ref": "#/$defs/Callout"
+  },
+  "Stat": {
+   "$ref": "#/$defs/Stat"
+  },
+  "Stats": {
+   "$ref": "#/$defs/Stats"
+  },
+  "Badge": {
+   "$ref": "#/$defs/Badge"
+  },
+  "Tag": {
+   "$ref": "#/$defs/Tag"
+  },
+  "Chips": {
+   "$ref": "#/$defs/Chips"
+  },
+  "Icon": {
+   "$ref": "#/$defs/Icon"
+  },
+  "Entity": {
+   "$ref": "#/$defs/Entity"
+  },
+  "File": {
+   "$ref": "#/$defs/File"
+  },
+  "Image": {
+   "$ref": "#/$defs/Image"
+  },
+  "KeyValue": {
+   "$ref": "#/$defs/KeyValue"
+  },
+  "List": {
+   "$ref": "#/$defs/List"
+  },
+  "Sources": {
+   "$ref": "#/$defs/Sources"
+  },
+  "Source": {
+   "$ref": "#/$defs/Source"
+  },
+  "Table": {
+   "$ref": "#/$defs/Table"
+  },
+  "Progress": {
+   "$ref": "#/$defs/Progress"
+  },
+  "Code": {
+   "$ref": "#/$defs/Code"
+  },
+  "Diff": {
+   "$ref": "#/$defs/Diff"
+  },
+  "Snippet": {
+   "$ref": "#/$defs/Snippet"
+  },
+  "Gauge": {
+   "$ref": "#/$defs/Gauge"
+  },
+  "SegmentedBar": {
+   "$ref": "#/$defs/SegmentedBar"
+  },
+  "Sparkline": {
+   "$ref": "#/$defs/Sparkline"
+  },
+  "Steps": {
+   "$ref": "#/$defs/Steps"
+  },
+  "Timeline": {
+   "$ref": "#/$defs/Timeline"
+  },
+  "Tree": {
+   "$ref": "#/$defs/Tree"
+  },
+  "Calendar": {
+   "$ref": "#/$defs/Calendar"
+  },
+  "CalendarHeatmap": {
+   "$ref": "#/$defs/CalendarHeatmap"
+  },
+  "Diagram": {
+   "$ref": "#/$defs/Diagram"
+  },
+  "Chart": {
+   "$ref": "#/$defs/Chart"
+  },
+  "Series": {
+   "$ref": "#/$defs/Series"
+  },
+  "Input": {
+   "$ref": "#/$defs/Input"
+  },
+  "TextArea": {
+   "$ref": "#/$defs/TextArea"
+  },
+  "Slider": {
+   "$ref": "#/$defs/Slider"
+  },
+  "Stepper": {
+   "$ref": "#/$defs/Stepper"
+  },
+  "DateInput": {
+   "$ref": "#/$defs/DateInput"
+  },
+  "Rating": {
+   "$ref": "#/$defs/Rating"
+  },
+  "Toggle": {
+   "$ref": "#/$defs/Toggle"
+  },
+  "Choice": {
+   "$ref": "#/$defs/Choice"
+  },
+  "Radio": {
+   "$ref": "#/$defs/Radio"
+  },
+  "CheckBoxGroup": {
+   "$ref": "#/$defs/CheckBoxGroup"
+  },
+  "Checklist": {
+   "$ref": "#/$defs/Checklist"
+  },
+  "Select": {
+   "$ref": "#/$defs/Select"
+  },
+  "OptionCards": {
+   "$ref": "#/$defs/OptionCards"
+  },
+  "Swatches": {
+   "$ref": "#/$defs/Swatches"
+  },
+  "ListEditor": {
+   "$ref": "#/$defs/ListEditor"
+  },
+  "EditableTable": {
+   "$ref": "#/$defs/EditableTable"
+  },
+  "Button": {
+   "$ref": "#/$defs/Button"
+  },
+  "IconButton": {
+   "$ref": "#/$defs/IconButton"
+  },
+  "FollowUps": {
+   "$ref": "#/$defs/FollowUps"
+  },
+  "Form": {
+   "$ref": "#/$defs/Form"
+  },
+  "Map": {
+   "$ref": "#/$defs/Map"
+  },
+  "Marker": {
+   "$ref": "#/$defs/Marker"
+  },
+  "Area": {
+   "$ref": "#/$defs/Area"
+  },
+  "Gallery": {
+   "$ref": "#/$defs/Gallery"
+  },
+  "Photo": {
+   "$ref": "#/$defs/Photo"
+  },
+  "BeforeAfter": {
+   "$ref": "#/$defs/BeforeAfter"
+  },
+  "Hotspots": {
+   "$ref": "#/$defs/Hotspots"
+  },
+  "Hotspot": {
+   "$ref": "#/$defs/Hotspot"
+  },
+  "ImageSearch": {
+   "$ref": "#/$defs/ImageSearch"
+  },
+  "Benchmark": {
+   "$ref": "#/$defs/Benchmark"
+  },
+  "Coverage": {
+   "$ref": "#/$defs/Coverage"
+  },
+  "Dependencies": {
+   "$ref": "#/$defs/Dependencies"
+  },
+  "Findings": {
+   "$ref": "#/$defs/Findings"
+  },
+  "Logs": {
+   "$ref": "#/$defs/Logs"
+  },
+  "Pipeline": {
+   "$ref": "#/$defs/Pipeline"
+  },
+  "StackTrace": {
+   "$ref": "#/$defs/StackTrace"
+  },
+  "Treemap": {
+   "$ref": "#/$defs/Treemap"
+  },
+  "Waterfall": {
+   "$ref": "#/$defs/Waterfall"
+  },
+  "Changes": {
+   "$ref": "#/$defs/Changes"
+  },
+  "Commits": {
+   "$ref": "#/$defs/Commits"
+  },
+  "Json": {
+   "$ref": "#/$defs/Json"
+  },
+  "PullRequest": {
+   "$ref": "#/$defs/PullRequest"
+  },
+  "Tests": {
+   "$ref": "#/$defs/Tests"
+  },
+  "Threads": {
+   "$ref": "#/$defs/Threads"
+  },
+  "Environments": {
+   "$ref": "#/$defs/Environments"
+  },
+  "Board": {
+   "$ref": "#/$defs/Board"
+  },
+  "Decision": {
+   "$ref": "#/$defs/Decision"
+  },
+  "Estimate": {
+   "$ref": "#/$defs/Estimate"
+  },
+  "Plan": {
+   "$ref": "#/$defs/Plan"
+  },
+  "Roadmap": {
+   "$ref": "#/$defs/Roadmap"
+  },
+  "Status": {
+   "$ref": "#/$defs/Status"
+  },
+  "Acceptance": {
+   "$ref": "#/$defs/Acceptance"
+  },
+  "Compare": {
+   "$ref": "#/$defs/Compare"
+  },
+  "Provenance": {
+   "$ref": "#/$defs/Provenance"
+  },
+  "Transcript": {
+   "$ref": "#/$defs/Transcript"
+  },
+  "Flashcards": {
+   "$ref": "#/$defs/Flashcards"
+  },
+  "Quiz": {
+   "$ref": "#/$defs/Quiz"
+  },
+  "Timer": {
+   "$ref": "#/$defs/Timer"
+  },
+  "Walkthrough": {
+   "$ref": "#/$defs/Walkthrough"
+  }
+ },
+ "required": [
+  "Stack",
+  "Card",
+  "Row",
+  "Grid",
+  "Carousel",
+  "Details",
+  "Divider",
+  "Accordion",
+  "AccordionItem",
+  "Modal",
+  "Tabs",
+  "Tab",
+  "Heading",
+  "Text",
+  "Callout",
+  "Stat",
+  "Stats",
+  "Badge",
+  "Tag",
+  "Chips",
+  "Icon",
+  "Entity",
+  "File",
+  "Image",
+  "KeyValue",
+  "List",
+  "Sources",
+  "Source",
+  "Table",
+  "Progress",
+  "Code",
+  "Diff",
+  "Snippet",
+  "Gauge",
+  "SegmentedBar",
+  "Sparkline",
+  "Steps",
+  "Timeline",
+  "Tree",
+  "Calendar",
+  "CalendarHeatmap",
+  "Diagram",
+  "Chart",
+  "Series",
+  "Input",
+  "TextArea",
+  "Slider",
+  "Stepper",
+  "DateInput",
+  "Rating",
+  "Toggle",
+  "Choice",
+  "Radio",
+  "CheckBoxGroup",
+  "Checklist",
+  "Select",
+  "OptionCards",
+  "Swatches",
+  "ListEditor",
+  "EditableTable",
+  "Button",
+  "IconButton",
+  "FollowUps",
+  "Form",
+  "Map",
+  "Marker",
+  "Area",
+  "Gallery",
+  "Photo",
+  "BeforeAfter",
+  "Hotspots",
+  "Hotspot",
+  "ImageSearch",
+  "Benchmark",
+  "Coverage",
+  "Dependencies",
+  "Findings",
+  "Logs",
+  "Pipeline",
+  "StackTrace",
+  "Treemap",
+  "Waterfall",
+  "Changes",
+  "Commits",
+  "Json",
+  "PullRequest",
+  "Tests",
+  "Threads",
+  "Environments",
+  "Board",
+  "Decision",
+  "Estimate",
+  "Plan",
+  "Roadmap",
+  "Status",
+  "Acceptance",
+  "Compare",
+  "Provenance",
+  "Transcript",
+  "Flashcards",
+  "Quiz",
+  "Timer",
+  "Walkthrough"
+ ],
+ "additionalProperties": false,
+ "$defs": {
+  "Stack": {
+   "type": "object",
+   "properties": {
+    "children": {
+     "type": "array",
+     "items": {}
+    },
+    "direction": {
+     "type": "string",
+     "enum": [
+      "column",
+      "row"
+     ]
+    },
+    "gap": {
+     "type": "string",
+     "enum": [
+      "none",
+      "s",
+      "m",
+      "l"
+     ]
+    }
+   },
+   "required": [
+    "children"
+   ],
+   "additionalProperties": false,
+   "description": "Layout. direction \"column\" (default) or \"row\"; rows wrap. gap \"none\"|\"s\"|\"m\"|\"l\", default \"m\"."
+  },
+  "Card": {
+   "type": "object",
+   "properties": {
+    "children": {
+     "type": "array",
+     "items": {}
+    },
+    "title": {
+     "type": "string"
+    },
+    "variant": {
+     "type": "string",
+     "enum": [
+      "card",
+      "sunk",
+      "clear"
+     ]
+    }
+   },
+   "required": [
+    "children"
+   ],
+   "additionalProperties": false,
+   "description": "A framed group of parts with an optional title. variant \"card\" (default) has a hairline frame; \"sunk\" is a muted tile, good for options side by side; \"clear\" has no frame. A \"card\" inside another Card draws as \"sunk\". Cards in a Row or Grid share one height."
+  },
+  "Row": {
+   "type": "object",
+   "properties": {
+    "children": {
+     "type": "array",
+     "items": {}
+    },
+    "gap": {
+     "type": "string",
+     "enum": [
+      "none",
+      "s",
+      "m",
+      "l"
+     ]
+    }
+   },
+   "required": [
+    "children"
+   ],
+   "additionalProperties": false,
+   "description": "Parts side by side in equal columns. Each column is at least 10rem wide, so a narrow screen wraps them. gap \"none\"|\"s\"|\"m\"|\"l\", default \"l\". For buttons or small items at their own width, use Stack with \"row\"."
+  },
+  "Grid": {
+   "type": "object",
+   "properties": {
+    "children": {
+     "type": "array",
+     "items": {}
+    },
+    "columns": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "children"
+   ],
+   "additionalProperties": false,
+   "description": "Tiles on an even grid. With no columns it fits as many tiles of about 10rem as there is room for. columns (1 to 6) asks for that many; a narrow screen shows fewer, each at least 8rem. Tiles in a row share one height."
+  },
+  "Carousel": {
+   "type": "object",
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {}
+    },
+    "label": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "additionalProperties": false,
+   "description": "A row of slides that scrolls sideways, with previous and next buttons. Each item is one slide, often a Card or an Entity. Slides are about 16rem wide. label names the carousel for screen readers."
+  },
+  "Details": {
+   "type": "object",
+   "properties": {
+    "title": {
+     "type": "string"
+    },
+    "children": {
+     "type": "array",
+     "items": {}
+    },
+    "open": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "title",
+    "children"
+   ],
+   "additionalProperties": false,
+   "description": "A collapsible section: the title shows, the content opens on click. Closed unless open is true. Use it for detail most readers skip."
+  },
+  "Divider": {
+   "type": "object",
+   "properties": {
+    "label": {
+     "type": "string"
+    }
+   },
+   "additionalProperties": false,
+   "description": "A thin line between parts. With a label, the label sits in the middle of the line."
+  },
+  "Accordion": {
+   "type": "object",
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/AccordionItem"
+     }
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "additionalProperties": false,
+   "description": "Stacked sections where one opens at a time; the first starts open. Clicking an open title closes it. Up and down arrows move between titles. While the reply streams, the newest section opens until the reader clicks one."
+  },
+  "AccordionItem": {
+   "type": "object",
+   "properties": {
+    "title": {
+     "type": "string"
+    },
+    "children": {
+     "type": "array",
+     "items": {}
+    }
+   },
+   "required": [
+    "title",
+    "children"
+   ],
+   "additionalProperties": false,
+   "description": "One section of an Accordion: a title and its content."
+  },
+  "Modal": {
+   "type": "object",
+   "properties": {
+    "label": {
+     "type": "string"
+    },
+    "children": {
+     "type": "array",
+     "items": {}
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "label",
+    "children"
+   ],
+   "additionalProperties": false,
+   "description": "A button that opens a dialog with the children inside. label is the button text; title heads the dialog and defaults to label. Escape, the close button, or a click outside closes it. Use it for detail or a Form that should not take room in the reply."
+  },
+  "Tabs": {
+   "type": "object",
+   "properties": {
+    "tabs": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Tab"
+     }
+    }
+   },
+   "required": [
+    "tabs"
+   ],
+   "additionalProperties": false,
+   "description": "Switch between a few views of related content. The first tab shows first."
+  },
+  "Tab": {
+   "type": "object",
+   "properties": {
+    "label": {
+     "type": "string"
+    },
+    "children": {
+     "type": "array",
+     "items": {}
+    }
+   },
+   "required": [
+    "label",
+    "children"
+   ],
+   "additionalProperties": false,
+   "description": "One tab of Tabs: a label and its content."
+  },
+  "Heading": {
+   "type": "object",
+   "properties": {
+    "text": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "text"
+   ],
+   "additionalProperties": false,
+   "description": "A section title inside the UI. The reply already names the UI, so do not open with one."
+  },
+  "Text": {
+   "type": "object",
+   "properties": {
+    "text": {
+     "type": "string"
+    },
+    "tone": {
+     "type": "string",
+     "enum": [
+      "default",
+      "muted",
+      "strong"
+     ]
+    }
+   },
+   "required": [
+    "text"
+   ],
+   "additionalProperties": false,
+   "description": "A paragraph of plain text. tone \"default\"|\"muted\"|\"strong\"."
+  },
+  "Callout": {
+   "type": "object",
+   "properties": {
+    "tone": {
+     "type": "string",
+     "enum": [
+      "info",
+      "success",
+      "warning",
+      "danger"
+     ]
+    },
+    "title": {
+     "type": "string"
+    },
+    "body": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "tone",
+    "title"
+   ],
+   "additionalProperties": false,
+   "description": "A short highlighted note with a coloured side bar."
+  },
+  "Stat": {
+   "type": "object",
+   "properties": {
+    "label": {
+     "type": "string"
+    },
+    "value": {
+     "type": [
+      "string",
+      "number"
+     ]
+    },
+    "change": {
+     "type": "string"
+    },
+    "trend": {
+     "type": "string",
+     "enum": [
+      "neutral",
+      "up",
+      "down"
+     ]
+    },
+    "tone": {
+     "type": "string",
+     "enum": [
+      "neutral",
+      "info",
+      "success",
+      "warning",
+      "danger"
+     ]
+    }
+   },
+   "required": [
+    "label",
+    "value"
+   ],
+   "additionalProperties": false,
+   "description": "One headline number. change is a short note under it, like \"+12%\" or \"since May\". trend \"up\" is good (green), \"down\" is bad (red), \"neutral\" (default) is muted. tone colours the value itself: \"success\", \"warning\", \"danger\", \"info\", or \"neutral\" (default, plain)."
+  },
+  "Stats": {
+   "type": "object",
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Stat"
+     }
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "additionalProperties": false,
+   "description": "A row of Stat numbers that wraps on narrow screens."
+  },
+  "Badge": {
+   "type": "object",
+   "properties": {
+    "text": {
+     "type": "string"
+    },
+    "tone": {
+     "type": "string",
+     "enum": [
+      "neutral",
+      "info",
+      "success",
+      "warning",
+      "danger"
+     ]
+    }
+   },
+   "required": [
+    "text"
+   ],
+   "additionalProperties": false,
+   "description": "A short status in a tinted pill, like \"Shipped\", \"Blocked\", or \"3 open\". tone \"neutral\" (default), \"info\", \"success\", \"warning\", or \"danger\". For a topic or category, use Tag."
+  },
+  "Tag": {
+   "type": "object",
+   "properties": {
+    "text": {
+     "type": "string"
+    },
+    "icon": {
+     "type": "string"
+    },
+    "tone": {
+     "type": "string",
+     "enum": [
+      "neutral",
+      "info",
+      "success",
+      "warning",
+      "danger"
+     ]
+    }
+   },
+   "required": [
+    "text"
+   ],
+   "additionalProperties": false,
+   "description": "A label for a topic, category, or owner, in a hairline outline. icon is an Icon name shown before the text. tone \"neutral\" (default), \"info\", \"success\", \"warning\", or \"danger\" colours the icon, or a small dot when there is no icon. For a status, use Badge."
+  },
+  "Chips": {
+   "type": "object",
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "$ref": "#/$defs/Tag"
+       }
+      ]
+     }
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "additionalProperties": false,
+   "description": "A wrapping row of tags. Each item is a plain string or a Tag. For chips the reader picks from, use Choice."
+  },
+  "Icon": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "tone": {
+     "type": "string",
+     "enum": [
+      "neutral",
+      "info",
+      "success",
+      "warning",
+      "danger"
+     ]
+    },
+    "label": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "additionalProperties": false,
+   "description": "A small icon at the size of the text around it. With no tone it takes the text colour; tone \"neutral\", \"info\", \"success\", \"warning\", or \"danger\" colours it. label is read by screen readers; leave it out when the icon only decorates. An unknown name shows nothing. Names: ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, Book, Bookmark, Briefcase, Bug, Building, Calendar, Car, ChartBar, ChartLine, Check, CircleCheck, CircleX, Clock, Cloud, Code, Coffee, CreditCard, Database, DollarSign, Download, ExternalLink, Eye, File, FileText, Flag, Folder, GitBranch, GitCommit, GitPullRequest, Globe, GraduationCap, Heart, Home, Image, Info, Key, Lightbulb, Link, Lock, Mail, MapPin, Message, Minus, Moon, Package, Pencil, Phone, Plane, Plus, Rocket, Search, Server, Settings, Shield, ShoppingCart, Sparkles, Star, Sun, Tag, Target, Terminal, Train, Trash, TrendingDown, TrendingUp, Upload, User, Users, Utensils, Warning, Wrench, X, Zap."
+  },
+  "Entity": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "subtitle": {
+     "type": "string"
+    },
+    "image": {
+     "type": "string"
+    },
+    "facts": {
+     "anyOf": [
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      },
+      {
+       "type": "array",
+       "items": {
+        "type": "array",
+        "items": {}
+       }
+      }
+     ]
+    },
+    "url": {
+     "type": "string"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "person",
+      "place",
+      "org",
+      "product",
+      "link",
+      "other"
+     ]
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "additionalProperties": false,
+   "description": "One person, place, or thing: a picture, the name, a subtitle, and a few facts. facts is an object like {\"Rating\": 4.6, \"Price\": \"$$\"} or a list of [label, value] pairs. image is an http(s) or data: image URL; with none, a kind icon or the first letter stands in. url (http or https) makes the name a link. kind \"person\", \"place\", \"org\", \"product\", \"link\", or \"other\" (default). In a narrow tile, like a Grid or Carousel, the picture goes on top."
+  },
+  "File": {
+   "type": "object",
+   "properties": {
+    "path": {
+     "type": "string"
+    },
+    "line": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "path"
+   ],
+   "additionalProperties": false,
+   "description": "A file reference in mono, as path or path:line. An http(s) URL opens on click; a workspace path shows as text."
+  },
+  "Image": {
+   "type": "object",
+   "properties": {
+    "src": {
+     "type": "string"
+    },
+    "alt": {
+     "type": "string"
+    },
+    "caption": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "src",
+    "alt"
+   ],
+   "additionalProperties": false,
+   "description": "A picture from an http(s) or data: image URL. alt describes it for screen readers, and shows in its place if it fails to load. caption is a line under it. Clicking it opens it full size. Other sources, like file paths, show the alt text."
+  },
+  "KeyValue": {
+   "type": "object",
+   "properties": {
+    "pairs": {
+     "anyOf": [
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      },
+      {
+       "type": "array",
+       "items": {
+        "type": "array",
+        "items": {}
+       }
+      }
+     ]
+    }
+   },
+   "required": [
+    "pairs"
+   ],
+   "additionalProperties": false,
+   "description": "Labels and their values in two aligned columns; on a narrow screen each label sits above its value. pairs is an object like {\"Owner\": \"Ana\", \"Due\": \"Fri\"} or a list of [label, value] pairs. A value may be text, a number, null (shown as a dash), or a component such as Badge or File."
+  },
+  "List": {
+   "type": "object",
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {}
+    },
+    "ordered": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "additionalProperties": false,
+   "description": "A bulleted list, or a numbered one with ordered true. Each item is a string or a component, like File or Text. A List right after an item nests under it."
+  },
+  "Sources": {
+   "type": "object",
+   "properties": {
+    "links": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "$ref": "#/$defs/Source"
+       }
+      ]
+     }
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "links"
+   ],
+   "additionalProperties": false,
+   "description": "The links an answer drew on, numbered in order, so \"[2]\" in the reply is the second. Each link is a URL string or a Source with a title and note. Only http(s) links open; another link keeps its number and says it cannot open. title heads the list, default \"Sources\"."
+  },
+  "Source": {
+   "type": "object",
+   "properties": {
+    "url": {
+     "type": "string"
+    },
+    "title": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "url"
+   ],
+   "additionalProperties": false,
+   "description": "One cited link of Sources: an http(s) url, a title (the domain shows when it is missing), and an optional short note."
+  },
+  "Table": {
+   "type": "object",
+   "properties": {
+    "columns": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "rows": {
+     "type": "array",
+     "items": {
+      "type": "array",
+      "items": {
+       "type": [
+        "string",
+        "number",
+        "null"
+       ]
+      }
+     }
+    }
+   },
+   "required": [
+    "columns",
+    "rows"
+   ],
+   "additionalProperties": false,
+   "description": "A data table. Each row is a list of cells in column order. Numbers align right."
+  },
+  "Progress": {
+   "type": "object",
+   "properties": {
+    "label": {
+     "type": "string"
+    },
+    "value": {
+     "type": "number"
+    },
+    "max": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "label",
+    "value"
+   ],
+   "additionalProperties": false,
+   "description": "A labelled progress bar. max defaults to 100."
+  },
+  "Code": {
+   "type": "object",
+   "properties": {
+    "code": {
+     "type": "string"
+    },
+    "language": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "code"
+   ],
+   "additionalProperties": false,
+   "description": "A code block with BB's highlighting. language is a file extension like \"ts\", \"py\", \"sh\", \"json\"."
+  },
+  "Diff": {
+   "type": "object",
+   "properties": {
+    "patch": {
+     "type": "string"
+    },
+    "file": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "patch",
+    "file"
+   ],
+   "additionalProperties": false,
+   "description": "A unified diff of one file in BB's diff viewer. patch is unified diff text with @@ hunks. file is its path."
+  },
+  "Snippet": {
+   "type": "object",
+   "properties": {
+    "text": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "text"
+   ],
+   "additionalProperties": false,
+   "description": "A short line of code or text with a Copy button, like a command to run, an ID, or a URL. For longer code with highlighting use Code."
+  },
+  "Gauge": {
+   "type": "object",
+   "properties": {
+    "label": {
+     "type": "string"
+    },
+    "value": {
+     "type": "number"
+    },
+    "max": {
+     "type": "number"
+    },
+    "tone": {
+     "type": "string",
+     "enum": [
+      "neutral",
+      "info",
+      "success",
+      "warning",
+      "danger"
+     ]
+    }
+   },
+   "required": [
+    "label",
+    "value"
+   ],
+   "additionalProperties": false,
+   "description": "One value on a half-circle dial from 0 to max (default 100), like a score or a utilisation. tone colours the dial: \"info\" (default), \"success\", \"warning\", \"danger\", or \"neutral\"."
+  },
+  "SegmentedBar": {
+   "type": "object",
+   "properties": {
+    "parts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "label": {
+        "type": "string"
+       },
+       "value": {
+        "type": "number"
+       },
+       "tone": {
+        "type": "string",
+        "enum": [
+         "neutral",
+         "info",
+         "success",
+         "warning",
+         "danger"
+        ]
+       }
+      },
+      "required": [
+       "label",
+       "value"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "label": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "parts"
+   ],
+   "additionalProperties": false,
+   "description": "One bar split into parts by value, with a legend of each part's value and share, like a budget or a disk. Parts without a tone take the chart colours in order."
+  },
+  "Sparkline": {
+   "type": "object",
+   "properties": {
+    "values": {
+     "type": "array",
+     "items": {
+      "type": "number"
+     }
+    },
+    "tone": {
+     "type": "string",
+     "enum": [
+      "neutral",
+      "info",
+      "success",
+      "warning",
+      "danger"
+     ]
+    }
+   },
+   "required": [
+    "values"
+   ],
+   "additionalProperties": false,
+   "description": "A tiny line of recent values with no axes, to show a trend at a glance next to text or in a Table cell's place. tone \"info\" (default), \"success\", \"warning\", \"danger\", or \"neutral\"."
+  },
+  "Steps": {
+   "type": "object",
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "title": {
+        "type": "string"
+       },
+       "detail": {
+        "type": "string"
+       },
+       "status": {
+        "type": "string",
+        "enum": [
+         "done",
+         "current",
+         "todo",
+         "blocked"
+        ]
+       }
+      },
+      "required": [
+       "title"
+      ],
+      "additionalProperties": false
+     }
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "additionalProperties": false,
+   "description": "Numbered steps in order, joined by a line, like a setup guide or a plan. status \"done\", \"current\", \"todo\" (default), or \"blocked\"."
+  },
+  "Timeline": {
+   "type": "object",
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "time": {
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       },
+       "detail": {
+        "type": "string"
+       },
+       "tone": {
+        "type": "string",
+        "enum": [
+         "neutral",
+         "info",
+         "success",
+         "warning",
+         "danger"
+        ]
+       }
+      },
+      "required": [
+       "title"
+      ],
+      "additionalProperties": false
+     }
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "additionalProperties": false,
+   "description": "Events in order along a line, like a changelog, an incident, or a history. time is free text such as \"09:42\" or \"May 2026\". tone colours the dot: \"neutral\" (default), \"info\", \"success\", \"warning\", or \"danger\"."
+  },
+  "Tree": {
+   "type": "object",
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "object",
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "note": {
+          "type": "string"
+         },
+         "children": {
+          "type": "array",
+          "items": {}
+         }
+        },
+        "required": [
+         "label"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     }
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "additionalProperties": false,
+   "description": "A collapsible tree. Each item is a path string (\"src/app/main.ts\"; paths that share folders merge) or {label, note?, children?}, where children is a list of the same kind of items. note is short muted text after the label. Folders start open while the tree stays short."
+  },
+  "Calendar": {
+   "type": "object",
+   "properties": {
+    "events": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "date": {
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       },
+       "tone": {
+        "type": "string",
+        "enum": [
+         "neutral",
+         "info",
+         "success",
+         "warning",
+         "danger"
+        ]
+       }
+      },
+      "required": [
+       "date",
+       "title"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "month": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "events"
+   ],
+   "additionalProperties": false,
+   "description": "A month calendar with events. date is \"yyyy-mm-dd\". month \"yyyy-mm\" picks the month shown first; it defaults to the first event's month, then today. People step between months and pick a day to see its events. tone colours an event: \"info\" (default), \"success\", \"warning\", \"danger\", or \"neutral\"."
+  },
+  "CalendarHeatmap": {
+   "type": "object",
+   "properties": {
+    "days": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "date": {
+        "type": "string"
+       },
+       "value": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "date",
+       "value"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "label": {
+     "type": "string"
+    },
+    "tone": {
+     "type": "string",
+     "enum": [
+      "neutral",
+      "info",
+      "success",
+      "warning",
+      "danger"
+     ]
+    }
+   },
+   "required": [
+    "days"
+   ],
+   "additionalProperties": false,
+   "description": "Daily counts as a GitHub-style grid of weeks, from the first date to the last. date is \"yyyy-mm-dd\"; missing days count as 0 and repeated dates add up. label names what is counted, like \"Commits\". tone colours the cells: \"success\" (default), \"info\", \"warning\", \"danger\", or \"neutral\"."
+  },
+  "Diagram": {
+   "type": "object",
+   "properties": {
+    "nodes": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "id": {
+        "type": "string"
+       },
+       "label": {
+        "type": "string"
+       },
+       "tone": {
+        "type": "string",
+        "enum": [
+         "neutral",
+         "info",
+         "success",
+         "warning",
+         "danger"
+        ]
+       }
+      },
+      "required": [
+       "id"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "edges": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "from": {
+        "type": "string"
+       },
+       "to": {
+        "type": "string"
+       },
+       "label": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "from",
+       "to"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "direction": {
+     "type": "string",
+     "enum": [
+      "down",
+      "right"
+     ]
+    }
+   },
+   "required": [
+    "nodes",
+    "edges"
+   ],
+   "additionalProperties": false,
+   "description": "A flow diagram of boxes and arrows, laid out in layers. Each node has an id and an optional label (defaults to the id). Each edge goes from one node id to another, with an optional short label. direction \"down\" (default) or \"right\". tone outlines a node: \"info\", \"success\", \"warning\", \"danger\", or \"neutral\" (default). Keep it under about 15 nodes."
+  },
+  "Chart": {
+   "type": "object",
+   "properties": {
+    "type": {
+     "type": "string",
+     "enum": [
+      "bar",
+      "line",
+      "area",
+      "stackedBar",
+      "horizontalBar",
+      "pie",
+      "donut",
+      "radar",
+      "radial",
+      "scatter",
+      "funnel"
+     ]
+    },
+    "labels": {
+     "type": "array",
+     "items": {
+      "type": [
+       "string",
+       "number"
+      ]
+     }
+    },
+    "series": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Series"
+     }
+    },
+    "title": {
+     "type": "string"
+    },
+    "xLabel": {
+     "type": "string"
+    },
+    "yLabel": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "type",
+    "labels",
+    "series"
+   ],
+   "additionalProperties": false,
+   "description": "A small chart. labels name the x axis points; each Series gives one value per label. bar, line, area, stackedBar, horizontalBar, and radar (labels are the spokes, 3 or more) take several series. pie, donut, radial, and funnel draw the first series only. scatter reads labels as numeric x values and each series as the y for each x. Values are 0 or more, except in scatter. xLabel and yLabel title the bottom and left axes. For anything bigger, publish a page."
+  },
+  "Series": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "values": {
+     "type": "array",
+     "items": {
+      "type": [
+       "number",
+       "null"
+      ]
+     }
+    }
+   },
+   "required": [
+    "name",
+    "values"
+   ],
+   "additionalProperties": false,
+   "description": "One named series of a Chart: one number per label. null leaves a gap."
+  },
+  "Input": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "placeholder": {
+     "type": "string"
+    },
+    "value": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "additionalProperties": false,
+   "description": "A one-line text field. Bind value to a $variable to use it elsewhere."
+  },
+  "TextArea": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "placeholder": {
+     "type": "string"
+    },
+    "value": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "additionalProperties": false,
+   "description": "A text field for a few lines or more. The reader can drag it taller."
+  },
+  "Slider": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "min": {
+     "type": "number"
+    },
+    "max": {
+     "type": "number"
+    },
+    "step": {
+     "type": "number"
+    },
+    "label": {
+     "type": "string"
+    },
+    "value": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "name",
+    "min",
+    "max"
+   ],
+   "additionalProperties": false,
+   "description": "A number slider. Bind value to a $variable to drive other components live."
+  },
+  "Stepper": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "min": {
+     "type": "number"
+    },
+    "max": {
+     "type": "number"
+    },
+    "step": {
+     "type": "number"
+    },
+    "value": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "additionalProperties": false,
+   "description": "A whole or decimal number with - and + buttons, for counts and small amounts. step defaults to 1; it starts at value, else min, else 0. Arrow keys step, Page Up/Down step by 10."
+  },
+  "DateInput": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "min": {
+     "type": "string"
+    },
+    "max": {
+     "type": "string"
+    },
+    "value": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "additionalProperties": false,
+   "description": "A date picker. value, min, and max are yyyy-mm-dd dates, and the answer is sent the same way."
+  },
+  "Rating": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "max": {
+     "type": "number"
+    },
+    "value": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "additionalProperties": false,
+   "description": "Stars from 1 to max (default 5, at most 10). 0 means not rated yet. Picking the current star again clears it."
+  },
+  "Toggle": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "value": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "name",
+    "label"
+   ],
+   "additionalProperties": false,
+   "description": "An on/off switch."
+  },
+  "Choice": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "options": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "object",
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         },
+         "detail": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "label"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     }
+    },
+    "label": {
+     "type": "string"
+    },
+    "multiple": {
+     "type": "boolean"
+    },
+    "value": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     ]
+    }
+   },
+   "required": [
+    "name",
+    "options"
+   ],
+   "additionalProperties": false,
+   "description": "Pick one option, or several with multiple true. Shown as pills, so keep options short; options are strings or {label, value?, detail?}; value defaults to label and is what is sent. For options that need a line of detail use Radio or CheckBoxGroup; for a long list use Select."
+  },
+  "Radio": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "options": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "object",
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         },
+         "detail": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "label"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     }
+    },
+    "label": {
+     "type": "string"
+    },
+    "value": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "options"
+   ],
+   "additionalProperties": false,
+   "description": "Pick exactly one option from a short column of radio buttons; options are strings or {label, value?, detail?}; value defaults to label and is what is sent, and detail shows under the option. Arrow keys move the pick."
+  },
+  "CheckBoxGroup": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "options": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "object",
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         },
+         "detail": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "label"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     }
+    },
+    "label": {
+     "type": "string"
+    },
+    "value": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "name",
+    "options"
+   ],
+   "additionalProperties": false,
+   "description": "Tick any number of options in a column of checkboxes; options are strings or {label, value?, detail?}; value defaults to label and is what is sent. The ticked values are sent in option order."
+  },
+  "Checklist": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "items": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "object",
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         },
+         "detail": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "label"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     }
+    },
+    "label": {
+     "type": "string"
+    },
+    "value": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "name",
+    "items"
+   ],
+   "additionalProperties": false,
+   "description": "A to-do list the reader ticks off, with an \"n of m done\" count. items are strings or {label, value?, detail?}; value lists the items already done. Done items are sent."
+  },
+  "Select": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "options": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "object",
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         },
+         "detail": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "label"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     }
+    },
+    "label": {
+     "type": "string"
+    },
+    "placeholder": {
+     "type": "string"
+    },
+    "value": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "options"
+   ],
+   "additionalProperties": false,
+   "description": "Pick one option from a dropdown, good for long lists; options are strings or {label, value?, detail?}; value defaults to label and is what is sent. placeholder shows until a pick, default \"Choose…\"."
+  },
+  "OptionCards": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "options": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "object",
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         },
+         "detail": {
+          "type": "string"
+         },
+         "icon": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "label"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     }
+    },
+    "label": {
+     "type": "string"
+    },
+    "multiple": {
+     "type": "boolean"
+    },
+    "value": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     ]
+    }
+   },
+   "required": [
+    "name",
+    "options"
+   ],
+   "additionalProperties": false,
+   "description": "Pick one of a few rich options shown as cards side by side, or several with multiple true. options are {label, value?, detail?, icon?}; value defaults to label. icon is one of: arrowdown, arrowleft, arrowright, arrowup, bell, bookmark, bug, calendar, check, chevrondown, chevronleft, chevronright, chevronup, help, clock, code, copy, download, more, external, eye, file, filter, folder, branch, heart, home, info, idea, link, lock, mail, minus, pause, edit, play, plus, refresh, rocket, search, send, settings, share, sparkles, star, thumbsdown, thumbsup, trash, warning, upload, user, close, zap."
+  },
+  "Swatches": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "colors": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "object",
+        "properties": {
+         "value": {
+          "type": "string"
+         },
+         "name": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "value"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     }
+    },
+    "label": {
+     "type": "string"
+    },
+    "value": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "colors"
+   ],
+   "additionalProperties": false,
+   "description": "Pick one colour from a row of chips. colors are CSS colours (\"#2563eb\", \"oklch(0.7 0.1 200)\") or {value, name?}; the chosen value is sent."
+  },
+  "ListEditor": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "placeholder": {
+     "type": "string"
+    },
+    "value": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "additionalProperties": false,
+   "description": "A list the reader grows, edits in place, and trims, such as names or tags. value is the starting list. Repeats are refused."
+  },
+  "EditableTable": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "columns": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "object",
+        "properties": {
+         "key": {
+          "type": "string"
+         },
+         "label": {
+          "type": "string"
+         },
+         "type": {
+          "type": "string",
+          "enum": [
+           "text",
+           "number",
+           "boolean"
+          ]
+         }
+        },
+        "required": [
+         "key"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     }
+    },
+    "label": {
+     "type": "string"
+    },
+    "rows": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "propertyNames": {
+       "type": "string"
+      },
+      "additionalProperties": {}
+     }
+    }
+   },
+   "required": [
+    "name",
+    "columns"
+   ],
+   "additionalProperties": false,
+   "description": "A small table the reader edits: change cells, add rows, remove rows. columns are keys or {key, label?, type?}; type \"text\", \"number\", or \"boolean\" (a checkbox), else the kind of the first filled cell. rows are the starting rows. The rows are sent as JSON."
+  },
+  "Button": {
+   "type": "object",
+   "properties": {
+    "label": {
+     "type": "string"
+    },
+    "action": {
+     "$ref": "#/$defs/ActionExpression"
+    },
+    "variant": {
+     "type": "string",
+     "enum": [
+      "primary",
+      "secondary"
+     ]
+    }
+   },
+   "required": [
+    "label"
+   ],
+   "additionalProperties": false,
+   "description": "A button. With no action it sends its label (and its Form answers) to the assistant, then locks. variant \"primary\" (default) or \"secondary\"."
+  },
+  "ActionExpression": {
+   "anyOf": [
+    {
+     "type": "object",
+     "properties": {
+      "type": {
+       "type": "string",
+       "const": "open_url"
+      },
+      "url": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "type",
+      "url"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "properties": {
+      "type": {
+       "type": "string",
+       "const": "continue_conversation"
+      },
+      "context": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "type"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "properties": {
+      "type": {
+       "type": "string"
+      },
+      "params": {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     },
+     "required": [
+      "type"
+     ],
+     "additionalProperties": false
+    }
+   ]
+  },
+  "IconButton": {
+   "type": "object",
+   "properties": {
+    "label": {
+     "type": "string"
+    },
+    "icon": {
+     "type": "string"
+    },
+    "action": {
+     "$ref": "#/$defs/ActionExpression"
+    },
+    "variant": {
+     "type": "string",
+     "enum": [
+      "primary",
+      "secondary",
+      "ghost"
+     ]
+    }
+   },
+   "required": [
+    "label",
+    "icon"
+   ],
+   "additionalProperties": false,
+   "description": "A square button that shows only an icon; label is its tooltip and screen reader name, and is what it sends, like Button. variant \"secondary\" (default, hairline frame), \"primary\" (solid), or \"ghost\" (no frame). icon is one of: arrowdown, arrowleft, arrowright, arrowup, bell, bookmark, bug, calendar, check, chevrondown, chevronleft, chevronright, chevronup, help, clock, code, copy, download, more, external, eye, file, filter, folder, branch, heart, home, info, idea, link, lock, mail, minus, pause, edit, play, plus, refresh, rocket, search, send, settings, share, sparkles, star, thumbsdown, thumbsup, trash, warning, upload, user, close, zap. An unknown icon shows the label instead."
+  },
+  "FollowUps": {
+   "type": "object",
+   "properties": {
+    "prompts": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "label": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "prompts"
+   ],
+   "additionalProperties": false,
+   "description": "Suggested next questions, at the end of a reply. Each prompt is a row the reader clicks to send its text to the thread as their next message. Keep 2 to 4 short prompts. label is a heading above them."
+  },
+  "Form": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "fields": {
+     "type": "array",
+     "items": {}
+    },
+    "buttons": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "$ref": "#/$defs/Button"
+       },
+       {
+        "$ref": "#/$defs/IconButton"
+       }
+      ]
+     }
+    }
+   },
+   "required": [
+    "name",
+    "fields",
+    "buttons"
+   ],
+   "additionalProperties": false,
+   "description": "Groups fields so a Button sends all their answers to the assistant in one message. A sent Form locks until the reader picks Edit answers."
+  },
+  "Map": {
+   "type": "object",
+   "properties": {
+    "markers": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Marker"
+     }
+    },
+    "areas": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Area"
+     }
+    },
+    "center": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      }
+     ]
+    },
+    "zoom": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "markers"
+   ],
+   "additionalProperties": false,
+   "description": "A map of numbered places (Marker) and shaded regions (Area), with a key below. A position is [lat, lng] or a place name Pages looks up, like \"Belém Tower, Lisbon\"; give coordinates when you know them. center and zoom (1 world to 18 street, default 13 with a center) fix the view; without them the map fits everything. Readers drag to pan, use ⌘/Ctrl+scroll or the buttons to zoom, and click a place for its popup."
+  },
+  "Marker": {
+   "type": "object",
+   "properties": {
+    "title": {
+     "type": "string"
+    },
+    "at": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      }
+     ]
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "general",
+      "stay",
+      "daytrip",
+      "avoid"
+     ]
+    },
+    "description": {
+     "type": "string"
+    },
+    "image": {
+     "type": "string"
+    },
+    "link": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "title",
+    "at"
+   ],
+   "additionalProperties": false,
+   "description": "One numbered place of Map. at is [lat, lng] or a place name. kind \"general\" (default, indigo), \"stay\" (green), \"daytrip\" (amber), or \"avoid\" (red). description, image (an http(s) URL), and link (an http(s) URL) fill the popup that opens when it is clicked."
+  },
+  "Area": {
+   "type": "object",
+   "properties": {
+    "title": {
+     "type": "string"
+    },
+    "points": {
+     "type": "array",
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      }
+     }
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "general",
+      "stay",
+      "daytrip",
+      "avoid"
+     ]
+    },
+    "description": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "title",
+    "points"
+   ],
+   "additionalProperties": false,
+   "description": "A shaded region of Map: points are three or more [lat, lng] corners in order. kind \"general\" (default, indigo), \"stay\" (green), \"daytrip\" (amber), or \"avoid\" (red). description shows in its popup."
+  },
+  "Gallery": {
+   "type": "object",
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "$ref": "#/$defs/Photo"
+       }
+      ]
+     }
+    },
+    "columns": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "additionalProperties": false,
+   "description": "A grid of pictures; clicking one opens it full size, with previous and next. Each item is an image URL or a Photo with a caption. columns is 1 to 6; by default one picture fills the width, two or four sit in pairs, and more go in threes."
+  },
+  "Photo": {
+   "type": "object",
+   "properties": {
+    "src": {
+     "type": "string"
+    },
+    "caption": {
+     "type": "string"
+    },
+    "alt": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "src"
+   ],
+   "additionalProperties": false,
+   "description": "One picture of Gallery: src is an http(s) or data: image URL, caption a short line under it, alt describes it for screen readers (default: the caption)."
+  },
+  "BeforeAfter": {
+   "type": "object",
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "label": {
+        "type": "string"
+       },
+       "src": {
+        "type": "string"
+       },
+       "alt": {
+        "type": "string"
+       },
+       "tone": {
+        "type": "string",
+        "enum": [
+         "positive",
+         "negative",
+         "warning"
+        ]
+       },
+       "caption": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "label",
+       "src",
+       "alt"
+      ],
+      "additionalProperties": false
+     }
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "additionalProperties": false,
+   "description": "Two or more pictures side by side to compare, like Before and After or option A and B; they stack on a narrow screen. Each item is {\"label\", \"src\", \"alt\", \"tone\", \"caption\"}: label heads the column, src is an http(s) or data: image URL, alt describes it, tone \"positive\"|\"negative\"|\"warning\" puts a coloured dot by the label, and caption is a line under it. Clicking a picture opens it full size."
+  },
+  "Hotspots": {
+   "type": "object",
+   "properties": {
+    "image": {
+     "type": "string"
+    },
+    "points": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Hotspot"
+     }
+    },
+    "alt": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "image",
+    "points"
+   ],
+   "additionalProperties": false,
+   "description": "A picture with numbered points on it and a key below; picking a point or its row shows its text. image is an http(s) or data: image URL, and alt describes it. Only use it when you know where each feature sits in the picture."
+  },
+  "Hotspot": {
+   "type": "object",
+   "properties": {
+    "x": {
+     "type": "number"
+    },
+    "y": {
+     "type": "number"
+    },
+    "title": {
+     "type": "string"
+    },
+    "text": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "x",
+    "y",
+    "title"
+   ],
+   "additionalProperties": false,
+   "description": "One numbered point of Hotspots: x and y are percent across and down the picture (0 to 100), title names it, and text (Markdown) shows when it is picked."
+  },
+  "ImageSearch": {
+   "type": "object",
+   "properties": {
+    "query": {
+     "type": "string"
+    },
+    "count": {
+     "type": "number"
+    },
+    "aspect": {
+     "type": "string",
+     "enum": [
+      "wide",
+      "square",
+      "tall"
+     ]
+    }
+   },
+   "required": [
+    "query"
+   ],
+   "additionalProperties": false,
+   "description": "Photos found on the web for query, from Wikimedia Commons, each credited with its author and licence. Use it to show what a place, landmark, plant, animal, or object looks like when you have no image URL. count is 1 (default) to 8. aspect \"wide\" (default), \"square\", or \"tall\" crops them alike. Clicking one opens it full size."
+  },
+  "Benchmark": {
+   "type": "object",
+   "properties": {
+    "results": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {}
+      },
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     ]
+    },
+    "title": {
+     "type": "string"
+    },
+    "unit": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "results"
+   ],
+   "additionalProperties": false,
+   "description": "Benchmark results. results is [{name, before?, after, unit?, better?, noise?}] to compare two runs (value or mean also work for after), or hyperfine's --export-json output to rank commands. unit is ms, s, us, ns, B, KB, MB, ops/s, %, or any word. better is lower (default) or higher (default for rates and scores). A change under 1% or under noise counts as the same."
+  },
+  "Coverage": {
+   "type": "object",
+   "properties": {
+    "report": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {}
+      },
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     ]
+    },
+    "title": {
+     "type": "string"
+    },
+    "metric": {
+     "type": "string",
+     "enum": [
+      "lines",
+      "statements",
+      "functions",
+      "branches"
+     ]
+    }
+   },
+   "required": [
+    "report"
+   ],
+   "additionalProperties": false,
+   "description": "Test coverage: the total and each file, lowest first, toned at 80% and 60%. report is Istanbul's coverage-summary.json (vitest or jest --coverage --coverage.reporter=json-summary) or [{path, covered, total} | {path, pct}]. metric picks lines (default), statements, functions, or branches. Load the file with Query(\"file\")."
+  },
+  "Dependencies": {
+   "type": "object",
+   "properties": {
+    "packages": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {}
+      },
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     ]
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "packages"
+   ],
+   "additionalProperties": false,
+   "description": "Outdated packages grouped by how big the update is: major, minor, patch. The changed part of each new version is toned. packages is [{name, current, wanted?, latest, type?}] or `npm outdated --json` output (also pnpm outdated --format json). Load the file with Query(\"file\")."
+  },
+  "Findings": {
+   "type": "object",
+   "properties": {
+    "findings": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {}
+      },
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     ]
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "findings"
+   ],
+   "additionalProperties": false,
+   "description": "Review, lint, or security findings by file, most severe first. findings is [{severity, title, file?, line?, rule?, detail?, code?}] (message works for title) or a SARIF report (CodeQL, Semgrep, ESLint --format sarif). severity is critical, high, medium, low, or info; error, warning, and note also work. A finding with detail or code opens to show it."
+  },
+  "Logs": {
+   "type": "object",
+   "properties": {
+    "log": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "array",
+       "items": {}
+      }
+     ]
+    },
+    "title": {
+     "type": "string"
+    },
+    "wrap": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "log"
+   ],
+   "additionalProperties": false,
+   "description": "A log viewer: levels toned, repeated lines folded with a count, links clickable, and filters for errors and warnings. log is the text (ANSI colours are removed) or a list of lines or {level, msg, time} entries (pino and bunyan JSON lines work). Levels are read from words like ERROR, [warn], level=info. wrap true wraps long lines. Load a file with Query(\"file\") and pass its text."
+  },
+  "Pipeline": {
+   "type": "object",
+   "properties": {
+    "jobs": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {}
+      },
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     ]
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "jobs"
+   ],
+   "additionalProperties": false,
+   "description": "A CI run: its overall status, then jobs by stage, failures first; a job with steps opens to show them (failed jobs start open). jobs is [{name, status, ms?, stage?, url?, steps?}] or `gh run view --json jobs` output (status and conclusion, startedAt and completedAt). status is success, failure, in_progress, queued, cancelled, or skipped; words like passed, running, pending, error also work."
+  },
+  "StackTrace": {
+   "type": "object",
+   "properties": {
+    "trace": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     ]
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "trace"
+   ],
+   "additionalProperties": false,
+   "description": "An error and its stack, your code first: runs of library frames (node_modules, node:, site-packages, java.*) fold into one row; causes follow. trace is the text of a JavaScript, Python, or Java/Kotlin trace, or {name, message, stack}. Python traces show the innermost frame first like the others."
+  },
+  "Treemap": {
+   "type": "object",
+   "properties": {
+    "items": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {}
+      },
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     ]
+    },
+    "title": {
+     "type": "string"
+    },
+    "unit": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "additionalProperties": false,
+   "description": "Sizes as nested tiles, area by value: bundle or folder sizes, time by area, cost by service. items is [{name, value, group?}] (path and size also work) or {name: size}. Items that share a group sit together under its name. The largest 24 show; the rest fold into one \"N more\" tile. unit (B, KB, ms, $, …) formats values."
+  },
+  "Waterfall": {
+   "type": "object",
+   "properties": {
+    "spans": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {}
+      },
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     ]
+    },
+    "title": {
+     "type": "string"
+    },
+    "unit": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "spans"
+   ],
+   "additionalProperties": false,
+   "description": "Spans on one time axis: trace spans, build steps, page requests. spans is [{name, start, duration, depth?, failed?, detail?}] (end works for duration; status failure marks it failed), a HAR file (browser devtools export), or Chrome trace events. unit is the unit of start and duration: ms (default), s, or us. depth indents a child span."
+  },
+  "Changes": {
+   "type": "object",
+   "properties": {
+    "files": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string"
+       },
+       "status": {
+        "type": "string"
+       },
+       "additions": {
+        "type": "number"
+       },
+       "deletions": {
+        "type": "number"
+       },
+       "patch": {
+        "type": "string"
+       },
+       "previousPath": {
+        "type": [
+         "string",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "path"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "title": {
+     "type": "string"
+    },
+    "open": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "files"
+   ],
+   "additionalProperties": false,
+   "description": "Changed files with line counts. Each file with a patch (unified diff text) opens to show it in BB's diff viewer. status is added, modified (default), deleted, renamed, copied, or type_changed; give previousPath for renames. open true starts every file open. Use Query(\"changes\") for this thread's uncommitted changes."
+  },
+  "Commits": {
+   "type": "object",
+   "properties": {
+    "commits": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "subject": {
+        "type": "string"
+       },
+       "sha": {
+        "type": "string"
+       },
+       "author": {
+        "type": "string"
+       },
+       "date": {
+        "type": [
+         "string",
+         "number"
+        ]
+       }
+      },
+      "required": [
+       "subject"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "commits"
+   ],
+   "additionalProperties": false,
+   "description": "A list of commits, newest first: short sha, subject, author, and when. date is ISO text or epoch ms. Use Query(\"commits\") for the commits on this thread's branch."
+  },
+  "Json": {
+   "type": "object",
+   "properties": {
+    "data": {},
+    "title": {
+     "type": "string"
+    },
+    "open": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "additionalProperties": false,
+   "description": "A collapsible JSON viewer for any value: objects and lists open and close; closed ones show their size. open is how many levels start open (default 1). Good for Query(\"file\") data and API responses."
+  },
+  "PullRequest": {
+   "type": "object",
+   "properties": {
+    "pullRequest": {
+     "anyOf": [
+      {
+       "type": "object",
+       "properties": {
+        "number": {
+         "type": "number"
+        },
+        "title": {
+         "type": "string"
+        },
+        "url": {
+         "type": "string"
+        },
+        "state": {
+         "type": "string"
+        },
+        "base": {
+         "type": "string"
+        },
+        "head": {
+         "type": "string"
+        },
+        "updatedAt": {
+         "type": "string"
+        },
+        "checks": {
+         "type": "object",
+         "properties": {
+          "state": {
+           "type": [
+            "string",
+            "null"
+           ]
+          },
+          "passed": {
+           "type": "number"
+          },
+          "failed": {
+           "type": "number"
+          },
+          "pending": {
+           "type": "number"
+          },
+          "total": {
+           "type": "number"
+          }
+         },
+         "additionalProperties": false
+        },
+        "review": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "mergeable": {
+         "type": [
+          "string",
+          "null"
+         ]
+        }
+       },
+       "required": [
+        "title"
+       ],
+       "additionalProperties": false
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "message": {
+     "type": "string"
+    }
+   },
+   "additionalProperties": false,
+   "description": "One pull request: number, title, state, branches, checks, review, and whether it can merge. state is open, draft, merged, or closed. checks.state is passing, failing, pending, or no_checks; review is approved, changes_requested, review_requested, or review_required; mergeable is mergeable, conflicts, or blocked. A null pullRequest shows message. Use Query(\"pull_request\") for this thread's branch."
+  },
+  "Tests": {
+   "type": "object",
+   "properties": {
+    "results": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {}
+      },
+      {
+       "type": "string"
+      },
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     ]
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "results"
+   ],
+   "additionalProperties": false,
+   "description": "Test results by suite, failures first with their messages. results is a list of cases {name, status, suite?, file?, ms?, message?}, a vitest or jest JSON report (`--reporter=json`), or JUnit XML text. status is passed, failed, or skipped (common words like pass, error, todo also work). Load a report with Query(\"file\")."
+  },
+  "Threads": {
+   "type": "object",
+   "properties": {
+    "threads": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "title": {
+        "type": "string"
+       },
+       "status": {
+        "type": "string"
+       },
+       "updatedAt": {
+        "type": [
+         "string",
+         "number"
+        ]
+       },
+       "branch": {
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "waiting": {
+        "type": "boolean"
+       },
+       "current": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "title"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "threads"
+   ],
+   "additionalProperties": false,
+   "description": "Threads with their status, branch, and last update. status is active, idle, error, pending, starting, or stopping. waiting true marks a thread that needs an answer; current marks this one. Use Query(\"threads\") for this project."
+  },
+  "Environments": {
+   "type": "object",
+   "properties": {
+    "environments": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "branch": {
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "base": {
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "status": {
+        "type": "string"
+       },
+       "worktree": {
+        "type": "boolean"
+       },
+       "path": {
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "updatedAt": {
+        "type": [
+         "string",
+         "number"
+        ]
+       },
+       "current": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "name"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "environments"
+   ],
+   "additionalProperties": false,
+   "description": "Environments (checkouts and worktrees) with branch, base, and status. status is ready, creating, provisioning, or error. current marks this thread's. Use Query(\"environments\") for this project."
+  },
+  "Board": {
+   "type": "object",
+   "properties": {
+    "cards": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "title": {
+        "type": "string"
+       },
+       "status": {
+        "type": "string"
+       },
+       "owner": {
+        "type": "string"
+       },
+       "tags": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "due": {
+        "type": "string"
+       },
+       "detail": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "title"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "columns": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "name": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "cards"
+   ],
+   "additionalProperties": false,
+   "description": "Kanban columns of cards. Each card has a title and a status; cards with the same status share a column. Common statuses (\"todo\", \"in progress\", \"in review\", \"blocked\", \"done\") sort in workflow order, others follow as first seen. columns names the columns to show, in order, empty ones too. due is yyyy-mm-dd and shows red once past, unless the card is done. Give name to let the reader move cards (drag, or the ⋯ menu on each card) and send the moves to the thread as \"- Card: From → To\" lines. Without name it is read-only."
+  },
+  "Decision": {
+   "type": "object",
+   "properties": {
+    "question": {
+     "type": "string"
+    },
+    "options": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "pros": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "cons": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "note": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "name"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "recommend": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "question",
+    "options"
+   ],
+   "additionalProperties": false,
+   "description": "Options for one decision, each with pros, cons, and a note. recommend is the name of the option you recommend; it is marked. Give name to let the reader choose: each option gets a Choose button that sends \"<question>: <option>\" to the thread, then locks. Without name it is read-only."
+  },
+  "Estimate": {
+   "type": "object",
+   "properties": {
+    "tasks": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "task": {
+        "type": "string"
+       },
+       "low": {
+        "type": "number"
+       },
+       "likely": {
+        "type": "number"
+       },
+       "high": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "task",
+       "low",
+       "high"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "unit": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "tasks"
+   ],
+   "additionalProperties": false,
+   "description": "Three-point estimates: per task the best case (low), the likely case, and the worst case (high), with a total. likely defaults to the midpoint. The total also shows P50, P80, and P90 from a PERT model (tasks taken as independent). unit is a short word like \"d\" (default), \"h\", \"w\", or \"pts\"."
+  },
+  "Plan": {
+   "type": "object",
+   "properties": {
+    "steps": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "step": {
+        "type": "string"
+       },
+       "status": {
+        "type": "string",
+        "enum": [
+         "todo",
+         "doing",
+         "done",
+         "blocked",
+         "skipped"
+        ]
+       },
+       "owner": {
+        "type": "string"
+       },
+       "due": {
+        "type": "string"
+       },
+       "detail": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "step"
+      ],
+      "additionalProperties": false
+     }
+    }
+   },
+   "required": [
+    "steps"
+   ],
+   "additionalProperties": false,
+   "description": "Ordered steps with an owner and a status each. status \"todo\" (default), \"doing\", \"done\", \"blocked\", or \"skipped\". due is yyyy-mm-dd or short text like \"Fri\". A line on top counts done and blocked steps."
+  },
+  "Roadmap": {
+   "type": "object",
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "title": {
+        "type": "string"
+       },
+       "start": {
+        "type": "string"
+       },
+       "end": {
+        "type": "string"
+       },
+       "lane": {
+        "type": "string"
+       },
+       "status": {
+        "type": "string",
+        "enum": [
+         "done",
+         "active",
+         "planned",
+         "at-risk",
+         "blocked"
+        ]
+       },
+       "milestone": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "title",
+       "start"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "today": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "additionalProperties": false,
+   "description": "Items on a time axis, grouped by lane. Dates are yyyy-mm-dd; end is the last day. An item with no end, or with milestone true, is a milestone on its start day. status \"done\", \"active\", \"planned\", \"at-risk\", or \"blocked\"; without one, an item is active when today is inside it, else planned. The axis reads in days, weeks, or months by span. today defaults to the reader's date."
+  },
+  "Status": {
+   "type": "object",
+   "properties": {
+    "state": {
+     "type": "string",
+     "enum": [
+      "on-track",
+      "at-risk",
+      "off-track",
+      "blocked",
+      "done"
+     ]
+    },
+    "summary": {
+     "type": "string"
+    },
+    "highlights": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "risks": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "next": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "state"
+   ],
+   "additionalProperties": false,
+   "description": "A status report: the overall state, a one-line summary, then highlights, risks, and next steps as short lists. state \"on-track\", \"at-risk\", \"off-track\", \"blocked\", or \"done\". Empty lists are left out."
+  },
+  "Acceptance": {
+   "type": "object",
+   "properties": {
+    "criteria": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "criterion": {
+        "type": "string"
+       },
+       "status": {
+        "type": "string",
+        "enum": [
+         "pass",
+         "fail",
+         "unknown"
+        ]
+       },
+       "evidence": {
+        "type": "string"
+       },
+       "note": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "criterion"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "criteria"
+   ],
+   "additionalProperties": false,
+   "description": "Acceptance criteria with a result each and the evidence for it. status \"pass\", \"fail\", or \"unknown\" (default). evidence is a link, a file path (shown as code), or short text. The verdict on top says Done only when every criterion passes; unknown is never a pass."
+  },
+  "Compare": {
+   "type": "object",
+   "properties": {
+    "options": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "rows": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "criterion": {
+        "type": "string"
+       },
+       "values": {
+        "type": "array",
+        "items": {
+         "type": [
+          "string",
+          "number",
+          "null"
+         ]
+        }
+       },
+       "better": {
+        "type": "string",
+        "enum": [
+         "high",
+         "low"
+        ]
+       }
+      },
+      "required": [
+       "criterion",
+       "values"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "best": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "options",
+    "rows"
+   ],
+   "additionalProperties": false,
+   "description": "Options side by side across criteria. options are the column names; each row has a criterion and one value per option, in the same order (null for none). Give better \"high\" or \"low\" on rows of numbers: the best cell is marked, and the option that wins the most rows is marked as best. Text like \"$12\" or \"120 ms\" counts by its leading number. best names the overall pick and overrides that."
+  },
+  "Provenance": {
+   "type": "object",
+   "properties": {
+    "claim": {
+     "type": "string"
+    },
+    "steps": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "step": {
+        "type": "string"
+       },
+       "value": {
+        "type": "string"
+       },
+       "source": {
+        "type": "string"
+       },
+       "url": {
+        "type": "string"
+       },
+       "detail": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "step"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "value": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "claim",
+    "steps"
+   ],
+   "additionalProperties": false,
+   "description": "Where a claim or number came from: the steps from the sources to the claim, in order. Each step says what was done, the value it gave, and its source (a link when url is set). The claim and its value close the chain. Example step: {step: \"Summed paid invoices\", value: \"$1.2M\", source: \"billing.invoices\"}."
+  },
+  "Transcript": {
+   "type": "object",
+   "properties": {
+    "lines": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "speaker": {
+        "type": "string"
+       },
+       "text": {
+        "type": "string"
+       },
+       "time": {
+        "type": [
+         "string",
+         "number"
+        ]
+       },
+       "highlight": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "speaker",
+       "text"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "lines"
+   ],
+   "additionalProperties": false,
+   "description": "Speaker-labelled lines of a conversation or call. time is seconds from the start (shown as m:ss) or text like \"10:42\". A name shows once per run of lines from the same speaker. Set highlight on the lines that matter; they get a bar."
+  },
+  "Flashcards": {
+   "type": "object",
+   "properties": {
+    "cards": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "front": {
+        "type": "string"
+       },
+       "back": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "front"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "cards"
+   ],
+   "additionalProperties": false,
+   "description": "Study cards, one at a time. The reader flips a card to see its back, steps with Previous and Next (or arrow keys), and can shuffle."
+  },
+  "Quiz": {
+   "type": "object",
+   "properties": {
+    "questions": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "q": {
+        "type": "string"
+       },
+       "options": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "answer": {
+        "type": [
+         "number",
+         "string"
+        ]
+       },
+       "why": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "q",
+       "options",
+       "answer"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "title": {
+     "type": "string"
+    },
+    "sendScore": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "questions"
+   ],
+   "additionalProperties": false,
+   "description": "A quiz, one question at a time. answer is the right option's text or its 0-based index; why explains it after a pick. The reader sees right or wrong at once, then a score. With sendScore true, the score screen has a Send score button that sends it to the thread."
+  },
+  "Timer": {
+   "type": "object",
+   "properties": {
+    "seconds": {
+     "type": "number"
+    },
+    "label": {
+     "type": "string"
+    }
+   },
+   "additionalProperties": false,
+   "description": "A countdown from seconds, or a stopwatch when seconds is left out. The reader starts, pauses, and resets it."
+  },
+  "Walkthrough": {
+   "type": "object",
+   "properties": {
+    "steps": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "object",
+        "properties": {
+         "title": {
+          "type": "string"
+         },
+         "body": {
+          "type": "string"
+         },
+         "code": {
+          "type": "string"
+         },
+         "language": {
+          "type": "string"
+         }
+        },
+        "additionalProperties": false
+       }
+      ]
+     }
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "steps"
+   ],
+   "additionalProperties": false,
+   "description": "A step-by-step guide shown one step at a time, with Back and Next, or all at once. steps are strings (the body) or {title?, body?, code?, language?}; body is Markdown, code shows as a code block."
+  }
+ }
+}

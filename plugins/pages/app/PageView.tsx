@@ -9,17 +9,15 @@ import { pageDirective, usePageDetail } from "./data.js";
 import type { FileSource } from "./directives.js";
 import { useResolvedFile } from "./PageCard.js";
 import { useFrameBridge, type FormTarget } from "./bridge.js";
-import { PAGE_BG, PORTAL_SCOPE, focusRing, messageOf, relativeTime, usePreviewTheme } from "./ui.js";
+import { PORTAL_SCOPE, focusRing, menuContent, menuItem, messageOf, relativeTime } from "./ui.js";
 
 export const LIBRARY_PATH = "pages";
 
-const menuItem = `flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-state-hover data-[disabled]:opacity-50`;
 const quiet = "flex h-full items-center justify-center p-6 text-sm text-muted-foreground";
 
-/** Full-bleed shell: 40px header, an optional thin banner, then the page. All on the page background, so the panel shows one surface, not a third colour. */
+/** Full-bleed shell: 40px header, an optional thin banner, then the page. All on the app background, which a page that follows the app shares, so the panel shows one surface. */
 function PanelShell({ header, banner, children }: { header: ReactNode; banner?: ReactNode; children: ReactNode }) {
-  const theme = usePreviewTheme();
-  return <div className="flex h-full min-h-0 flex-col" style={{ background: PAGE_BG[theme] }}>
+  return <div className="flex h-full min-h-0 flex-col bg-background">
     <header className="flex h-10 shrink-0 items-center gap-1 border-b border-border pl-3 pr-2">{header}</header>
     {banner ? <div aria-live="polite" className="flex h-7 shrink-0 items-center gap-1.5 border-b border-border bg-muted/40 px-3 text-xs text-muted-foreground">{banner}</div> : null}
     <div className="relative min-h-0 flex-1">{children}</div>
@@ -82,7 +80,7 @@ function VersionMenu({ detail, shownId, inLibrary, onSelect, onRename, onCopy, o
       </button>
     </DropdownMenu.Trigger>
     <DropdownMenu.Portal>
-      <DropdownMenu.Content {...PORTAL_SCOPE} align="start" sideOffset={4} collisionPadding={8} style={{ zIndex: 75 }} className="w-72 max-w-[calc(100vw-16px)] rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md">
+      <DropdownMenu.Content {...PORTAL_SCOPE} align="start" sideOffset={4} collisionPadding={8} style={{ zIndex: 75 }} className={`w-72 max-w-[calc(100vw-16px)] ${menuContent}`}>
         <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-xs text-muted-foreground">Versions</DropdownMenu.Label>
         <DropdownMenu.RadioGroup value={shownId} onValueChange={onSelect} className="max-h-64 overflow-y-auto">
           {versions.map((version) => <DropdownMenu.RadioItem key={version.id} value={version.id} className={menuItem}>
@@ -127,7 +125,7 @@ function ProducerMenu({ detail, threadId, onNotice }: { detail: PageDetail; thre
   const findingMenu = (action: "explain" | "fix", label: string) => <DropdownMenu.Sub>
     <DropdownMenu.SubTrigger disabled={action === "fix" && !findings.length} className={menuItem}>{label}<Icon name="ChevronRight" aria-hidden className="ml-auto size-3.5" /></DropdownMenu.SubTrigger>
     <DropdownMenu.Portal>
-      <DropdownMenu.SubContent {...PORTAL_SCOPE} sideOffset={4} collisionPadding={8} style={{ zIndex: 76 }} className="max-h-72 w-72 max-w-[calc(100vw-16px)] overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md">
+      <DropdownMenu.SubContent {...PORTAL_SCOPE} sideOffset={4} collisionPadding={8} style={{ zIndex: 76 }} className={`max-h-72 w-72 max-w-[calc(100vw-16px)] overflow-y-auto ${menuContent}`}>
         {action === "explain" ? <DropdownMenu.Item className={menuItem} onSelect={() => void run("explain")}>Whole review</DropdownMenu.Item> : null}
         {action === "explain" && findings.length ? <DropdownMenu.Separator className="-mx-1 my-1 h-px bg-border" /> : null}
         {findings.map((finding, index) => <DropdownMenu.Item key={finding.id} className={menuItem} onSelect={() => void run(action, finding.id)}>
@@ -144,7 +142,7 @@ function ProducerMenu({ detail, threadId, onNotice }: { detail: PageDetail; thre
       </button>
     </DropdownMenu.Trigger>
     <DropdownMenu.Portal>
-      <DropdownMenu.Content {...PORTAL_SCOPE} align="end" sideOffset={4} collisionPadding={8} style={{ zIndex: 75 }} className="w-44 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md">
+      <DropdownMenu.Content {...PORTAL_SCOPE} align="end" sideOffset={4} collisionPadding={8} style={{ zIndex: 75 }} className={`w-44 ${menuContent}`}>
         {findingMenu("explain", "Explain")}
         {findingMenu("fix", "Fix")}
         <DropdownMenu.Item className={menuItem} onSelect={() => void run("rerun")}>Rerun review</DropdownMenu.Item>

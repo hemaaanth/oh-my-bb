@@ -5,11 +5,13 @@ import type Database from "better-sqlite3";
 import { REALTIME_CHANNEL, rpcContract } from "./contract.js";
 import { PAGE_MIGRATIONS } from "./migrations.js";
 import { injectPage, inspectCharts, readPageAsset } from "./render/index.js";
+import { hasSpecBlocks } from "./render/spec-baked.js";
 import { registerPagesCli } from "./cli.js";
 import { registerRoutes } from "./server/http.js";
 import { importLegacyArtifacts } from "./server/import.js";
 import { createPageService } from "./server/service.js";
 import { registerShare, type ShareDeps } from "./server/share/index.js";
+import { registerSpec } from "./server/spec/index.js";
 import { createPageStore } from "./server/store.js";
 import { registerTools } from "./server/tools.js";
 
@@ -49,13 +51,14 @@ export default function plugin(bb: BbPluginApi) {
       // Its other HTML pages get the theme like index.html, with `_page/` resolved from their depth.
       const folderFiles = store.versionFiles(versionId).map((file) => {
         const bytes = store.blobBytes(file.sha256) ?? Buffer.alloc(0);
-        if (!/^text\/html\b/iu.test(file.contentType)) return { path: file.path, contentType: file.contentType, bytes, hasCharts: false };
+        if (!/^text\/html\b/iu.test(file.contentType)) return { path: file.path, contentType: file.contentType, bytes, hasCharts: false, hasSpecs: false };
         const html = bytes.toString("utf8");
         const hasCharts = inspectCharts(html).hasCharts;
-        return { path: file.path, contentType: file.contentType, bytes: Buffer.from(injectPage(html, { assetBase: "../".repeat(file.path.split("/").length - 1) || "./", theme: null, hasCharts }), "utf8"), hasCharts };
+        return { path: file.path, contentType: file.contentType, bytes: Buffer.from(injectPage(html, { assetBase: "../".repeat(file.path.split("/").length - 1) || "./", theme: null, hasCharts }), "utf8"), hasCharts, hasSpecs: hasSpecBlocks(html) };
       });
       const hasCharts = stored.hasCharts || folderFiles.some((file) => file.hasCharts);
-      const assets = ["theme.css", "inter.roman.var.woff2", ...(hasCharts ? ["charts.js"] as const : [])] as const;
+      const hasSpecs = hasSpecBlocks(stored.html) || folderFiles.some((file) => file.hasSpecs);
+      const assets = ["theme.css", "inter.roman.var.woff2", ...(hasCharts ? ["charts.js"] as const : []), ...(hasSpecs ? ["spec.js"] as const : [])] as const;
       return {
         files: [
           { path: "index.html", contentType: "text/html; charset=utf-8", bytes: Buffer.from(injectPage(stored.html, { assetBase: "./", theme: null, hasCharts: stored.hasCharts }), "utf8") },
@@ -76,9 +79,11 @@ export default function plugin(bb: BbPluginApi) {
   };
   const share = registerShare(bb, shareDeps);
 
+  const spec = registerSpec(bb);
   const service = createPageService({
     sdk: bb.sdk,
     store,
+    bake: spec.bake,
     changed: publishChanged,
     pageDeleted: (pageId) => share.onPageDeleted(pageId),
     versionCreated: (pageId, versionId) => {

@@ -341,7 +341,7 @@ describe("page routes", () => {
   it("opens only the static asset routes to any origin; page routes stay local", async () => {
     const { harness } = pagesHost();
     const auth = Object.fromEntries(harness.registrations.httpRoutes.map((route) => [route.path, route.auth]));
-    expect(auth).toEqual({ "/v": "local", "/a": "local", "/file": "local", "/_page/theme.css": "none", "/_page/inter.roman.var.woff2": "none", "/_page/charts.js": "none" });
+    expect(auth).toEqual({ "/v": "local", "/a": "local", "/file": "local", "/_page/theme.css": "none", "/_page/inter.roman.var.woff2": "none", "/_page/charts.js": "none", "/_page/spec.js": "none" });
     const font = await harness.behavior.fetchHttp("GET", "/_page/inter.roman.var.woff2", { headers: { origin: "null" } });
     expect(font.status).toBe(200);
     expect(font.headers.get("access-control-allow-origin")).toBe("*");

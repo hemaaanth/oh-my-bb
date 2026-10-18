@@ -5,7 +5,7 @@ import type { PagesRpc } from "../contract.js";
 import { REALTIME_CHANNEL } from "./data.js";
 import { UUID } from "./directives.js";
 import { LIBRARY_PATH, PageView } from "./PageView.js";
-import { PORTAL_SCOPE, SharedDot, focusRing, messageOf, relativeTime, themedUrl, usePreviewTheme } from "./ui.js";
+import { PORTAL_SCOPE, SharedDot, menuContent, menuItem, focusRing, messageOf, relativeTime, themedUrl, usePreviewTheme } from "./ui.js";
 
 type ListItem = PluginRpcResult<PagesRpc["listPages"]>["pages"][number];
 
@@ -19,9 +19,9 @@ function FilterMenu({ label, value, options, onChange }: { label: string; value:
       </button>
     </DropdownMenu.Trigger>
     <DropdownMenu.Portal>
-      <DropdownMenu.Content {...PORTAL_SCOPE} align="start" sideOffset={4} collisionPadding={8} style={{ zIndex: 75 }} className="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] min-w-44 max-w-[calc(100vw-16px)] overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md">
+      <DropdownMenu.Content {...PORTAL_SCOPE} align="start" sideOffset={4} collisionPadding={8} style={{ zIndex: 75 }} className={`max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] min-w-44 max-w-[calc(100vw-16px)] overflow-y-auto ${menuContent}`}>
         <DropdownMenu.RadioGroup value={value} onValueChange={onChange}>
-          {options.map((option) => <DropdownMenu.RadioItem key={option.value} value={option.value} className="flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-state-hover">
+          {options.map((option) => <DropdownMenu.RadioItem key={option.value} value={option.value} className={menuItem}>
             <span className="flex w-3.5 shrink-0 justify-center"><DropdownMenu.ItemIndicator><Icon name="Check" aria-hidden className="size-3.5" /></DropdownMenu.ItemIndicator></span>
             <span className="min-w-0 truncate">{option.label}</span>
           </DropdownMenu.RadioItem>)}

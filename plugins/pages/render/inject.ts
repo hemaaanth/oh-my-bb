@@ -4,6 +4,7 @@ import { FORMS_OFFLINE, FRAME_BRIDGE } from "./frame-bridge.js";
 import { escapeHtml, scanHtml } from "./html.js";
 import { DATA_TABLE_RUNTIME, PAGE_RUNTIME, needsDataTableRuntime, needsPageRuntime } from "./page-runtime.js";
 import { FORM_RUNTIME, needsFormRuntime } from "./form-runtime.js";
+import { hasSpecBlocks } from "./spec-baked.js";
 
 export type InjectOptions = {
   /** Base URL (absolute or relative) under which `_page/<asset>` resolves. */
@@ -13,7 +14,7 @@ export type InjectOptions = {
   /** Add the chart runtime script. */
   hasCharts: boolean;
   /**
-   * The chat frame, as data-bb-frame. "card" is the small framed preview; the theme shows it zoomed out, like a thumbnail.
+   * The chat frame, as data-bb-frame. "card" is the small framed preview; the theme shows its top, like a thumbnail.
    * "inline" is the borderless preview that is part of the reply; it fits its height to the page and never scrolls.
    */
   frame?: "card" | "inline" | null;
@@ -23,7 +24,7 @@ export type InjectOptions = {
   inlineAssets?: InlinePageAssets;
 };
 
-export type InlinePageAssets = { themeCss: string; chartsJs: string };
+export type InlinePageAssets = { themeCss: string; chartsJs: string; specJs: string };
 
 /**
  * Content-Security-Policy for served pages. Inline author scripts and styles
@@ -56,7 +57,7 @@ export const hasForm = (html: string) => /<form[\s>]/iu.test(html);
  * Add the theme link (first in <head>, so author styles win), the font preload,
  * data-bb-theme and data-bb-frame on <html>, the frame bridge (BB previews only; other pages with a form get FORMS_OFFLINE), and before </body> the page runtime (only when the
  * page has tabs, contents, or zoomable images), the form runtime (only when it has a select, date, time, or
- * number field), and the chart runtime. Everything
+ * number field), the chart runtime, and the spec runtime (only when it has openui-lang blocks). Everything
  * else in the author's HTML stays byte-for-byte. Works on full documents,
  * documents without <html>/<head>/<body>, and bare fragments.
  */
@@ -97,7 +98,8 @@ export function injectPage(html: string, options: InjectOptions): string {
   const runtime = needsPageRuntime(html);
   const formRuntime = needsFormRuntime(html);
   const dataTable = needsDataTableRuntime(html);
-  if (runtime || formRuntime || dataTable || options.hasCharts) {
+  const specs = hasSpecBlocks(html);
+  if (runtime || formRuntime || dataTable || options.hasCharts || specs) {
     const hasBodyEnd = tags.some((tag) => tag.kind === "end" && tag.name === "body");
     let at = html.length;
     for (const tag of tags) {
@@ -109,6 +111,7 @@ export function injectPage(html: string, options: InjectOptions): string {
     if (formRuntime) inserts.push({ at, text: `<script>${FORM_RUNTIME}</script>` });
     if (dataTable) inserts.push({ at, text: `<script>${DATA_TABLE_RUNTIME}</script>` });
     if (options.hasCharts) inserts.push({ at, text: options.inlineAssets ? `<script>${options.inlineAssets.chartsJs}</script>` : `<script src="${url("charts.js")}" defer></script>` });
+    if (specs) inserts.push({ at, text: options.inlineAssets ? `<script>${options.inlineAssets.specJs}</script>` : `<script src="${url("spec.js")}" defer></script>` });
   }
 
   let out = html;

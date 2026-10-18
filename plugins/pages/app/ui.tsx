@@ -9,13 +9,14 @@ export const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-
  */
 export const PORTAL_SCOPE = { "data-bb-portaled-overlay": "", "data-bb-plugin-root": "", "data-bb-plugin": "pages" } as const;
 
+/** BB's own menu look: every dropdown menu in Pages uses these. */
+export const menuContent = "rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md";
+export const menuItem = "flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-state-hover data-[disabled]:opacity-50";
+
 /** The BB app's resolved light/dark mode. Code themes follow it the moment the user switches. */
 export function usePreviewTheme(): "light" | "dark" {
   return experimental_useCodeTheme().mode;
 }
-
-/** The page background, `--bb-bg` in assets/theme.css for a `body.auto` page. The panel chrome uses it so header and page read as one surface. */
-export const PAGE_BG = { light: "#f9fafb", dark: "#09090b" } as const;
 
 /** Preview routes take `&theme=light|dark`, which sets `data-bb-theme` for pages that follow the app, and `&frame=card|inline` for chat frames. */
 export function themedUrl(url: string, theme: "light" | "dark", frame?: "card" | "inline"): string {

@@ -30,6 +30,13 @@ it, the answers go to the thread as one message, each under the label you saw.
 The form then stays locked as sent. Pick Edit answers to change them and send
 again.
 
+For small things that belong to one reply, an agent skips the page and writes
+live UI right in its message: a few numbers, a short table, a bar or line
+chart, tabs, code, a diff, or a question with choices and sliders. It draws
+as the reply streams and uses BB's own colours and code viewers. Buttons send
+to the thread, like page forms. The same components work on a published page
+or shared site, read-only, with their data saved when you publish.
+
 ## Standalone by default
 
 Pages does not require another BB plugin. If PR Review is installed separately,
@@ -38,7 +45,6 @@ menus. That integration remains inactive otherwise.
 
 ## Highcharts requirement
 
-Chart pages use the bundled Highcharts runtime. Highcharts is not MIT licensed.
+Charts on pages and in chat use the bundled Highcharts runtime. Highcharts is not MIT licensed.
 You must obtain and manage your own Highcharts license for your intended use;
-installing Pages does not grant one. Pages that do not contain charts do not
-load the chart runtime. See the [Highcharts license](https://www.highcharts.com/license).
+installing Pages does not grant one. Highcharts loads only when a chart draws. See the [Highcharts license](https://www.highcharts.com/license).
