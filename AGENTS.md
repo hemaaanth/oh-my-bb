@@ -4,6 +4,8 @@
 - Do not add repository-level runtime dependencies or imports across package directories.
 - Integrations between packages must be optional and documented. One package must not
   install, enable, or probe another package during startup.
+- List every package in `scripts/packages.txt`. It is the only package list that
+  `scripts/check.sh` and CI use.
 - Keep one lockfile per package. The repository root is not an npm workspace.
 - Add plugins to `.bb/plugins.json` and `marketplace.json` only after their package-local
   checks pass.

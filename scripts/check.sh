@@ -1,21 +1,14 @@
 #!/usr/bin/env bash
+# Check every package in scripts/packages.txt, or only the packages named as arguments.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-for package in \
-  plugins/model-gateway \
-  plugins/pages \
-  plugins/webhooks \
-  agents/fx-acp \
-  agents/nanocodex-acp
-do
-  echo "==> $package"
-  npm --prefix "$root/$package" ci
-  npm --prefix "$root/$package" run typecheck
-  npm --prefix "$root/$package" test
-done
+packages="$("$root/scripts/list-packages.sh")"
+if [ "$#" -gt 0 ]; then
+  packages="$(printf '%s\n' "$@")"
+fi
 
-npm --prefix "$root/plugins/model-gateway" run build
-npm --prefix "$root/plugins/pages" run build
-npm --prefix "$root/plugins/webhooks" run build
+while IFS= read -r package; do
+  "$root/scripts/check-package.sh" "$package"
+done <<< "$packages"

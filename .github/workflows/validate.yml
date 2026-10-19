@@ -6,84 +6,28 @@ on:
     branches: [main]
 
 jobs:
-  pages:
+  packages:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: plugins/pages
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: plugins/pages/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+      - id: list
+        run: echo "matrix=$(scripts/list-packages.sh | jq -R -s -c 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
 
-  webhooks:
+  validate:
+    needs: packages
+    name: ${{ matrix.package }}
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: plugins/webhooks
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.packages.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: plugins/webhooks/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
-
-  model-gateway:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: plugins/model-gateway
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: plugins/model-gateway/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
-
-  fx-acp:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: agents/fx-acp
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: agents/fx-acp/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-  nanocodex-acp:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: agents/nanocodex-acp
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: agents/nanocodex-acp/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run test:ci
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+      - run: scripts/check-package.sh ${{ matrix.package }}

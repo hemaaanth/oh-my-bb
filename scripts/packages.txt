@@ -1,0 +1,8 @@
+# Every package that check.sh and CI validate, one directory per line.
+# Add a new plugin or agent package here and nowhere else.
+plugins/model-gateway
+plugins/pages
+plugins/webhooks
+agents/fx-acp
+agents/nanocodex-acp
+agents/prime-agent-acp
