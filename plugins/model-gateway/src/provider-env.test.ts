@@ -36,9 +36,39 @@ async function gateway() {
     rescan(next: typeof providers) { providers = next; changed(); } };
 }
 
+it("loads and serves HTTP while provider discovery is blocked", async () => {
+  const dataDir = await fs.mkdtemp(path.join(tmpdir(), "mgw-provider-"));
+  let releaseCatalog!: () => void;
+  const pendingCatalog = new Promise<void>((resolve) => { releaseCatalog = resolve; });
+  const catalog = vi.fn(async () => { await pendingCatalog; return []; });
+  const host = createFakePluginHost({ pluginId: "model-gateway", dataDir, sdk: {
+    hosts: { list: async () => [] },
+    providers: { catalog },
+    subscribe: () => () => {},
+    plugins: { list: async () => ({ plugins: [{ id: "model-gateway", enabled: true }] }) },
+  } });
+  cleanups.push(async () => {
+    releaseCatalog();
+    await host.harness.lifecycle.dispose();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
+  await createAccountPoolPlugin({ fetch: async () => Response.json({}) })(host.bb);
+  expect(catalog).not.toHaveBeenCalled();
+  const service = host.harness.behavior.runService("pi-providers");
+  try {
+    await vi.waitFor(() => expect(catalog).toHaveBeenCalledOnce());
+    expect((await host.harness.behavior.fetchHttp("GET", "/v1/models")).status).toBe(401);
+  } finally {
+    service.controller.abort();
+    releaseCatalog();
+    await service.done;
+  }
+});
+
 it("shares Pi routing across late providers, isolates threads, and makes removed ids inert", async () => {
   const gw = await gateway();
   const id = "agent-11111111-1111-4111-8111-111111111111";
+  await vi.waitFor(async () => expect(await gw.env("hempi")).toHaveLength(2));
   const initial = await gw.env("hempi");
   expect(initial.map(({ name }) => name)).toEqual(["MODEL_GATEWAY_BASE_URL", "MODEL_GATEWAY_TOKEN"]);
   expect(initial[0]!.value).toEqual({ serverPath: "/api/v1/plugins/model-gateway/http/v1" });

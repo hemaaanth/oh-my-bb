@@ -462,7 +462,7 @@ export function createAccountPoolPlugin(
       },
     });
     bb.onDispose(() => { disposed = true; activePi.clear(); });
-    await rescanPi();
+    // Provider discovery can wait for plugin loading; run it only in the service.
     bb.onDispose(async () => {
       codexLogin.dispose();
       let timer: ReturnType<typeof setTimeout> | null = null;
