@@ -31,11 +31,11 @@ The tarball produces a copy instead of a symlink to the checkout.
 The agent derives the WebSocket URL from `NANOCODEX_API_BASE_URL`: it swaps `http` to `ws`
 (or `https` to `wss`) and appends `/responses`. It always passes that URL to nanocodex.
 This matters: when the WebSocket URL is not set, nanocodex silently connects to
-`wss://api.openai.com/v1/responses` (spike S3).
+`wss://api.openai.com/v1/responses`.
 
 If either variable is missing, or the base URL is not http(s), `session/new` fails with a
 clear error and nanocodex never starts. The Model Gateway contributes both variables for
-provider `acp-nanocodex` (plan WP3.2). You do not set them by hand.
+provider `acp-nanocodex`. You do not set them by hand.
 
 ## Register in BB
 
@@ -136,11 +136,13 @@ nanocodex also always gives the model its own tools. Their status:
 npm ci
 npm run typecheck
 npm test
+npm run build     # node --check
 ```
 
 `npm test` runs `node --test` inside a new user and network namespace
 (`unshare -rn`, loopback only). So a wrong URL fails the test instead of reaching
-`api.openai.com`. The test starts a mock of the gateway's `WS /v1/responses` route on
+`api.openai.com`. CI runners cannot create a network namespace, so they run
+`npm run test:ci`, which is the same tests without `unshare`. The test starts a mock of the gateway's `WS /v1/responses` route on
 `127.0.0.1` and drives the agent with a small ACP client. It checks:
 
 - `initialize`, `session/new`, `session/prompt`, with a real `echo` command run in the session
@@ -152,7 +154,24 @@ npm test
 - a reasoning summary arrives as `agent_thought_chunk`;
 - `session/cancel` ends the turn as `cancelled`;
 - `session/new` fails when `NANOCODEX_API_BASE_URL` is missing, and nothing connects;
-- `--list-models` prints the six ids.
+- `--list-models` prints the six ids;
+- `initialize` reports the version in `package.json`.
+
+## Dependencies
+
+`nanocodex` and `nanocodex-tools` are pinned to 0.6.5. A newer nanocodex (0.6.7) renames
+`gpt-6-sol` to `gpt-6.1-sol`, which would break the model ids above, so it is not used.
+
+`package.json` has an `overrides` entry that lifts `@modelcontextprotocol/sdk` from the 1.30.0
+that nanocodex pins to 1.31 or later. 1.30.x has a high-severity OAuth advisory
+(GHSA-6qxp-vccf-f47h); 1.31.0 fixes it. Remove the override once nanocodex ships a patched pin.
+
+`npm audit` still reports a moderate `sprintf-js` advisory (GHSA-hp3w-g68c-fv3c, a denial of
+service through attacker-chosen format strings), which reaches us through `just-bash` in
+`nanocodex-tools`. `sprintf-js` 1.1.3 is the latest release and no patched version exists.
+The advisory needs control of a format string. nanocodex-acp does not reach that code: the Node
+process tools it uses (`nanocodex-tools/node`) do not import `just-bash`, and nanocodex uses
+`sprintf-js` only in its browser tooling (read from the 0.6.5 source; not tested).
 
 ## Limits
 

@@ -3,7 +3,7 @@
 // `npm test` runs this inside an empty network namespace, so nothing can reach api.openai.com.
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -79,11 +79,11 @@ async function startAgent({ args = ["--permission-mode", "accept-edits"], base =
       updates.push(params.update);
     })
     .connect(acp.ndJsonStream(Writable.toWeb(child.stdin), /** @type {any} */ (Readable.toWeb(child.stdout))));
-  await conn.agent.request("initialize", { protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: {} });
+  const initialized = await conn.agent.request("initialize", { protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: {} });
   const cwd = mkdtempSync(join(tmpdir(), "nca-cwd-"));
   const stop = () => { conn.close(); child.kill(); };
   running.add(stop);
-  return { conn, log, updates, cwd, stop, newSession: () => conn.agent.request("session/new", { cwd, mcpServers: [] }) };
+  return { conn, initialized, log, updates, cwd, stop, newSession: () => conn.agent.request("session/new", { cwd, mcpServers: [] }) };
 }
 
 /** @param {Awaited<ReturnType<typeof startAgent>>} agent @param {string} text */
@@ -155,4 +155,11 @@ test("fails closed without NANOCODEX_API_BASE_URL", async () => {
 test("--list-models prints the six nanocodex model ids", () => {
   const out = execFileSync(process.execPath, [BIN, "--list-models"], { encoding: "utf8" });
   assert.deepEqual(out.trim().split("\n").map((line) => line.split(" - ")[0]), ["gpt-6-sol", "gpt-6-luna", "gpt-6-astra", "@cf/zai-org/glm-5.3", "kimi-k3", "mimo-v2.6-pro"]);
+});
+
+test("initialize reports the manifest version", async () => {
+  const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const agent = await startAgent();
+  agent.stop();
+  assert.deepEqual(agent.initialized.agentInfo, { name: "nanocodex-acp", version });
 });

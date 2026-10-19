@@ -13,7 +13,12 @@
   "bugs": {
     "url": "https://github.com/hemaaanth/oh-my-bb/issues"
   },
-  "keywords": ["acp", "bb", "codex", "nanocodex"],
+  "keywords": [
+    "acp",
+    "bb",
+    "codex",
+    "nanocodex"
+  ],
   "type": "module",
   "bin": {
     "nanocodex-acp": "./nanocodex-acp.mjs"
@@ -25,6 +30,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "build": "node --check nanocodex-acp.mjs",
     "typecheck": "tsc -p .",
     "test": "unshare -rn sh -c \"ip link set lo up && exec node --test test/*.test.mjs\"",
     "test:ci": "node --test test/*.test.mjs"
@@ -35,9 +41,12 @@
     "nanocodex-tools": "0.6.5"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^22.20.5",
     "@types/ws": "^8.18.1",
-    "typescript": "^5.7.0",
+    "typescript": "^5.9.3",
     "ws": "^8.18.3"
+  },
+  "overrides": {
+    "@modelcontextprotocol/sdk": "^1.31.0"
   }
 }

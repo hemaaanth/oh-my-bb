@@ -2,11 +2,15 @@
 // @ts-check
 // nanocodex as a stdio ACP agent for BB's provider-acp bridge.
 // Transport is the Model Gateway only: NANOCODEX_API_BASE_URL + MODEL_GATEWAY_TOKEN.
+import { readFileSync } from "node:fs";
 import { Readable, Writable } from "node:stream";
 import { parseArgs } from "node:util";
 import * as acp from "@agentclientprotocol/sdk";
 import { Agent, Transport } from "nanocodex/node";
 import { createNodeProcessTools } from "nanocodex-tools/node";
+
+/** The manifest is the one place the version lives. */
+const VERSION = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version;
 
 // nanocodex 0.6.5 rejects any other model id client-side. The gateway maps them to real upstreams.
 const MODELS = ["gpt-6-sol", "gpt-6-luna", "gpt-6-astra", "@cf/zai-org/glm-5.3", "kimi-k3", "mimo-v2.6-pro"];
@@ -165,7 +169,7 @@ const connection = acp
   .onRequest("initialize", () => ({
     protocolVersion: acp.PROTOCOL_VERSION,
     agentCapabilities: { loadSession: false, promptCapabilities: { image: false, embeddedContext: false } },
-    agentInfo: { name: "nanocodex-acp", version: "0.1.0" },
+    agentInfo: { name: "nanocodex-acp", version: VERSION },
     authMethods: [],
   }))
   .onRequest("session/new", async ({ params }) => {
