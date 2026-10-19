@@ -1,14 +1,15 @@
 {
   "compilerOptions": {
+    "strict": true,
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
-    "strict": true,
-    "target": "ES2022",
+    "target": "ES2023",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
     "types": ["node"],
     "skipLibCheck": true
   },
-  "include": ["prime-agent-acp.mjs"]
+  "include": ["prime-agent-acp.mjs", "test/*.mjs"]
 }

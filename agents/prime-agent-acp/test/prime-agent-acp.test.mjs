@@ -6,6 +6,7 @@ import { once } from "node:events";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { launchArgs, primeConfig, main, shutdownDaemon } from "../prime-agent-acp.mjs";
 
@@ -43,6 +44,12 @@ describe("Prime gateway adapter", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("MODEL_GATEWAY_BASE_URL and MODEL_GATEWAY_TOKEN are required");
     expect(result.stdout).toBe("");
+  });
+
+  it("reports the manifest version", () => {
+    const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    const output = execFileSync(process.execPath, [adapter, "--version"], { env: { PATH: process.env.PATH }, encoding: "utf8" });
+    expect(output).toBe(`prime-agent-acp ${version}\n`);
   });
 
   it("lists gateway model ids in the shim's provider/model format without a login", () => {

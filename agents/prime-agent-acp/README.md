@@ -7,16 +7,15 @@ Model Gateway does not install or require it.
 ## Install
 
 Install Node 22.13 or later and `prime-agent` on each host's PATH.
-Build and install this package from its own directory:
 
 ```sh
-npm install
-npm run typecheck
-npm test
-npm run build
-npm pack
+git clone --depth 1 --branch prime-agent-acp/v0.1.0 https://github.com/hemaaanth/oh-my-bb.git
+npm pack --pack-destination . ./oh-my-bb/agents/prime-agent-acp
 npm install --global ./prime-agent-acp-0.1.0.tgz
+prime-agent-acp --version
 ```
+
+The tarball produces a copy instead of a symlink to the checkout.
 
 Set this entry in `provider-acp.customAgents`. Keep the other entries in that array.
 The provider id stays `acp-prime-agent`.
@@ -34,8 +33,7 @@ The provider id stays `acp-prime-agent`.
 }
 ```
 
-The command is bare and PATH-resolved. It replaces the machine-specific `pa-acp.sh` command.
-No plugin setting is changed by installing this package.
+The command is bare and PATH-resolved. No plugin setting is changed by installing this package.
 
 ## Gateway and isolation
 
@@ -64,19 +62,28 @@ Direct provider names and API-key or daemon-socket overrides are refused.
 
 ## Model discovery
 
-`prime-agent-acp model-list` keeps the old shim's `provider/model - model (provider)` format.
+`prime-agent-acp model-list` prints one `provider/model - model (provider)` line per model.
 It lists the gateway defaults without needing a thread token or a Prime login.
 Those defaults are `gpt-6-sol`, `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-luna`, and `gpt-5.6-terra`.
 A custom model selected with `--model` is also registered in the launch's config.
 `gpt-6.1-sol` uses 500,000 context tokens and 128,000 output tokens.
-Without `--model`, the adapter selects `gpt-6-sol`, as the old shim did.
+Without `--model`, the adapter selects `gpt-6-sol`.
 The gateway chain decides which upstream serves the model.
 
 `prime-agent-acp --version` reports the adapter version without launching Prime.
 
-## Verified behavior
+## Develop
 
-With the real Prime Agent 0.10.0 binary, a local fake Responses gateway completed ACP prompts.
+```sh
+npm ci
+npm run typecheck
+npm test          # vitest; no Prime binary or network needed
+npm run build     # node --check
+```
+
+## Verified by hand
+
+`npm test` does not run Prime. These results come from a manual run, not CI. With the real Prime Agent 0.10.0 binary, a local fake Responses gateway completed ACP prompts.
 Two concurrent clients sent their own expected Bearer auth from their request workers.
 Closing the first client left the second client's worker usable. Both private daemons and their tracked workers then exited.
 The scratch-home scan found no synthetic tokens on disk. Both private config directories were removed.

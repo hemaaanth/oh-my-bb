@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // @ts-check
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,6 +9,9 @@ import { fileURLToPath } from "node:url";
 import { once } from "node:events";
 import { createConnection } from "node:net";
 import { createInterface } from "node:readline";
+
+/** Reported by `--version`; the manifest is the one place the version lives. */
+const VERSION = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version;
 
 export const MODELS = ["gpt-6-sol", "gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna", "gpt-5.6-terra"];
 
@@ -100,7 +104,7 @@ export async function shutdownDaemon(socketPath) {
 }
 
 export async function main(args = process.argv.slice(2), env = process.env) {
-  if (args[0] === "--version") { console.log("prime-agent-acp 0.1.0"); return 0; }
+  if (args[0] === "--version") { console.log(`prime-agent-acp ${VERSION}`); return 0; }
   // BB discovers models outside a thread. No credential or host setup is needed.
   if (args[0] === "model-list" || args[0] === "--list-models") {
     for (const model of MODELS) console.log(`model-gateway/${model} - ${model} (model-gateway)`);
