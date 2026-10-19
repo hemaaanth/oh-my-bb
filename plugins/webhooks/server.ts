@@ -26,6 +26,17 @@ export function normalizeBaseUrl(value: string | null | undefined): string | nul
   }
 }
 
+/**
+ * Shown in `bb plugin list` and the plugin page. The banner clears on the next load, and saving
+ * settings does not reload the plugin, so the message says to.
+ */
+export function needsBaseUrlMessage(configured: string): string {
+  const problem = configured.trim()
+    ? "The Public base URL setting (publicBaseUrl) is not an https:// origin without credentials, query, or fragment, and BB has no https app URL to fall back on."
+    : "No public base URL is set (publicBaseUrl), and BB has no https app URL to fall back on, so senders have no URL to call.";
+  return `${problem} Run \`bb plugin config webhooks set publicBaseUrl https://hooks.example.com\` with your public origin, then \`bb plugin reload webhooks\`.`;
+}
+
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
     publicBaseUrl: {
@@ -47,6 +58,7 @@ export default async function plugin(bb: BbPluginApi) {
   const configured = values.publicBaseUrl;
   const publicBaseUrl = normalizeBaseUrl(configured) ?? normalizeBaseUrl(bb.server.experimental_appUrl);
   if (configured.trim() && normalizeBaseUrl(configured) === null) bb.log.warn("publicBaseUrl is not an https:// URL without query or credentials; it is ignored.");
+  if (publicBaseUrl === null) bb.status.needsConfiguration(needsBaseUrlMessage(configured));
 
   const db = bb.storage.database();
   bb.storage.migrate(db, [...MIGRATIONS]);

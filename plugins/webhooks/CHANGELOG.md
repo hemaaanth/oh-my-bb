@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- BB shows "Needs configuration" for the plugin when no public base URL
+  resolves: the `publicBaseUrl` setting is empty or not an https origin, and
+  BB has no https app URL to fall back on. The message names the setting and
+  the commands to set it and reload. Until then the panel and `bb webhooks
+  show` print a placeholder origin.
 - A plugin action. It hands the declared field values to another plugin's
   discoverable `webhooks_receive` method, with an event-based idempotency key.
   The panel lists the plugins that publish it. Endpoints are refused at save
