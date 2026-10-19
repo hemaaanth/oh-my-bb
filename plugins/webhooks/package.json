@@ -1,7 +1,7 @@
 {
   "name": "bb-plugin-webhooks",
   "version": "0.1.0",
-  "description": "Receive webhooks from PostHog, Slack, and other services, and turn them into thread messages, new threads, or automation runs.",
+  "description": "Receive webhooks from PostHog, Slack, and other services, and turn them into thread messages, new threads, automation runs, or plugin calls.",
   "license": "MIT",
   "author": "Hemanth Soni",
   "homepage": "https://github.com/hemaaanth/oh-my-bb/tree/main/plugins/webhooks",
@@ -28,7 +28,7 @@
   },
   "bb": {
     "name": "Webhooks",
-    "description": "Receive webhooks from PostHog, Slack, and other services, and turn them into thread messages, new threads, or automation runs.",
+    "description": "Receive webhooks from PostHog, Slack, and other services, and turn them into thread messages, new threads, automation runs, or plugin calls.",
     "branding": {
       "icon": "./icons/webhook.svg",
       "experimental_icons": {
