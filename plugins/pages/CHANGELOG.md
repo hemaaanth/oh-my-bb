@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Pages now declares `bbPluginSdk >=0.6.54`, the SDK it builds with. It was
+  `>=0.4.84`.
+- Build tools moved up: TypeScript 7, `@types/react` and `@types/react-dom` 19.3.
+- Removed 13 unused development dependencies (`@radix-ui` dialog, select,
+  tooltip, hover-card, menubar, navigation-menu and context-menu, `@pierre/diffs`,
+  `sonner`, `vaul`, `clsx`, `class-variance-authority`, `tailwind-merge`).
+- The README lists the settings, the `bb pages` commands, and the BB version
+  Pages needs. The git install example now points at `^0.6.0`.
+- A test pins that Pages never asks for configuration on a fresh install, and
+  that Here.now and Mapbox each report their own missing setting.
+
 ## 0.6.0
 
 - Pages has its own icon set, MingCute (Apache-2.0): about 1,650 glyphs in a

@@ -16,7 +16,10 @@ and provides a searchable library for finding earlier work.
   and filled styles. A page writes `<i data-icon="name"></i>`; chat
   components use the same glyphs.
 - Share a page through Here.now with restricted, password, or public-link
-  access. Sharing is optional and requires a Here.now API key.
+  access. Sharing is optional and requires a Here.now API key. From the
+  command line: `bb pages share`, `bb pages unshare`, and `bb pages share-status`.
+- Look up and fetch pages with `page_lookup`, `bb pages list`, `bb pages get`,
+  `bb pages versions`, and `bb pages pull`.
 - Update a stable page by source path, key, or page id while preserving every
   changed version.
 - Send feedback from the page panel to the thread. The message carries the
@@ -55,10 +58,27 @@ bb plugin install pages@oh-my-bb
 Or install it directly from Git:
 
 ```sh
-bb plugin install git:https://github.com/hemaaanth/oh-my-bb.git@^0.1.0 \
+bb plugin install git:https://github.com/hemaaanth/oh-my-bb.git@^0.6.0 \
   --plugin pages \
   --tag-prefix pages/
 ```
+
+Pages needs BB 0.46.1 or later.
+
+## Settings
+
+Open Settings → Plugins → Pages. Every setting is optional, and Pages never asks
+you to configure it before use. Each feature shows its own status where you use it.
+
+| Setting | What it does | If unset |
+| --- | --- | --- |
+| Here.now API key | Lets Pages create and update shared sites. Stored as a secret. | The Share popover and `page_share` say the key is not set. |
+| Default access | Access for a new share: restricted, password, or link. Defaults to password. | Password. |
+| Default allowed domains | Comma-separated email domains that fill Restricted access in the Share popover. | Empty. |
+| Web lookups | Lets maps, image search, and galleries fetch tiles, place names, and photos. On by default. | When off, those components show a short note. |
+| Mapbox token | Map tiles. Stored as a secret. | Maps show their places on a blank grid, with a note naming the token. |
+
+Changes apply to the next request. You do not need to reload.
 
 ## Highcharts license
 

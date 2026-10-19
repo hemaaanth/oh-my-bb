@@ -41,7 +41,10 @@ or shared site, read-only, with their data saved when you publish.
 
 ## Standalone by default
 
-Pages does not require another BB plugin. If PR Review is installed separately,
+Pages needs BB 0.46.1 or later and no setup. Sharing (a Here.now API key) and map
+tiles (a Mapbox token) are optional settings. Each shows its own status where you
+use it: the Share popover says when the key is not set, and a map names the
+missing token. Pages does not require another BB plugin. If PR Review is installed separately,
 it can publish structured review documents and receive actions from their page
 menus. That integration remains inactive otherwise.
 
