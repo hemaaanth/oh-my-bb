@@ -250,7 +250,7 @@ who can use the app can trigger the action.
 
 Senders reach one of two local targets through an HTTPS tunnel or proxy:
 
-- The webhook listener, when the plugin setting **Webhook listener port**
+- The webhook listener, when the plugin setting **Listener port**
   (`listenerPort`) is set. It binds to `127.0.0.1` and serves only
   `POST /webhook/<id>`. URLs are then `<public base URL>/webhook/<id>`.
 - Otherwise the BB route,
