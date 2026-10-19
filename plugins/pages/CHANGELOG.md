@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
 
 - Pages has its own icon set, MingCute (Apache-2.0): about 1,650 glyphs in a
   line and a filled style. Write `<i data-icon="name"></i>` in a page. Pages

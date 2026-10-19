@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-pages",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Publish and share pages, with the same live UI in chat and on pages.",
   "license": "MIT",
   "author": "Hemanth Soni",
