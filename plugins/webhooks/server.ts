@@ -2,12 +2,13 @@
 // loopback listener (POST /webhook/<id>) for a tunnel, owner-only RPC for the
 // panel, and a `bb webhooks` CLI for agents.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 import { CHANGED_CHANNEL, rpcContract, type EndpointView } from "./contract.js";
 import { registerCli } from "./server/cli.js";
 import { createDeliverer } from "./server/deliver.js";
 import { LISTENER_PATH_PREFIX, keepListening, parseListenerPort } from "./server/listener.js";
 import { MIGRATIONS } from "./server/migrations.js";
-import { createService } from "./server/service.js";
+import { createService, deliveryPathOf } from "./server/service.js";
 import { createStore } from "./server/store.js";
 
 export { rpcContract };
@@ -27,53 +28,88 @@ export function normalizeBaseUrl(value: string | null | undefined): string | nul
 }
 
 /**
- * Shown in `bb plugin list` and the plugin page. The banner clears on the next load, and saving
- * settings does not reload the plugin, so the message says to.
+ * Shown in `bb plugin list` and the plugin page. BB has no way to clear the banner while the plugin
+ * runs, so it stays until the next load even after the setting is fixed. Saved settings apply at once.
  */
 export function needsBaseUrlMessage(configured: string): string {
   const problem = configured.trim()
     ? "The Public base URL setting (publicBaseUrl) is not an https:// origin without credentials, query, or fragment, and BB has no https app URL to fall back on."
     : "No public base URL is set (publicBaseUrl), and BB has no https app URL to fall back on, so senders have no URL to call.";
-  return `${problem} Run \`bb plugin config webhooks set publicBaseUrl https://hooks.example.com\` with your public origin, then \`bb plugin reload webhooks\`.`;
+  return `${problem} Run \`bb plugin config webhooks set publicBaseUrl https://hooks.example.com\` with your public origin, or set Listener port if you run your own tunnel. The plugin uses a saved setting at once; this banner clears when the plugin next loads (\`bb plugin reload webhooks\`).`;
 }
+
+const baseUrlSchema = z.string().refine((value) => !value.trim() || normalizeBaseUrl(value) !== null, "Use an https:// origin without credentials, query, or fragment, like https://hooks.example.com.");
+const portSchema = z.string().refine((value) => parseListenerPort(value) !== "invalid", "Use a port from 1024 to 65535, or leave it empty to turn the listener off.");
 
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
     publicBaseUrl: {
       type: "string",
       label: "Public base URL",
-      description:
-        "The HTTPS origin senders use, like https://hooks.example.com. Reload to apply.",
+      description: "The HTTPS origin senders use, like https://hooks.example.com. Applies when saved.",
       default: "",
+      experimental_schema: baseUrlSchema,
     },
     listenerPort: {
       type: "string",
       label: "Listener port",
-      description:
-        "Local port that serves /webhook/<id>. Point your tunnel here. Leave empty to turn it off. Reload to apply.",
+      description: "Local port that serves /webhook/<id>. Point your tunnel here. Leave empty to turn it off. Applies when saved.",
       default: "",
+      experimental_schema: portSchema,
     },
   });
   const values = await settings.get();
-  const configured = values.publicBaseUrl;
-  const publicBaseUrl = normalizeBaseUrl(configured) ?? normalizeBaseUrl(bb.server.experimental_appUrl);
-  if (configured.trim() && normalizeBaseUrl(configured) === null) bb.log.warn("publicBaseUrl is not an https:// URL without query or credentials; it is ignored.");
-  if (publicBaseUrl === null) bb.status.needsConfiguration(needsBaseUrlMessage(configured));
+
+  const resolveBaseUrl = (configured: string) => {
+    const url = normalizeBaseUrl(configured) ?? normalizeBaseUrl(bb.server.experimental_appUrl);
+    if (configured.trim() && normalizeBaseUrl(configured) === null) bb.log.warn("publicBaseUrl is not an https:// URL without query or credentials; it is ignored.");
+    return url;
+  };
+  let publicBaseUrl = resolveBaseUrl(values.publicBaseUrl);
+  let flagged = false;
+  // A tunnel pointed at the listener port is a public route of its own, so the plugin works without publicBaseUrl.
+  const checkConfiguration = (configured: string, port: string) => {
+    if (publicBaseUrl !== null || typeof parseListenerPort(port) === "number" || flagged) return;
+    flagged = true;
+    bb.status.needsConfiguration(needsBaseUrlMessage(configured));
+  };
+  checkConfiguration(values.publicBaseUrl, values.listenerPort);
 
   const db = bb.storage.database();
   bb.storage.migrate(db, [...MIGRATIONS]);
   const store = createStore(db);
 
-  const changed = (endpointId: string) => bb.realtime.publish(CHANGED_CHANNEL, { endpointId });
+  const changed = (endpointId?: string) => bb.realtime.publish(CHANGED_CHANNEL, endpointId ? { endpointId } : {});
   const deliverer = createDeliverer(bb, store);
-  const listener = openListener(bb, values.listenerPort, deliverer.handle);
-  const publicPathOf = listener ? (endpointId: string) => `${LISTENER_PATH_PREFIX}${endpointId}` : undefined;
-  const service = createService({ bb, store, deliverer, publicBaseUrl, publicPathOf, changed });
+  let listener = openListener(bb, values.listenerPort, deliverer.handle);
+  const publicPathOf = (endpointId: string) => (listener ? `${LISTENER_PATH_PREFIX}${endpointId}` : deliveryPathOf(endpointId));
+  const service = createService({ bb, store, deliverer, publicBaseUrl: () => publicBaseUrl, publicPathOf, changed });
   const urlOf = (endpoint: EndpointView) => `${publicBaseUrl ?? "https://<your-public-origin>"}${endpoint.deliveryPath}`;
+
+  // Settings apply live: a new origin changes the URLs shown, and a new port reopens the listener.
+  // Changes run one at a time, so a quick second save waits for the first listener to close.
+  let disposed = false;
+  let applying = Promise.resolve();
+  settings.onChange((next, prev) => {
+    applying = applying
+      .then(async () => {
+        if (disposed) return;
+        if (next.publicBaseUrl !== prev.publicBaseUrl) publicBaseUrl = resolveBaseUrl(next.publicBaseUrl);
+        if (next.listenerPort !== prev.listenerPort) {
+          await listener?.close();
+          listener = openListener(bb, next.listenerPort, deliverer.handle);
+        }
+        checkConfiguration(next.publicBaseUrl, next.listenerPort);
+        changed();
+      })
+      .catch((error) => bb.log.error(`could not apply settings: ${error instanceof Error ? error.message : String(error)}`));
+  });
 
   deliverer.register();
   // Slack actions finish after their 200. Let them record a result before storage closes.
   bb.onDispose(async () => {
+    disposed = true;
+    await applying;
     await listener?.close();
     await deliverer.settled(10_000);
   });

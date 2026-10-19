@@ -260,12 +260,12 @@ Senders reach one of two local targets through an HTTPS tunnel or proxy:
 bb Connect cannot do this, because it needs an owner session. A Cloudflare
 named tunnel that another plugin already runs can carry a `^/webhook/` route
 to the listener. See the plugin's `docs/ingress.md`. Set **Public base URL**
-(`publicBaseUrl`), then reload the plugin, so that `show` prints the full URL:
+(`publicBaseUrl`) so that `show` prints the full URL. Both settings apply when
+saved; no reload is needed:
 
 ```sh
 bb plugin config webhooks set listenerPort 43128
 bb plugin config webhooks set publicBaseUrl https://bb.example.com
-bb plugin reload webhooks
 ```
 
 ## Troubleshooting

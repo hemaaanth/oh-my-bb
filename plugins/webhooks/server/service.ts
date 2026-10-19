@@ -58,13 +58,14 @@ export function createService(deps: {
   bb: BbPluginApi;
   store: Store;
   deliverer: Deliverer;
-  publicBaseUrl: string | null;
+  /** Read per request: the setting can change while the plugin runs. */
+  publicBaseUrl: () => string | null;
   /** The path senders use. The webhook listener's `/webhook/<id>` when it runs, else the BB route. */
-  publicPathOf?: (endpointId: string) => string;
-  changed: (endpointId: string) => void;
+  publicPathOf: (endpointId: string) => string;
+  changed: (endpointId?: string) => void;
 }) {
   const { bb, store, deliverer } = deps;
-  const publicPathOf = deps.publicPathOf ?? deliveryPathOf;
+  const { publicPathOf } = deps;
 
   const view = (record: EndpointRecord): EndpointView => {
     const rejected = deliverer.rejections(record.id);
@@ -105,7 +106,7 @@ export function createService(deps: {
   };
 
   return {
-    overview: () => ({ endpoints: store.endpoints().map(view), deliverPath: DELIVER_PATH, publicBaseUrl: deps.publicBaseUrl }),
+    overview: () => ({ endpoints: store.endpoints().map(view), deliverPath: DELIVER_PATH, publicBaseUrl: deps.publicBaseUrl() }),
 
     get(endpointId: string, limit = 20): { endpoint: EndpointView; deliveries: DeliveryView[] } {
       const record = mustGet(endpointId);

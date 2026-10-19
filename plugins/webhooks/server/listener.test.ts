@@ -136,6 +136,38 @@ describe("webhook listener", () => {
     await expect(post(`http://127.0.0.1:${port}/webhook/${ID}`, {}, "{}")).rejects.toThrow();
   });
 
+  it("opens, moves, and closes the listener when listenerPort is saved", async () => {
+    const first = await freePort();
+    const second = await freePort();
+    const host = await webhooksHost({ settings: { publicBaseUrl: "https://bb.example.com" } });
+    const pathOf = async (endpointId: string) =>
+      ((await host.harness.behavior.callRpc("webhooks_get", { endpointId })) as { endpoint: { deliveryPath: string } }).endpoint.deliveryPath;
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+    try {
+      const { endpoint } = await createEndpoint(host);
+      expect(await pathOf(endpoint.id)).toBe(`/api/v1/plugins/webhooks/http/deliver?endpoint=${endpoint.id}`);
+
+      await host.harness.behavior.setSettings({ listenerPort: String(first) });
+      await settle();
+      await waitForPort(first);
+      expect(await pathOf(endpoint.id)).toBe(`/webhook/${endpoint.id}`);
+      expect(await post(`http://127.0.0.1:${first}/webhook/${endpoint.id}`, { "content-type": "application/json" }, "{}")).toBe(401);
+
+      await host.harness.behavior.setSettings({ listenerPort: String(second) });
+      await settle();
+      await waitForPort(second);
+      await expect(post(`http://127.0.0.1:${first}/webhook/${endpoint.id}`, {}, "{}")).rejects.toThrow();
+      expect(await post(`http://127.0.0.1:${second}/webhook/${endpoint.id}`, { "content-type": "application/json" }, "{}")).toBe(401);
+
+      await host.harness.behavior.setSettings({ listenerPort: "" });
+      await settle();
+      await expect(post(`http://127.0.0.1:${second}/webhook/${endpoint.id}`, {}, "{}")).rejects.toThrow();
+      expect(await pathOf(endpoint.id)).toBe(`/api/v1/plugins/webhooks/http/deliver?endpoint=${endpoint.id}`);
+    } finally {
+      await host.harness.lifecycle.dispose();
+    }
+  });
+
   it("stays off and keeps the BB route path when listenerPort is empty", async () => {
     const host = await webhooksHost();
     try {

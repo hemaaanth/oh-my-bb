@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { needsBaseUrlMessage } from "../server.js";
-import { webhooksHost } from "./test-fakes.js";
+import { createEndpoint, webhooksHost } from "./test-fakes.js";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -17,7 +17,20 @@ describe("configuration status", () => {
     const message = needsBaseUrlMessage("");
     expect(message).toContain("publicBaseUrl");
     expect(message).toContain("bb plugin config webhooks set publicBaseUrl");
-    expect(message).toContain("bb plugin reload webhooks");
+    expect(message).toContain("Listener port");
+  });
+
+  it("says the banner clears on reload, not when the setting is saved", () => {
+    expect(needsBaseUrlMessage("")).toContain("this banner clears when the plugin next loads");
+    expect(needsBaseUrlMessage("")).toContain("bb plugin reload webhooks");
+  });
+
+  it("does not ask when a listener port is set, since a tunnel to it is a public route", async () => {
+    expect(await messages({ settings: { listenerPort: "43128" } })).toEqual([]);
+  });
+
+  it("still asks when the listener port is invalid", async () => {
+    expect(await messages({ settings: { listenerPort: "80" } })).toEqual([needsBaseUrlMessage("")]);
   });
 
   it("says the setting is invalid when it is set but unusable", async () => {
@@ -42,3 +55,51 @@ describe("configuration status", () => {
     expect(await messages({ appUrl: "http://bb.local:3000" })).toEqual([needsBaseUrlMessage("")]);
   });
 });
+
+describe("live settings", () => {
+  it("rejects values the fields cannot use", async () => {
+    const { harness } = await webhooksHost({ settings: { publicBaseUrl: "https://hooks.example.com" } });
+    await expect(harness.behavior.setSettings({ publicBaseUrl: "http://hooks.example.com" })).rejects.toThrow();
+    await expect(harness.behavior.setSettings({ listenerPort: "80" })).rejects.toThrow();
+    await harness.lifecycle.dispose();
+  });
+
+  it("applies a saved public base URL to the overview and to the CLI without a reload", async () => {
+    const host = await webhooksHost({ settings: { publicBaseUrl: "https://hooks.example.com" } });
+    try {
+      const { endpoint } = await createEndpoint(host);
+      const url = async () => ((await host.harness.behavior.callRpc("webhooks_overview")) as { publicBaseUrl: string | null }).publicBaseUrl;
+      expect(await url()).toBe("https://hooks.example.com");
+
+      const before = host.harness.inspection.realtimeSignals.length;
+      await host.harness.behavior.setSettings({ publicBaseUrl: "https://other.example.com/hooks/" });
+      await applied();
+      expect(host.harness.inspection.realtimeSignals.slice(before)).toEqual([expect.objectContaining({ channel: "webhooks-changed" })]);
+      expect(await url()).toBe("https://other.example.com/hooks");
+      const shown = await host.harness.behavior.runCli(["show", endpoint.id]);
+      expect(shown.stdout).toContain(`https://other.example.com/hooks/api/v1/plugins/webhooks/http/deliver?endpoint=${endpoint.id}`);
+
+      await host.harness.behavior.setSettings({ publicBaseUrl: null });
+      await applied();
+      expect(await url()).toBeNull();
+    } finally {
+      await host.harness.lifecycle.dispose();
+    }
+  });
+
+  it("asks for a public base URL when a saved change leaves none, and only once", async () => {
+    const host = await webhooksHost({ settings: { publicBaseUrl: "https://hooks.example.com" } });
+    try {
+      await host.harness.behavior.setSettings({ publicBaseUrl: null });
+      await applied();
+      await host.harness.behavior.setSettings({ listenerPort: "" });
+      await applied();
+      expect(host.harness.inspection.needsConfigurationMessages).toEqual([needsBaseUrlMessage("")]);
+    } finally {
+      await host.harness.lifecycle.dispose();
+    }
+  });
+});
+
+/** The settings listener applies a change on a promise chain, so let it finish. */
+const applied = () => new Promise((resolve) => setTimeout(resolve, 20));

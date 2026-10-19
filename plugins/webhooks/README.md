@@ -104,11 +104,12 @@ bb plugin install git:https://github.com/hemaaanth/oh-my-bb.git@^0.1.0 \
 2. Declare the fields the action may use, such as `event` at `event.event`.
 3. Write the message with `{{field}}` placeholders.
 4. Save. Copy the signing secret now. It is shown once.
-5. Route public HTTPS to this machine. The simplest way: set **Webhook
-   listener port** (for example `43128`) and point a tunnel's `/webhook/` path
+5. Route public HTTPS to this machine. The simplest way: set **Listener
+   port** (for example `43128`) and point a tunnel's `/webhook/` path
    at `localhost:<port>`. See [docs/ingress.md](docs/ingress.md), including how
    to share an existing Cloudflare named tunnel.
-6. Set **Public base URL** in the plugin settings, then reload the plugin.
+6. Set **Public base URL** in the plugin settings. Both settings apply when you
+   save them. No reload is needed.
 7. Paste the URL and secret into the sender.
 
 ### PostHog

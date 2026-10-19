@@ -4,8 +4,8 @@ A webhook sender, such as PostHog or Slack, must reach your machine over HTTPS.
 Webhooks does not open a public port, and it does not change BB. You put a
 tunnel or a reverse proxy in front of one of two local targets:
 
-- **The webhook listener (recommended).** Set the plugin's **Webhook listener
-  port**, for example `43128`, and reload. The plugin then listens on
+- **The webhook listener (recommended).** Set the plugin's **Listener
+  port**, for example `43128`. The plugin then listens on
   `127.0.0.1:<port>` and serves only `POST /webhook/<endpoint-id>`. Every other
   path gets 404. The tunnel never reaches the BB server, so no `Host` rewrite is
   needed and the BB API stays private. Endpoint URLs become
@@ -21,8 +21,8 @@ as Session Share with a custom hostname, Webhooks can use the same hostname. A
 remotely managed tunnel takes its routes from the Cloudflare dashboard, so
 nothing changes on this machine.
 
-1. Set **Webhook listener port** (for example `43128`) and **Public base URL**
-   (for example `https://bb.example.com`), then reload the plugin.
+1. Set **Listener port** (for example `43128`) and **Public base URL**
+   (for example `https://bb.example.com`). Both apply when saved.
 2. In the Cloudflare dashboard, open **Zero Trust → Networks → Tunnels**, choose
    the tunnel, and open **Public Hostname** (called **Published application
    routes** in newer dashboards).
@@ -152,14 +152,16 @@ upstream, the body unchanged, and 404 for everything else.
 ## Tell the plugin its public origin
 
 Set the plugin's **Public base URL** setting to the public origin, for example
-`https://hooks.example.com`. Then reload the plugin. The panel and
+`https://hooks.example.com`. It applies when saved. The panel and
 `bb webhooks show` then print the full URL to paste into the sender.
 
 - The setting must be `https://`, with no credentials, query, or fragment.
 - A path prefix is kept. Use one if your proxy serves the route under a prefix
   and strips it before forwarding.
 - If the setting is empty, the plugin uses `BB_APP_URL`. If neither is set, the
-  URLs show `https://<your-public-origin>` as a placeholder.
+  URLs show `https://<your-public-origin>` as a placeholder, and BB shows
+  "Needs configuration" for the plugin unless a listener port is set. Saving the
+  setting fixes the URLs at once. The banner clears on the next plugin load.
 
 ## Check it end to end
 
