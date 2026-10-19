@@ -5,6 +5,8 @@ import { escapeHtml, scanHtml } from "./html.js";
 import { DATA_TABLE_RUNTIME, PAGE_RUNTIME, needsDataTableRuntime, needsPageRuntime } from "./page-runtime.js";
 import { FORM_RUNTIME, needsFormRuntime } from "./form-runtime.js";
 import { hasSpecBlocks } from "./spec-baked.js";
+import { pageIcons } from "./assets.js";
+import { iconReplacements } from "./icons/expand.js";
 
 export type InjectOptions = {
   /** Base URL (absolute or relative) under which `_page/<asset>` resolves. */
@@ -48,7 +50,8 @@ export const PAGE_CSP = [
 /** Changes when the scripts injectPage adds change, so a cached preview revalidates to the new shell after a plugin update. */
 export const PREVIEW_SHELL_VERSION = createHash("sha256").update(FRAME_BRIDGE).update(PAGE_RUNTIME).update(FORM_RUNTIME).update(DATA_TABLE_RUNTIME).digest("base64url").slice(0, 8);
 
-type Insert = { at: number; text: string };
+/** Text to add at `at`, replacing `remove` characters there. */
+type Insert = { at: number; text: string; remove?: number };
 
 /** True when the HTML has a <form>. Such a page gets the forms note when shared, and is shown inline in chat by default. */
 export const hasForm = (html: string) => /<form[\s>]/iu.test(html);
@@ -57,7 +60,8 @@ export const hasForm = (html: string) => /<form[\s>]/iu.test(html);
  * Add the theme link (first in <head>, so author styles win), the font preload,
  * data-bb-theme and data-bb-frame on <html>, the frame bridge (BB previews only; other pages with a form get FORMS_OFFLINE), and before </body> the page runtime (only when the
  * page has tabs, contents, or zoomable images), the form runtime (only when it has a select, date, time, or
- * number field), the chart runtime, and the spec runtime (only when it has openui-lang blocks). Everything
+ * number field), the chart runtime, and the spec runtime (only when it has openui-lang blocks). Each empty
+ * `<i data-icon="name"></i>` with a known name becomes an inline MingCute SVG. Everything
  * else in the author's HTML stays byte-for-byte. Works on full documents,
  * documents without <html>/<head>/<body>, and bare fragments.
  */
@@ -114,10 +118,14 @@ export function injectPage(html: string, options: InjectOptions): string {
     if (specs) inserts.push({ at, text: options.inlineAssets ? `<script>${options.inlineAssets.specJs}</script>` : `<script src="${url("spec.js")}" defer></script>` });
   }
 
+  if (html.includes("data-icon")) {
+    for (const [start, end, svg] of iconReplacements(html, tags, pageIcons())) inserts.push({ at: start, text: svg, remove: end - start });
+  }
+
   let out = html;
   // Apply from the end so earlier offsets stay valid. Equal offsets keep push order.
   for (const insert of inserts.map((value, order) => ({ ...value, order })).sort((a, b) => b.at - a.at || b.order - a.order)) {
-    out = out.slice(0, insert.at) + insert.text + out.slice(insert.at);
+    out = out.slice(0, insert.at) + insert.text + out.slice(insert.at + (insert.remove ?? 0));
   }
   return out;
 }

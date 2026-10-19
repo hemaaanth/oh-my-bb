@@ -2,7 +2,7 @@
 // in chat and takes the hem.so theme on shared sites. Group files import from here, never from each other.
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { useFormName, useIsStreaming, type DefinedComponent } from "@openuidev/react-lang";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "./icons.generated.js";
 import { focusRing } from "../ui.js";
 import { useHost } from "./host.js";
 

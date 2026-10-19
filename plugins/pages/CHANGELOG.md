@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Pages has its own icon set, MingCute (Apache-2.0): about 1,650 glyphs in a
+  line and a filled style. Write `<i data-icon="name"></i>` in a page. Pages
+  swaps it for an inline SVG in every view, with no script or font. Familiar
+  names like `x`, `trash`, and `home` work too. `references/icons.md` lists
+  every name.
+- Chat components draw MingCute glyphs instead of Lucide. Icon names in
+  messages written before still work.
+- Buttons outside a form get the theme's button look. They were the
+  browser's default grey. `button.primary` is solid.
+- An inline page keeps 4px below its last line. At a fractional display
+  scale the frame could round its bottom edge down and clip the last row's
+  border.
+
 ## 0.5.0
 
 - Pages now needs BB 0.46.1 or later.

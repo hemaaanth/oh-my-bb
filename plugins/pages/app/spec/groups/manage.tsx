@@ -3,7 +3,7 @@ import { useContext, useRef, useState } from "react";
 import { defineComponent, useIsStreaming, useTriggerAction } from "@openuidev/react-lang";
 import { z } from "zod";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, Ellipsis } from "lucide-react";
+import { Check, Ellipsis } from "../icons.generated.js";
 import { PORTAL_SCOPE, menuContent, menuItem } from "../../ui.js";
 import { ReadOnlyNote, SentContext, focusRing, useReadOnly, useSpill, type Group } from "../kit.js";
 import { axisShare, boardColumns, estimateTask, estimateTotals, formatAmount, formatDay, localDay, parseDay, moveCards, placeCard, readRoadmap, statusKey, type BoardOrder, type RoadmapStatus } from "./manage-logic.js";

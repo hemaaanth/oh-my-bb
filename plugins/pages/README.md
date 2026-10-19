@@ -12,6 +12,9 @@ and provides a searchable library for finding earlier work.
 - Organize pages in logical project folders such as `Reports/Weekly`.
 - Browse prior artifacts by project, folder, or title with `page_browse`.
 - Render Markdown, themed HTML, interactive data tables, and charts.
+- Draw icons from MingCute, a less common set of about 1,650 glyphs in line
+  and filled styles. A page writes `<i data-icon="name"></i>`; chat
+  components use the same glyphs.
 - Share a page through Here.now with restricted, password, or public-link
   access. Sharing is optional and requires a Here.now API key.
 - Update a stable page by source path, key, or page id while preserving every
@@ -86,7 +89,8 @@ npm test
 npm run build
 ```
 
-Run `npm run build:charts` only after changing the chart runtime. The generated
+Run `npm run build:icons` after changing the glyph table in
+`render/icons/generate.mjs` or upgrading `mingcute_icon`. Run `npm run build:charts` only after changing the chart runtime. The generated
 bundle is committed because installed Git plugins build with production
 dependencies only.
 

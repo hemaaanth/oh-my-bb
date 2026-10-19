@@ -1,7 +1,7 @@
 // Widgets: small interactive tools: flashcards, quizzes, timers, walkthroughs. They keep their state locally.
 import { useContext, useEffect, useState, type KeyboardEvent } from "react";
 import { defineComponent, useIsStreaming, useTriggerAction } from "@openuidev/react-lang";
-import { Check, ChevronLeft, ChevronRight, Shuffle, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Shuffle, X } from "../icons.generated.js";
 import { z } from "zod";
 import { SentContext, focusRing, useReadOnly, type Group } from "../kit.js";
 import { useHost } from "../host.js";

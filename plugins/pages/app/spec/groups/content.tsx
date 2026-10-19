@@ -6,8 +6,9 @@ import {
   Clock, Cloud, Code, Coffee, CreditCard, Database, DollarSign, Download, ExternalLink, Eye, File as FileIcon, FileText, Flag, Folder, GitBranch, GitCommitHorizontal,
   GitPullRequest, Globe, GraduationCap, Heart, House, Image as ImageIcon, Info, Key, Lightbulb, Link, Lock, Mail, MapPin, MessageSquare, Minus, Moon, Package,
   Pencil, Phone, Plane, Plus, Rocket, Search, Server, Settings, Shield, ShoppingCart, Sparkles, Star, Sun, Tag as TagIcon, Target, Terminal, Train, Trash2,
-  TrendingDown, TrendingUp, TriangleAlert, Upload, User, Users, Utensils, Wrench, X, Zap, type LucideIcon,
-} from "lucide-react";
+  TrendingDown, TrendingUp, TriangleAlert, Upload, User, Users, Utensils, Wrench, X, Zap,
+} from "../icons.generated.js";
+import type { IconComponent } from "../glyph.js";
 import { z } from "zod";
 import { childProps, focusRing, toneBar, trendText, Zoomable, type Group } from "../kit.js";
 import { useHost } from "../host.js";
@@ -65,8 +66,9 @@ const Badge = defineComponent({
   component: ({ props }) => <span className={`inline-flex w-fit max-w-full items-center rounded-sm px-1.5 py-0.5 text-xs font-medium [overflow-wrap:anywhere] ${toneFill[props.tone ?? "neutral"]}`}>{props.text}</span>,
 });
 
-// A fixed allow-list keeps the bundle small; names match lucide.dev, compared without case, spaces, dashes, or underscores.
-const ICONS: Record<string, LucideIcon> = {
+// A fixed allow-list of MingCute glyphs keeps the bundle small (pages can use every glyph with <i data-icon>).
+// Names are compared without case, spaces, dashes, or underscores.
+const ICONS: Record<string, IconComponent> = {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, Book, Bookmark, Briefcase, Bug, Building: Building2, Calendar, Car, ChartBar, ChartLine, Check, CircleCheck, CircleX,
   Clock, Cloud, Code, Coffee, CreditCard, Database, DollarSign, Download, ExternalLink, Eye, File: FileIcon, FileText, Flag, Folder, GitBranch, GitCommit: GitCommitHorizontal,
   GitPullRequest, Globe, GraduationCap, Heart, Home: House, Image: ImageIcon, Info, Key, Lightbulb, Link, Lock, Mail, MapPin, Message: MessageSquare, Minus, Moon, Package,
@@ -78,7 +80,7 @@ const iconKey = (name: string) => name.toLowerCase().replace(/[\s_-]/gu, "");
 const ICON_BY_KEY = new Map(ICON_NAMES.map((name) => [iconKey(name), ICONS[name]!]));
 
 /** The allowed icon for a name, or undefined. */
-export function iconFor(name: unknown): LucideIcon | undefined {
+export function iconFor(name: unknown): IconComponent | undefined {
   return typeof name === "string" ? ICON_BY_KEY.get(iconKey(name)) : undefined;
 }
 
@@ -156,7 +158,7 @@ const pairs = z.union([z.record(z.string(), z.any()), z.array(z.array(z.any()))]
 // Opens through the host so BB picks the browser; the href stays for copy-link and semantics.
 const openWith = (openUrl: (url: string) => void, href: string) => (event: MouseEvent) => { event.preventDefault(); openUrl(href); };
 
-const kindIcon: Record<string, LucideIcon> = { person: User, place: MapPin, org: Building2, product: Package, link: Link };
+const kindIcon: Record<string, IconComponent> = { person: User, place: MapPin, org: Building2, product: Package, link: Link };
 
 const Entity = defineComponent({
   name: "Entity",

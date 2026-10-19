@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PageAssetName } from "../contract.js";
 import type { InlinePageAssets } from "./inject.js";
+import type { IconSet } from "./icons/expand.js";
 
 const CONTENT_TYPES: Record<PageAssetName, string> = {
   "theme.css": "text/css; charset=utf-8",
@@ -81,3 +82,22 @@ export function servedPageAsset(name: PageAssetName): ServedAsset {
 export function pageAssetVersions(): Record<PageAssetName, string> {
   return { "theme.css": servedPageAsset("theme.css").version, "inter.roman.var.woff2": servedPageAsset(FONT).version, "charts.js": servedPageAsset("charts.js").version, "spec.js": servedPageAsset("spec.js").version };
 }
+
+let icons: { set: IconSet; version: string } | undefined;
+const loadIcons = () => {
+  if (icons) return icons;
+  try {
+    const bytes = readFileSync(join(findAssetDirectory(), "icons.json"));
+    icons = { set: JSON.parse(bytes.toString("utf8")) as IconSet, version: createHash("sha256").update(bytes).digest("base64url").slice(0, 8) };
+  } catch {
+    // Without the file, <i data-icon> stays as written and the page still shows.
+    icons = { set: { line: {}, fill: {}, aliases: {} }, version: "none" };
+  }
+  return icons;
+};
+
+/** The MingCute glyphs for `<i data-icon>`, from assets/icons.json, read once. Server only: pages get inline SVG, never this file. */
+export const pageIcons = (): IconSet => loadIcons().set;
+
+/** Changes when assets/icons.json changes, so cached previews pick up new glyphs. */
+export const pageIconsVersion = (): string => loadIcons().version;

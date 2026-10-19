@@ -4,8 +4,8 @@ import { FormNameContext, action, defineComponent, reactive, useFormName, useGet
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, Bookmark, Bug, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleHelp, Clock, Code, Copy, Download, Ellipsis, ExternalLink, Eye, File, Filter,
   Folder, GitBranch, Heart, House, Info, Lightbulb, Link, Lock, Mail, Minus, Pause, Pencil, Play, Plus, RefreshCw, Rocket, Search, Send, Settings, Share, Sparkles, Star, ThumbsDown, ThumbsUp, Trash2, TriangleAlert, Upload, User, X, Zap,
-  type LucideIcon,
-} from "lucide-react";
+} from "../icons.generated.js";
+import type { IconComponent } from "../glyph.js";
 import { z } from "zod";
 import { Label, ReadOnlyNote, SentContext, field, focusRing, useLocked, useReadOnly, type Group } from "../kit.js";
 
@@ -71,7 +71,7 @@ function Titled({ label, name, role = "group", aside, children }: { label?: stri
   </div>;
 }
 
-const ICONS: Record<string, LucideIcon> = {
+const ICONS: Record<string, IconComponent> = {
   arrowdown: ArrowDown, arrowleft: ArrowLeft, arrowright: ArrowRight, arrowup: ArrowUp, bell: Bell, bookmark: Bookmark, bug: Bug, calendar: Calendar, check: Check, chevrondown: ChevronDown, chevronleft: ChevronLeft,
   chevronright: ChevronRight, chevronup: ChevronUp, help: CircleHelp, clock: Clock, code: Code, copy: Copy, download: Download, more: Ellipsis, external: ExternalLink, eye: Eye, file: File, filter: Filter, folder: Folder,
   branch: GitBranch, heart: Heart, home: House, info: Info, idea: Lightbulb, link: Link, lock: Lock, mail: Mail, minus: Minus, pause: Pause, edit: Pencil, play: Play, plus: Plus, refresh: RefreshCw, rocket: Rocket,
@@ -79,7 +79,7 @@ const ICONS: Record<string, LucideIcon> = {
 };
 const ICON_NAMES = Object.keys(ICONS).join(", ");
 /** An allowed icon by name, ignoring case and dashes ("arrow-right", "ArrowRight"). */
-const iconFor = (name: string | undefined): LucideIcon | undefined => (name ? ICONS[name.toLowerCase().replace(/[^a-z0-9]/g, "")] : undefined);
+const iconFor = (name: string | undefined): IconComponent | undefined => (name ? ICONS[name.toLowerCase().replace(/[^a-z0-9]/g, "")] : undefined);
 
 const Input = defineComponent({
   name: "Input",

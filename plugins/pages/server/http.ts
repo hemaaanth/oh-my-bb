@@ -11,7 +11,7 @@
 // links to other folder files pointed at `./v` or `./a`; see render/folder.ts for why.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { PAGE_ASSET_NAMES } from "../contract.js";
-import { PAGE_CSP, PREVIEW_SHELL_VERSION, inlinedPageAssets, inspectCharts, injectPage, pageAssetVersions, rewriteFolderCss, rewriteFolderHtml, servedPageAsset, type FolderRefs } from "../render/index.js";
+import { PAGE_CSP, PREVIEW_SHELL_VERSION, inlinedPageAssets, inspectCharts, injectPage, pageAssetVersions, pageIconsVersion, rewriteFolderCss, rewriteFolderHtml, servedPageAsset, type FolderRefs } from "../render/index.js";
 import { FileSourceError, readSourceFile } from "./files.js";
 import { inlineLocalImages } from "./images.js";
 import { sourceHtml } from "./service.js";
@@ -34,7 +34,7 @@ export function registerRoutes(bb: BbPluginApi, store: PageStore) {
   const assetVersions = (() => { try { return pageAssetVersions(); } catch { return {}; } })();
   const inlineAssets = (() => { try { return inlinedPageAssets(); } catch { return undefined; } })();
   // Changes when the assets or injected scripts change, so a plugin update never revalidates to old HTML.
-  const assetsTag = `${inlineAssets ? "inline" : "linked"}.${Object.values(assetVersions).join(".").slice(0, 24) || "none"}.${PREVIEW_SHELL_VERSION}`;
+  const assetsTag = `${inlineAssets ? "inline" : "linked"}.${Object.values(assetVersions).join(".").slice(0, 24) || "none"}.${PREVIEW_SHELL_VERSION}.${pageIconsVersion()}`;
 
   /** Folder file lookup for the rewriter. index.html is the version's HTML. */
   const folderRefs = (stored: StoredHtml): FolderRefs => {

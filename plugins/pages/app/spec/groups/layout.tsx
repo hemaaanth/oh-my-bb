@@ -1,7 +1,7 @@
 // Layout: how the parts of a UI sit together.
 import { createContext, useContext, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { defineComponent, useIsStreaming } from "@openuidev/react-lang";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "../icons.generated.js";
 import { z } from "zod";
 import { Chevron, Reveal, childProps, focusRing, gaps, type Group } from "../kit.js";
 

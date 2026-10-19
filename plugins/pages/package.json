@@ -43,13 +43,13 @@
     "build:spec": "node render/spec-runtime/build.mjs",
     "build": "bb plugin build && node render/spec-runtime/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:icons": "node render/icons/build.mjs"
   },
   "dependencies": {
     "@openuidev/lang-core": "1.0.1",
     "@openuidev/react-lang": "1.0.1",
     "highcharts": "13.0.0",
-    "lucide-react": "0.575.0",
     "markdown-it": "^14.1.0",
     "zod": "^4.3.6"
   },
@@ -80,6 +80,7 @@
     "esbuild": "0.28.2",
     "hono": "^4.11.9",
     "jsdom": "26.1.0",
+    "mingcute_icon": "2.9.72",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "sonner": "^1.7.4",

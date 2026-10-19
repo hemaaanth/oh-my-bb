@@ -290,6 +290,9 @@ checkbox, radio, and range. Use these classes for layout:
   them in a row. A `<small>` in a tile is its description.
 - `.actions` is the button row. The first submit button is solid. Later
   buttons, and `button.secondary`, are quiet. `button.danger` is red.
+- Buttons outside a form, like Play buttons in a table row, get the same
+  look. They are quiet; `button.primary` is solid. Do not style buttons
+  yourself.
 - `aria-invalid="true"` marks a field red. `required` fields turn red only
   after the user has touched them.
 
@@ -409,6 +412,30 @@ so both themes keep working.
 - `span.badge` is a small status word. Use it rarely.
 - `td.num`, `th.num` right-align numbers.
 - `ol.findings` lists findings: `<li><span class="sev important"></span><strong>Title</strong><span class="loc">path:12</span><p>…</p></li>`.
+
+### Icons
+
+Pages has its own icon set, MingCute: about 1,650 glyphs, each in a line
+and a filled style. Write an empty `<i data-icon="name"></i>`. Pages swaps it
+for an inline SVG in every view: inline, card, panel, and shared sites. Do not
+paste SVG icons or load another icon set.
+
+```html
+<button class="primary"><i data-icon="send"></i>Send</button>
+<li><i data-icon="check-circle" style="color: var(--bb-positive)"></i> Tests pass</li>
+<h2><i data-icon="star-fill"></i> Highlights</h2>
+```
+
+- The icon is one em square on the text's line, in the text's colour. Size
+  it with `font-size` and colour it with `color`.
+- Familiar names work: `x`, `trash`, `edit`, `home`, `warning`, `external`,
+  `more`, `settings`. Add `-fill` for the filled style. An unknown name shows
+  nothing. Read `references/icons.md` for every name.
+- An icon only decorates, so screen readers skip it. Give it `aria-label`
+  when it stands alone and carries meaning, as in an icon-only button.
+- Use icons to help scanning: a status, an action, a list of kinds. One per
+  item at most. Do not decorate every heading.
+- Markdown pages cannot use icons; they turn off raw HTML. Use an HTML page.
 
 ## Design rules
 

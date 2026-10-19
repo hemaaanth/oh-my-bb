@@ -3,7 +3,8 @@
 // or is off, the component says so quietly and still draws what it can.
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent, type RefObject } from "react";
 import { defineComponent, useIsStreaming } from "@openuidev/react-lang";
-import { ArrowUpRight, Image as ImageIcon, Maximize2, Minus, Plus, X, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, Image as ImageIcon, Maximize2, Minus, Plus, X } from "../icons.generated.js";
+import type { IconComponent } from "../glyph.js";
 import { z } from "zod";
 import { childProps, focusRing, Lightbox, lightboxImage, type Group } from "../kit.js";
 import { useHost, type Host, type WebMethod } from "../host.js";
@@ -289,7 +290,7 @@ function MapBody({ markers, areas, center, zoom }: { markers: unknown[]; areas: 
   const shape = shapes.find((s) => s.key === active);
   const shapeCenter = shape ? centroid(shape.points) : null;
   const notes = [...new Set([tileError, ...names.map((name) => found[placeKey(name)])].filter((note): note is string => typeof note === "string" && note !== ""))];
-  const control = (label: string, Icon: LucideIcon, onClick: () => void, disabled: boolean) => <button type="button" aria-label={label} title={label} onClick={onClick} disabled={disabled}
+  const control = (label: string, Icon: IconComponent, onClick: () => void, disabled: boolean) => <button type="button" aria-label={label} title={label} onClick={onClick} disabled={disabled}
     className={`inline-flex size-7 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-foreground hover:bg-state-hover disabled:cursor-default disabled:text-muted-foreground disabled:hover:bg-transparent ${focusRing}`}><Icon aria-hidden className="size-3.5" /></button>;
 
   return <div className="flex min-w-0 flex-col gap-1.5">

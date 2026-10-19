@@ -28,6 +28,18 @@ SIL Open Font License 1.1.
 - Source: https://github.com/rsms/inter
 - License: `licenses/Inter-OFL.txt`
 
+## MingCute
+
+Pages draws MingCute icons. The glyph paths are copied, with colours
+removed, into `assets/icons.json` (icons on pages) and
+`app/spec/icons.generated.tsx` (chat components). They come from the
+`mingcute_icon` 2.9.72 npm package, by Richard9394 (MingCute Design), under
+the Apache License 2.0.
+The project has no NOTICE file.
+
+- Source: https://github.com/Richard9394/MingCute
+- License: `licenses/MingCute-Apache-2.0.txt`
+
 ## OpenUI
 
 Pages renders ```` ```openui-lang ```` fences with `@openuidev/lang-core` and

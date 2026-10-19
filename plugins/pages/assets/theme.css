@@ -220,6 +220,13 @@
 :where(blockquote) { padding-left: 1.25em; margin-left: 0; color: var(--bb-muted); }
 :where(blockquote > :last-child) { margin-bottom: 0; }
 
+/* Icons: <i data-icon="name"> becomes svg.icon, a MingCute glyph. It is one
+ * em square, sits on the text's line, and takes the text's colour, so set
+ * font-size or color on it (or its parent) to change it. In a button the
+ * button's gap spaces it from the label. */
+:where(svg.icon) { display: inline-block; width: 1em; height: 1em; flex-shrink: 0; vertical-align: -0.125em; fill: currentColor; }
+:where(:is(button, .button) > svg.icon) { width: 1.125em; height: 1.125em; }
+
 /* ---- Code -------------------------------------------------------------
  * Inline: a quiet tint that keeps the line height. Blocks: a soft fill,
  * no outline, text on the mono step. The block trims its first and last line
@@ -400,9 +407,11 @@
 :where(.choices > label:has(:focus-visible)) { outline: 2px solid var(--bb-accent); outline-offset: 2px; }
 :where(.choices > label:has(:focus-visible) > input) { outline: none; }
 
-/* Buttons. The first submit button is solid in the heading colour; others,
- * .secondary, and plain buttons are quiet. */
-:where(form button, form input:is([type="submit"], [type="button"], [type="reset"]), .button) {
+/* Buttons, in a form or not. The first submit button of a form, and
+ * button.primary, are solid in the heading colour; others, .secondary, and
+ * plain buttons are quiet. The runtime's own controls (tabs, data tables,
+ * pickers, the image lightbox) keep their own look. */
+:where(form button, form input:is([type="submit"], [type="button"], [type="reset"]), button:not(.tab-list *, .image-lightbox *, [class*="data-table"], [class*="data-table"] *, [class*="bb-picker"] *, .bb-number-step), .button) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -423,20 +432,20 @@
   cursor: pointer;
   transition: background-color 150ms, border-color 150ms, color 150ms, opacity 150ms;
 }
-:where(form button, form input:is([type="submit"], [type="button"], [type="reset"]), .button):where(:hover:not(:disabled)) { background: var(--bb-hover); }
-:where(form :is(button:not([type]), button[type="submit"], input[type="submit"]):not(.secondary), .button.primary) {
+:where(form button, form input:is([type="submit"], [type="button"], [type="reset"]), button:not(.tab-list *, .image-lightbox *, [class*="data-table"], [class*="data-table"] *, [class*="bb-picker"] *, .bb-number-step), .button):where(:hover:not(:disabled)) { background: var(--bb-hover); }
+:where(form :is(button:not([type]), button[type="submit"], input[type="submit"]):not(.secondary), :is(button, .button).primary) {
   border-color: var(--bb-strong);
   background: var(--bb-strong);
   color: var(--bb-bg);
 }
-:where(form :is(button:not([type]), button[type="submit"], input[type="submit"]):not(.secondary), .button.primary):where(:hover:not(:disabled)) { background: var(--bb-strong); opacity: 0.86; }
+:where(form :is(button:not([type]), button[type="submit"], input[type="submit"]):not(.secondary), :is(button, .button).primary):where(:hover:not(:disabled)) { background: var(--bb-strong); opacity: 0.86; }
 :where(form :is(button:not([type]), button[type="submit"], input[type="submit"]):not(.secondary) ~ :is(button:not([type]), button[type="submit"], input[type="submit"])) {
   border-color: var(--bb-rule);
   background: transparent;
   color: var(--bb-strong);
 }
 :where(form :is(button:not([type]), button[type="submit"], input[type="submit"]):not(.secondary) ~ :is(button:not([type]), button[type="submit"], input[type="submit"])):where(:hover:not(:disabled)) { background: var(--bb-hover); opacity: 1; }
-:where(form button, form input:is([type="submit"], [type="button"], [type="reset"]), .button):where(:focus-visible) { outline: 2px solid var(--bb-accent); outline-offset: 2px; }
+:where(form button, form input:is([type="submit"], [type="button"], [type="reset"]), button:not(.tab-list *, .image-lightbox *, [class*="data-table"], [class*="data-table"] *, [class*="bb-picker"] *, .bb-number-step), .button):where(:focus-visible) { outline: 2px solid var(--bb-accent); outline-offset: 2px; }
 :where(.danger:is(button, input, .button)) { color: var(--bb-negative); }
 
 :where(.actions) {
@@ -1133,6 +1142,10 @@
 :where(:root[data-bb-frame="inline"] :is(.page, .page.wide, .page.dashboard, body:not(:has(.page)))) { width: auto; margin: 0; padding: 0; }
 :where(:root[data-bb-frame="inline"] form) { padding: 0 2px; }
 :where(:root[data-bb-frame="inline"] body:not(:has(.page)) > :last-child) { margin-bottom: 0; }
+/* 4px below the last line, the reach of a focus ring, so the last row's
+ * border and ring stay inside the frame when the display scale rounds its
+ * bottom edge down. */
+:where(:root[data-bb-frame="inline"] body) { padding-bottom: 4px; }
 :where(:root[data-bb-frame="inline"]:is(:has(> body.auto), [data-bb-theme="light"]:not(:has(> body.dark)), [data-bb-theme="dark"]:has(> body.dark))),
 :where(:root[data-bb-frame="inline"]:is(:has(> body.auto), [data-bb-theme="light"]:not(:has(> body.dark)), [data-bb-theme="dark"]:has(> body.dark)) > body) { background: transparent; }
 
