@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0
 
+- First tagged release: runs Prime Agent 0.10.0 as an ACP agent through BB Model Gateway.
 - `--version` reads the version from `package.json` instead of a hard-coded `0.1.0`.
 - Toolchain moves to vitest 4.1, TypeScript 5.9 and `@types/node` 22.20. The tsconfig now
   matches the other agent packages and type-checks the tests.
