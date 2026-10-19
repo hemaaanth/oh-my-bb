@@ -18,7 +18,7 @@ It is a standalone Node package, not a BB plugin. Model Gateway does not install
 Node 22.13 or later, and `fx` on `PATH`. `fx-acp` has no runtime dependencies.
 
 ```bash
-git clone --depth 1 https://github.com/hemaaanth/oh-my-bb.git
+git clone --depth 1 --branch fx-acp/v0.1.0 https://github.com/hemaaanth/oh-my-bb.git
 npm pack --pack-destination . ./oh-my-bb/agents/fx-acp
 npm install --global ./fx-acp-0.1.0.tgz
 ```
@@ -33,7 +33,8 @@ The relay then uses the host-reachable gateway URLs. The query token is not
 written to disk. No OAuth file is copied or fabricated.
 
 Without gateway env, standalone FX keeps its existing local login behavior.
-One missing URL is an error, not a fallback to local auth.
+One missing URL is an error, not a fallback to local auth. `fx-acp` prints the reason on
+stderr, never the URLs, and exits 1.
 
 ## Register in BB
 
@@ -67,7 +68,8 @@ entry.
 ## Test
 
 ```bash
-npm install
-npm test          # vitest, fake FX and a local HTTP server; no paid requests
+npm ci
 npm run typecheck
+npm test          # vitest, fake FX and a local HTTP server; no paid requests
+npm run build     # node --check
 ```

@@ -1,6 +1,8 @@
+import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { afterEach, expect, it } from "vitest";
+import { fileURLToPath } from "node:url";
 import { gatewayEnvironment } from "../fx-acp.mjs";
 
 /** @type {Array<() => void | Promise<unknown>>} */
@@ -49,4 +51,24 @@ it("leaves standalone FX unchanged but refuses an incomplete gateway pair", asyn
   expect(standalone.env).toBe(env);
   standalone.close();
   await expect(gatewayEnvironment({ FX_E2E_OPENAI_CODEX_MODELS_URL: "https://host.example/models" })).rejects.toThrow(/Both/);
+});
+
+it("tells the user why it cannot start, without echoing the gateway URL", () => {
+  const bin = fileURLToPath(new URL("../fx-acp.mjs", import.meta.url));
+  const run = (/** @type {Record<string, string>} */ env) =>
+    spawnSync(process.execPath, [bin], { env: { PATH: process.env.PATH, ...env }, encoding: "utf8" });
+  const secret = "gateway_token=fake-test-value";
+  const incomplete = run({ FX_E2E_OPENAI_CODEX_MODELS_URL: `https://host.example/models?${secret}` });
+  expect(incomplete.status).toBe(1);
+  expect(incomplete.stderr).toBe("fx-acp: Both FX gateway URLs are required.\n");
+  const credentials = run({
+    FX_E2E_OPENAI_CODEX_RESPONSES_URL: `https://user:pw@host.example/responses?${secret}`,
+    FX_E2E_OPENAI_CODEX_MODELS_URL: `https://host.example/models?${secret}`,
+  });
+  expect(credentials.status).toBe(1);
+  expect(credentials.stderr).toContain("without embedded credentials");
+  expect(credentials.stderr).not.toContain(secret);
+  const malformed = run({ FX_E2E_OPENAI_CODEX_RESPONSES_URL: "not a url", FX_E2E_OPENAI_CODEX_MODELS_URL: "not a url" });
+  expect(malformed.status).toBe(1);
+  expect(malformed.stderr).toMatch(/^fx-acp: .+\n$/);
 });

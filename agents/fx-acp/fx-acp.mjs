@@ -228,4 +228,8 @@ async function main() {
 }
 
 if (process.argv[1] !== undefined && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url))
-  main().catch(() => { console.error("fx-acp: cannot configure gateway relay."); process.exitCode = 1; });
+  main().catch((error) => {
+    // The messages come from gatewayEnvironment and never include the URLs, which carry the hub token.
+    console.error(`fx-acp: ${error instanceof Error ? error.message : "cannot configure gateway relay."}`);
+    process.exitCode = 1;
+  });

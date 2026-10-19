@@ -13,7 +13,12 @@
   "bugs": {
     "url": "https://github.com/hemaaanth/oh-my-bb/issues"
   },
-  "keywords": ["acp", "bb", "codex", "fx"],
+  "keywords": [
+    "acp",
+    "bb",
+    "codex",
+    "fx"
+  ],
   "type": "module",
   "bin": {
     "fx-acp": "./fx-acp.mjs"
@@ -25,12 +30,13 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "build": "node --check fx-acp.mjs",
     "typecheck": "tsc -p .",
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^5.7.0",
-    "vitest": "^3.2.4"
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   }
 }
