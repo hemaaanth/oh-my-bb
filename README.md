@@ -35,14 +35,17 @@ as `fx-acp/v0.1.0`.
 - [`plugins/pages`](plugins/pages) publishes versioned HTML and Markdown
   artifacts, organizes them in project folders, and optionally shares them.
 - [`plugins/webhooks`](plugins/webhooks) receives signed webhooks, including Slack
-  events and slash commands, on configured endpoints and turns approved fields into a thread message, a new thread, or an
-  Automations run.
+  events and slash commands, on configured endpoints and turns approved fields into a
+  thread message, a new thread, an Automations run, or a call to a plugin that accepts
+  deliveries.
 - [`agents/fx-acp`](agents/fx-acp) is an optional standalone ACP adapter for FX.
 - [`agents/nanocodex-acp`](agents/nanocodex-acp) is an optional standalone ACP
   adapter for nanocodex.
+- [`agents/prime-agent-acp`](agents/prime-agent-acp) is an optional standalone ACP
+  adapter for Prime Agent.
 
 The agent adapters are not installed by Model Gateway. Model Gateway runs without
-either adapter, and each adapter has its own package manifest and tests.
+any adapter, and each adapter has its own package manifest and tests.
 
 Pages runs without another BB plugin. Its optional chart feature bundles
 Highcharts; each user must obtain and manage the Highcharts license required
@@ -59,4 +62,6 @@ path; see [`plugins/webhooks/docs/ingress.md`](plugins/webhooks/docs/ingress.md)
 ./scripts/check.sh
 ```
 
-The same package-local checks run in CI.
+The same package-local checks run in CI. `scripts/packages.txt` is the one list of
+packages that `check.sh` and CI both read. To add a package, add its directory there.
+`./scripts/check.sh plugins/pages` checks one package.
