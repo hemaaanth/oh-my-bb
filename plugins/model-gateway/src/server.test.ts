@@ -27,6 +27,7 @@ import { DEFAULT_AUTO, DEFAULT_CHAINS, DEFAULT_MODEL_MAP } from "./chain.js";
 import {
   createAccountPoolPlugin,
   helloResponse,
+  NEEDS_ACCOUNT_MESSAGE,
   type AccountPoolPluginOptions,
 } from "./server.js";
 
@@ -1127,6 +1128,61 @@ describe("Account Pool plugin", () => {
     }
   });
 
+  describe("configuration status", () => {
+    async function loadWithAccounts(enabled: boolean[]) {
+      const dataDir = await mkdtemp(path.join(tmpdir(), "bb-model-gateway-"));
+      const host = createFakePluginHost({
+        pluginId: "model-gateway",
+        dataDir,
+        sdk: sdkStubs(),
+      });
+      const accounts = new AccountStore(
+        host.bb.storage.kv,
+        path.join(dataDir, "plugins", "model-gateway", "secrets", "accounts"),
+      );
+      for (const [index, isEnabled] of enabled.entries()) {
+        await accounts.add(
+          {
+            provider: "claude",
+            kind: "api-key",
+            label: `account-${index}`,
+            email: null,
+            accountUuid: null,
+            subscriptionType: null,
+            rateLimitTier: null,
+            enabled: isEnabled,
+            priority: 100 + index,
+          },
+          { kind: "api-key", apiKey: `sk-seeded-${index}` },
+        );
+      }
+      await createAccountPoolPlugin()(host.bb);
+      cleanups.push(async () => {
+        await host.harness.lifecycle.dispose();
+        await fs.rm(dataDir, { recursive: true, force: true });
+      });
+      return host;
+    }
+
+    it("does not ask for configuration when an account is enabled", async () => {
+      const host = await loadWithAccounts([false, true]);
+      expect(host.harness.inspection.needsConfigurationMessages).toEqual([]);
+    });
+
+    it("asks for configuration when every account is disabled", async () => {
+      const host = await loadWithAccounts([false]);
+      expect(host.harness.inspection.needsConfigurationMessages).toEqual([
+        NEEDS_ACCOUNT_MESSAGE,
+      ]);
+    });
+
+    it("names the commands that fix it", () => {
+      expect(NEEDS_ACCOUNT_MESSAGE).toContain("bb gateway account add");
+      expect(NEEDS_ACCOUNT_MESSAGE).toContain("bb gateway key add");
+      expect(NEEDS_ACCOUNT_MESSAGE).toContain("bb plugin reload model-gateway");
+    });
+  });
+
   it("forwards the next request after adding the first account through the CLI", async () => {
     let forwarded = 0;
     const upstream = await startUpstream(async (request, response) => {
@@ -1175,7 +1231,7 @@ describe("Account Pool plugin", () => {
       }),
     ).resolves.toBeNull();
     expect(host.harness.inspection.needsConfigurationMessages).toEqual([
-      "Add and enable a Claude or Codex account with `bb gateway account add`.",
+      NEEDS_ACCOUNT_MESSAGE,
     ]);
     const hello = helloResponse();
     expect(hello.status).toBe(200);

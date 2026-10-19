@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The "Needs configuration" message, shown when no account or API key is
+  enabled, now names `bb gateway account add` and `bb gateway key add`, and
+  says to run `bb plugin reload model-gateway` afterwards, because adding an
+  account does not clear the banner by itself.
 - Every non-Claude harness goes through the Gateway. Hempi and `agent-<uuid>`
   providers get per-thread Pi Gateway env, found from the provider catalog and
   rescanned when registrations change. The new `acp-prime-agent` harness runs

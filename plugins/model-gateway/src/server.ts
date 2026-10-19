@@ -53,6 +53,11 @@ import {
   type Harness,
 } from "./chain.js";
 
+// Shown in `bb plugin list` and the plugin page. The banner clears on the next
+// load, and adding an account does not reload the plugin, so the message says to.
+export const NEEDS_ACCOUNT_MESSAGE =
+  "No Claude or Codex account or API key is enabled. Add one with `bb gateway account add` or `bb gateway key add`, then run `bb plugin reload model-gateway`.";
+
 export interface AccountPoolPluginOptions {
   fetch?: typeof fetch;
   now?: () => number;
@@ -196,9 +201,7 @@ export function createAccountPoolPlugin(
           isLegalUpstream(upstreamKind(account), harness, "/v1/responses"),
         );
     if ((await accounts.list()).every((account) => !account.enabled)) {
-      bb.status.needsConfiguration(
-        "Add and enable a Claude or Codex account with `bb gateway account add`.",
-      );
+      bb.status.needsConfiguration(NEEDS_ACCOUNT_MESSAGE);
     }
     bb.rpc.register(
       accountPoolRpcContract,
