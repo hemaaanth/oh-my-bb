@@ -1,4 +1,4 @@
-// Appearance (SPEC §12.4): the pet preview with a mood picker, the look controls,
+// Appearance (SPEC §12.4): the real pet with a mood picker, the look controls,
 // and the pointer ghost switch. Every look change writes the whole `pet` object.
 import { useRef, useState } from "react";
 import { PET_MOODS, type PetMood } from "../../shared/constants.js";
@@ -9,12 +9,15 @@ import { cn } from "../lib/utils";
 import { usePreferences } from "./data.js";
 import { readPointerGhost, useDeviceValue, writePointerGhost } from "./device.js";
 import { Group, Loading, Note, Row } from "./layout.js";
-import { PetPreview } from "./pet-preview.js";
+import { Pet } from "../pet/pet.js";
+import { FACE_LABEL, type PetFace } from "../pet/mood.js";
 import { LOCAL_KEYS } from "../../shared/constants.js";
 
 const PRESET_COLORS = ["#e5484d", "#f76b15", "#ffc53d", "#30a46c", "#0090ff", "#8e4ec6", "#e93d82"];
 const HEX = /^#[0-9a-f]{6}$/i;
 const capitalise = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+/** The pet face for each mood chip. FACE_LABEL names each face; this reads it backwards. */
+const FACE_FOR = Object.fromEntries(Object.entries(FACE_LABEL).map(([face, mood]) => [mood, face])) as Record<PetMood, PetFace>;
 
 /** Turns a stream of look changes into writes, one at a time. The newest change waits its turn. */
 function useLookWriter(write: (look: PetLook) => Promise<boolean>, onIdle: () => void) {
@@ -65,7 +68,9 @@ export function AppearanceSection() {
   return (
     <Group>
       <div className="flex flex-col items-center gap-3 py-3">
-        <PetPreview mood={mood} look={look} />
+        <span role="img" aria-label={`Pet preview, ${mood}`} data-mood={mood}>
+          <Pet face={FACE_FOR[mood]} look={look} className="dispatch-pet-preview" />
+        </span>
         <div role="group" aria-label="Preview mood" className="flex flex-wrap justify-center gap-1.5">
           {PET_MOODS.map((name) => (
             <Button key={name} variant={name === mood ? "secondary" : "ghost"} size="sm" aria-pressed={name === mood} onClick={() => setMood(name)}>

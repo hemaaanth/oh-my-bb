@@ -19,6 +19,12 @@
 .dispatch-pet-footer {
   margin: -2px;
 }
+/* The Appearance preview: the same pet, large, on the page background. */
+.dispatch-pet-preview {
+  --sidebar: var(--background);
+  width: 120px;
+  height: 120px;
+}
 .dispatch-pet-mini {
   width: 20px;
   height: 20px;

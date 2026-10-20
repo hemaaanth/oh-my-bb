@@ -30,7 +30,11 @@ describe("Appearance", () => {
     const preview = await screen.findByRole("img", { name: /Pet preview/ });
     expect(preview.getAttribute("data-mood")).toBe("awake");
     fireEvent.click(screen.getByRole("button", { name: "Asleep" }));
-    expect(screen.getByRole("img", { name: /Pet preview/ }).getAttribute("data-mood")).toBe("asleep");
+    const asleep = screen.getByRole("img", { name: /Pet preview/ });
+    expect(asleep.getAttribute("data-mood")).toBe("asleep");
+    // The preview is the footer's own pet, showing the matching face.
+    expect(asleep.querySelector(".dispatch-pet")?.getAttribute("data-mood")).toBe("sleep");
+    expect(asleep.querySelector("agent-robot-avatar")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Asleep" }).getAttribute("aria-pressed")).toBe("true");
   });
 
