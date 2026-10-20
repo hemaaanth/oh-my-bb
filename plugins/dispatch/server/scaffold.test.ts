@@ -100,3 +100,20 @@ describe("registration", () => {
   });
 
 });
+
+describe("wiring", () => {
+  it("bb dispatch --help lists every command from core, phone and import", async () => {
+    const { harness } = await load();
+    const help = await harness.runCli(["--help"]);
+    expect(help.exitCode).toBe(0);
+    const listed = [...help.stdout.matchAll(/^ {2}bb dispatch ([a-z]+) /gm)].map((match) => match[1]);
+    expect(listed).toEqual(["live", "read", "usage", "stop", "mute", "unmute", "status", "call", "import"]);
+  });
+
+  it("the import command takes --apply, --dry-run, --include-legacy-usage and --json", async () => {
+    const { harness } = await load();
+    const help = await harness.runCli(["import", "--help"]);
+    expect(help.exitCode).toBe(0);
+    for (const flag of ["--from", "--apply", "--dry-run", "--include-legacy-usage", "--json"]) expect(help.stdout).toContain(flag);
+  });
+});
