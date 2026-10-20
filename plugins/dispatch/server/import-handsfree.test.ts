@@ -130,7 +130,8 @@ describe("dry run", () => {
     expect(await bb.storage.kv.get("preferences")).toBeUndefined();
     expect(await bb.storage.kv.get("import.handsfree")).toBeUndefined();
     expect((await readSettings()).openaiKey).toBeFalsy();
-    expect(harness.inspection.realtimeSignals).toEqual([]);
+    // Load publishes setup-updated once; the dry run itself must publish nothing.
+    expect(harness.inspection.realtimeSignals.filter((s) => s.channel !== "setup-updated")).toEqual([]);
     expect(hashOf(fixture.dbPath)).toBe(before);
   });
 

@@ -99,8 +99,4 @@ describe("registration", () => {
     );
   });
 
-  it("answers placeholder methods with a plain sentence", async () => {
-    const { harness } = await load({ openaiKey: "sk-test" });
-    await expect(harness.callRpc("setupStatus", {})).rejects.toThrow(/Dispatch cannot do setupStatus yet/);
-  });
 });
