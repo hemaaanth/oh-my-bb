@@ -1,7 +1,7 @@
 // Who is on a call right now, for the console header and the sidebar badge.
 // The server's live status gives the starting point. The `presence` channel
 // pushes every change after that, and each push refreshes the live status.
-import { useRealtime, useRpc, type PluginNavPanelRegistration } from "@get-bb/plugin-sdk/app";
+import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CHANNELS } from "../../shared/constants.js";
 import type { LiveStatus, Presence, RpcContract } from "../../shared/contract.js";
@@ -65,11 +65,14 @@ export function useCallState(): CallState {
   };
 }
 
+export type ConsoleBadge = { text: string; tone?: "warning"; label: string };
+
 /**
- * The sidebar badge for the Dispatch entry. P2 passes this to the nav panel
- * as `experimental_useBadge`. It is a dot-sized "Live" while a call runs.
+ * The sidebar badge for the Dispatch entry: a dot-sized "Live" while a call
+ * runs. ConsoleSidebarAccessory renders it, because stable BB (SDK 0.6.49)
+ * has no `experimental_useBadge` hook yet.
  */
-export const useConsoleBadge: NonNullable<PluginNavPanelRegistration["experimental_useBadge"]> = () => {
+export const useConsoleBadge = (): ConsoleBadge | null => {
   const state = useCallState();
   if (!state.live) return null;
   return state.muted ? { text: "Muted", tone: "warning", label: "Dispatch call is live and muted" } : { text: "Live", label: "Dispatch call is live" };

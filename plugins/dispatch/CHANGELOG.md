@@ -32,4 +32,7 @@
   `unmute`, `call`, and `import`. An agent skill explains them.
 - A one-time import from the earlier voice plugin, `bb dispatch import --from
   handsfree`. It is a dry run unless `--apply` is given.
-- Requires bb 0.46.1 or later and plugin SDK 0.6.54 or later.
+- Requires bb 0.46.1 or later and plugin SDK 0.6.49 or later. The sidebar
+  "Live" pill uses `experimental_sidebarAccessory`; SDK 0.6.53 and later
+  ignore that field, so the pill is hidden there until Dispatch moves to
+  `experimental_useBadge`.

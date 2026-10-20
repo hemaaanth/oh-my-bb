@@ -32,7 +32,7 @@ const engine = vi.hoisted(() => ({
 }));
 vi.mock("@/voice/engine.js", () => engine);
 
-const { useConsoleBadge } = await import("./console/index.js");
+const { ConsoleSidebarAccessory } = await import("./console/index.js");
 const app = await loadPluginApp(() => import("./index.js"));
 
 /** The test harness does not collect palette commands, so run setup against a recording stand-in. */
@@ -71,7 +71,7 @@ describe("app registration", () => {
 
   it("registers the console with its badge and no Views on desktop", () => {
     expect(app.navPanels.map((panel) => [panel.id, panel.title, panel.fixedTabs ?? []])).toEqual([["console", "Dispatch", []]]);
-    expect(app.navPanels[0]!.experimental_useBadge).toBe(useConsoleBadge);
+    expect(app.navPanels[0]!.experimental_sidebarAccessory).toBe(ConsoleSidebarAccessory);
     expect(app.threadPanelActions).toEqual([]);
   });
 

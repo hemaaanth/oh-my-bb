@@ -1,18 +1,30 @@
 // The Dispatch console: header, calls list, transcript, and usage (SPEC §13).
 // Owned by P4. app/index.tsx renders ConsolePanel as the nav panel body, and
-// passes `useConsoleBadge` (./presence.ts) as the panel's badge hook.
+// passes ConsoleSidebarAccessory as the panel's sidebar accessory.
 import { useBbNavigate, type PluginNavPanelProps } from "@get-bb/plugin-sdk/app";
 import { useEffect, useState } from "react";
 import { NAV_PANEL } from "../ids.js";
 import { usePreferences } from "../settings/data.js";
 import { useCalls, CallsList } from "./calls-list.js";
 import { ConsoleHeader } from "./header.js";
-import { useCallState } from "./presence.js";
+import { useCallState, useConsoleBadge } from "./presence.js";
 import { Transcript } from "./transcript.js";
 import { UsageSummary } from "./usage.js";
 
 export { registerStartCall } from "./actions.js";
 export { useConsoleBadge } from "./presence.js";
+
+/** The "Live" or "Muted" pill beside the Dispatch sidebar entry. Empty when idle. */
+export function ConsoleSidebarAccessory() {
+  const badge = useConsoleBadge();
+  if (!badge) return null;
+  const tone = badge.tone === "warning" ? "text-warning" : "text-muted-foreground";
+  return (
+    <span aria-label={badge.label} className={`inline-flex h-4 items-center rounded-full border border-border-hairline px-1 text-[10px] ${tone}`}>
+      {badge.text}
+    </span>
+  );
+}
 
 const idFromPath = (subPath: string): string | null => {
   const first = subPath.split("/")[0] ?? "";
