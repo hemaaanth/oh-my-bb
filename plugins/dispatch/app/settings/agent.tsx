@@ -14,7 +14,13 @@ import { Group, Loading, Note, Row, selectClass } from "./layout.js";
 
 function NameRow({ saved, save }: { saved: string; save: (name: string) => Promise<boolean> }) {
   const [draft, setDraft] = useState(saved);
-  useEffect(() => setDraft(saved), [saved]);
+  // Follow a new saved name during render. A mount effect here could land
+  // after the first keystroke and wipe it.
+  const [shownSaved, setShownSaved] = useState(saved);
+  if (saved !== shownSaved) {
+    setShownSaved(saved);
+    setDraft(saved);
+  }
 
   const commit = async () => {
     const next = draft.trim();

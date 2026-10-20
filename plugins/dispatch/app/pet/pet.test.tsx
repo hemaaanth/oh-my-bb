@@ -22,7 +22,8 @@ type Avatar = HTMLElement & {
   startWaiting(options?: { variant?: string }): Promise<unknown>;
 };
 
-const wait = (ms: number) => act(() => new Promise<void>((done) => setTimeout(done, ms)));
+/** Move the fake clock. Tests that wait call vi.useFakeTimers() before they render. */
+const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 const avatarIn = (root: HTMLElement) => root.querySelector("agent-robot-avatar") as Avatar;
 const lookStyle = (avatar: Avatar) => avatar.shadowRoot?.querySelector("style[data-dispatch-look]")?.textContent ?? "";
 
@@ -47,6 +48,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   callStore.set(IDLE_CALL);
   prefsStore.set(defaultPreferences());
   setupStore.set(null);
@@ -57,6 +59,7 @@ afterEach(() => {
 
 describe("footer pet", () => {
   it("sleeps with no call, ignores clicks, and draws an outline", async () => {
+    vi.useFakeTimers();
     const icon = renderSlot({ component: PetIcon }, { className: "size-4" });
     try {
       const avatar = avatarIn(icon.container);
@@ -160,6 +163,7 @@ describe("footer pet", () => {
   });
 
   it("listening shows the text cursor and lingers through a pause in speech", async () => {
+    vi.useFakeTimers();
     updateCall({ state: "live", owner: "self", startedAt: Date.now(), activity: "you" });
     const pet = renderSlot({ component: MiniPet }, {});
     try {
@@ -180,6 +184,7 @@ describe("footer pet", () => {
   });
 
   it("working alternates the two waiting loops and stops when the face changes", async () => {
+    vi.useFakeTimers();
     const pet = renderSlot({ component: Pet }, { face: "work" });
     const avatar = avatarIn(pet.container);
     const variants: string[] = [];
@@ -198,5 +203,5 @@ describe("footer pet", () => {
     } finally {
       pet.unmount();
     }
-  }, 10_000);
+  });
 });

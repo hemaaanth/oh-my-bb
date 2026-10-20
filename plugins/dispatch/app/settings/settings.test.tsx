@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AGENT_NAME_MAX, INSTRUCTIONS_LIMIT } from "../../shared/constants.js";
@@ -109,8 +109,12 @@ describe("Agent", () => {
     expect(input.value).toHaveLength(AGENT_NAME_MAX);
     fireEvent.change(input, { target: { value: "Mira" } });
     expect(screen.getByText(/Say “Mira, …”/)).toBeTruthy();
-    fireEvent.keyDown(input, { key: "Enter" });
-    fireEvent.blur(input);
+    // Enter blurs a focused field, and the blur saves once.
+    act(() => input.focus());
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    expect(document.activeElement).not.toBe(input);
     await waitFor(() => expect(rpc.prefs.writes).toEqual([{ agentName: "Mira" }]));
   });
 
