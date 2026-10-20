@@ -9,6 +9,23 @@ same tools as the in-app voice agent: focus threads, get context, run plugin
 commands, start and stop threads, show diffs. The tools run on your machine
 against the BB SDK, exactly as they do in the app.
 
+## What you need
+
+- Dispatch and the Webhooks plugin, both installed and enabled.
+- An OpenAI API key in a project with GPT-Live access, and that project's id.
+- A Twilio account with a voice-capable number.
+- A public HTTPS route to the Webhooks plugin, so OpenAI can reach it.
+
+Install both plugins from the `oh-my-bb` marketplace:
+
+```sh
+bb marketplace add git:github.com/hemaaanth/oh-my-bb@main
+bb plugin install dispatch@oh-my-bb
+bb plugin install webhooks@oh-my-bb
+```
+
+The setup steps are in [Setup](#setup) below.
+
 ## Why Twilio
 
 OpenAI lists LiveKit, Twilio, Telnyx and Daily/Pipecat as partners for live
@@ -145,6 +162,12 @@ for `live.transport.incoming` only. Do not also subscribe
 The Webhooks panel in BB can build the same endpoint. Choose **Hand to a
 plugin** and pick Dispatch.
 
+OpenAI must reach the endpoint over public HTTPS. The Webhooks plugin owns
+that route. The simplest way is its **Listener port** setting with a tunnel
+pointed at it, plus its **Public base URL** setting. The Webhooks package
+explains both in `docs/ingress.md`. `bb webhooks show <id>` prints the
+endpoint's public URL.
+
 ## Call records and cost
 
 Each answered call is a row in the call list with the Phone device. The ledger
@@ -168,18 +191,32 @@ These are the labels in Dispatch settings. All six are secret fields.
 
 The webhook signing secret lives in the Webhooks endpoint, not in Dispatch.
 
+Set each value on Dispatch's page in BB's plugin settings, or from a shell:
+
+```sh
+bb plugin config dispatch set twilioSid AC0123…
+```
+
+The ids are `openaiKey`, `twilioSid`, `twilioToken`, `twilioCallerNumber`,
+`yourPhoneNumber`, and `openaiSipProject`. Phone numbers use E.164, like
+`+14155550100`. Save an empty value to clear one. No value is ever shown
+again after it is saved.
+
 Checklist:
 
 1. Buy a voice-capable Twilio number. Note the SID and Auth Token.
-2. Make sure the Webhooks plugin is installed and enabled.
-3. Create the Webhooks endpoint above with OpenAI's signing secret.
-4. In the OpenAI console, note the project id, enable GPT-Live SIP for the
-   project, and point a `live.transport.incoming` webhook at the endpoint URL.
-5. Fill the six settings.
-6. Run `bb dispatch status`. The Phone line must say it is ready. If it lists
+2. Make sure Dispatch and the Webhooks plugin are installed and enabled.
+3. In the OpenAI console, note the project id and enable GPT-Live SIP for the
+   project. Add a webhook for `live.transport.incoming` and copy its `whsec_…`
+   signing secret.
+4. Create the Webhooks endpoint above with that secret. Set up its public
+   route, and get the URL with `bb webhooks show <id>`.
+5. Put that URL into the OpenAI webhook.
+6. Fill the six settings.
+7. Run `bb dispatch status`. The Phone line must say it is ready. If it lists
    missing labels, fix those first. A missing `webhook route` means the
    Webhooks plugin is absent or disabled.
-7. Place the call from the command palette ("Dispatch: call my phone"), the pet
+8. Place the call from the command palette ("Dispatch: call my phone"), the pet
    menu, or `bb dispatch call`.
 
 `bb dispatch call` exits with code 1 and lists the missing labels when setup is
