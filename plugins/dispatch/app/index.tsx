@@ -10,7 +10,7 @@ import { matchesKeydown } from "@/voice/hotkeys.js";
 import { prefsStore } from "@/voice/preferences.js";
 import { rememberSettingsOpener } from "@/voice/settings-opener.js";
 import "./app.css";
-import { ComposerCallControls } from "./composer-controls.js";
+import { ComposerHook } from "./composer-hook.js";
 import { ConsolePanel, ConsoleSidebarAccessory } from "./console/index.js";
 import { ViewsDrawer } from "./drawer/views-drawer.js";
 import { COMMANDS, COMPOSER, CONTENT_SCRIPTS, ICON, NAV_PANEL, OVERLAYS, SIDEBAR_FOOTER_PET, VIEWS_PANEL_ACTION, VIEWS_TAB } from "./ids.js";
@@ -55,8 +55,8 @@ export default definePluginApp((app) => {
   app.slots.experimental_appOverlay({ id: OVERLAYS.pointerGhost, component: PointerGhostOverlay });
   app.slots.experimental_appOverlay({ id: OVERLAYS.bindings, component: BindingsOverlay });
 
-  // Call controls in the composer (SPEC §6.1).
-  app.composer.customize({ id: COMPOSER.customization, actions: [{ id: COMPOSER.callControls, component: ComposerCallControls }] });
+  // The composer hook: bindings for the call, no visible controls (SPEC §6.1).
+  app.composer.customize({ id: COMPOSER.customization, actions: [{ id: COMPOSER.hook, component: ComposerHook }] });
 
   // Console (SPEC §13) and, on phones, the drawer views (SPEC §9.1).
   const mobile = deviceProfile().mobile;

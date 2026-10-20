@@ -13,7 +13,7 @@ import { DEFAULT_PET_LOOK } from "./look.js";
 const engine = vi.hoisted(() => ({ toggleCall: vi.fn(async () => undefined), callMyPhone: vi.fn(async () => null) }));
 vi.mock("@/voice/engine.js", () => engine);
 
-const { MiniPet, Pet, PetIcon, petMenuJustOpened } = await import("./pet.js");
+const { Pet, PetIcon, petMenuJustOpened } = await import("./pet.js");
 
 type Avatar = HTMLElement & {
   _sleeping?: boolean;
@@ -165,7 +165,7 @@ describe("footer pet", () => {
   it("listening shows the text cursor and lingers through a pause in speech", async () => {
     vi.useFakeTimers();
     updateCall({ state: "live", owner: "self", startedAt: Date.now(), activity: "you" });
-    const pet = renderSlot({ component: MiniPet }, {});
+    const pet = renderSlot({ component: PetIcon }, {});
     try {
       const avatar = avatarIn(pet.container);
       expect(avatar.getAttribute("data-mood")).toBe("listen");

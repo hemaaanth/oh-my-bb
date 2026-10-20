@@ -41,7 +41,7 @@ export interface PointerGhost {
 
 /** Marks the footer pet, where the ghost enters from. */
 export const PET_MARKER = "data-dispatch-pet";
-/** Marks the composer that holds Dispatch's call controls. */
+/** Marks the composer that holds Dispatch's composer hook. */
 export const COMPOSER_MARKER = "data-dispatch-composer";
 
 const MOVE_MS = 420;

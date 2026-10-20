@@ -11,7 +11,7 @@ export const VIEWS_PANEL_ACTION = { id: "views", title: "Views" } as const;
 
 export const SIDEBAR_FOOTER_PET = "pet";
 export const OVERLAYS = { pointerGhost: "pointer-ghost", bindings: "bindings" } as const;
-export const COMPOSER = { customization: "dispatch", callControls: "call-controls" } as const;
+export const COMPOSER = { customization: "dispatch", hook: "hook" } as const;
 export const CONTENT_SCRIPTS = { hotkeys: "hotkeys" } as const;
 
 /** Palette commands (SPEC §6.5). */

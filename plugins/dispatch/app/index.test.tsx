@@ -65,8 +65,8 @@ describe("app registration", () => {
     expect(app.appOverlays.map((overlay) => overlay.id)).toEqual(["pointer-ghost", "bindings"]);
   });
 
-  it("registers call controls in the composer", () => {
-    expect(app.composerCustomizations.map((entry) => entry.actions?.map((action) => action.id))).toEqual([["call-controls"]]);
+  it("registers the composer hook", () => {
+    expect(app.composerCustomizations.map((entry) => entry.actions?.map((action) => action.id))).toEqual([["hook"]]);
   });
 
   it("registers the console with its badge and no Views on desktop", () => {

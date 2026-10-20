@@ -122,7 +122,6 @@ On a phone, BB's mobile settings page has a short **Dispatch** section.
 | Mod+Shift+H | Start or stop a call. Works anywhere in BB. |
 | Mod+Shift+U | Mute or unmute. Works while a call is live. |
 | Command palette | **Dispatch: start or stop voice**, **Dispatch: mute or unmute** (only during a call), **Dispatch: call my phone**. |
-| Composer | While a call is live, a call strip in the composer shows the elapsed time, who is speaking, **Mute**, and **Stop**. |
 
 "Mod" is ⌘ on macOS and Ctrl elsewhere. Change the shortcuts in **Calls**. A
 shortcut must include Mod or Alt. The two shortcuts cannot share a key, and

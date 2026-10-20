@@ -293,11 +293,6 @@ export function Pet({ face, look, className }: { face: PetFace; look?: PetLook; 
   );
 }
 
-/** A small pet that follows the live call, for the composer strip and the console. */
-export function MiniPet({ className }: { className?: string }) {
-  return <Pet face={usePetFace()} className={cn("dispatch-pet-mini pointer-events-none", className)} />;
-}
-
 /**
  * When the pet's menu last opened. The release that ends a long press can
  * also click the footer button below. The footer's onActivate asks here and

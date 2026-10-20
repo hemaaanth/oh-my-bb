@@ -1,5 +1,5 @@
 // What every surface knows about the one Dispatch call (SPEC §5.1). The call
-// controller writes it; the pet, the call controls, the nav badge and the
+// controller writes it; the pet, the console, the nav badge and the
 // palette commands read it. A mirrored call (owned by another realm) shows
 // here too, with `owner: "mirror"`.
 
