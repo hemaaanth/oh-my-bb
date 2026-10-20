@@ -30,6 +30,8 @@ as `fx-acp/v0.1.0`.
 
 ## Packages
 
+- [`plugins/dispatch`](plugins/dispatch) lets you drive BB by voice. A named agent
+  answers in the app or over a phone call, and reads, starts, and steers threads.
 - [`plugins/model-gateway`](plugins/model-gateway) routes supported BB harnesses
   through ordered provider accounts and optional API-key fallbacks.
 - [`plugins/pages`](plugins/pages) publishes versioned HTML and Markdown
@@ -46,6 +48,10 @@ as `fx-acp/v0.1.0`.
 
 The agent adapters are not installed by Model Gateway. Model Gateway runs without
 any adapter, and each adapter has its own package manifest and tests.
+
+Dispatch runs without another BB plugin for in-app voice, which needs only an
+OpenAI API key. Its phone calls work only when the Webhooks plugin is installed
+separately; see [`plugins/dispatch/docs/phone-calls.md`](plugins/dispatch/docs/phone-calls.md).
 
 Pages runs without another BB plugin. Its optional chart feature bundles
 Highcharts; each user must obtain and manage the Highcharts license required
