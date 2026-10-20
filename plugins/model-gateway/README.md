@@ -232,10 +232,11 @@ the only cross-vendor fallback is a paid API key.
 
 ## BB upgrade caveat
 
-BB 0.43 rejects a `secret` field on env entries, so the gateway omits it.
-Unreleased core makes `secret: z.boolean()` required. When BB upgrades past
-0.43, add `secret: true` to the token entries in `src/server.ts`, or every
-contribution is rejected.
+BB core 0.46.1 checks contributed env entries with a strict schema. An entry
+may carry only `name`, `value`, and `reason`. The gateway's token entries in
+`src/server.ts` must not add a `secret` field, or BB rejects every
+contribution. Check the bundled `bb-app` types again before adding fields
+after a BB upgrade.
 
 ## Coexistence with the Account Pooler
 

@@ -1,5 +1,6 @@
-Keep supported BB harnesses working across provider limits without moving a
-conversation to another thread.
+Keep coding when a Claude or ChatGPT account reaches its limit. Supported BB
+harnesses keep working across provider limits without moving a conversation to
+another thread.
 
 ## What you get
 

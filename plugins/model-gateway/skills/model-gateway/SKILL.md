@@ -143,9 +143,9 @@ API key.
 
 - Health label: `Gateway`, or `Gateway: on fallback` while a thread routed in
   the last 30 minutes is bound past chain entry 0.
-- Thread header badge: for example `ChatGPT · gpt-6-astra` or `kimi · kimi-k3`,
-  on every routed thread. It stands out on a fallback entry or a Jev pick
-  (`auto → gpt-6-sol (jev 0.82)`). Its tooltip shows the chain.
+- No thread header item of its own. The Sandboxes plugin's machine icon shows
+  the route (model, upstream, chain, fallback cause) in its popover and marks
+  a fallback with an amber dot. It reads RPC `thread.route`.
 - Settings > Model Gateway shows a status line, the Upstreams list, one Routes
   row per harness (Edit opens the chain and the Auto (Jev) switch), and
   Advanced (model map, Jev key and model, base URLs, limits). It edits the
@@ -182,10 +182,9 @@ contributes no env for `claude-code` or `codex`, and its health label reads
 
 ## BB upgrade caveat
 
-BB 0.43 rejects a `secret` field on contributed env entries, so the gateway
-omits it. Newer BB core makes `secret` required. After BB upgrades past 0.43,
-the token entries need `secret: true`, or every env contribution is rejected
-and threads are no longer routed.
+BB core 0.46.1 accepts only `name`, `value`, and `reason` on a contributed
+env entry. An extra field such as `secret` makes BB reject every env
+contribution, and threads are no longer routed.
 
 ## CLI
 
