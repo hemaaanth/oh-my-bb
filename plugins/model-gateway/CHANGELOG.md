@@ -32,6 +32,13 @@
   longer blocked.
 - Fixes: the footer no longer crashes on usage cached before reset credits
   existed. The applier CLI has no top-level `await`, so BB can bundle it.
+- Requires BB 0.46.1 and plugin SDK 0.6.54. Development uses vitest 4 and
+  TypeScript 7.
+- Removed the unused `@radix-ui/react-dialog` dependency, an unused badge
+  component, and a dead constant.
+- Docs: the README and skill now say BB 0.46.1 rejects a `secret` field on
+  contributed env entries. The skill no longer describes the removed thread
+  header badge. The overview opens with the plugin description.
 
 ## 0.1.0
 
