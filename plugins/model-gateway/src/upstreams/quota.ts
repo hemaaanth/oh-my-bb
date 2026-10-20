@@ -190,8 +190,6 @@ export function isSharedQuotaExhausted(
   );
 }
 
-export const WEEKLY_WINDOW_MINUTES = 7 * 24 * 60;
-
 export function longestLimitWindow(
   windows: readonly LimitWindow[],
 ): LimitWindow | null {
