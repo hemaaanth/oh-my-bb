@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Pages now declares `bbPluginSdk >=0.6.54`, the SDK it builds with. It was
+- Pages now declares `bbPluginSdk >=0.6.49`, the SDK stable BB 0.46.1 ships. It was
   `>=0.4.84`.
 - Build tools moved up: TypeScript 7, `@types/react` and `@types/react-dom` 19.3.
 - Removed 13 unused development dependencies (`@radix-ui` dialog, select,
