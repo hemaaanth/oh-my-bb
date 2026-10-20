@@ -4,7 +4,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AGENT_NAME_MAX, INSTRUCTIONS_LIMIT } from "../../shared/constants.js";
 import type { InstructionRevision } from "../../shared/contract.js";
-import { installFakeLocalStorage, makePrefsRpc, makeStatus } from "./support.js";
+import { chooseSetting, installFakeLocalStorage, makePrefsRpc, makeStatus, openSetting } from "./support.js";
 
 const stored = installFakeLocalStorage();
 const app = await loadPluginApp(() => import("../index.js"));
@@ -29,17 +29,21 @@ describe("Readiness", () => {
       phone: { ready: false, missing: ["Phone calls — Twilio Account SID", "Phone calls — Twilio Auth Token"], webhooksPlugin: "absent" },
     });
     mount("readiness", { setupStatus: async () => status });
-    const voice = (await screen.findByText("In-app voice")).closest("div.flex-col, div")!.parentElement!;
+    const voice = (await screen.findByText("In-app voice")).parentElement!;
     expect(within(voice).getByText("Ready")).toBeTruthy();
-    const phoneLine = screen.getByText("Phone calls").parentElement!.parentElement!;
-    expect(phoneLine.textContent).toContain("Needs: Twilio Account SID, Twilio Auth Token");
-    expect(screen.getByText("Webhooks plugin not found")).toBeTruthy();
-    expect(screen.getByText("bb dispatch status")).toBeTruthy();
+    expect(screen.getByText(/Needs: Twilio Account SID, Twilio Auth Token/)).toBeTruthy();
+    expect(screen.getByText("Webhooks plugin not found.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Set up phone calls" }).getAttribute("href")).toContain("docs/phone-calls.md");
+    expect(screen.queryByText("bb dispatch status")).toBeNull();
   });
 
   it("reports the Webhooks plugin when it is present", async () => {
     mount("readiness", { setupStatus: async () => makeStatus({ phone: { ready: true, missing: [], webhooksPlugin: "present" } }) });
-    expect(await screen.findByText("Webhooks plugin found")).toBeTruthy();
+    const detail = (await screen.findByText("Phone setup")).closest("details")!;
+    expect(detail.open).toBe(false);
+    fireEvent.click(screen.getByText("Phone setup"));
+    expect(detail.open).toBe(true);
+    expect(screen.getByText("Webhooks plugin found. Endpoint not verified.")).toBeTruthy();
   });
 
   it("never renders a value, even one that sneaks into the payload", async () => {
@@ -175,7 +179,8 @@ describe("Agent", () => {
   it("lists the history and restores a revision", async () => {
     const rpc = agentRpc();
     mount("agent", rpc.handlers);
-    expect(await screen.findByText("agent edit")).toBeTruthy();
+    fireEvent.click(await screen.findByText("Instruction history (2)"));
+    expect(screen.getByText("agent edit")).toBeTruthy();
     expect(screen.getByText("Old text")).toBeTruthy();
     const buttons = screen.getAllByRole("button", { name: "Restore" }) as HTMLButtonElement[];
     expect(buttons[0]!.disabled).toBe(true); // the current text
@@ -184,10 +189,29 @@ describe("Agent", () => {
     await waitFor(() => expect((screen.getByLabelText("Your instructions") as HTMLTextAreaElement).value).toBe("Old text"));
   });
 
+  it("keeps empty history hidden", async () => {
+    const rpc = agentRpc();
+    mount("agent", { ...rpc.handlers, instructionsHistory: async () => ({ revisions: [] }) });
+    await screen.findByLabelText("Your instructions");
+    expect(screen.queryByText(/Instruction history/)).toBeNull();
+  });
+
+  it("opens a scoped voice menu with the keyboard and closes without writing", async () => {
+    const rpc = agentRpc();
+    mount("agent", rpc.handlers);
+    await openSetting("Voice");
+    const current = await screen.findByRole("option", { name: "gleam" });
+    expect(current.getAttribute("aria-selected")).toBe("true");
+    expect(current.closest("[data-bb-portaled-overlay]")?.hasAttribute("data-bb-plugin-root")).toBe(true);
+    fireEvent.keyDown(current, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    expect(rpc.prefs.writes).toEqual([]);
+  });
+
   it("saves the voice", async () => {
     const rpc = agentRpc();
     mount("agent", rpc.handlers);
-    fireEvent.change(await screen.findByLabelText("Voice"), { target: { value: "sage" } });
+    await chooseSetting("Voice", "sage");
     await waitFor(() => expect(rpc.prefs.writes).toEqual([{ voice: "sage" }]));
   });
 });

@@ -10,7 +10,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { errorText, useLatest, usePreferences } from "./data.js";
-import { Group, Loading, Note, Row, selectClass } from "./layout.js";
+import { Group, Loading, Note, Row, SettingSelect } from "./layout.js";
 
 function NameRow({ saved, save }: { saved: string; save: (name: string) => Promise<boolean> }) {
   const [draft, setDraft] = useState(saved);
@@ -29,12 +29,12 @@ function NameRow({ saved, save }: { saved: string; save: (name: string) => Promi
   };
 
   return (
-    <Row label="Name" htmlFor="dispatch-agent-name" help="Say this name to wake the agent.">
+    <Row label="Name" htmlFor="dispatch-agent-name" help={`Say “${draft.trim() || saved}, …”`}>
       <Input
         id="dispatch-agent-name"
         value={draft}
         maxLength={AGENT_NAME_MAX}
-        className="sm:w-56"
+        className="h-8 sm:w-56"
         onChange={(event) => setDraft(event.target.value.slice(0, AGENT_NAME_MAX))}
         onBlur={() => void commit()}
         onKeyDown={(event) => {
@@ -42,12 +42,6 @@ function NameRow({ saved, save }: { saved: string; save: (name: string) => Promi
           if (event.key === "Escape") setDraft(saved);
         }}
       />
-      <Note>
-        Say “{draft.trim() || saved}, …”
-        <span className="ml-2 tabular-nums">
-          {draft.length}/{AGENT_NAME_MAX}
-        </span>
-      </Note>
     </Row>
   );
 }
@@ -93,7 +87,7 @@ function PromptPreview() {
 
   return (
     <div className="flex flex-col gap-2 py-3">
-      <Button variant="outline" size="sm" className="self-start" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <Button variant="ghost" size="sm" className="self-start" aria-expanded={open} onClick={() => setOpen(!open)}>
         {open ? "Hide full prompt" : "Show full prompt"}
       </Button>
       {open && !preview ? <Loading error={error} /> : null}
@@ -185,7 +179,7 @@ function InstructionsEditor() {
           Your instructions
         </label>
         <Note>The built-in prompt stays in place. This text is added after it.</Note>
-        <Textarea id="dispatch-instructions" rows={8} value={draft} onChange={(event) => setDraft(event.target.value)} />
+        <Textarea id="dispatch-instructions" rows={4} value={draft} onChange={(event) => setDraft(event.target.value)} />
         <div className="flex items-center justify-between gap-2">
           <span className={over ? "text-xs text-destructive" : "text-xs text-muted-foreground"} aria-live="polite">
             {draft.length.toLocaleString("en-US")} / {INSTRUCTIONS_LIMIT.toLocaleString("en-US")}
@@ -202,10 +196,9 @@ function InstructionsEditor() {
         {error ? <Note tone="error">{error}</Note> : null}
       </div>
       <PromptPreview />
-      <div className="flex flex-col gap-1 py-3">
-        <h4 className="text-sm font-medium text-foreground">History</h4>
-        {history.length === 0 ? <Note>No saved versions yet.</Note> : null}
-        <ul className="flex flex-col">
+      {history.length > 0 ? <details className="py-3">
+        <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">Instruction history ({history.length})</summary>
+        <ul className="mt-2 flex flex-col">
           {history.map((revision) => (
             <li key={revision.id} className="flex items-center gap-3 py-2">
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -222,7 +215,7 @@ function InstructionsEditor() {
             </li>
           ))}
         </ul>
-      </div>
+      </details> : null}
     </>
   );
 }
@@ -235,13 +228,7 @@ export function AgentSection() {
     <Group>
       <NameRow saved={prefs.agentName} save={(agentName) => save({ agentName })} />
       <Row label="Voice" htmlFor="dispatch-voice">
-        <select id="dispatch-voice" className={selectClass} value={prefs.voice} onChange={(event) => void save({ voice: event.target.value })}>
-          {voices.map((voice) => (
-            <option key={voice} value={voice}>
-              {voice}
-            </option>
-          ))}
-        </select>
+        <SettingSelect id="dispatch-voice" label="Voice" value={prefs.voice} options={voices.map((voice) => ({ value: voice, label: voice }))} onValueChange={(voice) => void save({ voice })} />
       </Row>
       {error ? <Note tone="error">{error}</Note> : null}
       <InstructionsEditor />

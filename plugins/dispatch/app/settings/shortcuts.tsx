@@ -91,9 +91,9 @@ export function ShortcutRow({
             Change
           </Button>
         )}
-        <Button variant="ghost" size="sm" disabled={combo === defaultCombo || recording} onClick={() => void onSave(defaultCombo)}>
+        {combo !== defaultCombo ? <Button variant="ghost" size="sm" disabled={recording} onClick={() => void onSave(defaultCombo)}>
           Reset to default
-        </Button>
+        </Button> : null}
       </div>
       {refusal ? <Note tone="error">{refusal}</Note> : null}
     </Row>

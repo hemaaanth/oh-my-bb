@@ -8,7 +8,7 @@ import { Switch } from "../components/ui/switch";
 import { cn } from "../lib/utils";
 import { usePreferences } from "./data.js";
 import { readPointerGhost, useDeviceValue, writePointerGhost } from "./device.js";
-import { Group, Loading, Note, Row } from "./layout.js";
+import { Group, Loading, Note, Row, SettingSelect } from "./layout.js";
 import { Pet } from "../pet/pet.js";
 import { FACE_LABEL, type PetFace } from "../pet/mood.js";
 import { LOCAL_KEYS } from "../../shared/constants.js";
@@ -67,23 +67,20 @@ export function AppearanceSection() {
 
   return (
     <Group>
-      <div className="flex flex-col items-center gap-3 py-3">
+      <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 py-4">
         <span role="img" aria-label={`Pet preview, ${mood}`} data-mood={mood}>
           <Pet face={FACE_FOR[mood]} look={look} className="dispatch-pet-preview" />
         </span>
-        <div role="group" aria-label="Preview mood" className="flex flex-wrap justify-center gap-1.5">
-          {PET_MOODS.map((name) => (
-            <Button key={name} variant={name === mood ? "secondary" : "ghost"} size="sm" aria-pressed={name === mood} onClick={() => setMood(name)}>
-              {capitalise(name)}
-            </Button>
-          ))}
+        <div className="flex min-w-0 flex-col gap-2">
+          <label htmlFor="dispatch-preview-mood" className="text-xs text-muted-foreground">Preview mood</label>
+          <SettingSelect id="dispatch-preview-mood" label="Preview mood" value={mood} options={PET_MOODS.map((name) => ({ value: name, label: capitalise(name) }))} onValueChange={(value) => setMood(value as PetMood)} />
         </div>
       </div>
 
-      <Row label="Style">
-        <div role="group" aria-label="Style" className="flex gap-1.5">
+      <Row label="Style" inline>
+        <div role="group" aria-label="Style" className="flex rounded-md border border-input p-0.5">
           {(["outline", "solid"] as const).map((style) => (
-            <Button key={style} variant={look.style === style ? "secondary" : "outline"} size="sm" aria-pressed={look.style === style} onClick={() => change({ style })}>
+            <Button key={style} variant="ghost" size="sm" className="h-7" aria-pressed={look.style === style} onClick={() => change({ style })}>
               {capitalise(style)}
             </Button>
           ))}
@@ -129,14 +126,14 @@ export function AppearanceSection() {
         />
       </Row>
 
-      <Row label="Follow the pointer" help="The pet turns its eyes toward your pointer.">
+      <Row label="Follow the pointer" inline help="The pet turns its eyes toward your pointer.">
         <Switch aria-label="Follow the pointer" checked={look.followPointer} onCheckedChange={(followPointer) => change({ followPointer })} />
       </Row>
-      <Row label="Flash the antenna" help="The antenna blinks while the pet is busy.">
+      <Row label="Flash the antenna" inline help="The antenna blinks while the pet is busy.">
         <Switch aria-label="Flash the antenna" checked={look.antennaFlash} onCheckedChange={(antennaFlash) => change({ antennaFlash })} />
       </Row>
 
-      <Row label="Pointer ghost" help="A ghost pointer shows where the agent is looking on screen. It only shows. It never clicks. This setting is for this device only.">
+      <Row label="Pointer ghost" inline help="Shows where the agent is looking. Never clicks. This device only.">
         <Switch aria-label="Pointer ghost" checked={ghost} onCheckedChange={setGhost} />
       </Row>
       {error ? <Note tone="error">{error}</Note> : null}

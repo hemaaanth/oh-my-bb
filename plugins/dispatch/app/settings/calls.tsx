@@ -8,11 +8,11 @@ import { Switch } from "../components/ui/switch";
 import { usePreferences } from "./data.js";
 import { canPickSpeaker, useAudioDevices, useMicTest } from "./devices.js";
 import { readAudioChoice, useDeviceValue, writeAudioChoice } from "./device.js";
-import { Group, Loading, Note, Row, selectClass } from "./layout.js";
+import { Group, Loading, Note, Row, SettingSelect } from "./layout.js";
 import { ShortcutRow } from "./shortcuts.js";
 
 /** The value of a select that means "the system default". */
-const SYSTEM_DEFAULT = "";
+const SYSTEM_DEFAULT = "dispatch-system-default";
 
 function MicrophoneRow() {
   const devices = useAudioDevices();
@@ -20,58 +20,56 @@ function MicrophoneRow() {
   const [pick, setPick] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const selected = pick ?? choice.inputDeviceId ?? SYSTEM_DEFAULT;
+  const preferred = pick ?? choice.inputDeviceId ?? SYSTEM_DEFAULT;
+  const selected = devices.inputs.some((device) => device.id === preferred) ? preferred : SYSTEM_DEFAULT;
   const test = useMicTest(selected === SYSTEM_DEFAULT ? null : selected);
 
   const grant = async () => setMessage(await devices.grant());
 
   return (
     <Row label="Microphone" htmlFor="dispatch-mic" help={devices.namesVisible ? undefined : "Your browser hides microphone names until you allow access."}>
-      <select
-        id="dispatch-mic"
-        className={selectClass}
-        value={selected}
-        onChange={(event) => {
-          setPick(event.target.value);
-          setSaved(false);
-        }}
-      >
-        <option value={SYSTEM_DEFAULT}>System default</option>
-        {devices.inputs.map((device) => (
-          <option key={device.id} value={device.id}>
-            {device.label}
-          </option>
-        ))}
-      </select>
-      <div className="flex flex-wrap gap-2">
-        {devices.namesVisible ? null : (
-          <Button variant="outline" size="sm" onClick={() => void grant()}>
-            Grant access
-          </Button>
-        )}
-        <Button variant="outline" size="sm" onClick={() => void devices.refresh()}>
-          Refresh devices
-        </Button>
-        {test.level === null ? (
-          <Button variant="outline" size="sm" onClick={() => void test.start()}>
-            Test microphone
-          </Button>
-        ) : (
-          <Button variant="outline" size="sm" onClick={test.stop}>
-            Stop test
-          </Button>
-        )}
+      <div className="flex items-center justify-end gap-2">
+        <SettingSelect
+          id="dispatch-mic"
+          label="Microphone"
+          value={selected}
+          options={[{ value: SYSTEM_DEFAULT, label: "System default" }, ...devices.inputs.map((device) => ({ value: device.id, label: device.label }))]}
+          onValueChange={(value) => {
+            setPick(value);
+            setSaved(false);
+          }}
+        />
         <Button
           size="sm"
+          className="shrink-0"
           disabled={pick === null}
           onClick={() => {
-            setChoice({ ...choice, inputDeviceId: pick === SYSTEM_DEFAULT ? null : pick });
+            setChoice({ ...choice, inputDeviceId: selected === SYSTEM_DEFAULT ? null : selected });
             setPick(null);
             setSaved(true);
           }}
         >
           Save
         </Button>
+      </div>
+      <div className="flex flex-wrap justify-end gap-1.5">
+        {devices.namesVisible ? null : (
+          <Button variant="outline" size="sm" className="px-2" onClick={() => void grant()}>
+            Grant access
+          </Button>
+        )}
+        <Button variant="ghost" size="sm" className="px-2" onClick={() => void devices.refresh()}>
+          Refresh devices
+        </Button>
+        {test.level === null ? (
+          <Button variant="ghost" size="sm" className="px-2" onClick={() => void test.start()}>
+            Test microphone
+          </Button>
+        ) : (
+          <Button variant="ghost" size="sm" className="px-2" onClick={test.stop}>
+            Stop test
+          </Button>
+        )}
       </div>
       {test.level !== null ? (
         <div role="meter" aria-label="Microphone level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(test.level * 100)} className="h-2 w-full overflow-hidden rounded-full bg-state-hover sm:w-56">
@@ -88,31 +86,24 @@ function SpeakerRow() {
   const devices = useAudioDevices();
   const [choice, setChoice] = useDeviceValue(LOCAL_KEYS.audio, readAudioChoice, writeAudioChoice);
   const supported = canPickSpeaker() && devices.outputs.length > 0;
+  const selected = devices.outputs.find((device) => supported && device.id === choice.outputDeviceId)?.id ?? SYSTEM_DEFAULT;
   return (
     <Row label="Speaker" htmlFor="dispatch-speaker" help={supported ? undefined : "This browser plays sound through the system default speaker."}>
-      <select
+      <SettingSelect
         id="dispatch-speaker"
-        className={selectClass}
+        label="Speaker"
         disabled={!supported}
-        value={choice.outputDeviceId ?? SYSTEM_DEFAULT}
-        onChange={(event) => setChoice({ ...choice, outputDeviceId: event.target.value === SYSTEM_DEFAULT ? null : event.target.value })}
-      >
-        <option value={SYSTEM_DEFAULT}>System default</option>
-        {supported
-          ? devices.outputs.map((device) => (
-              <option key={device.id} value={device.id}>
-                {device.label}
-              </option>
-            ))
-          : null}
-      </select>
+        value={selected}
+        options={[{ value: SYSTEM_DEFAULT, label: "System default" }, ...(supported ? devices.outputs.map((device) => ({ value: device.id, label: device.label })) : [])]}
+        onValueChange={(value) => setChoice({ ...choice, outputDeviceId: value === SYSTEM_DEFAULT ? null : value })}
+      />
     </Row>
   );
 }
 
 function AnnouncementsRow({ prefs, save }: { prefs: Preferences; save: (patch: Partial<Preferences>) => Promise<boolean> }) {
   return (
-    <Row label="Announcements" help="The agent speaks a short notice when a thread finishes or fails.">
+    <Row label="Announcements" inline help="The agent speaks a short notice when a thread finishes or fails.">
       <Switch aria-label="Announcements" checked={prefs.announcements} onCheckedChange={(announcements) => void save({ announcements })} />
     </Row>
   );
@@ -120,11 +111,8 @@ function AnnouncementsRow({ prefs, save }: { prefs: Preferences; save: (patch: P
 
 function DrawerRow({ prefs, save }: { prefs: Preferences; save: (patch: Partial<Preferences>) => Promise<boolean> }) {
   return (
-    <Row label="Mobile drawer behaviour" htmlFor="dispatch-drawer" help="On a phone, the agent can reuse the open view or add a new one for each thread. On desktop the agent always navigates.">
-      <select id="dispatch-drawer" className={selectClass} value={prefs.mobileDrawerBehavior} onChange={(event) => void save({ mobileDrawerBehavior: event.target.value as Preferences["mobileDrawerBehavior"] })}>
-        <option value="reuse">Reuse the current view</option>
-        <option value="new">Open a new view</option>
-      </select>
+    <Row label="Mobile drawer behaviour" htmlFor="dispatch-drawer" help="Reuse a view or add one per thread on mobile. Desktop always navigates.">
+      <SettingSelect id="dispatch-drawer" label="Mobile drawer behaviour" value={prefs.mobileDrawerBehavior} options={[{ value: "reuse", label: "Reuse the current view" }, { value: "new", label: "Open a new view" }]} onValueChange={(value) => void save({ mobileDrawerBehavior: value as Preferences["mobileDrawerBehavior"] })} />
     </Row>
   );
 }

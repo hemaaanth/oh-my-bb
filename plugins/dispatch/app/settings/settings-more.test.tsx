@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LOCAL_KEYS, REASONING_MODELS, SECRET_IDS } from "../../shared/constants.js";
-import type { ToolSpec } from "../../shared/contract.js";
-import { installFakeLocalStorage, makePrefsRpc, makeStatus } from "./support.js";
+import { LOCAL_KEYS, REASONING_MODELS } from "../../shared/constants.js";
+import { chooseSetting, installFakeLocalStorage, makePrefsRpc, makeStatus, openSetting } from "./support.js";
 
 const stored = installFakeLocalStorage();
 const app = await loadPluginApp(() => import("../index.js"));
@@ -25,17 +24,17 @@ afterEach(() => {
 });
 
 describe("Appearance", () => {
-  it("sets the preview mood from the chips", async () => {
+  it("sets the preview mood from the picker", async () => {
     mount(byId("appearance"), makePrefsRpc().handlers);
     const preview = await screen.findByRole("img", { name: /Pet preview/ });
     expect(preview.getAttribute("data-mood")).toBe("awake");
-    fireEvent.click(screen.getByRole("button", { name: "Asleep" }));
+    await chooseSetting("Preview mood", "Asleep");
     const asleep = screen.getByRole("img", { name: /Pet preview/ });
     expect(asleep.getAttribute("data-mood")).toBe("asleep");
     // The preview is the footer's own pet, showing the matching face.
     expect(asleep.querySelector(".dispatch-pet")?.getAttribute("data-mood")).toBe("sleep");
     expect(asleep.querySelector("agent-robot-avatar")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Asleep" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("combobox", { name: "Preview mood" }).textContent).toBe("Asleep");
   });
 
   it("writes a whole normalised pet for each look change", async () => {
@@ -126,18 +125,37 @@ describe("Calls", () => {
       },
     });
     mount(byId("calls"), makePrefsRpc().handlers);
-    expect(await screen.findByRole("option", { name: "Microphone 1" })).toBeTruthy();
+    await openSetting("Microphone");
+    const anonymous = await screen.findByRole("option", { name: "Microphone 1" });
     expect(screen.queryByRole("option", { name: "Desk mic" })).toBeNull();
+    fireEvent.keyDown(anonymous, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Grant access" }));
-    expect(await screen.findByRole("option", { name: "Desk mic" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "Headset" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Grant access" })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Grant access" })).toBeNull());
     expect(stop).toHaveBeenCalled();
 
-    fireEvent.change(screen.getByLabelText("Microphone"), { target: { value: "mic-b" } });
+    await openSetting("Microphone");
+    expect(await screen.findByRole("option", { name: "Desk mic" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("option", { name: "Headset" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("Saved for this device.")).toBeTruthy();
     expect(JSON.parse(stored[LOCAL_KEYS.audio]!)).toMatchObject({ inputDeviceId: "mic-b" });
+    await chooseSetting("Microphone", "System default");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(JSON.parse(stored[LOCAL_KEYS.audio]!)).toMatchObject({ inputDeviceId: null }));
+  });
+
+  it("shows system default for a missing saved microphone without overwriting the device choice", async () => {
+    stored[LOCAL_KEYS.audio] = JSON.stringify({ inputDeviceId: "unplugged", outputDeviceId: null });
+    mount(byId("calls"), makePrefsRpc().handlers);
+    expect((await screen.findByRole("combobox", { name: "Microphone" })).textContent).toBe("System default");
+    expect(JSON.parse(stored[LOCAL_KEYS.audio]!).inputDeviceId).toBe("unplugged");
+  });
+
+  it("keeps an unsupported speaker picker disabled", async () => {
+    mount(byId("calls"), makePrefsRpc().handlers);
+    const speaker = await screen.findByRole("combobox", { name: "Speaker" }) as HTMLButtonElement;
+    expect(speaker.disabled).toBe(true);
+    expect(speaker.textContent).toBe("System default");
   });
 
   it("writes announcements and the drawer behaviour", async () => {
@@ -145,7 +163,7 @@ describe("Calls", () => {
     mount(byId("calls"), prefs.handlers);
     fireEvent.click(await screen.findByRole("switch", { name: "Announcements" }));
     await waitFor(() => expect(prefs.writes).toContainEqual({ announcements: false }));
-    fireEvent.change(screen.getByLabelText("Mobile drawer behaviour"), { target: { value: "new" } });
+    await chooseSetting("Mobile drawer behaviour", "Open a new view");
     await waitFor(() => expect(prefs.current.mobileDrawerBehavior).toBe("new"));
   });
 
@@ -159,12 +177,7 @@ describe("Calls", () => {
   });
 });
 
-const tool = (name: string, runsOn: ToolSpec["runsOn"]): ToolSpec => ({ name, description: `${name} does a thing`, parameters: {}, runsOn });
-
 describe("Tools", () => {
-  const catalog = async (input: { channel: string }) => ({
-    tools: input.channel === "phone" ? [tool("send_message", "server")] : [tool("send_message", "server"), tool("focus_thread", "app"), tool("read_screen", "both")],
-  });
   const plugins = async () => ({
     plugins: [
       { id: "dispatch", name: "Dispatch", command: "dispatch", summary: "self" },
@@ -175,11 +188,10 @@ describe("Tools", () => {
 
   it("writes plugin access and the checklist", async () => {
     const prefs = makePrefsRpc();
-    mount(byId("tools"), { ...prefs.handlers, toolCatalog: catalog, pluginsWithCommands: plugins });
-    const select = await screen.findByLabelText("Plugins the agent may run");
-    fireEvent.change(select, { target: { value: "none" } });
+    mount(byId("tools"), { ...prefs.handlers, pluginsWithCommands: plugins });
+    await chooseSetting("Plugins the agent may run", "None");
     await waitFor(() => expect(prefs.writes.at(-1)).toEqual({ pluginAccess: { mode: "none" } }));
-    fireEvent.change(select, { target: { value: "selected" } });
+    await chooseSetting("Plugins the agent may run", "Selected plugins");
     await waitFor(() => expect(prefs.writes.at(-1)).toEqual({ pluginAccess: { mode: "selected", ids: [] } }));
 
     expect(await screen.findByRole("checkbox", { name: "Linear" })).toBeTruthy();
@@ -192,38 +204,50 @@ describe("Tools", () => {
     await waitFor(() => expect(prefs.writes.at(-1)).toEqual({ pluginAccess: { mode: "selected", ids: ["notes"] } }));
   });
 
-  it("lists the built-in tools from the catalog with where they run", async () => {
-    mount(byId("tools"), { ...makePrefsRpc().handlers, toolCatalog: catalog, pluginsWithCommands: plugins });
-    const send = (await screen.findByText("send_message")).closest("li")!;
-    expect(within(send).getByText("server")).toBeTruthy();
-    expect(within(send).getByText("phone")).toBeTruthy();
-    const read = screen.getByText("read_screen").closest("li")!;
-    expect(within(read).getByText("app")).toBeTruthy();
-    expect(within(read).getByText("server")).toBeTruthy();
-    expect(within(read).queryByText("phone")).toBeNull();
-    expect(screen.getByText("focus_thread does a thing")).toBeTruthy();
+  it("does not fetch or render the help-only built-in tool catalogue", async () => {
+    const view = mount(byId("tools"), makePrefsRpc().handlers);
+    await screen.findByLabelText("Plugins the agent may run");
+    expect(screen.queryByText("Built-in tools")).toBeNull();
+    expect(view.inspection.rpcCalls.some((call) => call.method === "toolCatalog")).toBe(false);
+  });
+
+  it("shows an empty state when no plugins offer commands", async () => {
+    mount(byId("tools"), { ...makePrefsRpc({ pluginAccess: { mode: "selected", ids: [] } }).handlers, pluginsWithCommands: async () => ({ plugins: [] }) });
+    expect(await screen.findByText("No other plugin offers a command the agent could run.")).toBeTruthy();
   });
 });
 
 describe("Advanced", () => {
-  it("writes both model choices and marks the recommended one", async () => {
+  it("writes the reasoning model and marks the recommended one", async () => {
     const prefs = makePrefsRpc();
-    mount(byId("advanced"), { ...prefs.handlers, setupStatus: async () => makeStatus() });
-    const reasoning = await screen.findByLabelText("Reasoning model");
-    expect(screen.getByRole("option", { name: `${REASONING_MODELS[0]} (recommended)` })).toBeTruthy();
-    fireEvent.change(reasoning, { target: { value: REASONING_MODELS[1] } });
+    mount(byId("advanced"), prefs.handlers);
+    await openSetting("Reasoning model");
+    expect(await screen.findByRole("option", { name: `${REASONING_MODELS[0]} (recommended)` })).toBeTruthy();
+    fireEvent.click(screen.getByRole("option", { name: REASONING_MODELS[1] }));
     await waitFor(() => expect(prefs.writes).toContainEqual({ reasoningModel: REASONING_MODELS[1] }));
-    fireEvent.change(screen.getByLabelText("Voice model"), { target: { value: "gpt-live-1" } });
+    expect(screen.queryByLabelText("Voice model")).toBeNull();
+  });
+
+  it("keeps an unexpected saved voice model visible and lets the user restore it", async () => {
+    const prefs = makePrefsRpc({ voiceModel: "older-model" });
+    mount(byId("advanced"), prefs.handlers);
+    await chooseSetting("Voice model", "gpt-live-1");
     await waitFor(() => expect(prefs.writes).toContainEqual({ voiceModel: "gpt-live-1" }));
   });
 
-  it("shows which credentials are set without any value", async () => {
-    const fields = Object.fromEntries(SECRET_IDS.map((id, index) => [id, index === 0])) as never;
-    const view = mount(byId("advanced"), { ...makePrefsRpc().handlers, setupStatus: async () => ({ ...makeStatus({ fields }), secret: "sk-hidden" }) });
-    await screen.findByText("Credentials");
-    expect(screen.getAllByText("set")).toHaveLength(1);
-    expect(screen.getAllByText("not set")).toHaveLength(SECRET_IDS.length - 1);
-    expect(view.container.textContent).not.toContain("sk-hidden");
+  it("does not fetch or render duplicate credentials", async () => {
+    const view = mount(byId("advanced"), makePrefsRpc().handlers);
+    await screen.findByLabelText("Reasoning model");
+    expect(screen.queryByText("Credentials")).toBeNull();
+    expect(view.inspection.rpcCalls.some((call) => call.method === "setupStatus")).toBe(false);
+  });
+
+  it("keeps reset confirmation open when the reset fails", async () => {
+    mount(byId("advanced"), { ...makePrefsRpc().handlers, preferencesReset: async () => { throw new Error("Reset failed."); } });
+    fireEvent.click(await screen.findByRole("button", { name: "Reset preferences" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm reset" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Reset failed.");
+    expect(screen.getByRole("button", { name: "Confirm reset" })).toBeTruthy();
   });
 
   it("resets preferences only after a confirmation", async () => {

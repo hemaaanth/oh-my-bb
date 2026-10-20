@@ -2,6 +2,19 @@
 // app imports this file, so the build leaves it out.
 import { defaultPreferences, SECRET_IDS } from "../../shared/constants.js";
 import type { Preferences, SetupStatus } from "../../shared/contract.js";
+import { fireEvent, screen } from "@testing-library/react";
+
+// Radix scrolls the active item into view. jsdom has no layout implementation.
+HTMLElement.prototype.scrollIntoView ??= () => {};
+
+export async function openSetting(label: string): Promise<void> {
+  fireEvent.keyDown(await screen.findByRole("combobox", { name: label }), { key: "ArrowDown" });
+}
+
+export async function chooseSetting(label: string, option: string): Promise<void> {
+  await openSetting(label);
+  fireEvent.click(await screen.findByRole("option", { name: option }));
+}
 
 /** Node's experimental global localStorage shadows jsdom's and is unusable without a file. */
 export function installFakeLocalStorage(): Record<string, string> {

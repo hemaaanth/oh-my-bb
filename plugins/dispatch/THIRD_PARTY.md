@@ -9,13 +9,15 @@ The build bundles these packages into `dist/`. Each keeps its own license.
 | [`agent-robot-avatar`](https://www.npmjs.com/package/agent-robot-avatar) | 0.5.2 | MIT, © 2026 CX ART Lab | The pet's face. |
 | `@radix-ui/react-context-menu` | 2.4.1 | MIT | The pet menu. |
 | `@radix-ui/react-slot` | 1.5.0 | MIT | The shared UI button. |
+| `@radix-ui/react-checkbox` | 1.3.3 | MIT | The plugin access checklist. |
 | `class-variance-authority` | 0.7.1 | Apache-2.0 | Shared UI variants. |
 | `clsx` | 2.1.1 | MIT | Class names. |
 | `tailwind-merge` | 3.7.0 | MIT | Class names. |
 | `zod` | 4.6.7 | MIT | Checking setup values and RPC data. |
 
 React, the BB plugin SDK, and `better-sqlite3` come from the BB host. They are
-not bundled.
+not bundled. `@radix-ui/react-select` 2.2.6 (MIT) is runtime-shimmed to BB's
+copy, so its popup shares the host's focus and overlay handling.
 
 ## BB shared UI
 
@@ -25,6 +27,11 @@ not bundled.
 `components.json` aliases, so the files were moved under `app/` afterwards.
 Their imports are relative, so the move changes no code. Rerun the command and
 move the files again to update them.
+
+The settings select and checkbox were copied from the owner's Catalog plugin's
+vendored BB UI kit on 2026-10-19. They reuse the existing class-name utility and
+plugin portal-scope helper. `icon.tsx` forwards to the SDK's host icon component;
+it does not bundle the older kit's Hugeicons library.
 
 ## Owner-authored files
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Match BB's settings controls: themed pickers, consistent rows, compact setup
+  status, collapsed instruction history, and a smaller pet mood picker.
+- Remove the static tool catalogue and duplicate credential list. Keep all six
+  settings groups, native secret fields, and the mobile controls.
+
 ## 0.1.0
 
 - In-app voice with OpenAI GPT-Live over WebRTC. Start or stop from the
