@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A request that waits out a short rate-limit hold no longer fails with 429
+  when Node's timer fires a few ms before the hold ends.
 - The "Needs configuration" message, shown when no account or API key is
   enabled, now names `bb gateway account add` and `bb gateway key add`, and
   says to run `bb plugin reload model-gateway` afterwards, because adding an

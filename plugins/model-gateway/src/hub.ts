@@ -104,6 +104,9 @@ const DEFAULT_DRAIN_TIMEOUT_MS = 4_000;
 // Tells clients to retry once the reloaded instance is serving.
 const STOPPING_RETRY_AFTER = { "retry-after": "5" };
 const MAX_INLINE_HOLD_MS = 20_000;
+// Node's timer can fire a few ms before the wall clock reaches `heldUntil`, which
+// would make a finished hold look active on the recheck.
+const HOLD_WAKE_PAD_MS = 10;
 const TRANSIENT_RETRY_DELAY_MS = 250;
 const MAX_TRANSIENT_RETRY_DELAY_MS = 1_000;
 const MAX_REFRESH_BACKOFF_MS = 60_000;
@@ -1108,7 +1111,7 @@ export class AccountPoolHub {
             continue;
           }
           waited.add(selected.account.id);
-          await waitForDelay(heldMs, signal);
+          await waitForDelay(heldMs + HOLD_WAKE_PAD_MS, signal);
           continue;
         }
         previousAccountId = selected.account.id;
