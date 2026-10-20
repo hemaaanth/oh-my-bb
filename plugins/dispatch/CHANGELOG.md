@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
 
 - Built-in voice samples. Every listed voice has a pre-made sample of the
   sample line in the default voice style, in `voice-samples/`: 31 MP3 files
