@@ -18,8 +18,11 @@ export const OPENAI_ERROR_MAX = 300;
 export const NO_KEY_ERROR = "Dispatch needs an OpenAI API key. Add it in Dispatch settings, Setup.";
 export const PHONE_BUSY_ERROR = "A phone call is in progress. End it before you start a call in the app.";
 
+/**
+ * The session description. Both endpoints take it under a `session` key and
+ * reject a `session.type` field (checked against the live API, 2026-10-19).
+ */
 export type SessionBody = {
-  type: "live";
   model: string;
   instructions: string;
   audio: { output: { voice: string } };
@@ -33,7 +36,6 @@ export type SessionBody = {
       parallel_tool_calls: true;
     };
   };
-  transport?: { type: "webrtc"; sdp: string };
 };
 
 /**
@@ -51,7 +53,6 @@ export async function buildSessionBody(
     toolCatalog(ctx, { mobile: context.mobile, canNavigate: context.canNavigate, channel: input.channel }),
   ]);
   return {
-    type: "live",
     model: preferences.voiceModel,
     instructions: prompts.voice.assembled,
     audio: { output: { voice: preferences.voice } },
@@ -140,24 +141,23 @@ export async function createWebRtcSession(ctx: ServerContext, body: SessionBody,
   const response = await fetch(ENDPOINTS.liveSessions, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, transport: { type: "webrtc", sdp: offerSdp } }),
+    body: JSON.stringify({ session: body, transport: { type: "webrtc", sdp: offerSdp } }),
   });
   if (!response.ok) throw await failure(response);
   return parseCreatedSession(response);
 }
 
 /**
- * Accept an incoming SIP session (the phone path). The accept endpoint wants
- * the body under a `session` key, and SIP negotiates the audio, so no
- * transport goes in. Throws on a non-2xx reply.
+ * Accept an incoming SIP session (the phone path). Like the create
+ * endpoint, it wants the body under a `session` key. SIP negotiates the
+ * audio, so no transport goes in. Throws on a non-2xx reply.
  */
 export async function acceptSipSession(ctx: ServerContext, sessionId: string, body: SessionBody): Promise<void> {
   const key = await openaiKey(ctx);
-  const { transport: _transport, ...session } = body;
   const response = await fetch(ENDPOINTS.acceptSession(sessionId), {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ session }),
+    body: JSON.stringify({ session: body }),
   });
   if (!response.ok) throw await failure(response);
 }

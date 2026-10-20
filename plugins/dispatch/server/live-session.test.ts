@@ -16,7 +16,8 @@ import {
 } from "./live-session.js";
 
 const input = { sdp: "v=0 offer", nonce: "nonce_new", clientId: "client_a", realmId: "realm_a", device: DESKTOP_DEVICE, context: APP_CONTEXT };
-const answer = () => new Response(JSON.stringify({ id: "sess_1", transport: { sdp: "v=0 answer" } }), { headers: { "content-type": "application/json" } });
+// The reply shape the live API returns (checked 2026-10-19).
+const answer = () => new Response(JSON.stringify({ session: { id: "sess_1" }, transport: { type: "webrtc", sdp: "v=0 answer" } }), { headers: { "content-type": "application/json" } });
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -26,7 +27,8 @@ describe("session body", () => {
   it("carries the voice, both models, both prompts, and the catalog", async () => {
     const { ctx } = await makeContext({ openaiKey: FULL_SETUP.openaiKey });
     const body = await buildSessionBody(ctx, { channel: "app", device: DESKTOP_DEVICE, context: APP_CONTEXT });
-    expect(body).toMatchObject({ type: "live", model: "gpt-live-1", audio: { output: { voice: "gleam" } } });
+    expect(body).toMatchObject({ model: "gpt-live-1", audio: { output: { voice: "gleam" } } });
+    expect(body).not.toHaveProperty("type");
     expect(body.delegation.responses).toMatchObject({ model: "gpt-5.6-terra", tool_choice: "auto", parallel_tool_calls: true });
     expect(body.instructions).toContain("Juno");
     expect(body.delegation.responses.tools.every((tool) => tool.type === "function")).toBe(true);
@@ -75,6 +77,9 @@ describe("openCall", () => {
     expect(url).toMatch(/\/live\/sessions$/);
     expect((request.headers as Record<string, string>).Authorization).toBe(`Bearer ${FULL_SETUP.openaiKey}`);
     const sent = JSON.parse(String(request.body));
+    expect(Object.keys(sent)).toEqual(["session", "transport"]);
+    expect(sent.session).toMatchObject({ model: "gpt-live-1" });
+    expect(sent.session).not.toHaveProperty("type");
     expect(sent.transport).toEqual({ type: "webrtc", sdp: "v=0 offer" });
     expect(String(request.body)).not.toContain(FULL_SETUP.openaiKey);
   });

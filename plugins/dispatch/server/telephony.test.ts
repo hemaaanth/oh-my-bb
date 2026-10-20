@@ -203,7 +203,8 @@ describe("webhooks_receive", () => {
     expect((accept!.init.headers as Record<string, string>).Authorization).toBe(`Bearer ${FULL_SETUP.openaiKey}`);
     const body = JSON.parse(String(accept!.init.body));
     expect(Object.keys(body)).toEqual(["session"]);
-    expect(body.session).toMatchObject({ type: "live", model: "gpt-live-1" });
+    expect(body.session).toMatchObject({ model: "gpt-live-1" });
+    expect(body.session).not.toHaveProperty("type");
     expect(body.session.transport).toBeUndefined();
     expect(body.session.instructions).toContain("a phone call");
 
