@@ -9,6 +9,7 @@
 import { GREETING_NOTICE } from "@/shared/constants.js";
 import type { AgentCommandPayload, CallControlPayload, Presence, ThreadNoticePayload } from "@/shared/contract.js";
 import { TOOL_ERROR_PREFIX } from "@/shared/tool-names.js";
+import { TranscriptGrouper, speechKind } from "@/shared/transcript.js";
 import { callStore, IDLE_CALL, type Activity, type CallSnapshot } from "./call-store.js";
 import { DEFAULT_TIMING, type ControllerDeps, type Session, type Teardown, type Timing } from "./call-session.js";
 import { canNavigate } from "./device-profile.js";
@@ -32,6 +33,7 @@ export class CallController {
   private readonly trace: TraceQueue;
   private readonly mirror: PresenceMirror;
   private readonly notices: NoticeBatcher;
+  private readonly transcript: TranscriptGrouper;
   private lastMirrorStop = 0;
 
   constructor(private readonly deps: ControllerDeps) {
@@ -40,6 +42,8 @@ export class CallController {
     this.trace = new TraceQueue((callId, events) => deps.rpc.call("traceAppend", { callId, events }), this.timing.traceDelayMs);
     this.mirror = new PresenceMirror(() => this.render(), this.timing.staleMs);
     this.notices = new NoticeBatcher((digest) => this.queueNotice(digest), this.timing.noticeWindowMs);
+    // GPT-Live sends transcript fragments only. One speech row per utterance.
+    this.transcript = new TranscriptGrouper((utterance) => this.trace.record(speechKind(utterance.speaker), { text: utterance.text }, utterance.at));
   }
 
   /** Add a trace event to the current call. Dropped when no call runs. */
@@ -178,6 +182,7 @@ export class CallController {
     this.session = session;
     this.mirror.clear();
     this.trace.begin();
+    this.transcript.dispose();
     this.store.set({ ...IDLE_CALL, state: "connecting", owner: "self", nonce: session.nonce });
     this.announce(session);
 
@@ -286,7 +291,7 @@ export class CallController {
         return;
       case "transcript": {
         const activity: Activity = event.final && event.speaker === "you" ? "idle" : event.speaker;
-        if (event.final && event.text.trim()) this.trace.record(event.speaker === "you" ? "speech.user" : "speech.agent", { text: event.text });
+        this.recordTranscript(event);
         this.setActivity(session, activity);
         return;
       }
@@ -318,6 +323,17 @@ export class CallController {
         if (!event.transient) this.deps.toast(`${this.deps.agentName()}: ${event.message}`, { tone: "error" });
         return;
     }
+  }
+
+  private recordTranscript(event: Extract<LiveEvent, { kind: "transcript" }>) {
+    const speaker = event.speaker === "you" ? "user" : "agent";
+    if (!event.final) {
+      this.transcript.push({ speaker, text: event.text, startMs: event.startMs, endMs: event.endMs });
+      return;
+    }
+    // A final event ends the turn. Its text only counts when no fragments came first.
+    if (this.transcript.openSpeaker === speaker) this.transcript.flush();
+    else if (event.text.trim()) this.trace.record(speechKind(speaker), { text: event.text.trim() });
   }
 
   private setActivity(session: Session, activity: Activity) {
@@ -485,6 +501,8 @@ export class CallController {
     session.audio?.remove();
     if (session.startedAt !== null) this.deps.chimes.hangUp();
     this.publish({ nonce: session.nonce, phase: "idle", startedAt: null });
+    // The last words go in before the end, so the call's summary sees them.
+    this.transcript.flush();
     this.trace.record(how.record, { reason: how.reason, ...how.extra });
     void this.trace.end();
     this.render();

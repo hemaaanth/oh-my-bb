@@ -1,7 +1,8 @@
-// Calls (SPEC §12.5): microphone, speaker, shortcuts, announcements, and the
-// mobile drawer behaviour. The mobile settings page reuses three of the rows.
+// Calls (SPEC §12.5): microphone, speaker, shortcuts, announcements, the
+// mobile drawer behaviour, and call memory. The mobile settings page reuses
+// three of the rows.
 import { useState } from "react";
-import { LOCAL_KEYS, defaultPreferences } from "../../shared/constants.js";
+import { LOCAL_KEYS, MEMORY_RETENTION_DAYS, defaultPreferences } from "../../shared/constants.js";
 import type { Preferences } from "../../shared/contract.js";
 import { Button } from "../components/ui/button";
 import { Switch } from "../components/ui/switch";
@@ -117,6 +118,64 @@ function DrawerRow({ prefs, save }: { prefs: Preferences; save: (patch: Partial<
   );
 }
 
+const SERVER_ZONE = "dispatch-server-zone";
+
+const retentionLabel = (days: number) => (days === 0 ? "Forever" : days === 365 ? "1 year" : `${days} days`);
+
+function deviceZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  } catch {
+    return "";
+  }
+}
+
+/** Every zone the browser knows, with the saved one and this device's one first. */
+function zoneOptions(saved: string): Array<{ value: string; label: string }> {
+  const supported = (Intl as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.("timeZone") ?? [];
+  const here = deviceZone();
+  const zones = [...new Set([saved, here, ...supported].filter(Boolean))];
+  return [
+    { value: SERVER_ZONE, label: "The BB server's zone" },
+    ...zones.map((zone) => ({ value: zone, label: zone === here ? `${zone} (this device)` : zone })),
+  ];
+}
+
+function MemoryRows({ prefs, save }: { prefs: Preferences; save: (patch: Partial<Preferences>) => Promise<boolean> }) {
+  const retention = (MEMORY_RETENTION_DAYS as readonly number[]).includes(prefs.memoryRetentionDays)
+    ? [...MEMORY_RETENTION_DAYS]
+    : [prefs.memoryRetentionDays, ...MEMORY_RETENTION_DAYS];
+  return (
+    <>
+      <Row
+        label="Call memory"
+        inline
+        help="After a call, your reasoning model writes a short summary with your OpenAI key. The agent sees recent summaries and can look up older ones."
+      >
+        <Switch aria-label="Call memory" checked={prefs.callMemory} onCheckedChange={(callMemory) => void save({ callMemory })} />
+      </Row>
+      <Row label="Remember calls for" htmlFor="dispatch-memory-retention" help="Older summaries and transcripts are deleted. Call times and costs stay.">
+        <SettingSelect
+          id="dispatch-memory-retention"
+          label="Remember calls for"
+          value={String(prefs.memoryRetentionDays)}
+          options={retention.map((days) => ({ value: String(days), label: retentionLabel(days) }))}
+          onValueChange={(value) => void save({ memoryRetentionDays: Number(value) })}
+        />
+      </Row>
+      <Row label="Home time zone" htmlFor="dispatch-home-zone" help="Used for phone calls. The app sends its own zone.">
+        <SettingSelect
+          id="dispatch-home-zone"
+          label="Home time zone"
+          value={prefs.homeTimeZone || SERVER_ZONE}
+          options={zoneOptions(prefs.homeTimeZone)}
+          onValueChange={(value) => void save({ homeTimeZone: value === SERVER_ZONE ? "" : value })}
+        />
+      </Row>
+    </>
+  );
+}
+
 export function CallsSection() {
   const { prefs, error, save } = usePreferences();
   if (!prefs) return <Loading error={error} />;
@@ -137,6 +196,7 @@ export function CallsSection() {
       <ShortcutRow label="Mute or unmute" help="Works while a call is live." combo={prefs.hotkeys.mute} defaultCombo={defaults.mute} otherCombo={prefs.hotkeys.toggle} onSave={saveHotkey("mute")} />
       <AnnouncementsRow prefs={prefs} save={save} />
       <DrawerRow prefs={prefs} save={save} />
+      <MemoryRows prefs={prefs} save={save} />
       {error ? <Note tone="error">{error}</Note> : null}
     </Group>
   );

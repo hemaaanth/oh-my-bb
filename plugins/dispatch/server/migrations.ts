@@ -58,6 +58,24 @@ CREATE INDEX call_trace_call_at ON call_trace(call_id, at);`,
     id: "005-drop-legacy-token-usage",
     sql: "DROP TABLE IF EXISTS legacy_token_usage;",
   },
+  {
+    // Call memory. `forget` is the per-call "do not remember" flag.
+    id: "006-call-summaries",
+    sql: `ALTER TABLE calls ADD COLUMN forget INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE call_summaries (
+  call_id TEXT PRIMARY KEY REFERENCES calls(id) ON DELETE CASCADE,
+  local_day TEXT NOT NULL,
+  time_zone TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  topics TEXT NOT NULL DEFAULT '[]',
+  thread_ids TEXT NOT NULL DEFAULT '[]',
+  model TEXT,
+  status TEXT NOT NULL CHECK (status IN ('done','fallback','skipped')),
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX call_summaries_day ON call_summaries(local_day);`,
+  },
 ] as const;
 
 export const MIGRATION_IDS = MIGRATIONS.map((migration) => migration.id);

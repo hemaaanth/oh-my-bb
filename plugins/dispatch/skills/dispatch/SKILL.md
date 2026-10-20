@@ -1,6 +1,6 @@
 ---
 name: dispatch
-description: "Check and control Dispatch, the BB voice agent, with `bb dispatch`: see what is set up, list live threads, stop or mute the live call, call the owner's phone, and report voice minutes and cost. Use when the user asks about a Dispatch call, its setup, or its cost."
+description: "Check and control Dispatch, the BB voice agent, with `bb dispatch`: see what is set up, list live threads, stop or mute the live call, call the owner's phone, forget a call, and report voice minutes and cost. Use when the user asks about a Dispatch call, its setup, its memory, or its cost."
 ---
 
 # Dispatch
@@ -37,6 +37,7 @@ bb dispatch live [--json]                    # threads that are working now
 bb dispatch read <thread-id>                 # what a thread did last
 bb dispatch usage [--json] [--days <1-365>]  # minutes and estimated cost per day, default 30
 bb dispatch stop                             # end the live call everywhere
+bb dispatch forget [call-id]                 # delete a call's transcript and summary, default the latest call
 bb dispatch mute                             # mute the microphone on the live call
 bb dispatch unmute
 bb dispatch call                             # call the owner's phone
@@ -51,7 +52,7 @@ Exit codes:
   call.
 - `call` exits non-zero with "Phone calls are not set up. Missing: …" when
   phone setup is not ready. It makes no network call then.
-- `import` with both `--dry-run` and `--apply` fails with `invalid_arguments`.
+- `forget` exits non-zero when there are no calls or the id is unknown.
 
 ## Setup questions
 
@@ -77,11 +78,21 @@ The six settings:
 | `yourPhoneNumber` | Phone calls — your phone number |
 | `openaiSipProject` | Phone calls — OpenAI project id for SIP |
 
+## Memory questions
+
+Dispatch remembers past calls: a transcript, and a short summary written by the
+user's reasoning model with their OpenAI key. The user turns this off, or sets
+how long it is kept (30 days, 90 days by default, 1 year, or forever), in
+Dispatch settings, **Calls**. `bb dispatch forget` deletes one call's
+transcript and summary. Ask before you forget a call the user did not name.
+Details are in `docs/call-memory.md` in the Dispatch package.
+
 ## Cost questions
 
 `bb dispatch usage` gives voice minutes and cost per day. Cost is billed
 seconds / 60 × $0.05. Say clearly that this is an estimate of GPT-Live time
 only:
 
-- The reasoning model's tokens are billed on top and are not counted.
+- The reasoning model's tokens are billed on top and are not counted. That
+  includes the call summaries.
 - Phone calls also cost Twilio minutes.

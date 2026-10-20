@@ -6,6 +6,7 @@ import { CHANNELS } from "../../shared/constants.js";
 import type { CallRow, DeviceProfile, LiveStatus, TraceRow, UsageReport } from "../../shared/contract.js";
 import { installFakeLocalStorage, makePrefsRpc } from "../settings/support.js";
 import { ConsolePanel, registerStartCall, useConsoleBadge } from "./index.js";
+import { memoryLine } from "./calls-list.js";
 import { ConsoleStatusOverlay } from "./presence.js";
 import { formatCallWhen } from "./format.js";
 import { USAGE_NOTE, usageTotals } from "./usage.js";
@@ -32,6 +33,7 @@ const call = (n: number, over: Partial<CallRow> = {}): CallRow => ({
   closeReason: "user",
   billedSeconds: 90,
   unclean: false,
+  forgotten: false,
   ...over,
 });
 const trace = (id: number, kind: string, payload: Record<string, unknown> | null = null): TraceRow => ({ id, callId: "call-1", at: Date.UTC(2026, 9, 19, 10, 0, id), kind, payload });
@@ -448,5 +450,15 @@ describe("Sidebar badge", () => {
     await waitFor(() => expect(screen.getByTestId("badge").textContent).toMatch(/^muted\|1:0\d\|warning$/));
     await view.emitRealtime(CHANNELS.presence, { nonce: "n", phase: "idle", startedAt: null, clientId: "c", realmId: "r" });
     await waitFor(() => expect(screen.getByTestId("badge").textContent).toBe("ended|Ended|default"));
+  });
+});
+
+describe("call memory line", () => {
+  const summary = { localDay: "2026-10-19", timeZone: "UTC", title: "Header fix", summary: "Fixed the header.", topics: [], threadIds: [], model: null, createdAt: 0 };
+  it("shows the summary title, nothing for a skipped call, and a note for a forgotten one", () => {
+    expect(memoryLine(call(1, { summary: { ...summary, status: "done" } }))).toEqual({ line: "Header fix", full: "Fixed the header." });
+    expect(memoryLine(call(1, { summary: { ...summary, status: "skipped" } }))).toBeNull();
+    expect(memoryLine(call(1))).toBeNull();
+    expect(memoryLine(call(1, { forgotten: true }))?.line).toBe("Not remembered");
   });
 });

@@ -41,12 +41,13 @@ type CallDbRow = {
   close_reason: string | null;
   billed_seconds: number;
   unclean: number;
+  forget: number;
 };
 type TraceDbRow = { id: number; call_id: string; at: number; kind: string; payload_json: string | null };
 
 const UNKNOWN_DEVICE: DeviceProfile = { platform: "", mobile: false, browser: "", displayMode: "", runtime: "browser", label: "Unknown device" };
 
-function parseJson<T>(text: string | null, fallback: T): T {
+export function parseJson<T>(text: string | null, fallback: T): T {
   if (text === null) return fallback;
   try {
     return JSON.parse(text) as T;
@@ -55,7 +56,7 @@ function parseJson<T>(text: string | null, fallback: T): T {
   }
 }
 
-function toCallRow(row: CallDbRow): CallRow {
+export function toCallRow(row: CallDbRow): CallRow {
   return {
     id: row.id,
     openaiSessionId: row.openai_session_id,
@@ -70,6 +71,23 @@ function toCallRow(row: CallDbRow): CallRow {
     closeReason: row.close_reason,
     billedSeconds: row.billed_seconds,
     unclean: row.unclean === 1,
+    forgotten: row.forget === 1,
+  };
+}
+
+export type { CallDbRow };
+
+/** Trace kinds that hold what was said. Forget and retention remove them. */
+export const SPEECH_KINDS = ["speech.user", "speech.agent"] as const;
+
+// One listener per database, so a test context without registerMemory never summarises.
+const endListeners = new WeakMap<object, (callId: string) => void>();
+
+/** Run `listener` once for each call that ends. Returns the unsubscribe. */
+export function onCallEnded(ctx: ServerContext, listener: (callId: string) => void): () => void {
+  endListeners.set(ctx.db, listener);
+  return () => {
+    if (endListeners.get(ctx.db) === listener) endListeners.delete(ctx.db);
   };
 }
 
@@ -142,7 +160,9 @@ export function endCall(ctx: ServerContext, callId: string, end: { reason: strin
   const result = ctx.db
     .prepare("UPDATE calls SET ended_at = ?, close_reason = ?, unclean = MAX(unclean, ?) WHERE id = ? AND ended_at IS NULL")
     .run(end.at ?? Date.now(), end.reason, end.unclean ? 1 : 0, callId);
-  return result.changes > 0;
+  if (result.changes === 0) return false;
+  endListeners.get(ctx.db)?.(callId);
+  return true;
 }
 
 /** Open calls, newest first. Pass `now` to apply the staleness window. */
@@ -169,7 +189,11 @@ function clipPayload(kind: string, payload: Record<string, unknown> | undefined)
  * call end), and publish them on `trace-tail`. Unknown call ids are skipped.
  */
 export function appendTrace(ctx: ServerContext, callId: string, events: readonly TraceEvent[]): TraceRow[] {
-  if (events.length === 0 || !getCall(ctx, callId)) return [];
+  const call = events.length === 0 ? null : getCall(ctx, callId);
+  if (!call) return [];
+  // A call the owner asked to forget keeps no words, even ones still arriving.
+  if (call.forgotten) events = events.filter((event) => !(SPEECH_KINDS as readonly string[]).includes(event.kind));
+  if (events.length === 0) return [];
   const insert = ctx.db.prepare("INSERT INTO call_trace (call_id, at, kind, payload_json) VALUES (?, ?, ?, ?)");
   const rows: TraceRow[] = [];
   for (const event of events) {
@@ -247,9 +271,13 @@ export function callTrace(ctx: ServerContext, input: { callId: string; cursor?: 
 // ---------------------------------------------------------------------------
 // Usage (SPEC §16)
 
-/** Local calendar day, YYYY-MM-DD, in the server's time zone. */
-export function localDay(ms: number): string {
+/** Local calendar day, YYYY-MM-DD, in `timeZone` (an IANA zone), or the server's zone. */
+export function localDay(ms: number, timeZone?: string): string {
   const date = new Date(ms);
+  if (timeZone) {
+    // en-CA formats as YYYY-MM-DD.
+    return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+  }
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }

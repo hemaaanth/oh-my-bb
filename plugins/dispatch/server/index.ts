@@ -11,8 +11,8 @@ import { phoneCommands, registerPhone } from "./register-phone.js";
 import { registerRpc } from "./rpc.js";
 import { SETUP_SETTINGS, isPresent, needsKeyMessage } from "./settings.js";
 
-export { receiveContract, rpcContract } from "../shared/contract.js";
-export type { ReceiveContract, RpcContract } from "../shared/contract.js";
+export { readContract, receiveContract, rpcContract } from "../shared/contract.js";
+export type { ReadContract, ReceiveContract, RpcContract } from "../shared/contract.js";
 
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define(SETUP_SETTINGS);

@@ -4,8 +4,9 @@ import { PLUGIN_CLI_OUTPUT_MAX_BYTES, PluginCliError, cliCommand, type PluginCli
 import { CHANNELS, LIVE_USD_PER_MINUTE } from "../shared/constants.js";
 import type { AgentCommand, LiveJson, LiveStatus, SetupStatus, StatusJson, UsageReport } from "../shared/contract.js";
 import type { CliCommands, ServerContext } from "./context.js";
-import { liveStatus, usageReport } from "./ledger.js";
+import { callsPage, liveStatus, usageReport } from "./ledger.js";
 import { endCallsEverywhere } from "./live-session.js";
+import { forgetCall } from "./memory.js";
 import { readSetupStatus } from "./readiness.js";
 import { listLiveThreads } from "./tools/live.js";
 import { readThread } from "./tools/threads.js";
@@ -134,6 +135,17 @@ export function coreCommands(ctx: ServerContext): CliCommands {
         attempt(() => {
           const { stopped } = endCallsEverywhere(ctx, { reason: "stopped from the CLI" });
           return { exitCode: 0, stdout: stopped ? "Stopped" : NO_CALL };
+        }),
+    }),
+    forget: cliCommand({
+      summary: "Forget what was said in a call: its transcript and summary",
+      positionals: [{ name: "call-id", description: "The call to forget. Defaults to the latest call", required: false }],
+      run: ({ positionals }) =>
+        attempt(() => {
+          const callId = positionals["call-id"] ?? callsPage(ctx, { limit: 1 }).calls[0]?.id;
+          if (!callId) throw new PluginCliError("There are no calls to forget.", { code: "no_call" });
+          if (!forgetCall(ctx, callId)) throw new PluginCliError(`There is no call with id ${callId}.`, { code: "not_found" });
+          return { exitCode: 0, stdout: `Forgot ${callId}. Its transcript and summary are deleted.` };
         }),
     }),
     mute: cliCommand({ summary: "Mute the microphone on the live call", run: () => attempt(() => relay(ctx, "mute", "Muted")) }),

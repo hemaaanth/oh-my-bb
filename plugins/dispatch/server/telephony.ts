@@ -5,6 +5,7 @@
 // the ledger, and the tool executor come from the P1 core.
 import { ENDPOINTS, GREETING_NOTICE, WEBHOOKS_PLUGIN_ID } from "../shared/constants.js";
 import type { PhoneDialResult, ToolContext } from "../shared/contract.js";
+import { TranscriptGrouper, speechKind } from "../shared/transcript.js";
 import type { ServerContext } from "./context.js";
 import { appendTrace, endCall, insertCall, openCalls } from "./ledger.js";
 import { PHONE_DEVICE, acceptSipSession, buildPhoneSessionBody, onCallStop, publishStop } from "./live-session.js";
@@ -164,7 +165,8 @@ export async function receiveCall(ctx: ServerContext, sessionId: string): Promis
 // Sideband tool loop (SPEC §10.5)
 
 /**
- * OpenAI hosts the audio. Here we only run the backend's function calls. A
+ * OpenAI hosts the audio. Here we record the transcript and run the backend's
+ * function calls. A
  * finished function call arrives inside `response.event`; its result goes
  * back as `response.item.create`. Calls run one at a time. One
  * `response.create` follows the last output of a batch, or GPT-Live rejects
@@ -186,10 +188,17 @@ export async function runSideband(ctx: ServerContext, callId: string, sessionId:
   let hungUp = false;
   let graceTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // Transcript fragments become one speech.user or speech.agent row per utterance.
+  const transcript = new TranscriptGrouper((utterance) => {
+    appendTrace(ctx, callId, [{ kind: speechKind(utterance.speaker), at: utterance.at, payload: { text: utterance.text } }]);
+  });
+
   // A stop control (an app call starts, or `bb dispatch stop`) hangs up the phone.
   const unsubscribe = onCallStop((payload) => {
     if (closed || hungUp) return;
     hungUp = true;
+    // Write the last words before the call ends, so its summary sees them.
+    transcript.flush();
     if (endCall(ctx, callId, { reason: payload.reason })) trace("call.stopped", { reason: payload.reason });
     void hangUpSession(ctx, sessionId);
     // `session.closed` may still bring the final usage. Do not wait for ever.
@@ -211,8 +220,19 @@ export async function runSideband(ctx: ServerContext, callId: string, sessionId:
       trace("usage.seconds", { seconds });
       return;
     }
+    if (message.type === "session.input_transcript.delta" || message.type === "session.output_transcript.delta") {
+      if (typeof message.delta !== "string") return;
+      transcript.push({
+        speaker: message.type === "session.input_transcript.delta" ? "user" : "agent",
+        text: message.delta,
+        startMs: typeof message.start_ms === "number" ? message.start_ms : null,
+        endMs: typeof message.end_ms === "number" ? message.end_ms : null,
+      });
+      return;
+    }
     if (message.type === "session.closed") {
       closed = true;
+      transcript.flush();
       const reason = typeof message.reason === "string" && message.reason !== "" ? message.reason : "closed";
       trace("call.closed", { reason, ...(seconds !== undefined ? { seconds } : {}) });
       if (!hungUp) trace("call.stopped", { reason });
@@ -256,6 +276,7 @@ export async function runSideband(ctx: ServerContext, callId: string, sessionId:
   });
   unsubscribe();
   if (graceTimer) clearTimeout(graceTimer);
+  transcript.flush();
   if (!closed && !hungUp) {
     // The call may still be up at OpenAI, but Dispatch can no longer see it or run its tools.
     trace("call.stopped", { unclean: true, reason: "connection lost" });

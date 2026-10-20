@@ -16,7 +16,14 @@ While a call is live, it also tells you when a thread finishes or fails. The
 pet shows what the agent is doing: listening, talking, reading, or working.
 
 The Dispatch console lists every call with its transcript, the tools it ran,
-and the voice minutes it used. `bb dispatch` checks setup, stops or mutes the
+and the voice minutes it used.
+
+The agent remembers past calls. After each call, your reasoning model writes a
+short summary with your OpenAI key. The agent sees your last few calls and your
+local time, and can look up older ones. Summaries and transcripts stay in
+Dispatch's database for 90 days by default. You can turn memory off, keep it
+longer or shorter, or forget one call. Other plugins may read call summaries
+through the read-only `read.calls` RPC. `bb dispatch` checks setup, stops or mutes the
 call, and reports usage.
 
 ## Two modes
@@ -33,8 +40,8 @@ add it, Dispatch reloads itself.
 
 ## Cost
 
-Voice time is estimated at $0.05 per minute. The reasoning model's tokens are
-billed by OpenAI on top and are not counted. Phone calls also use Twilio
+Voice time is estimated at $0.05 per minute. The reasoning model's tokens,
+including call summaries, are billed by OpenAI on top and are not counted. Phone calls also use Twilio
 minutes.
 
 ## Standalone by default

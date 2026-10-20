@@ -4,7 +4,9 @@
 import type { DeviceProfile, PromptParts, ToolContext } from "../../shared/contract.js";
 import type { ServerContext } from "../context.js";
 import { currentInstructions } from "../instructions.js";
+import { lastCallLine, recentCallsSection } from "../memory.js";
 import { readPreferences } from "../preferences.js";
+import { callerTimeZone, formatWhen } from "../time-zone.js";
 import { threadTitle } from "../tools/live.js";
 import { exposedPlugins, listPlugins, type CommandPlugin } from "../tools/plugins.js";
 import { BACKEND_PROMPT, RUNTIME_HEADING, VOICE_PROMPT, YOURS_HEADING, fillName } from "./built-in.js";
@@ -31,6 +33,10 @@ export type RuntimeInput = {
   thread?: { title: string; status: string } | null;
   projectName?: string | null;
   now: Date;
+  /** The caller's IANA zone. Defaults to the server's. */
+  timeZone?: string;
+  /** "- Last call: …", when memory is on and there was one. */
+  lastCall?: string | null;
 };
 
 function deviceLine(context: ToolContext, device: DeviceProfile | null | undefined): string {
@@ -63,17 +69,9 @@ function pluginLines(plugins: readonly CommandPlugin[]): string {
   return ["- Plugin commands you may run with run_plugin_command:", ...lines].join("\n");
 }
 
-function timeLine(now: Date): string {
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const when = now.toLocaleString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return `- Local date and time: ${when}${zone ? ` (${zone})` : ""}.`;
+export function timeLine(now: Date, timeZone?: string): string {
+  const zone = timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return `- Local date and time: ${formatWhen(now, zone)}${zone ? ` (${zone})` : ""}.`;
 }
 
 /** The runtime context section. Pure, so tests can pin every line. */
@@ -85,7 +83,8 @@ export function buildRuntimeContext(input: RuntimeInput): string {
     deviceLine(input.context, input.device),
     placeLine(input),
     pluginLines(input.plugins),
-    timeLine(input.now),
+    timeLine(input.now, input.timeZone),
+    ...(input.lastCall ? [input.lastCall] : []),
   ].join("\n");
 }
 
@@ -120,15 +119,22 @@ export async function assemblePrompts(
   input: { context: ToolContext; device?: DeviceProfile | null; now?: Date },
 ): Promise<AssembledPrompts> {
   const [preferences, plugins, facts] = await Promise.all([readPreferences(ctx), listPlugins(ctx), screenFacts(ctx, input.context)]);
-  const runtime = buildRuntimeContext({
+  const now = input.now ?? new Date();
+  const timeZone = callerTimeZone(input.device, preferences.homeTimeZone);
+  const runtimeLines = buildRuntimeContext({
     agentName: preferences.agentName,
     context: input.context,
     device: input.device ?? null,
     plugins: exposedPlugins(plugins, preferences.pluginAccess),
     thread: facts.thread,
     projectName: facts.projectName,
-    now: input.now ?? new Date(),
+    now,
+    timeZone,
+    lastCall: lastCallLine(ctx, preferences, now.getTime(), timeZone),
   });
+  // Recent calls belong to the runtime part, so the preview shows them.
+  const recent = recentCallsSection(ctx, preferences, now.getTime(), timeZone);
+  const runtime = recent ? `${runtimeLines}${PART_SEPARATOR}${recent}` : runtimeLines;
   const yours = yoursSection(currentInstructions(ctx));
   return {
     voice: assembleParts(fillName(VOICE_PROMPT, preferences.agentName), runtime, yours),

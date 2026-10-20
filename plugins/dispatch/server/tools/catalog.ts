@@ -1,6 +1,6 @@
 // The voice tool catalog (CONTRACTS §2, SPEC §11.6). Descriptions are what
 // the reasoning model reads, so they say when to use each tool. Owned by P1.
-import { LIST_THREADS } from "../../shared/constants.js";
+import { CALL_MEMORY, LIST_THREADS } from "../../shared/constants.js";
 import type { CallChannel, ToolSpec } from "../../shared/contract.js";
 import {
   APP_ONLY_TOOLS,
@@ -11,7 +11,14 @@ import {
   type ToolName,
 } from "../../shared/tool-names.js";
 
-export type CatalogFlags = { mobile: boolean; canNavigate: boolean; channel: CallChannel; allowedPluginIds: readonly string[] };
+export type CatalogFlags = {
+  mobile: boolean;
+  canNavigate: boolean;
+  channel: CallChannel;
+  allowedPluginIds: readonly string[];
+  /** The callMemory preference. recall_calls is left out when it is false. */
+  callMemory?: boolean;
+};
 
 type JsonSchema = Record<string, unknown>;
 type Properties = Record<string, JsonSchema>;
@@ -60,6 +67,8 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   show_diff: "Sum up the files a thread changed, with added and removed lines, and bring the thread on screen.",
   update_instructions:
     "Save the user's standing instructions for future calls. Use it only when the user asks you to remember something for later. Pass the complete new text of the instructions, not only the change.",
+  recall_calls:
+    "Look up summaries of earlier calls with the user: when each was, the device, a title, a summary, and the threads it touched. Use it for questions like what did we talk about yesterday.",
   set_composer_text: "Replace the text in the message box of the thread on screen. Nothing is sent.",
   append_composer_text: "Add text to the end of the message box of the thread on screen. Nothing is sent.",
 };
@@ -157,6 +166,18 @@ function parametersFor(name: ToolName, flags: CatalogFlags): JsonSchema {
         },
         ["instructions", "reason"],
       );
+    case "recall_calls":
+      return object({
+        day: str("Only calls on this day, as YYYY-MM-DD in the user's local time."),
+        query: str("Words to look for in the call titles, summaries, and topics."),
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: CALL_MEMORY.recallMax,
+          default: CALL_MEMORY.recallDefault,
+          description: "How many calls to return, newest first.",
+        },
+      });
     case "set_composer_text":
     case "append_composer_text":
       return object({ text: str("The text.") }, ["text"]);
@@ -174,6 +195,7 @@ export function runsOn(name: ToolName, channel: CallChannel): ToolSpec["runsOn"]
 /** True when the tool belongs in a session with these flags. */
 export function inCatalog(name: ToolName, flags: CatalogFlags): boolean {
   if (name === "run_plugin_command") return flags.allowedPluginIds.length > 0;
+  if (name === "recall_calls") return flags.callMemory !== false;
   if ((APP_ONLY_TOOLS as readonly string[]).includes(name)) return flags.channel === "app";
   if ((MOBILE_APP_TOOLS as readonly string[]).includes(name)) return flags.channel === "app" && flags.mobile;
   return true;

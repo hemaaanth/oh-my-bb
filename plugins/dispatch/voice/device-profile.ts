@@ -3,6 +3,7 @@
 // change screens during a call.
 
 import type { DeviceProfile } from "@/shared/contract.js";
+import { deviceNameOf } from "@/shared/device-name.js";
 
 /** What detection reads. Tests pass their own; the app passes the browser. */
 export interface DeviceEnv {
@@ -15,6 +16,8 @@ export interface DeviceEnv {
   standalone?: boolean;
   /** A WebKit message bridge, as native iOS apps install. */
   webkitBridge?: boolean;
+  /** IANA zone, from `Intl.DateTimeFormat().resolvedOptions().timeZone`. */
+  timeZone?: string;
 }
 
 const DISPLAY_MODES = ["fullscreen", "standalone", "minimal-ui"] as const;
@@ -35,7 +38,16 @@ export function browserDeviceEnv(): DeviceEnv {
     displayMode: match ?? "browser",
     standalone: nav.standalone === true,
     webkitBridge: Boolean(webkit?.messageHandlers),
+    timeZone: localTimeZone(),
   };
+}
+
+function localTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function platformOf(env: DeviceEnv): { platform: string; mobile: boolean } {
@@ -70,7 +82,17 @@ export function detectDeviceProfile(env: DeviceEnv): DeviceProfile {
   const runtime: DeviceProfile["runtime"] = nativeWebview ? "native-webview" : displayMode === "browser" ? "browser" : "pwa";
   const browser = nativeWebview ? "WebView" : browserOf(env.userAgent);
   const where = runtime === "pwa" ? "app" : runtime === "native-webview" ? "native app" : mobile ? "mobile" : "desktop";
-  return { platform, mobile, browser, displayMode, runtime, label: `${platform} · ${browser} (${where})` };
+  const deviceName = deviceNameOf(platform, mobile);
+  return {
+    platform,
+    mobile,
+    browser,
+    displayMode,
+    runtime,
+    label: `${platform} · ${browser} (${where})`,
+    ...(env.timeZone ? { timeZone: env.timeZone } : {}),
+    ...(deviceName ? { deviceName } : {}),
+  };
 }
 
 /**

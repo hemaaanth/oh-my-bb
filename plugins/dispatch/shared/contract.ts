@@ -7,6 +7,7 @@ import { z } from "zod";
 import {
   AGENT_NAME_MAX,
   CALLS_PAGE,
+  CALL_MEMORY,
   INSTRUCTIONS_HISTORY_DEFAULT,
   INSTRUCTIONS_LIMIT,
   SECRET_IDS,
@@ -42,6 +43,10 @@ export const deviceProfileSchema = z.object({
   displayMode: z.string(),
   runtime: z.enum(["browser", "pwa", "native-webview", "sip"]),
   label: z.string(),
+  /** IANA zone of the caller, e.g. "Europe/Berlin". Phone calls have none. */
+  timeZone: z.string().optional(),
+  /** A short name for the device, e.g. "Mac" or "iPhone". */
+  deviceName: z.string().optional(),
 });
 export type DeviceProfile = z.infer<typeof deviceProfileSchema>;
 
@@ -78,6 +83,12 @@ export const preferencesSchema = z.object({
   reasoningModel: z.string(),
   announcements: z.boolean(),
   mobileDrawerBehavior: z.enum(["reuse", "new"]),
+  /** Summarise calls and let the agent recall them. */
+  callMemory: z.boolean(),
+  /** One of MEMORY_RETENTION_DAYS. 0 keeps memory forever. */
+  memoryRetentionDays: z.number().int().min(0),
+  /** IANA zone for calls that send none (phone calls). "" means the server's zone. */
+  homeTimeZone: z.string(),
   pluginAccess: pluginAccessSchema,
   hotkeys: z.object({ toggle: z.string(), mute: z.string() }),
   pet: petLookSchema,
@@ -96,6 +107,9 @@ const preferencesPatchSchema = z.looseObject({
   reasoningModel: z.string().optional(),
   announcements: z.boolean().optional(),
   mobileDrawerBehavior: z.string().optional(),
+  callMemory: z.boolean().optional(),
+  memoryRetentionDays: z.number().optional(),
+  homeTimeZone: z.string().optional(),
   pluginAccess: z.looseObject({ mode: z.string() }).optional(),
   hotkeys: z.looseObject({}).optional(),
   pet: z.looseObject({}).optional(),
@@ -146,6 +160,20 @@ export type PromptParts = z.infer<typeof promptPartsSchema>;
 // ---------------------------------------------------------------------------
 // Ledger rows (CONTRACTS §4.2, as the app sees them)
 
+export const callSummarySchema = z.object({
+  /** YYYY-MM-DD in `timeZone`. */
+  localDay: z.string(),
+  timeZone: z.string(),
+  title: z.string(),
+  summary: z.string(),
+  topics: z.array(z.string()),
+  threadIds: z.array(z.string()),
+  model: z.string().nullable(),
+  status: z.enum(["done", "fallback", "skipped"]),
+  createdAt: z.number(),
+});
+export type CallSummary = z.infer<typeof callSummarySchema>;
+
 export const callRowSchema = z.object({
   id: z.string(),
   openaiSessionId: z.string().nullable(),
@@ -160,6 +188,10 @@ export const callRowSchema = z.object({
   closeReason: z.string().nullable(),
   billedSeconds: z.number(),
   unclean: z.boolean(),
+  /** The owner asked Dispatch not to remember this call. */
+  forgotten: z.boolean(),
+  /** Set by callsPage only. */
+  summary: callSummarySchema.nullable().optional(),
 });
 export type CallRow = z.infer<typeof callRowSchema>;
 
@@ -329,6 +361,8 @@ export const rpcContract = defineRpcContract({
     output: usageReportSchema,
   },
   liveStatus: { input: empty, output: liveStatusSchema },
+  /** Do not remember a call: drop its transcript and summary, and never summarise it. */
+  forgetCall: { input: z.object({ callId: z.string() }), output: z.object({ forgotten: z.boolean() }) },
 
   // §3.4 Settings and setup
   preferencesRead: { input: empty, output: preferencesSchema },
@@ -396,12 +430,46 @@ export const receiveContract = defineRpcContract({
 });
 export type ReceiveContract = typeof receiveContract;
 
+/**
+ * Read-only call history for other plugins (for example Journal). It is
+ * discoverable, so it has its own contract. It never calls a model and never
+ * writes. Dispatch does not know who calls it.
+ */
+export const READ_CALLS_METHOD = "read.calls";
+const isoTime = z.iso.datetime({ offset: true });
+export const readCallSchema = z.object({
+  id: z.string(),
+  startedAt: z.string(),
+  endedAt: z.string().nullable(),
+  channel: channelSchema,
+  /** A short label: "Mac", "iPhone", "Phone". */
+  device: z.string().nullable(),
+  title: z.string().max(CALL_MEMORY.titleMax).nullable(),
+  summary: z.string().max(CALL_MEMORY.summaryMax).nullable(),
+  threadIds: z.array(z.string()),
+});
+export type ReadCall = z.infer<typeof readCallSchema>;
+export const readContract = defineRpcContract({
+  [READ_CALLS_METHOD]: {
+    input: z
+      .object({ since: isoTime, until: isoTime })
+      .refine((value) => Date.parse(value.until) > Date.parse(value.since), { message: "until must be after since", path: ["until"] })
+      .refine((value) => Date.parse(value.until) - Date.parse(value.since) <= CALL_MEMORY.readMaxDays * 24 * 60 * 60 * 1000, {
+        message: `The window may span at most ${CALL_MEMORY.readMaxDays} days`,
+        path: ["until"],
+      }),
+    output: z.object({ memory: z.boolean(), calls: z.array(readCallSchema) }),
+  },
+});
+export type ReadContract = typeof readContract;
+
 export type RpcMethod = keyof RpcContract;
 export type ReceiveMethod = keyof ReceiveContract;
+export type ReadMethod = keyof ReadContract;
 /** Every RPC method name, in CONTRACTS order. */
 export const METHOD_NAMES = Object.keys(rpcContract) as RpcMethod[];
 
-type AnyContract = RpcContract & ReceiveContract;
+type AnyContract = RpcContract & ReceiveContract & ReadContract;
 /** What a caller sends. Fields with defaults are optional. */
 export type RpcInput<M extends keyof AnyContract> = z.input<AnyContract[M]["input"]>;
 /** What a handler receives, after defaults. */

@@ -113,6 +113,15 @@ open in the BB app window, which helps when you are at a desk.
    opened with the same Bearer header. Never send `session.start`. The host's
    `WebSocket` takes a `{ headers }` init, so no extra dependency is needed.
    Events Dispatch handles:
+   - `session.input_transcript.delta` and `session.output_transcript.delta`:
+     fragments of what the caller and the agent said, as
+     `{ type, event_id, delta, start_ms, end_ms }`. There is no event that ends
+     a turn. Dispatch appends fragments as they arrive and writes one
+     `speech.user` or `speech.agent` row with `{ text }` per utterance. An
+     utterance ends when the speaker changes, after a pause of more than
+     2 seconds on the session timeline (`start_ms` against the last `end_ms`),
+     after 4 seconds with no fragment, or when the call ends. See
+     [call-memory.md](call-memory.md).
    - `session.usage.updated`: saved as a `usage.seconds` snapshot.
    - `session.closed`: saved as `call.closed` with the reason and final
      seconds. The call ends and the socket closes.

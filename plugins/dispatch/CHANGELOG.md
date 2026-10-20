@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- Call memory. A few seconds after a call ends, the user's reasoning model
+  writes a title and summary with the user's OpenAI key. Migration 006 adds
+  `call_summaries` and a per-call `forget` flag. A failed summary stores a
+  fallback built from the tool trace, and missing summaries are retried when
+  Dispatch loads.
+- Phone and app transcripts. GPT-Live transcript fragments are grouped into
+  one `speech.user` or `speech.agent` row per utterance.
+- The prompt has a `# Recent calls` section and a "Last call" line. The time
+  line uses the caller's time zone. The app sends its zone and a short device
+  name. Phone calls use the new **Home time zone** setting.
+- A `recall_calls` tool looks up older calls by day or by words.
+- **Call memory** and **Remember calls for** (30 days, 90 days, 1 year, or
+  forever) in Calls settings. **Forget this call** in the console and
+  `bb dispatch forget [call-id]` delete one call's transcript and summary.
+- The console shows each call's summary.
+- A discoverable, read-only `read.calls` RPC for other plugins.
+
 ## 0.2.0
 
 - Remove `bb dispatch import --from handsfree`, its RPC, and its docs. Handsfree

@@ -6,6 +6,7 @@ import {
   CHANNELS,
   DEFAULT_AGENT_NAME,
   KV_KEYS,
+  MEMORY_RETENTION_DAYS,
   REASONING_MODELS,
   VOICES,
   VOICE_MODELS,
@@ -26,6 +27,22 @@ export function normaliseAgentName(value: unknown, fallback: string = DEFAULT_AG
   if (typeof value !== "string") return fallback;
   const name = value.trim().slice(0, AGENT_NAME_MAX).trim();
   return name === "" ? DEFAULT_AGENT_NAME : name;
+}
+
+/** A zone Intl knows, or "" for the server's zone. */
+export function normaliseTimeZone(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  const zone = value.trim();
+  if (zone === "") return "";
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: zone }).resolvedOptions().timeZone;
+  } catch {
+    return fallback;
+  }
+}
+
+function normaliseRetention(value: unknown, fallback: number): number {
+  return typeof value === "number" && (MEMORY_RETENTION_DAYS as readonly number[]).includes(value) ? value : fallback;
 }
 
 function normaliseAccess(value: unknown, fallback: PluginAccess): PluginAccess {
@@ -86,6 +103,9 @@ export function normalisePreferences(raw: unknown, fallback: Preferences = defau
     reasoningModel: oneOf(REASONING_MODELS, input.reasoningModel, fallback.reasoningModel as (typeof REASONING_MODELS)[number]),
     announcements: bool(input.announcements, fallback.announcements),
     mobileDrawerBehavior: oneOf(["reuse", "new"], input.mobileDrawerBehavior, fallback.mobileDrawerBehavior),
+    callMemory: bool(input.callMemory, fallback.callMemory),
+    memoryRetentionDays: normaliseRetention(input.memoryRetentionDays, fallback.memoryRetentionDays),
+    homeTimeZone: normaliseTimeZone(input.homeTimeZone, fallback.homeTimeZone),
     pluginAccess: normaliseAccess(input.pluginAccess, fallback.pluginAccess),
     hotkeys: normaliseHotkeys(input.hotkeys, fallback.hotkeys),
     pet: normalisePet(input.pet, fallback.pet),

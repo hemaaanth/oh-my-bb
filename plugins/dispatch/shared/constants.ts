@@ -66,6 +66,27 @@ export const REASONING_MODELS = ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna",
 
 export const DEFAULT_AGENT_NAME = "Juno";
 
+/** Days a call's transcript and summary are kept. 0 keeps them forever. */
+export const MEMORY_RETENTION_DAYS = [30, 90, 365, 0] as const;
+export const DEFAULT_MEMORY_RETENTION_DAYS = 90;
+/** Size limits for call memory. */
+export const CALL_MEMORY = {
+  titleMax: 80,
+  summaryMax: 600,
+  topicsMax: 8,
+  /** The "# Recent calls" prompt section, in characters. */
+  promptMax: 1500,
+  promptCalls: 5,
+  recallDefault: 5,
+  recallMax: 20,
+  /** Calls without a summary retried on load, newest first. */
+  retryMax: 10,
+  /** The transcript and tool trace sent to the summary model, in characters. */
+  inputMax: 24000,
+  /** read.calls window, in days. */
+  readMaxDays: 62,
+} as const;
+
 /** Preference defaults (CONTRACTS §4.1). Returns a fresh object each call. */
 export const defaultPreferences = (): Preferences => ({
   agentName: DEFAULT_AGENT_NAME,
@@ -74,6 +95,9 @@ export const defaultPreferences = (): Preferences => ({
   reasoningModel: "gpt-5.6-terra",
   announcements: true,
   mobileDrawerBehavior: "reuse",
+  callMemory: true,
+  memoryRetentionDays: DEFAULT_MEMORY_RETENTION_DAYS,
+  homeTimeZone: "",
   pluginAccess: { mode: "all" },
   hotkeys: { toggle: "Mod+Shift+H", mute: "Mod+Shift+U" },
   pet: { style: "outline", color: "theme", roundness: 50, followPointer: true, antennaFlash: false },
@@ -91,6 +115,7 @@ export const ENDPOINTS = {
   attachSession: (sessionId: string) => `wss://api.openai.com/v1/live/sessions/${encodeURIComponent(sessionId)}/attach`,
   twilioCalls: (accountSid: string) =>
     `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Calls.json`,
+  responses: `${OPENAI_API}/responses`,
   sipTarget: (project: string) => `sip:${project}@sip.api.openai.com;transport=tls;secure=true`,
 } as const;
 

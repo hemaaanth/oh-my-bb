@@ -87,6 +87,7 @@ export const PHONE_DEVICE: DeviceProfile = {
   displayMode: "none",
   runtime: "sip",
   label: "Phone",
+  deviceName: "Phone",
 };
 
 // ---------------------------------------------------------------------------

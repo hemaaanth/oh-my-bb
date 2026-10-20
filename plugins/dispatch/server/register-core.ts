@@ -6,6 +6,7 @@ import type { CoreHandlers, ServerContext } from "./context.js";
 import { latestRevision, restoreRevision, revisionHistory, writeFromSettings } from "./instructions.js";
 import { appendTrace, callTrace, callsPage, liveStatus, usageReport } from "./ledger.js";
 import { endCallsEverywhere, openCall } from "./live-session.js";
+import { forgetCall, registerMemory, summariesFor } from "./memory.js";
 import { registerNotices } from "./notices.js";
 import { readPreferences, resetPreferences, writePreferences } from "./preferences.js";
 import { PREVIEW_CONTEXT, assemblePrompts } from "./prompts/index.js";
@@ -23,6 +24,7 @@ const OK = { ok: true } as const;
 export function registerCore(ctx: ServerContext): void {
   registerReadiness(ctx);
   registerNotices(ctx);
+  registerMemory(ctx);
 }
 
 /** Every RPC method except `phoneDial` and `webhooks_receive`. */
@@ -53,10 +55,19 @@ export function coreRpcHandlers(ctx: ServerContext): CoreHandlers {
       appendTrace(ctx, input.callId, input.events);
       return OK;
     },
-    callsPage: (input) => callsPage(ctx, input),
+    callsPage: (input) => {
+      const page = callsPage(ctx, input);
+      const summaries = summariesFor(ctx, page.calls.map((call) => call.id));
+      return { ...page, calls: page.calls.map((call) => ({ ...call, summary: summaries.get(call.id) ?? null })) };
+    },
     callTrace: (input) => callTrace(ctx, input),
     usageReport: (input) => usageReport(ctx, input.days),
     liveStatus: () => liveStatus(ctx),
+    forgetCall: (input) => {
+      const forgotten = forgetCall(ctx, input.callId);
+      if (!forgotten) throw new Error(`There is no call with id ${input.callId}.`);
+      return { forgotten };
+    },
 
     // §3.4 Settings and setup
     preferencesRead: () => readPreferences(ctx),

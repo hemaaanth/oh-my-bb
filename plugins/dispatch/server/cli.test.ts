@@ -107,3 +107,31 @@ describe("bb dispatch live and read", () => {
     expect(stdout).toContain("The header is fixed.");
   });
 });
+
+describe("bb dispatch forget", () => {
+  it("forgets the latest call by default, or a call by id, and deletes its words", async () => {
+    const { bb, harness } = await loadPlugin({ ...FULL_SETUP });
+    const db = bb.storage.database();
+    const insert = db.prepare("INSERT INTO calls (id, channel, device_json, started_at) VALUES (?, 'app', '{}', ?)");
+    insert.run("call_old", 1000);
+    insert.run("call_new", 2000);
+    db.prepare("INSERT INTO call_trace (call_id, at, kind, payload_json) VALUES ('call_new', 2001, 'speech.user', '{\"text\":\"secret\"}')").run();
+
+    const latest = await harness.runCli(["forget"]);
+    expect(latest).toMatchObject({ exitCode: 0, stdout: "Forgot call_new. Its transcript and summary are deleted." });
+    expect(db.prepare("SELECT forget FROM calls WHERE id = 'call_new'").get()).toEqual({ forget: 1 });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM call_trace WHERE call_id = 'call_new'").get()).toEqual({ n: 0 });
+
+    expect((await harness.runCli(["forget", "call_old"])).stdout).toContain("Forgot call_old.");
+    const unknown = await harness.runCli(["forget", "call_none"]);
+    expect(unknown.exitCode).not.toBe(0);
+    expect(unknown.stderr).toContain("There is no call with id call_none.");
+  });
+
+  it("fails when there are no calls", async () => {
+    const { harness } = await loadPlugin({ ...FULL_SETUP });
+    const result = await harness.runCli(["forget"]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("There are no calls to forget.");
+  });
+});

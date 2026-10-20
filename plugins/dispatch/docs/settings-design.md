@@ -31,6 +31,8 @@ shared width, with no custom colours or inset shadows.
 - Appearance: keep the real pet preview. Replace the wall of mood chips with a
   compact preview picker. Use a quiet segmented control for the two styles.
 - Calls: use the same pickers and rows on desktop and the Mobile settings page.
+  The call memory rows (Call memory, Remember calls for, Home time zone) are on
+  the desktop page only.
   Keep microphone permission, refresh, test, save, shortcut recording, and errors.
 - Tools: keep plugin access and the actionable checklist. Remove the read-only
   built-in tool catalogue; it was documentation, not a setting. Keep its RPC unchanged.

@@ -21,6 +21,52 @@ const CHIPS: ReadonlyArray<{ id: TraceFilter; label: string }> = [
   { id: "errors", label: "Errors" },
 ];
 
+/** The call's summary, and the button that deletes what Dispatch remembers of it. */
+function CallMemory({ call, forgotten, onForget }: { call: CallRow | null; forgotten: boolean; onForget: () => Promise<void> }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const summary = call?.summary && call.summary.status !== "skipped" && !forgotten ? call.summary : null;
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border px-3 py-2.5">
+      {summary ? (
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">{privateCallText(summary.title)}</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{privateCallText(summary.summary)}</p>
+        </div>
+      ) : (
+        <Note>{forgotten ? "Dispatch does not remember this call. Its transcript and summary are deleted." : "No summary for this call."}</Note>
+      )}
+      {forgotten ? null : confirming ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void onForget().finally(() => {
+                setBusy(false);
+                setConfirming(false);
+              });
+            }}
+          >
+            Delete transcript and summary
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <div>
+          <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
+            Forget this call
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Transcript({ callId, call, agentName, onClose }: { callId: string; call: CallRow | null; agentName: string; onClose: () => void }) {
   const rpc = useRpc<RpcContract>();
   const rpcRef = useLatest(rpc);
@@ -30,6 +76,7 @@ export function Transcript({ callId, call, agentName, onClose }: { callId: strin
   const [error, setError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [filter, setFilter] = useState<TraceFilter>("all");
+  const [forgotten, setForgotten] = useState(call?.forgotten ?? false);
 
   useEscape(true, onClose);
 
@@ -63,6 +110,17 @@ export function Transcript({ callId, call, agentName, onClose }: { callId: strin
     if (tail.callId === callId) setRows((current) => mergeRows(current, tail.events));
   });
 
+  // Works during a live call too: speech that arrives later is not stored.
+  const forget = async () => {
+    try {
+      await rpcRef.current.call("forgetCall", { callId });
+      setForgotten(true);
+      setRows((current) => current.filter((row) => !row.kind.startsWith("speech.")));
+    } catch (cause) {
+      setError(errorText(cause));
+    }
+  };
+
   const loadMore = async () => {
     if (!cursor) return;
     setLoadingMore(true);
@@ -91,6 +149,7 @@ export function Transcript({ callId, call, agentName, onClose }: { callId: strin
         </div>
         <FilterChips label="Filter transcript" chips={CHIPS} value={filter} onChange={setFilter} />
       </div>
+      <CallMemory call={call} forgotten={forgotten} onForget={forget} />
       {!loaded ? <Loading error={error ? privateCallText(error) : null} /> : null}
       {loaded && shown.length === 0 && !error ? <Note>{rows.length === 0 ? "Nothing was recorded for this call yet." : "Nothing matches this filter."}</Note> : null}
       <ul className="flex flex-col">

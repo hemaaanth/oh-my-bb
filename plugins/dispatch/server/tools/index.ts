@@ -7,6 +7,7 @@ import type { ToolContext } from "../../shared/contract.js";
 import type { ServerContext } from "../context.js";
 import { checkInstructionsBody, writeRevision } from "../instructions.js";
 import { appendTrace } from "../ledger.js";
+import { recallCalls } from "../memory.js";
 import { readPreferences } from "../preferences.js";
 import { buildCatalog, inCatalog, runsOn, type CatalogFlags } from "./catalog.js";
 import { listLiveThreads, threadTitle } from "./live.js";
@@ -60,6 +61,7 @@ export async function catalogFlags(ctx: ServerContext, input: { mobile: boolean;
     canNavigate: input.canNavigate,
     channel: input.channel,
     allowedPluginIds: exposedPlugins(plugins, preferences.pluginAccess).map((plugin) => plugin.id),
+    callMemory: preferences.callMemory,
   };
 }
 
@@ -229,6 +231,12 @@ async function run(ctx: ServerContext, name: ToolName, args: ToolArgs, context: 
       return showDiff(ctx, args, context);
     case "update_instructions":
       return updateInstructions(ctx, args);
+    case "recall_calls": {
+      const day = optionalString(args, "day");
+      const query = optionalString(args, "query");
+      const limit = typeof args.limit === "number" ? args.limit : undefined;
+      return compact(await recallCalls(ctx, { ...(day ? { day } : {}), ...(query ? { query } : {}), ...(limit ? { limit } : {}) }));
+    }
     default:
       throw new Error(`${name} runs in the app, not on the server.`);
   }

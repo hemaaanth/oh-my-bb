@@ -22,8 +22,13 @@ starts new ones, sends them messages, and brings them on screen.
 - **The pet.** A small robot face in the sidebar footer. It sleeps with no call
   and shows when the agent listens, talks, reads, or works. Long-press or
   right-click it for a menu.
-- **A Dispatch console.** A nav panel with every call, its transcript and tool
-  trace, and voice minutes with an estimated cost.
+- **A Dispatch console.** A nav panel with every call, its transcript, summary,
+  and tool trace, and voice minutes with an estimated cost.
+- **Call memory.** After each call, your reasoning model writes a short title
+  and summary. The agent sees the last few calls, knows your local time and
+  your last call, and can look up older calls with `recall_calls`. Turn it off,
+  set how long it is kept, or forget one call. See
+  [docs/call-memory.md](docs/call-memory.md).
 - **A `bb dispatch` CLI and an agent skill.** Check setup, list live threads,
   stop or mute the call, and report usage.
 - **Your instructions.** Add standing instructions for the agent. Every saved
@@ -107,7 +112,7 @@ device, except where a row says it is saved for this device.
 | Readiness | Whether in-app voice and phone calls are ready, what is missing, the webhook route, and **Reload to apply** when needed. |
 | Agent | Name (up to 24 characters), voice, your instructions (up to 4,000 characters) with history, and a read-only view of the full prompt. |
 | Appearance | The pet's style, colour, head shape, pointer follow, antenna flash, and a live preview. The pointer ghost switch is per device. |
-| Calls | Microphone and speaker (per device), announcements, mobile drawer behaviour, and the two keyboard shortcuts. |
+| Calls | Microphone and speaker (per device), announcements, mobile drawer behaviour, the two keyboard shortcuts, **Call memory**, **Remember calls for** (30 days, 90 days, 1 year, or forever), and **Home time zone** for phone calls. The three memory controls are on the desktop page only. |
 | Tools | Which plugins' commands the agent may run: all, none, or the ones you pick. |
 | Advanced | Voice model, reasoning model, and **Reset preferences**. Reset keeps setup values and instructions. |
 
@@ -139,6 +144,7 @@ their own.
 | `bb dispatch stop` | End the live call on every device. Exits 0 when no call is live. |
 | `bb dispatch mute` | Mute the microphone on the live call. Exits non-zero when no call is live. |
 | `bb dispatch unmute` | Unmute the microphone on the live call. Exits non-zero when no call is live. |
+| `bb dispatch forget [call-id]` | Delete a call's transcript and summary, and never summarise it again. Default: the latest call. Exits non-zero when the id is unknown or there are no calls. |
 | `bb dispatch call` | Call your phone and talk to the agent. Exits 1 and lists what is missing when phone setup is not ready. |
 
 `bb dispatch --help` lists them all, and `bb dispatch <command> --help` shows
@@ -151,8 +157,9 @@ GPT-Live is billed by session time. Dispatch counts it at $0.05 per minute
 `bb dispatch usage` show minutes and cost per day for app and phone calls
 together.
 
-The reasoning model runs the agent's tools. Its tokens are billed on top and
-are not counted here, because the plugin cannot see them. Check OpenAI's usage
+The reasoning model runs the agent's tools and writes one summary per call.
+Its tokens are billed on top and are not counted here, because the plugin
+cannot see them. Check OpenAI's usage
 page for the full bill. Phone calls also cost Twilio minutes.
 
 ## Security
@@ -163,8 +170,11 @@ page for the full bill. Phone calls also cost Twilio minutes.
   `api.openai.com`.
 - In-app calls go from your browser to OpenAI. Dispatch's server creates the
   session and never carries audio.
-- Transcripts and tool traces are stored in Dispatch's plugin database on the
-  BB server.
+- Transcripts, tool traces, and call summaries are stored in Dispatch's plugin
+  database on the BB server. Transcripts and summaries are deleted after
+  90 days by default. Change this, or turn call memory off, in **Calls**.
+- Call summaries are written by your reasoning model with your OpenAI key. The
+  request sends the call's transcript and tool trace, with `store: false`.
 - The agent runs plugin commands only from plugins you allow in **Tools**.
 - Text that tools return is data for the agent, not instructions.
 
@@ -175,6 +185,11 @@ In-app voice needs no other plugin. Phone calls need the
 webhook. Install it yourself. Dispatch never installs, enables, or calls it.
 When Readiness is read, Dispatch looks in BB's plugin list to see whether
 Webhooks is enabled, and reports a missing **webhook route** when it is not.
+
+Other plugins may read your calls with the discoverable, read-only
+`read.calls` RPC: titles, summaries, and thread ids for a window of up to
+62 days. Dispatch never looks for a caller. With call memory off, titles and
+summaries are null. See [docs/call-memory.md](docs/call-memory.md).
 
 ## Develop
 

@@ -373,6 +373,35 @@ describe("sideband loop", () => {
     await done;
   });
 
+  it("groups transcript deltas into one speech row per utterance", async () => {
+    const { socket, ctx, callId, done } = await startCall();
+    const delta = (type: "input" | "output", text: string, start: number, end: number) =>
+      socket.receive({ type: `session.${type}_transcript.delta`, event_id: `ev_${start}`, delta: text, start_ms: start, end_ms: end });
+    delta("input", "What did", 0, 400);
+    delta("input", " we do", 400, 800);
+    delta("input", " yesterday?", 800, 1200);
+    // A new speaker closes the user's utterance.
+    delta("output", "You fixed", 1500, 1900);
+    delta("output", " the header.", 1900, 2300);
+    // A pause longer than the gap starts a second utterance from the same speaker.
+    delta("output", "Anything else?", 6000, 6600);
+    expect(payloadsOf(ctx, callId, "speech.user")).toEqual([{ text: "What did we do yesterday?" }]);
+    expect(payloadsOf(ctx, callId, "speech.agent")).toEqual([{ text: "You fixed the header." }]);
+    // The last utterance is written when the call ends.
+    socket.receive({ type: "session.closed", reason: "hangup" });
+    await done;
+    expect(payloadsOf(ctx, callId, "speech.agent")).toEqual([{ text: "You fixed the header." }, { text: "Anything else?" }]);
+    expect(kindsOf(ctx, callId)).toEqual(["speech.user", "speech.agent", "speech.agent", "call.closed", "call.stopped"]);
+  });
+
+  it("writes the open utterance when the socket drops", async () => {
+    const { socket, ctx, callId, done } = await startCall();
+    socket.receive({ type: "session.input_transcript.delta", delta: "Hello", start_ms: 0, end_ms: 300 });
+    socket.close();
+    await done;
+    expect(payloadsOf(ctx, callId, "speech.user")).toEqual([{ text: "Hello" }]);
+  });
+
   it("ignores messages that are not JSON or not tool calls", async () => {
     const { socket, done } = await startCall();
     for (const listener of socket.listeners.message ?? []) listener({ data: "not json" });

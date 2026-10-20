@@ -24,6 +24,11 @@ stay aligned. Keep the existing filters, pagination, and transcript navigation.
 Remove redundant app/phone chips and per-row billed-minute text. Use a quiet
 status for calls that did not close cleanly.
 
+A call row shows its summary title, or "Not remembered" for a forgotten call.
+The transcript view shows the summary title and text above the transcript, or a
+quiet note when there is none. **Forget this call** asks for confirmation
+(**Delete transcript and summary**), then deletes both.
+
 Phone dial success has no toast and never renders the provider's success detail.
 A shared client-side pending state drives the console and the existing sidebar
 accessory. Live status and lifecycle trace events reconcile it with the server.

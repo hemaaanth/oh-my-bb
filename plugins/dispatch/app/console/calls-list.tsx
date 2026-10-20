@@ -72,6 +72,14 @@ export function useCalls(reloadKey: unknown) {
   return { calls, error, hasMore: cursor !== null, loadMore, loadingMore: more };
 }
 
+/** What the row says about the call's memory: its summary title, or that it is forgotten. */
+export function memoryLine(call: CallRow): { line: string; full: string } | null {
+  if (call.forgotten) return { line: "Not remembered", full: "You asked Dispatch not to remember this call." };
+  const summary = call.summary;
+  if (!summary || summary.status === "skipped") return null;
+  return { line: privateCallText(summary.title), full: privateCallText(summary.summary) };
+}
+
 export function CallsList({ calls, error, hasMore, loadMore, loadingMore, onOpen, live }: ReturnType<typeof useCalls> & { onOpen: (call: CallRow) => void; live: CallState }) {
   const [chip, setChip] = useState<Chip>("all");
   if (!calls) return <Loading error={error ? privateCallText(error) : null} />;
@@ -102,6 +110,7 @@ export function CallsList({ calls, error, hasMore, loadMore, loadingMore, onOpen
               const cost = formatUsd((call.billedSeconds / 60) * LIVE_USD_PER_MINUTE);
               const label = privateCallText(call.device.label || "Unknown device");
               const when = formatCallWhen(call.startedAt, live.now);
+              const memory = memoryLine(call);
               return <tr key={call.id} onClick={() => onOpen(call)} className="group cursor-pointer hover:bg-state-hover focus-within:bg-state-hover">
                 <td className="hidden whitespace-nowrap px-3 py-2 text-xs tabular-nums text-muted-foreground sm:table-cell"><time dateTime={new Date(call.startedAt).toISOString()} title={formatDateTime(call.startedAt)}>{when}</time></td>
                 <td className="px-3 py-2">
@@ -109,6 +118,7 @@ export function CallsList({ calls, error, hasMore, loadMore, loadingMore, onOpen
                     <span className="mt-0.5 shrink-0 text-muted-foreground" aria-label={call.channel === "phone" ? "Phone call" : "In-app call"}>{call.channel === "phone" || call.device.mobile ? <PhoneGlyph /> : <DesktopGlyph />}</span>
                     <span className="min-w-0">
                       <span className="block truncate text-foreground">{label}</span>
+                      {memory ? <span title={memory.full} className="mt-0.5 block truncate text-xs text-muted-foreground">{memory.line}</span> : null}
                       <span className="mt-0.5 block text-xs text-muted-foreground sm:hidden">{when}<span className="ml-1.5 text-subtle-foreground">· {status}</span></span>
                     </span>
                   </button>

@@ -5,7 +5,7 @@
 
 export type LiveEvent =
   | { kind: "started" }
-  | { kind: "transcript"; speaker: "you" | "agent"; final: boolean; text: string }
+  | { kind: "transcript"; speaker: "you" | "agent"; final: boolean; text: string; startMs: number | null; endMs: number | null }
   | { kind: "response"; active: boolean }
   | { kind: "function-call"; callId: string; name: string; args: string }
   | { kind: "usage"; seconds: number }
@@ -27,7 +27,7 @@ function transcript(type: string, event: Json): LiveEvent | null {
   if (!final && !type.endsWith(".delta")) return null;
   const speaker = /input/.test(type) ? "you" : "agent";
   const text = str(final ? (event.transcript ?? event.text) : (event.delta ?? event.text)) ?? "";
-  return { kind: "transcript", speaker, final, text };
+  return { kind: "transcript", speaker, final, text, startMs: num(event.start_ms), endMs: num(event.end_ms) };
 }
 
 function functionCall(event: Json): LiveEvent | null {

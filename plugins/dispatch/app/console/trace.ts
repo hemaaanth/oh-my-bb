@@ -37,6 +37,7 @@ const VERBS: Record<string, string> = {
   rename_thread: "Renamed a thread",
   show_diff: "Showed a diff",
   update_instructions: "Updated its instructions",
+  recall_calls: "Looked up past calls",
   set_composer_text: "Wrote in the composer",
   append_composer_text: "Added to the composer",
 };

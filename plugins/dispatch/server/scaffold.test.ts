@@ -1,6 +1,6 @@
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
-import { METHOD_NAMES, RECEIVE_METHOD } from "../shared/contract.js";
+import { METHOD_NAMES, READ_CALLS_METHOD, RECEIVE_METHOD } from "../shared/contract.js";
 import plugin from "./index.js";
 import { MIGRATION_IDS } from "./migrations.js";
 import { SETUP_FORMATS, SETUP_SETTINGS } from "./settings.js";
@@ -59,13 +59,14 @@ describe("setup settings", () => {
 });
 
 describe("storage", () => {
-  it("lists migrations 001 to 005", () => {
+  it("lists migrations 001 to 006", () => {
     expect(MIGRATION_IDS).toEqual([
       "001-calls",
       "002-call-trace",
       "003-instruction-revisions",
       "004-legacy-token-usage",
       "005-drop-legacy-token-usage",
+      "006-call-summaries",
     ]);
   });
 
@@ -82,6 +83,8 @@ describe("storage", () => {
       "table:call_trace",
       "index:call_trace_call_at",
       "table:instruction_revisions",
+      "table:call_summaries",
+      "index:call_summaries_day",
     ]) {
       expect(names).toContain(expected);
     }
@@ -90,10 +93,10 @@ describe("storage", () => {
 });
 
 describe("registration", () => {
-  it("registers every RPC method and publishes only webhooks_receive", async () => {
+  it("registers every RPC method and publishes only webhooks_receive and read.calls", async () => {
     const { harness } = await load();
-    expect([...harness.registrations.rpcMethods].sort()).toEqual([...METHOD_NAMES, RECEIVE_METHOD].sort());
-    expect(harness.registrations.experimental_publishedRpcMethods.map((entry) => entry.method)).toEqual([RECEIVE_METHOD]);
+    expect([...harness.registrations.rpcMethods].sort()).toEqual([...METHOD_NAMES, RECEIVE_METHOD, READ_CALLS_METHOD].sort());
+    expect(harness.registrations.experimental_publishedRpcMethods.map((entry) => entry.method)).toEqual([RECEIVE_METHOD, READ_CALLS_METHOD]);
   });
 
   it("registers every CLI subcommand from CONTRACTS §8", async () => {
@@ -101,7 +104,7 @@ describe("registration", () => {
     const cli = harness.registrations.cli;
     expect(cli?.name).toBe("dispatch");
     expect(cli?.commands.map((command) => command.name).sort()).toEqual(
-      ["call", "live", "mute", "read", "status", "stop", "unmute", "usage"].sort(),
+      ["call", "forget", "live", "mute", "read", "status", "stop", "unmute", "usage"].sort(),
     );
   });
 
@@ -113,6 +116,6 @@ describe("wiring", () => {
     const help = await harness.runCli(["--help"]);
     expect(help.exitCode).toBe(0);
     const listed = [...help.stdout.matchAll(/^ {2}bb dispatch ([a-z]+) /gm)].map((match) => match[1]);
-    expect(listed).toEqual(["live", "read", "usage", "stop", "mute", "unmute", "status", "call"]);
+    expect(listed).toEqual(["live", "read", "usage", "stop", "forget", "mute", "unmute", "status", "call"]);
   });
 });

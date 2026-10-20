@@ -41,6 +41,12 @@ describe("detectDeviceProfile", () => {
     expect(detectDeviceProfile({ userAgent: UA.iphone, displayMode: "standalone" }).label).toBe("iOS · Safari (app)");
     expect(detectDeviceProfile({ userAgent: UA.iosWebview, webkitBridge: true }).label).toBe("iOS · WebView (native app)");
   });
+
+  it("adds the caller's time zone and a short device name", () => {
+    expect(detectDeviceProfile({ userAgent: UA.iphone, timeZone: "Europe/Berlin" })).toMatchObject({ timeZone: "Europe/Berlin", deviceName: "iPhone" });
+    expect(detectDeviceProfile({ userAgent: UA.mac, platform: "MacIntel" })).toMatchObject({ deviceName: "Mac" });
+    expect(detectDeviceProfile({ userAgent: UA.mac, platform: "MacIntel" })).not.toHaveProperty("timeZone");
+  });
 });
 
 describe("canNavigate", () => {

@@ -25,6 +25,7 @@ export const TOOL_NAMES = [
   "rename_thread",
   "show_diff",
   "update_instructions",
+  "recall_calls",
   "set_composer_text",
   "append_composer_text",
 ] as const;
