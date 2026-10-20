@@ -2,9 +2,10 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AGENT_NAME_MAX, INSTRUCTIONS_LIMIT } from "../../shared/constants.js";
+import { AGENT_NAME_MAX, defaultPreferences, INSTRUCTIONS_LIMIT } from "../../shared/constants.js";
 import type { InstructionRevision } from "../../shared/contract.js";
 import { installFakeLocalStorage, makePrefsRpc, makeStatus } from "./support.js";
+import { SAMPLE_COST_NOTE, SAMPLE_PROGRESS } from "./voice.js";
 
 const stored = installFakeLocalStorage();
 const app = await loadPluginApp(() => import("../index.js"));
@@ -39,10 +40,11 @@ describe("Readiness", () => {
 
   it("reports the Webhooks plugin when it is present", async () => {
     mount("readiness", { setupStatus: async () => makeStatus({ phone: { ready: true, missing: [], webhooksPlugin: "present" } }) });
-    const detail = (await screen.findByText("Phone setup")).closest("details")!;
-    expect(detail.open).toBe(false);
-    fireEvent.click(screen.getByText("Phone setup"));
-    expect(detail.open).toBe(true);
+    const toggle = await screen.findByRole("button", { name: "Phone setup" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Webhooks plugin found. Endpoint not verified.")).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("Webhooks plugin found. Endpoint not verified.")).toBeTruthy();
   });
 
@@ -85,7 +87,7 @@ function agentRpc(prefs = makePrefsRpc(), current: InstructionRevision | null = 
   const writeInstructions = vi.fn(async ({ body }: { body: string }) => revision(9, body));
   const restore = vi.fn(async ({ id }: { id: number }) => revision(10, id === 2 ? "Old text" : "x", { author: "user", note: `restored ${id}` }));
   const history = [revision(3, "Be brief.\nNo emoji."), revision(2, "Old text", { author: "agent", note: "agent edit" })];
-  const sample = vi.fn(async (_input: { voice: string }) => ({ wav: "UklGRg==", cached: false }));
+  const sample = vi.fn(async (_input: { voice: string; style: string }) => ({ audio: "UklGRg==", mime: "audio/wav", source: "live" as const }));
   const create = vi.fn(async ({ name, prompt }: { name: string; prompt: string }) =>
     prefs.handlers.preferencesWrite({ customVoices: [...prefs.current.customVoices, { id: "voice_1", name, prompt, createdAt: "2026-10-20T00:00:00.000Z" }] }),
   );
@@ -176,7 +178,7 @@ describe("Agent", () => {
 
   it("previews the prompt in three parts for both layers", async () => {
     mount("agent", agentRpc().handlers);
-    fireEvent.click(await screen.findByRole("button", { name: "Show full prompt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Full prompt" }));
     const voice = await screen.findByRole("region", { name: "Voice prompt" });
     expect(within(voice).getAllByRole("heading", { level: 5 }).map((h) => h.textContent)).toEqual(["Built in", "Runtime context (sample)", "Your instructions"]);
     expect(within(voice).getByText("VOICE-BUILTIN")).toBeTruthy();
@@ -189,7 +191,7 @@ describe("Agent", () => {
   it("lists the history and restores a revision", async () => {
     const rpc = agentRpc();
     mount("agent", rpc.handlers);
-    fireEvent.click(await screen.findByText("Instruction history (2)"));
+    fireEvent.click(await screen.findByRole("button", { name: "Instruction history (2)" }));
     expect(screen.getByText("agent edit")).toBeTruthy();
     expect(screen.getByText("Old text")).toBeTruthy();
     const buttons = screen.getAllByRole("button", { name: "Restore" }) as HTMLButtonElement[];
@@ -236,9 +238,9 @@ describe("Agent", () => {
     const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
     const rpc = agentRpc();
     mount("agent", rpc.handlers);
-    expect(await screen.findByText("Uses your OpenAI key. About 1¢ per new sample.")).toBeTruthy();
+    expect(await screen.findByText(SAMPLE_COST_NOTE)).toBeTruthy();
     fireEvent.click(await screen.findByRole("button", { name: "Play Gleam" }));
-    await waitFor(() => expect(rpc.sample).toHaveBeenCalledWith({ voice: "gleam" }));
+    await waitFor(() => expect(rpc.sample).toHaveBeenCalledWith({ voice: "gleam", style: "default" }));
     const stop = await screen.findByRole("button", { name: "Stop Gleam" });
     await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: "Play Ripple" }));
@@ -252,13 +254,36 @@ describe("Agent", () => {
     pause.mockRestore();
   });
 
-  it("disables samples and voice design without an OpenAI key", async () => {
-    const rpc = agentRpc(makePrefsRpc(), undefined, false);
+  it("plays the built-in samples without an OpenAI key and disables the rest", async () => {
+    const calm = { id: "voice_1", name: "Calm", prompt: "A calm voice.", createdAt: "2026-10-20T00:00:00.000Z" };
+    const rpc = agentRpc(makePrefsRpc({ customVoices: [calm] }), undefined, false);
     mount("agent", rpc.handlers);
     expect(await screen.findByText(/Add an OpenAI API key in Setup/)).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Play Gleam" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Preview with this style" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Create voice" }) as HTMLButtonElement).disabled).toBe(true);
+    const enabled = (name: string) => !(screen.getByRole("button", { name }) as HTMLButtonElement).disabled;
+    expect(enabled("Play Gleam")).toBe(true);
+    expect(enabled("Play Calm")).toBe(false);
+    expect(enabled("Preview with this style")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Design a voice" }));
+    expect(enabled("Create voice")).toBe(false);
+  });
+
+  it("needs a key to preview a changed style", async () => {
+    const rpc = agentRpc(makePrefsRpc({ voiceStyle: { ...defaultPreferences().voiceStyle, pace: "brisk" } }), undefined, false);
+    mount("agent", rpc.handlers);
+    expect(((await screen.findByRole("button", { name: "Preview with this style" })) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("says a new sample is being made, but not for a built-in one", async () => {
+    const calm = { id: "voice_1", name: "Calm", prompt: "A calm voice.", createdAt: "2026-10-20T00:00:00.000Z" };
+    const rpc = agentRpc(makePrefsRpc({ customVoices: [calm] }));
+    const pending = vi.fn(() => new Promise<never>(() => {}));
+    mount("agent", { ...rpc.handlers, voiceSample: pending });
+    fireEvent.click(await screen.findByRole("button", { name: "Play Gleam" }));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(screen.queryByText(SAMPLE_PROGRESS)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Play Calm" }));
+    expect(await screen.findByText(SAMPLE_PROGRESS)).toBeTruthy();
+    expect(pending).toHaveBeenLastCalledWith({ voice: "voice_1", style: "default" });
   });
 
   it("saves a voice style choice and the notes on blur", async () => {
@@ -278,7 +303,7 @@ describe("Agent", () => {
   it("designs a voice and lists it under Your voices", async () => {
     const rpc = agentRpc();
     mount("agent", rpc.handlers);
-    fireEvent.click(await screen.findByText("Design a voice"));
+    fireEvent.click(await screen.findByRole("button", { name: "Design a voice" }));
     const prompt = screen.getByLabelText("Description") as HTMLTextAreaElement;
     expect(prompt.placeholder).toMatch(/^A calm, reassuring adult voice/);
     fireEvent.change(screen.getByLabelText("Voice name"), { target: { value: "Calm" } });
@@ -292,7 +317,7 @@ describe("Agent", () => {
   it("shows the voice design error", async () => {
     const rpc = agentRpc();
     mount("agent", { ...rpc.handlers, voiceCreate: async () => Promise.reject(new Error("Your OpenAI key cannot create voices.")) });
-    fireEvent.click(await screen.findByText("Design a voice"));
+    fireEvent.click(await screen.findByRole("button", { name: "Design a voice" }));
     fireEvent.change(screen.getByLabelText("Voice name"), { target: { value: "Calm" } });
     fireEvent.change(screen.getByLabelText("Description"), { target: { value: "A calm voice." } });
     fireEvent.click(screen.getByRole("button", { name: "Create voice" }));

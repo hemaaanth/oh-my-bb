@@ -425,8 +425,9 @@ export const rpcContract = defineRpcContract({
 
   // §3.7 Voices. Samples never touch the calls ledger or usage.
   voiceSample: {
-    input: z.object({ voice: z.string() }),
-    output: z.object({ wav: z.string(), cached: z.boolean() }),
+    input: z.object({ voice: z.string(), style: z.enum(["default", "saved"]).default("default") }),
+    /** `audio` is base64. Pre-made samples are MP3; live and cached ones are WAV. */
+    output: z.object({ audio: z.string(), mime: z.string(), source: z.enum(["bundled", "cache", "live"]) }),
   },
   voiceCreate: { input: z.object({ name: z.string(), prompt: z.string() }), output: preferencesSchema },
   voiceRemove: { input: z.object({ id: z.string() }), output: preferencesSchema },

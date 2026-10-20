@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+- Built-in voice samples. Every listed voice has a pre-made sample of the
+  sample line in the default voice style, in `voice-samples/`: 31 MP3 files
+  (mono, 24 kHz, 32 kbps, 816 KB in total) and a manifest. They play at once,
+  with no key and no API call, also during a call. `npm run samples -- --env
+  <file>` makes them again and prints the timing of each session.
+- `voiceSample` takes `{ voice, style }`. `style: "default"` is the list
+  sample; `"saved"` is **Preview with this style**. It returns
+  `{ audio, mime, source }`, where `source` is `bundled`, `cache`, or `live`.
+- A new sample now ends on quiet. GPT-Live keeps sending silent audio after it
+  speaks, so samples used to run to the 15-second cap. Quiet now means no audio
+  louder than about -40 dBFS for 1.2 seconds, and the silent edges are cut
+  off. A new sample takes about 9–11 seconds instead of 15.
+- While a new sample is made, the settings page says "Making a sample, about
+  10 seconds". The cost line says built-in samples are recordings in the
+  default style, and your own voices and style previews use your key.
+- Settings alignment. Rows use container queries, so they follow the width of
+  the settings column, not the window. The voice style rows use one shared
+  segmented control that fills the column when it is narrow. Phone setup, Full
+  prompt, Instruction history, and Design a voice use one shared disclosure.
+  Labels and help text use BB's sizes.
+- The microphone list leaves out devices with an empty id. Some browsers list
+  them before access is granted, and the menu failed on them.
+
 ## 0.3.0
 
 - Call memory. A few seconds after a call ends, the user's reasoning model

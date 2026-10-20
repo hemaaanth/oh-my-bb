@@ -14,6 +14,7 @@
       "node"
     ],
     "noEmit": true,
+    "resolveJsonModule": true,
     "skipLibCheck": false,
     "paths": {
       "@/*": [
@@ -26,6 +27,7 @@
     "server/**/*.ts",
     "voice/**/*.ts",
     "app/**/*.ts",
-    "app/**/*.tsx"
+    "app/**/*.tsx",
+    "scripts/**/*.ts"
   ]
 }

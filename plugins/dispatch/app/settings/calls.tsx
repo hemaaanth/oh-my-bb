@@ -29,7 +29,7 @@ function MicrophoneRow() {
 
   return (
     <Row label="Microphone" htmlFor="dispatch-mic" help={devices.namesVisible ? undefined : "Your browser hides microphone names until you allow access."}>
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex w-full items-center gap-2 @md:w-auto">
         <SettingSelect
           id="dispatch-mic"
           label="Microphone"
@@ -53,7 +53,7 @@ function MicrophoneRow() {
           Save
         </Button>
       </div>
-      <div className="flex flex-wrap justify-end gap-1.5">
+      <div className="-ml-2 flex flex-wrap gap-1.5 @md:ml-0 @md:-mr-2 @md:justify-end">
         {devices.namesVisible ? null : (
           <Button variant="outline" size="sm" className="px-2" onClick={() => void grant()}>
             Grant access
@@ -73,7 +73,7 @@ function MicrophoneRow() {
         )}
       </div>
       {test.level !== null ? (
-        <div role="meter" aria-label="Microphone level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(test.level * 100)} className="h-2 w-full overflow-hidden rounded-full bg-state-hover sm:w-56">
+        <div role="meter" aria-label="Microphone level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(test.level * 100)} className="h-2 w-full overflow-hidden rounded-full bg-state-hover @md:w-56">
           <div className="h-full bg-foreground transition-[width]" style={{ width: `${Math.round(test.level * 100)}%` }} />
         </div>
       ) : null}
@@ -104,7 +104,7 @@ function SpeakerRow() {
 
 function AnnouncementsRow({ prefs, save }: { prefs: Preferences; save: (patch: Partial<Preferences>) => Promise<boolean> }) {
   return (
-    <Row label="Announcements" inline help="The agent speaks a short notice when a thread finishes or fails.">
+    <Row label="Announcements" placement="trailing" help="The agent speaks a short notice when a thread finishes or fails.">
       <Switch aria-label="Announcements" checked={prefs.announcements} onCheckedChange={(announcements) => void save({ announcements })} />
     </Row>
   );
@@ -149,7 +149,7 @@ function MemoryRows({ prefs, save }: { prefs: Preferences; save: (patch: Partial
     <>
       <Row
         label="Call memory"
-        inline
+        placement="trailing"
         help="After a call, your reasoning model writes a short summary with your OpenAI key. The agent sees recent summaries and can look up older ones."
       >
         <Switch aria-label="Call memory" checked={prefs.callMemory} onCheckedChange={(callMemory) => void save({ callMemory })} />

@@ -52,8 +52,14 @@ group, and **Design a voice**.
   (unconfirmed). Each row is one pressable line: the name, then language,
   accent, and presentation in muted text, and a check on the chosen voice. A
   ghost icon button plays or stops the sample. Only one sample plays at a time.
-- The cost line sits above the list: "Uses your OpenAI key. About 1¢ per new
-  sample." With no key, the line says why the buttons are disabled.
+- The cost line sits above the list: "Built-in samples are recordings in the
+  default style. Your voices and Preview with this style use your OpenAI key,
+  about 1¢ per new sample." With no key, the line says built-in samples still
+  play, and what the key is needed for. Only the buttons that need a key are
+  disabled.
+- While a new sample is made, a muted status line under the control that asked
+  for it says "Making a sample, about 10 seconds". Built-in samples never show
+  it.
 - Voice style: five rows with the quiet segmented control from Appearance
   (Pace, Energy, Expressiveness, Turn length, Backchannels), then the style
   notes field, saved on blur, with a character count. One muted line says the
@@ -62,7 +68,25 @@ group, and **Design a voice**.
 - Design a voice: a closed disclosure with a name, a description (the OpenAI
   docs example is the placeholder), and one **Create voice** button. Errors sit
   under the button.
-- No marketing copy, no custom colours, no new components.
+- No marketing copy, no custom colours.
+
+## Alignment pass — 2026-10-20
+
+- Rows are container queries on the row (`@container`, `@md:` at 28rem). The
+  settings column is narrower than the window, so viewport breakpoints put
+  controls beside labels that had no room.
+- `Row` has three placements. `inline` stacks label and control in a narrow
+  column and puts them side by side from 28rem. `trailing` keeps a switch on
+  the right at every width. `below` always stacks, for wide fields.
+- Labels are `text-sm text-foreground`. Help is `text-xs text-muted-foreground`
+  under the label. A group title and its note form one header block.
+- `Segmented` is the one segmented control (Appearance style and the five voice
+  style rows). It fills the column when stacked and shrinks to its content when
+  inline. Each choice is a button with `aria-pressed`.
+- `Disclosure` is the one disclosure: a small muted button with a chevron and
+  `aria-expanded`. Phone setup (open while phone setup is missing), Full prompt,
+  Instruction history, and Design a voice use it.
+- Selects are full width when stacked and 14rem when inline.
 
 ## Verification
 

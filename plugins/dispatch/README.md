@@ -132,14 +132,33 @@ not in the GPT-Live table, so GPT-Live may refuse them. The default voice is
 `gleam`. A saved voice that is no longer listed stays in use and shows under
 **Saved voice**.
 
-**Samples.** Each row has a play button. A new sample runs one short GPT-Live
-session on the BB server with your current voice style and a fixed line of
-about 8 seconds. It stops when the voice goes quiet, at `session.closed`, or
-after 15 seconds. It uses your OpenAI key and costs about 1¢. Dispatch keeps
-samples in its plugin database, up to 8 MB, and drops the least recently
-played first. A cached sample plays at once and costs nothing. Samples are
-refused while a call is live. They never appear in the console, calls, or
-usage.
+**Samples.** Each row has a play button. Every listed voice has a built-in
+sample: a recording of a fixed line in the default voice style, shipped in
+`voice-samples/` (MP3, mono, 24 kHz, 32 kbps, about 800 KB in total). It plays
+at once, needs no key, makes no API call, and also plays during a call.
+
+Your own voices and **Preview with this style** need a new sample. It runs one
+short GPT-Live session on the BB server with a fixed line of 5 to 8 seconds.
+The page says "Making a sample, about 10 seconds" while it waits. The session
+stops after 1.2 seconds without speech, at `session.closed`, or after
+15 seconds. GPT-Live keeps sending silent audio after it speaks, so "quiet"
+means no loud audio, and the silent edges are cut off. A new sample uses your
+OpenAI key and costs about 1¢. Dispatch keeps new samples in its plugin
+database, up to 8 MB, and drops the least recently played first. A cached
+sample plays at once and costs nothing. New samples are refused while a call
+is live. Samples never appear in the console, calls, or usage.
+
+To make the built-in samples again, for example after the sample line or the
+default style changes, run this from the package directory. It needs `ffmpeg`
+and costs about 1¢ per voice:
+
+```sh
+npm run samples -- --env <dotenv file with OPENAI_API_KEY>
+```
+
+It prints the timing of each session and rewrites `voice-samples/manifest.json`.
+A voice that GPT-Live refuses is listed under `refused` and plays a new sample
+instead. Add `--voices quartz,gleam` to make only some voices.
 
 **Voice style is prompt-based.** GPT-Live has no speed or tone fields. Each
 choice becomes one sentence in a **# Voice style** section of the voice prompt.
@@ -193,7 +212,8 @@ one.
 GPT-Live is billed by session time. Dispatch counts it at $0.05 per minute
 (checked 2026-10-19): cost = billed seconds / 60 × $0.05. The console and
 `bb dispatch usage` show minutes and cost per day for app and phone calls
-together. Voice samples cost about 1¢ each and are not counted.
+together. Built-in voice samples are free. A new sample (your own voice, or
+**Preview with this style**) costs about 1¢ and is not counted.
 
 The reasoning model runs the agent's tools and writes one summary per call.
 Its tokens are billed on top and are not counted here, because the plugin
@@ -207,8 +227,9 @@ page for the full bill. Phone calls also cost Twilio minutes.
 - The OpenAI key goes only into the `Authorization` header of requests to
   `api.openai.com`.
 - In-app calls go from your browser to OpenAI. Dispatch's server creates the
-  session and never carries call audio. Voice samples are the one exception:
-  the server records them from OpenAI and sends them to the settings page.
+  session and never carries call audio. New voice samples are the one
+  exception: the server records them from OpenAI and sends them to the
+  settings page. Built-in samples are files in the package.
 - Transcripts, tool traces, and call summaries are stored in Dispatch's plugin
   database on the BB server. Transcripts and summaries are deleted after
   90 days by default. Change this, or turn call memory off, in **Calls**.

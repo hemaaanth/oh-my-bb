@@ -10,7 +10,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { errorText, useLatest, usePreferences, useSetupStatus } from "./data.js";
-import { Group, Loading, Note, Row } from "./layout.js";
+import { Disclosure, Group, Loading, Note, Row } from "./layout.js";
 import { VoiceSettings } from "./voice.js";
 
 function NameRow({ saved, save }: { saved: string; save: (name: string) => Promise<boolean> }) {
@@ -35,7 +35,7 @@ function NameRow({ saved, save }: { saved: string; save: (name: string) => Promi
         id="dispatch-agent-name"
         value={draft}
         maxLength={AGENT_NAME_MAX}
-        className="h-8 sm:w-56"
+        className="h-8 @md:w-56"
         onChange={(event) => setDraft(event.target.value.slice(0, AGENT_NAME_MAX))}
         onBlur={() => void commit()}
         onKeyDown={(event) => {
@@ -67,15 +67,14 @@ function PromptLayer({ title, parts }: { title: string; parts: PromptParts }) {
   );
 }
 
-function PromptPreview() {
+/** The assembled prompts. They load when the disclosure opens. */
+function PromptBody() {
   const rpc = useRpc<RpcContract>();
   const rpcRef = useLatest(rpc);
-  const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<{ voice: PromptParts; backend: PromptParts } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
     let active = true;
     rpcRef.current
       .call("promptPreview", {})
@@ -84,21 +83,14 @@ function PromptPreview() {
     return () => {
       active = false;
     };
-  }, [open, rpcRef]);
+  }, [rpcRef]);
 
+  if (!preview) return <Loading error={error} />;
   return (
-    <div className="flex flex-col gap-2 py-3">
-      <Button variant="ghost" size="sm" className="self-start" aria-expanded={open} onClick={() => setOpen(!open)}>
-        {open ? "Hide full prompt" : "Show full prompt"}
-      </Button>
-      {open && !preview ? <Loading error={error} /> : null}
-      {open && preview ? (
-        <div className="flex flex-col gap-4">
-          <Note>Read-only. The built-in part stays in place. Your instructions are added after it.</Note>
-          <PromptLayer title="Voice prompt" parts={preview.voice} />
-          <PromptLayer title="Backend prompt" parts={preview.backend} />
-        </div>
-      ) : null}
+    <div className="flex flex-col gap-4">
+      <Note>Read-only. The built-in part stays in place. Your instructions are added after it.</Note>
+      <PromptLayer title="Voice prompt" parts={preview.voice} />
+      <PromptLayer title="Backend prompt" parts={preview.backend} />
     </div>
   );
 }
@@ -176,7 +168,7 @@ function InstructionsEditor() {
   return (
     <>
       <div className="flex flex-col gap-2 py-3">
-        <label htmlFor="dispatch-instructions" className="text-sm font-medium text-foreground">
+        <label htmlFor="dispatch-instructions" className="text-sm text-foreground">
           Your instructions
         </label>
         <Note>The built-in prompt stays in place. This text is added after it.</Note>
@@ -196,10 +188,11 @@ function InstructionsEditor() {
         </div>
         {error ? <Note tone="error">{error}</Note> : null}
       </div>
-      <PromptPreview />
-      {history.length > 0 ? <details className="py-3">
-        <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">Instruction history ({history.length})</summary>
-        <ul className="mt-2 flex flex-col">
+      <Disclosure label="Full prompt">
+        <PromptBody />
+      </Disclosure>
+      {history.length > 0 ? <Disclosure label={`Instruction history (${history.length})`}>
+        <ul className="flex flex-col">
           {history.map((revision) => (
             <li key={revision.id} className="flex items-center gap-3 py-2">
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -216,7 +209,7 @@ function InstructionsEditor() {
             </li>
           ))}
         </ul>
-      </details> : null}
+      </Disclosure> : null}
     </>
   );
 }

@@ -115,8 +115,15 @@ export const VOICE_SAMPLE = {
   text: "Quick update: the thread Fix the header finished. It changed two files, and all the tests pass. Do you want me to open it?",
   /** Hard stop for one sample session. */
   capMs: 15_000,
-  /** The agent has finished speaking when no audio arrives for this long. */
-  quietMs: 1_500,
+  /**
+   * The voice has finished when it has been quiet for this long. GPT-Live keeps
+   * sending silent audio after it speaks, so quiet means no loud audio, not no audio.
+   */
+  quietMs: 1_200,
+  /** A sample louder than this (about -40 dBFS, PCM16) counts as speech. */
+  voicedPeak: 330,
+  /** Silence kept after the last speech, so the sample does not end abruptly. */
+  tailMs: 250,
   /** Wait this long for session.closed before the socket is released anyway. */
   closeMs: 2_000,
   /** Samples kept in the plugin database. The oldest used go first. */

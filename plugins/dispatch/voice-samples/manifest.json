@@ -1,0 +1,164 @@
+{
+  "model": "gpt-live-1",
+  "mime": "audio/mpeg",
+  "fingerprint": "e9d2509b2d9bde8d9d0432649ad855cdfaf64844b92f6cd5fe530a26060a4118",
+  "made": "2026-10-20",
+  "voices": {
+    "alloy": {
+      "file": "alloy.mp3",
+      "bytes": 28844,
+      "seconds": 7.45
+    },
+    "ash": {
+      "file": "ash.mp3",
+      "bytes": 25772,
+      "seconds": 6.65
+    },
+    "ballad": {
+      "file": "ballad.mp3",
+      "bytes": 28844,
+      "seconds": 7.45
+    },
+    "beacon": {
+      "file": "beacon.mp3",
+      "bytes": 30956,
+      "seconds": 7.95
+    },
+    "bossa": {
+      "file": "bossa.mp3",
+      "bytes": 25484,
+      "seconds": 6.55
+    },
+    "brise": {
+      "file": "brise.mp3",
+      "bytes": 24428,
+      "seconds": 6.35
+    },
+    "cedar": {
+      "file": "cedar.mp3",
+      "bytes": 21260,
+      "seconds": 5.55
+    },
+    "cinder": {
+      "file": "cinder.mp3",
+      "bytes": 29324,
+      "seconds": 7.55
+    },
+    "coral": {
+      "file": "coral.mp3",
+      "bytes": 25292,
+      "seconds": 6.55
+    },
+    "delta": {
+      "file": "delta.mp3",
+      "bytes": 27692,
+      "seconds": 7.15
+    },
+    "echo": {
+      "file": "echo.mp3",
+      "bytes": 25484,
+      "seconds": 6.55
+    },
+    "flitz": {
+      "file": "flitz.mp3",
+      "bytes": 25292,
+      "seconds": 6.55
+    },
+    "gleam": {
+      "file": "gleam.mp3",
+      "bytes": 24044,
+      "seconds": 6.25
+    },
+    "harema": {
+      "file": "harema.mp3",
+      "bytes": 28748,
+      "seconds": 7.45
+    },
+    "juni": {
+      "file": "juni.mp3",
+      "bytes": 24044,
+      "seconds": 6.25
+    },
+    "marin": {
+      "file": "marin.mp3",
+      "bytes": 23468,
+      "seconds": 6.15
+    },
+    "meridian": {
+      "file": "meridian.mp3",
+      "bytes": 27884,
+      "seconds": 7.25
+    },
+    "nira": {
+      "file": "nira.mp3",
+      "bytes": 25484,
+      "seconds": 6.65
+    },
+    "noeul": {
+      "file": "noeul.mp3",
+      "bytes": 28652,
+      "seconds": 7.45
+    },
+    "nuri": {
+      "file": "nuri.mp3",
+      "bytes": 29516,
+      "seconds": 7.65
+    },
+    "quartz": {
+      "file": "quartz.mp3",
+      "bytes": 29708,
+      "seconds": 7.65
+    },
+    "ripple": {
+      "file": "ripple.mp3",
+      "bytes": 24908,
+      "seconds": 6.45
+    },
+    "sage": {
+      "file": "sage.mp3",
+      "bytes": 27692,
+      "seconds": 7.15
+    },
+    "shida": {
+      "file": "shida.mp3",
+      "bytes": 25100,
+      "seconds": 6.55
+    },
+    "shimmer": {
+      "file": "shimmer.mp3",
+      "bytes": 29708,
+      "seconds": 7.65
+    },
+    "sillage": {
+      "file": "sillage.mp3",
+      "bytes": 27308,
+      "seconds": 7.05
+    },
+    "stone": {
+      "file": "stone.mp3",
+      "bytes": 24524,
+      "seconds": 6.35
+    },
+    "tempo": {
+      "file": "tempo.mp3",
+      "bytes": 23276,
+      "seconds": 6.05
+    },
+    "verse": {
+      "file": "verse.mp3",
+      "bytes": 27596,
+      "seconds": 7.15
+    },
+    "vesper": {
+      "file": "vesper.mp3",
+      "bytes": 22412,
+      "seconds": 5.85
+    },
+    "willow": {
+      "file": "willow.mp3",
+      "bytes": 23180,
+      "seconds": 5.95
+    }
+  },
+  "refused": []
+}

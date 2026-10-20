@@ -71,7 +71,8 @@ export function useAudioDevices(): Devices {
   const namesVisible = inputsRaw.length > 0 && inputsRaw.every((device) => device.label !== "");
   const named = (devices: MediaDeviceInfo[], noun: string): AudioDevice[] =>
     devices
-      .filter((device) => device.deviceId !== "default")
+      // Some browsers give every device an empty id until access is granted. It cannot be chosen.
+      .filter((device) => device.deviceId !== "" && device.deviceId !== "default")
       .map((device, index) => ({ id: device.deviceId, label: namesVisible && device.label ? device.label : `${noun} ${index + 1}` }));
 
   return { inputs: named(inputsRaw, "Microphone"), outputs: named(outputsRaw, "Speaker"), namesVisible, supported: Boolean(mediaDevices()?.enumerateDevices), refresh, grant };

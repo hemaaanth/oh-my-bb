@@ -8,7 +8,7 @@ import { Switch } from "../components/ui/switch";
 import { cn } from "../lib/utils";
 import { usePreferences } from "./data.js";
 import { readPointerGhost, useDeviceValue, writePointerGhost } from "./device.js";
-import { Group, Loading, Note, Row, SettingSelect } from "./layout.js";
+import { Group, Loading, Note, Row, Segmented, SettingSelect } from "./layout.js";
 import { Pet } from "../pet/pet.js";
 import { FACE_LABEL, type PetFace } from "../pet/mood.js";
 import { LOCAL_KEYS } from "../../shared/constants.js";
@@ -71,20 +71,14 @@ export function AppearanceSection() {
         <span role="img" aria-label={`Pet preview, ${mood}`} data-mood={mood}>
           <Pet face={FACE_FOR[mood]} look={look} className="dispatch-pet-preview" />
         </span>
-        <div className="flex min-w-0 flex-col gap-2">
+        <div className="flex w-44 min-w-0 max-w-full flex-col gap-2">
           <label htmlFor="dispatch-preview-mood" className="text-xs text-muted-foreground">Preview mood</label>
           <SettingSelect id="dispatch-preview-mood" label="Preview mood" value={mood} options={PET_MOODS.map((name) => ({ value: name, label: capitalise(name) }))} onValueChange={(value) => setMood(value as PetMood)} />
         </div>
       </div>
 
-      <Row label="Style" inline>
-        <div role="group" aria-label="Style" className="flex rounded-md border border-input p-0.5">
-          {(["outline", "solid"] as const).map((style) => (
-            <Button key={style} variant="ghost" size="sm" className="h-7" aria-pressed={look.style === style} onClick={() => change({ style })}>
-              {capitalise(style)}
-            </Button>
-          ))}
-        </div>
+      <Row label="Style">
+        <Segmented label="Style" value={look.style} options={(["outline", "solid"] as const).map((style) => ({ value: style, label: capitalise(style) }))} onChange={(style) => change({ style })} />
       </Row>
 
       <Row label="Colour">
@@ -121,19 +115,19 @@ export function AppearanceSection() {
           max={100}
           step={1}
           value={look.roundness}
-          className="w-full accent-current sm:w-48"
+          className="w-full accent-current @md:w-48"
           onChange={(event) => change({ roundness: Number(event.target.value) })}
         />
       </Row>
 
-      <Row label="Follow the pointer" inline help="The pet turns its eyes toward your pointer.">
+      <Row label="Follow the pointer" placement="trailing" help="The pet turns its eyes toward your pointer.">
         <Switch aria-label="Follow the pointer" checked={look.followPointer} onCheckedChange={(followPointer) => change({ followPointer })} />
       </Row>
-      <Row label="Flash the antenna" inline help="The antenna blinks while the pet is busy.">
+      <Row label="Flash the antenna" placement="trailing" help="The antenna blinks while the pet is busy.">
         <Switch aria-label="Flash the antenna" checked={look.antennaFlash} onCheckedChange={(antennaFlash) => change({ antennaFlash })} />
       </Row>
 
-      <Row label="Pointer ghost" inline help="Shows where the agent is looking. Never clicks. This device only.">
+      <Row label="Pointer ghost" placement="trailing" help="Shows where the agent is looking. Never clicks. This device only.">
         <Switch aria-label="Pointer ghost" checked={ghost} onCheckedChange={setGhost} />
       </Row>
       {error ? <Note tone="error">{error}</Note> : null}

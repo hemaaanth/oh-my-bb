@@ -14,7 +14,8 @@ want. The agent, Juno by default, keeps its answers short and acts first. It can
 While a call is live, it also tells you when a thread finishes or fails. The
 pet shows what the agent is doing: listening, talking, reading, or working.
 
-Pick a voice and play a short sample of it. Set the voice style: pace,
+Pick a voice and play a short sample of it. Every listed voice has a
+built-in sample in the default style, so it plays at once with no key. Set the voice style: pace,
 energy, expressiveness, turn length, and backchannels. The style is a set of
 sentences in the voice prompt, not an exact control. You can also design a
 voice from a description.
@@ -46,8 +47,8 @@ add it, Dispatch reloads itself.
 
 Voice time is estimated at $0.05 per minute. The reasoning model's tokens,
 including call summaries, are billed by OpenAI on top and are not counted.
-Phone calls also use Twilio minutes. A new voice sample costs about 1¢ and is
-not counted.
+Phone calls also use Twilio minutes. Built-in voice samples are free. A new
+sample, for your own voice or your style, costs about 1¢ and is not counted.
 
 ## Standalone by default
 

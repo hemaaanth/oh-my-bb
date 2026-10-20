@@ -16,9 +16,21 @@ export type SampleSessionConfig = {
 
 export type SampleTiming = { capMs: number; quietMs: number; closeMs: number };
 
+/**
+ * Steps of one sample session, for the sample script's timing report. `event`
+ * is the type of each server event. No step carries audio, text, or the key.
+ */
+export type SampleStep = "open" | "event" | "first-audio" | "first-voice" | "voiced" | "quiet" | "cap" | "closed" | "settled";
+
 /** 100 ms of silence. GPT-Live wants input audio running while it speaks first. */
 const SILENCE_MS = 100;
 const SILENCE = Buffer.alloc((VOICE_SAMPLE.rate * 2 * SILENCE_MS) / 1000).toString("base64");
+
+/** True when any PCM16 sample in the chunk is louder than the speech threshold. */
+export function isVoiced(pcm: Buffer, peak: number = VOICE_SAMPLE.voicedPeak): boolean {
+  for (let at = 0; at + 1 < pcm.length; at += 2) if (Math.abs(pcm.readInt16LE(at)) > peak) return true;
+  return false;
+}
 
 const parse = (data: unknown): Record<string, unknown> => {
   try {
@@ -33,7 +45,8 @@ const parse = (data: unknown): Record<string, unknown> => {
  * Run the session and return the raw audio. It ends when the voice has been
  * quiet for `quietMs` after it started speaking, at `session.closed`, or at
  * `capMs`. It always sends `session.close` and waits up to `closeMs` for
- * `session.closed` before it releases the socket.
+ * `session.closed` before it releases the socket. Silence before the first
+ * speech is dropped, and only `tailMs` of silence is kept after the last.
  */
 export function recordSample(input: {
   apiKey: string;
@@ -41,7 +54,9 @@ export function recordSample(input: {
   /** Sent once through session.commentary.append after session.started. */
   speak: string;
   timing?: Partial<SampleTiming>;
+  trace?: (step: SampleStep, detail?: string) => void;
 }): Promise<Uint8Array> {
+  const trace = input.trace ?? (() => {});
   const timing: SampleTiming = {
     capMs: input.timing?.capMs ?? VOICE_SAMPLE.capMs,
     quietMs: input.timing?.quietMs ?? VOICE_SAMPLE.quietMs,
@@ -49,6 +64,10 @@ export function recordSample(input: {
   };
   const socket = new WebSocket(ENDPOINTS.liveSocket, { headers: { Authorization: `Bearer ${input.apiKey}` } } as never);
   const chunks: Buffer[] = [];
+  /** Bytes received, bytes kept, and kept bytes up to the end of the last speech. */
+  let audioBytes = 0;
+  let keptBytes = 0;
+  let spokenBytes = 0;
   let started = false;
   let closed = false;
   let finishing = false;
@@ -65,6 +84,7 @@ export function recordSample(input: {
     const settle = () => {
       if (settled) return;
       settled = true;
+      trace("settled");
       clearInterval(pump);
       clearTimeout(quiet);
       clearTimeout(cap);
@@ -74,7 +94,8 @@ export function recordSample(input: {
       } catch {
         // Already closed.
       }
-      const audio = Buffer.concat(chunks);
+      const tail = Math.round((VOICE_SAMPLE.rate * VOICE_SAMPLE.tailMs) / 1000) * 2;
+      const audio = Buffer.concat(chunks).subarray(0, spokenBytes > 0 ? spokenBytes + tail : 0);
       if (audio.length > 0) resolve(new Uint8Array(audio));
       else reject(new Error(problem ?? SAMPLE_SILENT_ERROR));
     };
@@ -89,19 +110,39 @@ export function recordSample(input: {
       send({ type: "session.close" });
       closeWait = setTimeout(settle, timing.closeMs);
     };
-    const cap = setTimeout(finish, timing.capMs);
+    const cap = setTimeout(() => {
+      trace("cap");
+      finish();
+    }, timing.capMs);
 
-    socket.addEventListener("open", () => send({ type: "session.start", event_id: "sample_start", session: input.session }));
+    socket.addEventListener("open", () => {
+      trace("open");
+      send({ type: "session.start", event_id: "sample_start", session: input.session });
+    });
     socket.addEventListener("message", (event: MessageEvent) => {
       const message = parse(event.data);
+      trace("event", typeof message.type === "string" ? message.type : "unknown");
       if (message.type === "session.started") {
         started = true;
         send({ type: "session.commentary.append", event_id: "sample_say", delegation_id: null, content: input.speak });
         pump = setInterval(() => send({ type: "session.input_audio.append", audio: SILENCE }), SILENCE_MS);
       } else if (message.type === "session.output_audio.delta" && typeof message.delta === "string") {
-        chunks.push(Buffer.from(message.delta, "base64"));
+        if (audioBytes === 0) trace("first-audio");
+        const pcm = Buffer.from(message.delta, "base64");
+        audioBytes += pcm.length;
+        const voiced = isVoiced(pcm);
+        if (spokenBytes === 0 && !voiced) return;
+        if (spokenBytes === 0) trace("first-voice");
+        chunks.push(pcm);
+        keptBytes += pcm.length;
+        if (!voiced) return;
+        trace("voiced");
+        spokenBytes = keptBytes;
         clearTimeout(quiet);
-        quiet = setTimeout(finish, timing.quietMs);
+        quiet = setTimeout(() => {
+          trace("quiet");
+          finish();
+        }, timing.quietMs);
       } else if (message.type === "error") {
         const error = message.error as { message?: unknown } | undefined;
         const text = typeof error?.message === "string" ? error.message : "the session failed";
@@ -109,6 +150,7 @@ export function recordSample(input: {
         // Before the session starts an error is final. Later ones are rejected commands.
         if (!started) finish();
       } else if (message.type === "session.closed") {
+        trace("closed");
         closed = true;
         if (finishing) settle();
         else finish();

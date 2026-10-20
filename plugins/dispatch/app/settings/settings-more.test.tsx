@@ -144,6 +144,21 @@ describe("Calls", () => {
     await waitFor(() => expect(JSON.parse(stored[LOCAL_KEYS.audio]!)).toMatchObject({ inputDeviceId: null }));
   });
 
+  it("leaves out devices without an id, as some browsers list them before access", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: async () => [{ kind: "audioinput", deviceId: "", label: "", groupId: "" }],
+        getUserMedia: async () => ({ getTracks: () => [] }),
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      },
+    });
+    mount(byId("calls"), makePrefsRpc().handlers);
+    await openSetting("Microphone");
+    expect((await screen.findAllByRole("option")).map((option) => option.textContent)).toEqual(["System default"]);
+  });
+
   it("shows system default for a missing saved microphone without overwriting the device choice", async () => {
     stored[LOCAL_KEYS.audio] = JSON.stringify({ inputDeviceId: "unplugged", outputDeviceId: null });
     mount(byId("calls"), makePrefsRpc().handlers);

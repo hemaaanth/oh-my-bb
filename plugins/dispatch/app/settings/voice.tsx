@@ -5,6 +5,7 @@ import { useRpc } from "@get-bb/plugin-sdk/app";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CUSTOM_VOICE_EXAMPLE,
+  defaultPreferences,
   CUSTOM_VOICE_NAME_MAX,
   CUSTOM_VOICE_PROMPT_MAX,
   VOICE_GROUPS,
@@ -15,18 +16,25 @@ import {
   type VoiceOption,
 } from "../../shared/constants.js";
 import type { Preferences, RpcContract, VoiceStyle } from "../../shared/contract.js";
+import { hasBundledSample } from "../../shared/voice-samples.js";
 import { Button } from "../components/ui/button";
 import { Icon } from "../components/ui/icon";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { cn } from "../lib/utils";
 import { errorText, useLatest } from "./data.js";
-import { Group, Note, Row } from "./layout.js";
+import { Disclosure, Group, Note, Row, Segmented } from "./layout.js";
 
 type Save = (patch: Partial<Preferences>) => Promise<boolean>;
 
-export const SAMPLE_COST_NOTE = "Uses your OpenAI key. About 1¢ per new sample.";
-export const SAMPLE_NO_KEY_NOTE = "Add an OpenAI API key in Setup to play samples and design voices.";
+export const SAMPLE_COST_NOTE = "Built-in samples are recordings in the default style. Your voices and Preview with this style use your OpenAI key, about 1¢ per new sample.";
+export const SAMPLE_NO_KEY_NOTE = "Built-in samples are recordings in the default style. Add an OpenAI API key in Setup to hear your own voices, preview your style, and design voices.";
+export const SAMPLE_PROGRESS = "Making a sample, about 10 seconds";
+/** A cached sample plays well before this. Only a new sample shows the progress text. */
+const PROGRESS_AFTER_MS = 400;
+
+const DEFAULT_STYLE = defaultPreferences().voiceStyle;
+const isDefaultStyle = (style: VoiceStyle) => (Object.keys(DEFAULT_STYLE) as Array<keyof VoiceStyle>).every((key) => style[key].trim() === DEFAULT_STYLE[key]);
 export const STYLE_NOTE = "These are instructions in the voice prompt. The voice model follows them, but they are not exact controls.";
 
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -38,46 +46,57 @@ export function voiceDetail(voice: VoiceOption): string {
   return [voice.region ? `${voice.language}, ${voice.region}` : voice.language, voice.presentation].filter(Boolean).join(" · ");
 }
 
+/** "default" is the list sample. "saved" is Preview with this style. */
+type SampleStyle = "default" | "saved";
+
 type Player = {
-  /** The voice whose sample is loading or playing. */
-  current: { voice: string; playing: boolean } | null;
+  /** The sample that is loading or playing. `slow` means a new sample is being made. */
+  current: { voice: string; style: SampleStyle; playing: boolean; slow: boolean } | null;
   error: string | null;
-  play: (voice: string) => void;
+  play: (voice: string, style: SampleStyle) => void;
   stop: () => void;
 };
 
-/** Plays one sample at a time. A new play stops the one before it. */
-function useSamplePlayer(): Player {
+/** Plays one sample at a time. A new play stops the one before it. `premade` says which samples ship with Dispatch. */
+function useSamplePlayer(premade: (voice: string, style: SampleStyle) => boolean): Player {
   const rpc = useRpc<RpcContract>();
   const rpcRef = useLatest(rpc);
+  const premadeRef = useLatest(premade);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const turn = useRef(0);
+  const slowTimer = useRef<number | undefined>(undefined);
   const [current, setCurrent] = useState<Player["current"]>(null);
   const [error, setError] = useState<string | null>(null);
 
   const stop = useCallback(() => {
     turn.current += 1;
+    window.clearTimeout(slowTimer.current);
     audioRef.current?.pause();
     audioRef.current = null;
     setCurrent(null);
   }, []);
 
   const play = useCallback(
-    (voice: string) => {
+    (voice: string, style: SampleStyle) => {
       stop();
       const mine = turn.current;
       setError(null);
-      setCurrent({ voice, playing: false });
+      setCurrent({ voice, style, playing: false, slow: false });
+      if (!premadeRef.current(voice, style))
+        slowTimer.current = window.setTimeout(() => {
+          if (mine === turn.current) setCurrent((now) => (now && !now.playing ? { ...now, slow: true } : now));
+        }, PROGRESS_AFTER_MS);
       rpcRef.current
-        .call("voiceSample", { voice })
-        .then(async ({ wav }) => {
+        .call("voiceSample", { voice, style })
+        .then(async ({ audio: base64, mime }) => {
           if (mine !== turn.current) return;
-          const audio = new Audio(`data:audio/wav;base64,${wav}`);
+          window.clearTimeout(slowTimer.current);
+          const audio = new Audio(`data:${mime};base64,${base64}`);
           audioRef.current = audio;
           audio.onended = () => {
             if (audioRef.current === audio) stop();
           };
-          setCurrent({ voice, playing: true });
+          setCurrent({ voice, style, playing: true, slow: false });
           await audio.play();
         })
         .catch((cause: unknown) => {
@@ -86,7 +105,7 @@ function useSamplePlayer(): Player {
           setError(errorText(cause));
         });
     },
-    [rpcRef, stop],
+    [premadeRef, rpcRef, stop],
   );
 
   useEffect(() => stop, [stop]);
@@ -94,7 +113,7 @@ function useSamplePlayer(): Player {
 }
 
 function PlayButton({ voice, label, player, canPlay }: { voice: string; label: string; player: Player; canPlay: boolean }) {
-  const mine = player.current?.voice === voice ? player.current : null;
+  const mine = player.current?.voice === voice && player.current.style === "default" ? player.current : null;
   return (
     <Button
       variant="ghost"
@@ -102,7 +121,7 @@ function PlayButton({ voice, label, player, canPlay }: { voice: string; label: s
       className="size-7 shrink-0"
       aria-label={mine ? `Stop ${label}` : `Play ${label}`}
       disabled={!canPlay}
-      onClick={() => (mine ? player.stop() : player.play(voice))}
+      onClick={() => (mine ? player.stop() : player.play(voice, "default"))}
     >
       <Icon name={mine && !mine.playing ? "Loading" : mine ? "Square" : "Play"} className={cn("size-3.5", mine && !mine.playing && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
     </Button>
@@ -118,13 +137,13 @@ function VoiceSection({ title, note, voices, chosen, onChoose, player, canPlay, 
   chosen: string;
   onChoose: (voice: string) => void;
   player: Player;
-  canPlay: boolean;
+  canPlay: (voice: string) => boolean;
   onRemove?: (voice: string) => void;
 }) {
   if (voices.length === 0) return null;
   return (
-    <section aria-label={title} className="py-1">
-      <h5 className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">{title}</h5>
+    <section aria-label={title} className="pb-1">
+      <h5 className="sticky top-0 z-10 bg-background px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">{title}</h5>
       {note ? <p className="px-2 pb-1 text-xs text-muted-foreground">{note}</p> : null}
       <ul className="flex flex-col">
         {voices.map((voice) => (
@@ -139,7 +158,7 @@ function VoiceSection({ title, note, voices, chosen, onChoose, player, canPlay, 
               <span className="truncate text-xs text-muted-foreground">{voice.detail}</span>
               {voice.name === chosen ? <Icon name="Check" className="ml-auto size-3.5 shrink-0" aria-hidden="true" /> : null}
             </button>
-            <PlayButton voice={voice.name} label={voice.label} player={player} canPlay={canPlay} />
+            <PlayButton voice={voice.name} label={voice.label} player={player} canPlay={canPlay(voice.name)} />
             {onRemove ? (
               <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => onRemove(voice.name)}>
                 Remove
@@ -152,7 +171,24 @@ function VoiceSection({ title, note, voices, chosen, onChoose, player, canPlay, 
   );
 }
 
-function VoicePicker({ prefs, save, player, canPlay, remove }: { prefs: Preferences; save: Save; player: Player; canPlay: boolean; remove: (id: string) => void }) {
+/** Shown while a new sample is being made, under the control that asked for it. */
+function SampleProgress({ player, style }: { player: Player; style: SampleStyle }) {
+  const slow = player.current?.slow === true && player.current.style === style;
+  return (
+    <p role="status" className="text-xs text-muted-foreground empty:hidden">
+      {slow ? SAMPLE_PROGRESS : null}
+    </p>
+  );
+}
+
+function VoicePicker({ prefs, save, player, hasKey, canPlay, remove }: {
+  prefs: Preferences;
+  save: Save;
+  player: Player;
+  hasKey: boolean;
+  canPlay: (voice: string) => boolean;
+  remove: (id: string) => void;
+}) {
   const custom = prefs.customVoices.map((voice) => ({ name: voice.id, label: voice.name, detail: "Your design" }));
   // A saved voice that left the list stays visible and in use.
   const unlisted =
@@ -166,12 +202,12 @@ function VoicePicker({ prefs, save, player, canPlay, remove }: { prefs: Preferen
 
   return (
     <div className="flex flex-col gap-2 py-3">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-sm font-medium text-foreground">Voice</span>
+      <div className="flex min-w-0 items-baseline justify-between gap-2">
+        <span className="shrink-0 text-sm text-foreground">Voice</span>
         <span className="truncate text-xs text-muted-foreground">{chosen ? `${chosen.label} · ${chosen.detail}` : prefs.voice}</span>
       </div>
-      <Note>{canPlay ? SAMPLE_COST_NOTE : SAMPLE_NO_KEY_NOTE}</Note>
-      <div role="group" aria-label="Voice" className="max-h-80 overflow-y-auto rounded-md border border-input p-1">
+      <Note>{hasKey ? SAMPLE_COST_NOTE : SAMPLE_NO_KEY_NOTE}</Note>
+      <div role="group" aria-label="Voice" className="max-h-80 overflow-y-auto overscroll-contain rounded-md border border-input bg-background px-1 pb-1">
         <VoiceSection title="Saved voice" voices={unlisted} {...common} />
         <VoiceSection title="Your voices" voices={custom} onRemove={remove} {...common} />
         {VOICE_GROUPS.map((group) => (
@@ -184,6 +220,7 @@ function VoicePicker({ prefs, save, player, canPlay, remove }: { prefs: Preferen
           />
         ))}
       </div>
+      <SampleProgress player={player} style="default" />
       {player.error ? <Note tone="error">{player.error}</Note> : null}
     </div>
   );
@@ -207,7 +244,7 @@ function StyleNotes({ saved, save }: { saved: string; save: (notes: string) => v
   }
   return (
     <div className="flex flex-col gap-2 py-3">
-      <label htmlFor="dispatch-style-notes" className="text-sm font-medium text-foreground">
+      <label htmlFor="dispatch-style-notes" className="text-sm text-foreground">
         Style notes
       </label>
       <Textarea
@@ -226,30 +263,32 @@ function StyleNotes({ saved, save }: { saved: string; save: (notes: string) => v
   );
 }
 
-function VoiceStyleGroup({ prefs, save, player, canPlay }: { prefs: Preferences; save: Save; player: Player; canPlay: boolean }) {
+function VoiceStyleGroup({ prefs, save, player, canPreview }: { prefs: Preferences; save: Save; player: Player; canPreview: boolean }) {
   const style = prefs.voiceStyle;
   const change = (patch: Partial<VoiceStyle>) => void save({ voiceStyle: { ...style, ...patch } });
+  const previewing = player.current?.style === "saved";
   return (
     <div className="py-3">
-      <Group title="Voice style">
-        <Note>{STYLE_NOTE}</Note>
+      <Group title="Voice style" note={STYLE_NOTE}>
         {STYLE_ROWS.map((row) => (
-          <Row key={row.key} label={row.label} help={row.help} inline>
-            <div role="group" aria-label={row.label} className="flex rounded-md border border-input p-0.5">
-              {VOICE_STYLE_CHOICES[row.key].map((choice) => (
-                <Button key={choice} variant="ghost" size="sm" className="h-7 px-2.5" aria-pressed={style[row.key] === choice} onClick={() => change({ [row.key]: choice })}>
-                  {capitalise(choice)}
-                </Button>
-              ))}
-            </div>
+          <Row key={row.key} label={row.label} help={row.help}>
+            <Segmented
+              label={row.label}
+              value={style[row.key]}
+              options={VOICE_STYLE_CHOICES[row.key].map((choice) => ({ value: choice, label: capitalise(choice) }))}
+              onChange={(choice) => change({ [row.key]: choice })}
+            />
           </Row>
         ))}
         <StyleNotes saved={style.notes} save={(notes) => change({ notes })} />
-        <div className="flex items-center gap-2 py-3">
-          <Button variant="outline" size="sm" disabled={!canPlay} onClick={() => (player.current ? player.stop() : player.play(prefs.voice))}>
-            {player.current ? "Stop preview" : "Preview with this style"}
-          </Button>
-          <span className="text-xs text-muted-foreground">Plays the chosen voice with these settings.</span>
+        <div className="flex flex-col gap-2 py-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <Button variant="outline" size="sm" disabled={!canPreview && !previewing} onClick={() => (previewing ? player.stop() : player.play(prefs.voice, "saved"))}>
+              {previewing ? "Stop preview" : "Preview with this style"}
+            </Button>
+            <span className="text-xs text-muted-foreground">Plays the chosen voice with these settings.</span>
+          </div>
+          <SampleProgress player={player} style="saved" />
         </div>
       </Group>
     </div>
@@ -282,34 +321,35 @@ function DesignVoice({ canCreate, onCreated }: { canCreate: boolean; onCreated: 
   };
 
   return (
-    <details className="py-3">
-      <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">Design a voice</summary>
-      <div className="mt-2 flex flex-col gap-2">
-        <Note>OpenAI makes a new voice from your description. Creating it is free. Your key needs the api.voices.write permission. OpenAI keeps the voice; Remove only takes it off this list.</Note>
-        <label htmlFor="dispatch-voice-name" className="text-xs font-medium text-foreground">
-          Voice name
-        </label>
-        <Input id="dispatch-voice-name" value={name} maxLength={CUSTOM_VOICE_NAME_MAX} className="h-8 sm:w-56" onChange={(event) => setName(event.target.value)} />
-        <label htmlFor="dispatch-voice-prompt" className="text-xs font-medium text-foreground">
-          Description
-        </label>
-        <Textarea id="dispatch-voice-prompt" rows={3} value={prompt} maxLength={CUSTOM_VOICE_PROMPT_MAX} placeholder={CUSTOM_VOICE_EXAMPLE} onChange={(event) => setPrompt(event.target.value)} />
-        <div className="flex items-center gap-2">
-          <Button size="sm" disabled={!canCreate || busy || name.trim() === "" || prompt.trim() === ""} onClick={() => void create()}>
-            {busy ? "Creating…" : "Create voice"}
-          </Button>
-          {created ? <Note tone="ok">Created {created}. It is under Your voices.</Note> : null}
-        </div>
-        {error ? <Note tone="error">{error}</Note> : null}
+    <Disclosure label="Design a voice">
+      <Note>OpenAI makes a new voice from your description. Creating it is free. Your key needs the api.voices.write permission. OpenAI keeps the voice; Remove only takes it off this list.</Note>
+      <label htmlFor="dispatch-voice-name" className="text-xs font-medium text-foreground">
+        Voice name
+      </label>
+      <Input id="dispatch-voice-name" value={name} maxLength={CUSTOM_VOICE_NAME_MAX} className="h-8 w-full max-w-56" onChange={(event) => setName(event.target.value)} />
+      <label htmlFor="dispatch-voice-prompt" className="text-xs font-medium text-foreground">
+        Description
+      </label>
+      <Textarea id="dispatch-voice-prompt" rows={3} value={prompt} maxLength={CUSTOM_VOICE_PROMPT_MAX} placeholder={CUSTOM_VOICE_EXAMPLE} onChange={(event) => setPrompt(event.target.value)} />
+      <div className="flex items-center gap-2">
+        <Button size="sm" disabled={!canCreate || busy || name.trim() === "" || prompt.trim() === ""} onClick={() => void create()}>
+          {busy ? "Creating…" : "Create voice"}
+        </Button>
+        {created ? <Note tone="ok">Created {created}. It is under Your voices.</Note> : null}
       </div>
-    </details>
+      {error ? <Note tone="error">{error}</Note> : null}
+    </Disclosure>
   );
 }
 
 /** The voice part of the Agent section. `hasKey` comes from setup status. */
 export function VoiceSettings({ prefs, save, adopt, hasKey }: { prefs: Preferences; save: Save; adopt: (prefs: Preferences) => void; hasKey: boolean }) {
   const rpc = useRpc<RpcContract>();
-  const player = useSamplePlayer();
+  // A listed voice in the default style plays the sample that ships with Dispatch.
+  // Anything else is made with the owner's key.
+  const bundled = (voice: string) => !prefs.customVoices.some((item) => item.id === voice) && hasBundledSample(voice, prefs.voiceModel);
+  const premade = (voice: string, style: SampleStyle) => bundled(voice) && (style === "default" || isDefaultStyle(prefs.voiceStyle));
+  const player = useSamplePlayer(premade);
   const [error, setError] = useState<string | null>(null);
 
   const remove = (id: string) => {
@@ -323,12 +363,15 @@ export function VoiceSettings({ prefs, save, adopt, hasKey }: { prefs: Preferenc
       .catch((cause: unknown) => setError(errorText(cause)));
   };
 
+  const canPlay = (voice: string) => hasKey || premade(voice, "default");
+  const canPreview = hasKey || premade(prefs.voice, "saved");
+
   return (
     <>
-      <VoicePicker prefs={prefs} save={save} player={player} canPlay={hasKey} remove={remove} />
+      <VoicePicker prefs={prefs} save={save} player={player} hasKey={hasKey} canPlay={canPlay} remove={remove} />
       {error ? <Note tone="error">{error}</Note> : null}
       <DesignVoice canCreate={hasKey} onCreated={adopt} />
-      <VoiceStyleGroup prefs={prefs} save={save} player={player} canPlay={hasKey} />
+      <VoiceStyleGroup prefs={prefs} save={save} player={player} canPreview={canPreview} />
     </>
   );
 }

@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ENDPOINTS, VOICE_SAMPLE } from "../../shared/constants.js";
+import { ENDPOINTS, VOICE_MODELS, VOICE_NAMES, VOICE_SAMPLE } from "../../shared/constants.js";
+import { BUNDLED_SAMPLES } from "../../shared/voice-samples.js";
 import { DESKTOP_DEVICE, FULL_SETUP, loadPlugin, makeContext } from "../core-test-host.js";
 import { insertCall } from "../ledger.js";
 import { NO_KEY_ERROR } from "../live-session.js";
 import { readPreferences, writePreferences } from "../preferences.js";
+import { readBundledSample, samplesDir } from "./bundled.js";
 import { readSample, sampleKey, writeSample } from "./cache.js";
 import { VOICES_ACCESS_ERROR, VOICES_SCOPE_ERROR, createCustomVoice, removeCustomVoice } from "./custom.js";
-import { SAMPLE_BUSY_ERROR, sampleSpeech, voiceSample } from "./sample.js";
+import { DEFAULT_VOICE_STYLE, SAMPLE_BUSY_ERROR, sampleFingerprint, sampleInstructions, sampleSpeech, voiceSample } from "./sample.js";
 import { SAMPLE_SILENT_ERROR, recordSample, type SampleSessionConfig } from "./sample-session.js";
 import { wrapWav } from "./wav.js";
 
@@ -139,6 +141,43 @@ describe("recordSample", () => {
     expect(socket.readyState).toBe(3);
   });
 
+  it("ends on quiet while silent audio keeps coming, and trims the silent edges", async () => {
+    vi.useFakeTimers();
+    const pcm = (...values: number[]) => {
+      const buffer = Buffer.alloc(values.length * 2);
+      values.forEach((value, index) => buffer.writeInt16LE(value, index * 2));
+      return { type: "session.output_audio.delta", delta: buffer.toString("base64") };
+    };
+    const result = recordSample({ apiKey: "sk-test", session: SESSION, speak: "Say it.", timing: { quietMs: 1000, capMs: 60_000 } });
+    const socket = FakeSocket.last!;
+    socket.open();
+    socket.receive({ type: "session.started" });
+    socket.receive(pcm(0, 10, -20)); // silence before the voice: dropped
+    socket.receive(pcm(4000, -4000));
+    for (let tick = 0; tick < 9; tick += 1) {
+      socket.receive(pcm(5, -5)); // GPT-Live keeps sending silence
+      await vi.advanceTimersByTimeAsync(100);
+    }
+    expect(socket.types()).not.toContain("session.close");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(socket.types().at(-1)).toBe("session.close");
+    socket.receive({ type: "session.closed" });
+    const audio = Buffer.from(await result);
+    expect(audio.readInt16LE(0)).toBe(4000);
+    // The speech and the silence after it, up to tailMs.
+    expect(audio.length).toBe(4 + Math.min(9 * 4, Math.round((VOICE_SAMPLE.rate * VOICE_SAMPLE.tailMs) / 1000) * 2));
+  });
+
+  it("says the voice did not speak when only silence arrives", async () => {
+    const result = recordSample({ apiKey: "sk-test", session: SESSION, speak: "Say it." });
+    const socket = FakeSocket.last!;
+    socket.open();
+    socket.receive({ type: "session.started" });
+    socket.receive(audio([0, 0, 1, 0]));
+    socket.receive({ type: "session.closed" });
+    await expect(result).rejects.toThrow(SAMPLE_SILENT_ERROR);
+  });
+
   it("stops at the cap and releases the socket when session.closed never comes", async () => {
     vi.useFakeTimers();
     const result = recordSample({ apiKey: "sk-test", session: SESSION, speak: "Say it.", timing: { capMs: 1000, quietMs: 5000, closeMs: 200 } });
@@ -175,27 +214,36 @@ describe("recordSample", () => {
   });
 });
 
+const brisk = { voiceStyle: { pace: "brisk" as const } };
+
 describe("voiceSample", () => {
+  // A custom voice, or "saved" with a style that is not the default, always runs
+  // live, whatever ships in voice-samples/.
+  const calm = { customVoices: [{ id: "voice_abc", name: "Calm", prompt: "A calm, low voice.", createdAt: "" }] };
+
   it("is refused while a call is live, before any session opens", async () => {
     const { ctx } = await makeContext({ openaiKey: FULL_SETUP.openaiKey });
+    await writePreferences(ctx, brisk);
     insertCall(ctx, { channel: "app", device: DESKTOP_DEVICE });
     const record = vi.fn();
-    await expect(voiceSample(ctx, { voice: "gleam" }, record)).rejects.toThrow(SAMPLE_BUSY_ERROR);
+    await expect(voiceSample(ctx, { voice: "gleam", style: "saved" }, record)).rejects.toThrow(SAMPLE_BUSY_ERROR);
     expect(record).not.toHaveBeenCalled();
   });
 
   it("needs the OpenAI key for a new sample", async () => {
     const { ctx } = await makeContext();
-    await expect(voiceSample(ctx, { voice: "gleam" }, vi.fn())).rejects.toThrow(NO_KEY_ERROR);
+    await writePreferences(ctx, calm);
+    await expect(voiceSample(ctx, { voice: "voice_abc" }, vi.fn())).rejects.toThrow(NO_KEY_ERROR);
   });
 
   it("records once with the saved style, wraps a WAV, and serves the next play from the cache", async () => {
     const { ctx } = await makeContext({ openaiKey: FULL_SETUP.openaiKey });
-    await writePreferences(ctx, { voiceStyle: { pace: "brisk" } });
+    await writePreferences(ctx, brisk);
     const record = vi.fn(async () => new Uint8Array([1, 2, 3, 4]));
-    const first = await voiceSample(ctx, { voice: "sage" }, record);
-    expect(first.cached).toBe(false);
-    expect(Buffer.from(first.wav, "base64").subarray(0, 4).toString()).toBe("RIFF");
+    const first = await voiceSample(ctx, { voice: "sage", style: "saved" }, record);
+    expect(first.source).toBe("live");
+    expect(first.mime).toBe("audio/wav");
+    expect(Buffer.from(first.audio, "base64").subarray(0, 4).toString()).toBe("RIFF");
     expect(record).toHaveBeenCalledTimes(1);
     const call = record.mock.calls[0] as unknown as [{ apiKey: string; session: SampleSessionConfig; speak: string }];
     expect(call[0].apiKey).toBe(FULL_SETUP.openaiKey);
@@ -204,13 +252,13 @@ describe("voiceSample", () => {
     expect(call[0].session.instructions).toContain("briskly");
     expect(call[0].speak).toBe(sampleSpeech(VOICE_SAMPLE.text));
 
-    const second = await voiceSample(ctx, { voice: "sage" }, record);
-    expect(second).toEqual({ wav: first.wav, cached: true });
+    const second = await voiceSample(ctx, { voice: "sage", style: "saved" }, record);
+    expect(second).toEqual({ audio: first.audio, mime: "audio/wav", source: "cache" });
     expect(record).toHaveBeenCalledTimes(1);
 
     // A style change is a new sample.
     await writePreferences(ctx, { voiceStyle: { pace: "slower" } });
-    expect((await voiceSample(ctx, { voice: "sage" }, record)).cached).toBe(false);
+    expect((await voiceSample(ctx, { voice: "sage", style: "saved" }, record)).source).toBe("live");
     expect(record).toHaveBeenCalledTimes(2);
 
     // Samples never touch the calls ledger or usage.
@@ -218,11 +266,21 @@ describe("voiceSample", () => {
     expect(ctx.db.prepare("SELECT COUNT(*) AS n FROM call_trace").get()).toEqual({ n: 0 });
   });
 
+  it("plays the list sample in the default style, whatever style is saved", async () => {
+    const { ctx } = await makeContext({ openaiKey: FULL_SETUP.openaiKey });
+    await writePreferences(ctx, { ...brisk, ...calm });
+    const record = vi.fn(async () => new Uint8Array([1, 2]));
+    await voiceSample(ctx, { voice: "voice_abc" }, record);
+    const call = record.mock.calls[0] as unknown as [{ session: SampleSessionConfig }];
+    expect(call[0].session.instructions).toContain("natural, conversational pace");
+    expect(call[0].session.instructions).not.toContain("briskly");
+  });
+
   it("sends a custom voice as { id } with its description in the instructions", async () => {
     const { ctx } = await makeContext({ openaiKey: FULL_SETUP.openaiKey });
-    await writePreferences(ctx, { customVoices: [{ id: "voice_abc", name: "Calm", prompt: "A calm, low voice.", createdAt: "" }] });
+    await writePreferences(ctx, calm);
     const record = vi.fn(async () => new Uint8Array([0, 0]));
-    await voiceSample(ctx, { voice: "voice_abc" }, record);
+    expect((await voiceSample(ctx, { voice: "voice_abc" }, record)).source).toBe("live");
     const call = record.mock.calls[0] as unknown as [{ session: SampleSessionConfig }];
     expect(call[0].session.audio.output.voice).toEqual({ id: "voice_abc" });
     expect(call[0].session.instructions).toContain("- Your voice: A calm, low voice.");
@@ -230,22 +288,67 @@ describe("voiceSample", () => {
 
   it("shares one session between two plays of the same new sample", async () => {
     const { ctx } = await makeContext({ openaiKey: FULL_SETUP.openaiKey });
+    await writePreferences(ctx, calm);
     let done: (pcm: Uint8Array) => void = () => {};
     const record = vi.fn(() => new Promise<Uint8Array>((resolve) => (done = resolve)));
-    const plays = [voiceSample(ctx, { voice: "gleam" }, record), voiceSample(ctx, { voice: "gleam" }, record)];
+    const plays = [voiceSample(ctx, { voice: "voice_abc" }, record), voiceSample(ctx, { voice: "voice_abc" }, record)];
     await vi.waitFor(() => expect(record).toHaveBeenCalledTimes(1));
     done(new Uint8Array([5, 6]));
     const [a, b] = await Promise.all(plays);
-    expect(a!.wav).toBe(b!.wav);
+    expect(a!.audio).toBe(b!.audio);
   });
 
-  it("is registered as an RPC and refuses during a live call", async () => {
+  it("is registered as an RPC and refuses a live sample during a call", async () => {
     const { harness, bb } = await loadPlugin({ openaiKey: FULL_SETUP.openaiKey });
     bb.storage
       .database()
       .prepare("INSERT INTO calls (id, channel, device_json, started_at) VALUES ('call_1', 'phone', '{}', ?)")
       .run(Date.now());
-    await expect(harness.callRpc("voiceSample", { voice: "gleam" })).rejects.toThrow(SAMPLE_BUSY_ERROR);
+    await expect(harness.callRpc("voiceSample", { voice: "voice_unknown" })).rejects.toThrow(SAMPLE_BUSY_ERROR);
+  });
+});
+
+describe("pre-made samples in the package", () => {
+  const voices = Object.keys(BUNDLED_SAMPLES.voices);
+
+  it("are listed voices made from today's sample prompt, and small", () => {
+    for (const voice of [...voices, ...BUNDLED_SAMPLES.refused]) expect(VOICE_NAMES).toContain(voice);
+    if (voices.length === 0) return;
+    // Change the sample prompt, line, or default style, and this fails: run `npm run samples` again.
+    expect(BUNDLED_SAMPLES.fingerprint).toBe(sampleFingerprint(BUNDLED_SAMPLES.model, sampleInstructions(DEFAULT_VOICE_STYLE, null)));
+    expect(VOICE_MODELS).toContain(BUNDLED_SAMPLES.model);
+    expect(BUNDLED_SAMPLES.mime).toBe("audio/mpeg");
+    const total = voices.reduce((sum, voice) => sum + BUNDLED_SAMPLES.voices[voice]!.bytes, 0);
+    expect(total).toBeLessThan(1024 * 1024);
+  });
+
+  it("each file is on disk, is MP3, and matches its size", () => {
+    expect(samplesDir()).not.toBeNull();
+    for (const voice of voices) {
+      const sample = readBundledSample(voice);
+      expect(sample?.mime).toBe("audio/mpeg");
+      expect(sample!.audio.length).toBe(BUNDLED_SAMPLES.voices[voice]!.bytes);
+      const head = Buffer.from(sample!.audio.subarray(0, 3));
+      // An ID3 tag, or an MPEG frame sync.
+      expect(head.toString("latin1") === "ID3" || (head[0] === 0xff && (head[1]! & 0xe0) === 0xe0)).toBe(true);
+    }
+  });
+
+  it("plays a pre-made sample without a key, during a call, and with no session", async () => {
+    const voice = voices[0];
+    if (!voice) return;
+    const { ctx } = await makeContext();
+    insertCall(ctx, { channel: "app", device: DESKTOP_DEVICE });
+    const record = vi.fn();
+    const result = await voiceSample(ctx, { voice }, record);
+    expect(result.source).toBe("bundled");
+    expect(result.mime).toBe("audio/mpeg");
+    expect(Buffer.from(result.audio, "base64").length).toBe(BUNDLED_SAMPLES.voices[voice]!.bytes);
+    // The saved style only matters for "Preview with this style".
+    await writePreferences(ctx, brisk);
+    expect((await voiceSample(ctx, { voice }, record)).source).toBe("bundled");
+    await expect(voiceSample(ctx, { voice, style: "saved" }, record)).rejects.toThrow(SAMPLE_BUSY_ERROR);
+    expect(record).not.toHaveBeenCalled();
   });
 });
 
