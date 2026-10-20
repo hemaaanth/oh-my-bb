@@ -204,11 +204,10 @@ describe("Tools", () => {
     await waitFor(() => expect(prefs.writes.at(-1)).toEqual({ pluginAccess: { mode: "selected", ids: ["notes"] } }));
   });
 
-  it("does not fetch or render the help-only built-in tool catalogue", async () => {
-    const view = mount(byId("tools"), makePrefsRpc().handlers);
+  it("does not render the help-only built-in tool catalogue", async () => {
+    mount(byId("tools"), makePrefsRpc().handlers);
     await screen.findByLabelText("Plugins the agent may run");
     expect(screen.queryByText("Built-in tools")).toBeNull();
-    expect(view.inspection.rpcCalls.some((call) => call.method === "toolCatalog")).toBe(false);
   });
 
   it("shows an empty state when no plugins offer commands", async () => {

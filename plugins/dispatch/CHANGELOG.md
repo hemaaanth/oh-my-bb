@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Remove the unused `toolCatalog` RPC. The server still builds each
+  session's tool list itself.
+
 ## 0.1.0
 
 - In-app voice with OpenAI GPT-Live over WebRTC. Start or stop from the

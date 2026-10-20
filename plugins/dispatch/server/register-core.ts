@@ -10,7 +10,7 @@ import { registerNotices } from "./notices.js";
 import { readPreferences, resetPreferences, writePreferences } from "./preferences.js";
 import { PREVIEW_CONTEXT, assemblePrompts } from "./prompts/index.js";
 import { readSetupStatus, registerReadiness } from "./readiness.js";
-import { executeServerTool, toolCatalog } from "./tools/index.js";
+import { executeServerTool } from "./tools/index.js";
 import { threadTitle } from "./tools/live.js";
 import { commandPlugins, listPlugins } from "./tools/plugins.js";
 
@@ -46,7 +46,6 @@ export function coreRpcHandlers(ctx: ServerContext): CoreHandlers {
     },
 
     // §3.2 Tools
-    toolCatalog: async (input) => ({ tools: await toolCatalog(ctx, input) }),
     toolInvoke: (input) => executeServerTool(ctx, input),
 
     // §3.3 Trace and ledger

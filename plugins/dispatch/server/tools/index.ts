@@ -63,7 +63,7 @@ export async function catalogFlags(ctx: ServerContext, input: { mobile: boolean;
   };
 }
 
-/** The tool catalog for a session (toolCatalog RPC and the session body). */
+/** The tool catalog for a session body. */
 export async function toolCatalog(ctx: ServerContext, input: { mobile: boolean; canNavigate: boolean; channel: ToolContext["channel"] }) {
   return buildCatalog(await catalogFlags(ctx, input));
 }

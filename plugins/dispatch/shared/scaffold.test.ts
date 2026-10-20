@@ -43,7 +43,6 @@ describe("shared constants", () => {
         "pollPresence",
         "relayCommand",
         "phoneDial",
-        "toolCatalog",
         "toolInvoke",
         "traceAppend",
         "callsPage",

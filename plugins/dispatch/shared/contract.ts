@@ -314,10 +314,6 @@ export const rpcContract = defineRpcContract({
   phoneDial: { input: empty, output: phoneDialResultSchema },
 
   // §3.2 Tools
-  toolCatalog: {
-    input: z.object({ mobile: z.boolean(), canNavigate: z.boolean(), channel: channelSchema }),
-    output: z.object({ tools: z.array(toolSpecSchema) }),
-  },
   toolInvoke: {
     input: z.object({
       callId: z.string(),

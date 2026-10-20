@@ -106,10 +106,8 @@ describe("plugin exposure", () => {
     );
   });
 
-  it("serves the catalog and the plugin list over RPC", async () => {
+  it("serves the plugin list over RPC", async () => {
     const { harness } = await loadPlugin(undefined, { plugins: { list: async () => ({ plugins: rows }) } });
-    const { tools } = (await harness.callRpc("toolCatalog", { mobile: true, canNavigate: true, channel: "app" })) as { tools: Array<{ name: string }> };
-    expect(tools.map((entry) => entry.name)).toEqual([...TOOL_NAMES]);
     const { plugins } = (await harness.callRpc("pluginsWithCommands", {})) as { plugins: Array<{ id: string }> };
     expect(plugins.map((plugin) => plugin.id)).toEqual(["notes", "todo"]);
   });
