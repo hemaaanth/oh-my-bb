@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - A request that waits out a short rate-limit hold no longer fails with 429
   when Node's timer fires a few ms before the hold ends.

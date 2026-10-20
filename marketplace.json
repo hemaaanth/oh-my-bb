@@ -57,7 +57,7 @@
         "git": {
           "url": "https://github.com/hemaaanth/oh-my-bb.git",
           "subdir": "plugins/model-gateway",
-          "range": "^0.1.0",
+          "range": "^0.2.0",
           "tagPrefix": "model-gateway/"
         }
       }

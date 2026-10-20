@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-model-gateway",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Keep coding when a Claude or ChatGPT account reaches its limit.",
   "license": "MIT",
   "author": "Hemanth Soni",
