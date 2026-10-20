@@ -94,6 +94,10 @@ export const ENDPOINTS = {
   sipTarget: (project: string) => `sip:${project}@sip.api.openai.com;transport=tls;secure=true`,
 } as const;
 
+/** Sent as a system notice when a call connects, so the owner hears it is ready. */
+export const GREETING_NOTICE =
+  "The call just connected. Greet the owner in one short, casual sentence and ask what they want to work on. Do not call tools first.";
+
 /** The Webhooks plugin from oh-my-bb, an optional partner for phone calls. */
 export const WEBHOOKS_PLUGIN_ID = "webhooks";
 

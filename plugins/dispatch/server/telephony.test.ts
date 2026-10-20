@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CHANNELS, SETUP_LABELS, WEBHOOK_ROUTE_LABEL } from "../shared/constants.js";
+import { CHANNELS, GREETING_NOTICE, SETUP_LABELS, WEBHOOK_ROUTE_LABEL } from "../shared/constants.js";
 import { FULL_SETUP, loadPlugin, makeContext, published, threadRow, type Stubs } from "./core-test-host.js";
 import { getCall, openCalls } from "./ledger.js";
 import { publishStop } from "./live-session.js";
@@ -44,6 +44,9 @@ class FakeSocket {
   }
   receive(message: Record<string, unknown>) {
     for (const listener of this.listeners.message ?? []) listener({ data: JSON.stringify(message) });
+  }
+  open() {
+    for (const listener of this.listeners.open ?? []) listener({});
   }
   types() {
     return this.sent.map((event) => event.type);
@@ -307,6 +310,15 @@ describe("sideband loop", () => {
     expect(kindsOf(ctx, callId)).toEqual(["tool.call", "tool.result", "tool.call", "tool.result"]);
     expect(payloadsOf(ctx, callId, "tool.result").map((payload) => payload.status)).toEqual(["success", "error"]);
 
+    socket.close();
+    await done;
+  });
+
+  it("greets the caller once the socket opens", async () => {
+    const { socket, done } = await startCall();
+    socket.open();
+    expect(socket.types()).toEqual(["response.item.create", "response.create"]);
+    expect(socket.sent[0]).toMatchObject({ item: { type: "message", role: "system", content: [{ type: "input_text", text: GREETING_NOTICE }] } });
     socket.close();
     await done;
   });

@@ -6,6 +6,7 @@
 // (call-session.ts), so the tests drive it with a fake peer connection, mic
 // and RPC client.
 
+import { GREETING_NOTICE } from "@/shared/constants.js";
 import type { AgentCommandPayload, CallControlPayload, Presence, ThreadNoticePayload } from "@/shared/contract.js";
 import { TOOL_ERROR_PREFIX } from "@/shared/tool-names.js";
 import { callStore, IDLE_CALL, type Activity, type CallSnapshot } from "./call-store.js";
@@ -278,6 +279,9 @@ export class CallController {
         this.trace.record("client.ready", {});
         session.heartbeat = setInterval(() => this.announce(session), this.timing.heartbeatMs);
         this.announce(session);
+        // Speak first, so the owner knows the call is ready.
+        session.queuedNotice = GREETING_NOTICE;
+        this.settle(session);
         this.render();
         return;
       case "transcript": {

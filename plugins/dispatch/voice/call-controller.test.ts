@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Presence, SetupStatus } from "@/shared/contract.js";
-import { defaultPreferences } from "@/shared/constants.js";
+import { defaultPreferences, GREETING_NOTICE } from "@/shared/constants.js";
 import { CallController, type ControllerDeps } from "./call-controller.js";
 import { IDLE_CALL, type CallSnapshot } from "./call-store.js";
 import { createStore } from "./store.js";
@@ -178,11 +178,15 @@ function setup(options: { visible?: boolean; setup?: SetupStatus | null; runTool
   };
 }
 
-/** Start a call and bring it live. */
+/** Start a call, bring it live, and let the greeting finish. */
 async function live(rig: ReturnType<typeof setup>) {
   await rig.controller.toggle();
-  rig.peer().channel.emit({ type: "session.started" });
-  return rig.peer();
+  const peer = rig.peer();
+  peer.channel.emit({ type: "session.started" });
+  peer.channel.emit({ type: "response.created" });
+  peer.channel.emit({ type: "response.done" });
+  peer.channel.sent.length = 0;
+  return peer;
 }
 
 const other = (patch: Partial<Presence>): Presence => ({
@@ -226,6 +230,9 @@ describe("starting a call", () => {
     expect(rig.store.get().startedAt).not.toBeNull();
     expect(rig.chimes.ready).toHaveBeenCalledOnce();
     expect(rig.of("announcePresence").at(-1)).toMatchObject({ phase: "live", realmId: "realm-a" });
+    // The agent greets first, so the owner knows the call is ready.
+    expect(rig.peer().channel.types()).toEqual(["response.item.create", "response.create"]);
+    expect(JSON.stringify(rig.peer().channel.sent[0])).toContain(GREETING_NOTICE);
   });
 
   it("shows the not-ready toast and does not start without a key", async () => {

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The agent greets you when a call connects, in the app and on the phone, so
+  you know it is ready to listen.
+- Phone calls use SRTP (`;secure=true`). GPT-Live rejected calls without it,
+  so the phone rang and hung up on answer.
+- On narrow screens the console header keeps the call buttons on their own row,
+  so status text no longer moves them.
 - Make the console denser with aligned call history, compact usage totals, and
   grouped call actions. Daily usage and pricing stay in a disclosure.
 - Replace phone dial success toasts with waiting, live, and ended status in the

@@ -3,7 +3,7 @@
 // session's sideband WebSocket. OpenAI hosts the audio.
 // Owned by P3. Adapted from the owner's telephony module; the session body,
 // the ledger, and the tool executor come from the P1 core.
-import { ENDPOINTS, WEBHOOKS_PLUGIN_ID } from "../shared/constants.js";
+import { ENDPOINTS, GREETING_NOTICE, WEBHOOKS_PLUGIN_ID } from "../shared/constants.js";
 import type { PhoneDialResult, ToolContext } from "../shared/contract.js";
 import type { ServerContext } from "./context.js";
 import { appendTrace, endCall, insertCall, openCalls } from "./ledger.js";
@@ -194,6 +194,12 @@ export async function runSideband(ctx: ServerContext, callId: string, sessionId:
     void hangUpSession(ctx, sessionId);
     // `session.closed` may still bring the final usage. Do not wait for ever.
     graceTimer = setTimeout(() => ws.close(), HANGUP_GRACE_MS);
+  });
+
+  // Speak first, so the person on the phone knows the call is ready.
+  ws.addEventListener("open", () => {
+    send({ type: "response.item.create", item: { type: "message", role: "system", content: [{ type: "input_text", text: GREETING_NOTICE }] } });
+    send({ type: "response.create" });
   });
 
   ws.addEventListener("message", (event: MessageEvent) => {
