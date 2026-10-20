@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1
 
 - Remove the unused `toolCatalog` RPC. The server still builds each
   session's tool list itself.
