@@ -60,7 +60,6 @@ describe("shared constants", () => {
         "instructionsRestore",
         "promptPreview",
         "drawerResolveThreads",
-        "importHandsfree",
       ].sort(),
     );
   });

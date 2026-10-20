@@ -77,7 +77,6 @@ export function UsageSummary({ reloadKey }: { reloadKey: unknown }) {
               </tr>
             </tfoot>
           </table>
-          {report.legacyTokenRows > 0 ? <Note>{report.legacyTokenRows} older token-based usage {report.legacyTokenRows === 1 ? "row was" : "rows were"} imported. They are kept but not priced here.</Note> : null}
           <Note>{USAGE_NOTE}</Note>
         </div>
       </details>

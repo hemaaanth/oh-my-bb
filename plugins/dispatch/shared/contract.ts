@@ -189,7 +189,7 @@ export const SERVER_TRACE_KINDS = [
   "error",
   "notice",
 ] as const;
-/** Client-written trace kinds (CONTRACTS §4.3). Imports add `legacy.<old kind>`. */
+/** Client-written trace kinds (CONTRACTS §4.3). */
 export const CLIENT_TRACE_KINDS = [
   "speech.user",
   "speech.agent",
@@ -211,26 +211,6 @@ export const CLIENT_TRACE_KINDS = [
   "nav.suppressed",
 ] as const;
 export type TraceKind = (typeof SERVER_TRACE_KINDS)[number] | (typeof CLIENT_TRACE_KINDS)[number];
-
-// ---------------------------------------------------------------------------
-// Import (CONTRACTS §6)
-
-export const importReportSchema = z.object({
-  dryRun: z.boolean(),
-  preferences: z.object({ imported: z.array(z.string()), dropped: z.array(z.string()), defaulted: z.array(z.string()) }),
-  /** "invalid": present in the old config but failed the format check, so not copied. */
-  secrets: z.record(secretIdSchema, z.enum(["copied", "absent", "invalid"])),
-  instructions: z.object({ imported: z.union([z.literal(0), z.literal(1)]) }),
-  calls: z.number().int(),
-  traceEvents: z.number().int(),
-  /** 0 unless `includeLegacyUsage`. */
-  legacyTokenRows: z.number().int(),
-  /** Human lines, for example "Legacy token usage skipped." */
-  skipped: z.array(z.string()),
-});
-export type ImportReport = z.infer<typeof importReportSchema>;
-/** KV value under `import.handsfree`. Its presence blocks a second import. */
-export type ImportMarker = { at: number; report: ImportReport };
 
 // ---------------------------------------------------------------------------
 // Tool catalog entries (CONTRACTS §2, §3.2)
@@ -281,7 +261,6 @@ const usageReportSchema = z.object({
   perDay: z.array(z.object({ day: z.string(), seconds: z.number(), usd: z.number(), calls: z.number().int() })),
   totalSeconds: z.number(),
   totalUsd: z.number(),
-  legacyTokenRows: z.number().int(),
 });
 export type UsageReport = z.infer<typeof usageReportSchema>;
 
@@ -382,17 +361,13 @@ export const rpcContract = defineRpcContract({
     output: z.object({ voice: promptPartsSchema, backend: promptPartsSchema }),
   },
 
-  // §3.6 Threads, drawer, import
+  // §3.6 Threads, drawer
   drawerResolveThreads: {
     input: z.object({ threadIds: z.array(z.string()) }),
     output: z.object({
       views: z.array(z.object({ id: z.string(), title: z.string(), projectId: z.string().nullable() })),
       missing: z.array(z.string()),
     }),
-  },
-  importHandsfree: {
-    input: z.object({ dryRun: z.boolean(), includeLegacyUsage: z.boolean() }),
-    output: importReportSchema,
   },
 });
 export type RpcContract = typeof rpcContract;

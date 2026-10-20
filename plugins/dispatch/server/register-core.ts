@@ -25,7 +25,7 @@ export function registerCore(ctx: ServerContext): void {
   registerNotices(ctx);
 }
 
-/** Every RPC method except `phoneDial`, `importHandsfree`, and `webhooks_receive`. */
+/** Every RPC method except `phoneDial` and `webhooks_receive`. */
 export function coreRpcHandlers(ctx: ServerContext): CoreHandlers {
   const publish = ctx.bb.realtime.publish.bind(ctx.bb.realtime);
   return {

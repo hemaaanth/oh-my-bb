@@ -1,4 +1,4 @@
-// `bb dispatch …` subcommands except `call` (P3) and `import` (P4).
+// `bb dispatch …` subcommands except `call` (P3).
 // Owned by P1. Every failure exits non-zero with one line of reason.
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES, PluginCliError, cliCommand, type PluginCliResult } from "@get-bb/plugin-sdk";
 import { CHANNELS, LIVE_USD_PER_MINUTE } from "../shared/constants.js";
@@ -64,7 +64,6 @@ export function usageText(report: UsageReport): string {
     .map((day) => `${day.day}  ${minutes(day.seconds).padStart(10)}  ${dollars(day.usd).padStart(8)}  ${day.calls} call${day.calls === 1 ? "" : "s"}`);
   if (lines.length === 0) lines.push(`No calls in the last ${report.days} days.`);
   lines.push(`Total       ${minutes(report.totalSeconds).padStart(10)}  ${dollars(report.totalUsd).padStart(8)}`);
-  if (report.legacyTokenRows > 0) lines.push(`Legacy: ${report.legacyTokenRows} imported token-based rows, not priced here.`);
   lines.push(PRICING_NOTE);
   return lines.join("\n");
 }

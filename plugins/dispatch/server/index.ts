@@ -7,7 +7,6 @@ import { coreCommands } from "./cli.js";
 import type { ServerContext } from "./context.js";
 import { MIGRATION_STATEMENTS } from "./migrations.js";
 import { registerCore } from "./register-core.js";
-import { importCommands } from "./register-import.js";
 import { phoneCommands, registerPhone } from "./register-phone.js";
 import { registerRpc } from "./rpc.js";
 import { SETUP_SETTINGS, isPresent, needsKeyMessage } from "./settings.js";
@@ -38,11 +37,10 @@ export default async function plugin(bb: BbPluginApi) {
       name: CLI_COMMAND,
       summary: "Talk to BB by voice, check setup, and read call usage",
       description:
-        "Dispatch runs a voice agent in the app or over a phone call. These commands show live threads, stop or mute a call, place a phone call, report usage, and import from the earlier voice plugin.",
+        "Dispatch runs a voice agent in the app or over a phone call. These commands show live threads, stop or mute a call, place a phone call, and report usage.",
       commands: {
         ...coreCommands(ctx),
         ...phoneCommands(ctx),
-        ...importCommands(ctx),
       },
     }),
   );

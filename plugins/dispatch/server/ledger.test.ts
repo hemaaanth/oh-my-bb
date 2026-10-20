@@ -62,17 +62,8 @@ describe("usage report", () => {
       { day: "2026-10-19", seconds: 30, usd: 0.025, calls: 1 },
       { day: "2026-10-18", seconds: 180, usd: 0.15, calls: 2 },
     ]);
-    expect(report).toMatchObject({ days: 7, totalSeconds: 210, usdPerMinute: LIVE_USD_PER_MINUTE, legacyTokenRows: 0 });
+    expect(report).toMatchObject({ days: 7, totalSeconds: 210, usdPerMinute: LIVE_USD_PER_MINUTE });
     expect(localDay(at(18, 23))).toBe("2026-10-18");
-  });
-
-  it("counts legacy token rows separately and never prices them", async () => {
-    const { ctx, bb } = await makeContext();
-    const insert = bb.storage.database().prepare("INSERT INTO legacy_token_usage (row_json, imported_at) VALUES (?, ?)");
-    insert.run('{"tokens":100}', 1);
-    insert.run('{"tokens":200}', 1);
-    const report = usageReport(ctx, 30);
-    expect(report).toMatchObject({ legacyTokenRows: 2, totalSeconds: 0, totalUsd: 0, perDay: [] });
   });
 
   it("serves traceAppend and usageReport over RPC", async () => {

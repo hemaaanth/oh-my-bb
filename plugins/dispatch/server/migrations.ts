@@ -53,6 +53,11 @@ CREATE INDEX call_trace_call_at ON call_trace(call_id, at);`,
   imported_at INTEGER NOT NULL
 );`,
   },
+  {
+    // The import is gone. Migrations only append, so 004 stays and this drops its table.
+    id: "005-drop-legacy-token-usage",
+    sql: "DROP TABLE IF EXISTS legacy_token_usage;",
+  },
 ] as const;
 
 export const MIGRATION_IDS = MIGRATIONS.map((migration) => migration.id);

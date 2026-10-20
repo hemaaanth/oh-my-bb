@@ -104,7 +104,6 @@ export const WEBHOOKS_PLUGIN_ID = "webhooks";
 /** Plugin KV keys (CONTRACTS §4.1). */
 export const KV_KEYS = {
   preferences: "preferences",
-  importHandsfree: "import.handsfree",
   schemaVersion: "schema.version",
 } as const;
 export const SCHEMA_VERSION = 1;

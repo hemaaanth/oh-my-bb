@@ -283,7 +283,6 @@ export function usageReport(ctx: ServerContext, days: number, now = Date.now()):
     perDay.reduce((sum, day) => sum + day.seconds, 0),
     3,
   );
-  const legacy = ctx.db.prepare("SELECT COUNT(*) AS count FROM legacy_token_usage").get() as { count: number };
   return {
     days,
     usdPerMinute: LIVE_USD_PER_MINUTE,
@@ -291,6 +290,5 @@ export function usageReport(ctx: ServerContext, days: number, now = Date.now()):
     perDay,
     totalSeconds,
     totalUsd: costUsd(totalSeconds),
-    legacyTokenRows: legacy.count,
   };
 }

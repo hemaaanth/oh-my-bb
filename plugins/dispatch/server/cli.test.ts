@@ -47,7 +47,7 @@ describe("bb dispatch usage", () => {
     const { exitCode, stdout } = await harness.runCli(["usage", "--json", "--days", "7"]);
     expect(exitCode).toBe(0);
     expect(Object.keys(JSON.parse(stdout)).sort()).toEqual(
-      ["days", "legacyTokenRows", "note", "perDay", "rateCheckedOn", "totalSeconds", "totalUsd", "usdPerMinute"].sort(),
+      ["days", "note", "perDay", "rateCheckedOn", "totalSeconds", "totalUsd", "usdPerMinute"].sort(),
     );
     expect(JSON.parse(stdout)).toMatchObject({ days: 7, note: PRICING_NOTE });
   });

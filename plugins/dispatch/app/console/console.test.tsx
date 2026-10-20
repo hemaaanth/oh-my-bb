@@ -42,7 +42,6 @@ const usage = (over: Partial<UsageReport> = {}): UsageReport => ({
   perDay: [{ day: "2026-10-18", seconds: 180, usd: 0.15, calls: 2 }],
   totalSeconds: 180,
   totalUsd: 0.15,
-  legacyTokenRows: 0,
   ...over,
 });
 const idle: LiveStatus = { live: false, channel: null, startedAt: null, device: null };
@@ -378,13 +377,6 @@ describe("Usage", () => {
     expect(within(section).getByText("Total")).toBeTruthy();
     expect(within(section).getByText(USAGE_NOTE)).toBeTruthy();
     expect(USAGE_NOTE).toBe("GPT-Live voice at $0.05 per minute. Reasoning model tokens are billed separately by OpenAI and are not counted here.");
-    expect(within(section).queryByText(/older token-based usage/)).toBeNull();
-  });
-
-  it("shows a legacy row only when legacy token rows exist", async () => {
-    mount({ usageReport: async () => usage({ legacyTokenRows: 12 }) });
-    const section = await screen.findByRole("region", { name: "Usage" });
-    expect((await within(section).findByText(/older token-based usage/)).textContent).toContain("12");
   });
 });
 

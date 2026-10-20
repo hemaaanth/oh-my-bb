@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Remove `bb dispatch import --from handsfree`, its RPC, and its docs. Handsfree
+  was never published, so no one else needs it. Migration 005 drops the empty
+  `legacy_token_usage` table, and usage reports no longer have
+  `legacyTokenRows`.
+
 ## 0.1.1
 
 - Remove the unused `toolCatalog` RPC. The server still builds each

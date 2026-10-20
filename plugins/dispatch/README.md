@@ -140,7 +140,6 @@ their own.
 | `bb dispatch mute` | Mute the microphone on the live call. Exits non-zero when no call is live. |
 | `bb dispatch unmute` | Unmute the microphone on the live call. Exits non-zero when no call is live. |
 | `bb dispatch call` | Call your phone and talk to the agent. Exits 1 and lists what is missing when phone setup is not ready. |
-| `bb dispatch import --from handsfree [--dry-run] [--apply] [--include-legacy-usage] [--json]` | Import settings and history from the earlier voice plugin. A dry run unless `--apply` is given. See [docs/import-from-handsfree.md](docs/import-from-handsfree.md). |
 
 `bb dispatch --help` lists them all, and `bb dispatch <command> --help` shows
 one.

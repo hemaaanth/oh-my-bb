@@ -59,8 +59,14 @@ describe("setup settings", () => {
 });
 
 describe("storage", () => {
-  it("lists migrations 001 to 004", () => {
-    expect(MIGRATION_IDS).toEqual(["001-calls", "002-call-trace", "003-instruction-revisions", "004-legacy-token-usage"]);
+  it("lists migrations 001 to 005", () => {
+    expect(MIGRATION_IDS).toEqual([
+      "001-calls",
+      "002-call-trace",
+      "003-instruction-revisions",
+      "004-legacy-token-usage",
+      "005-drop-legacy-token-usage",
+    ]);
   });
 
   it("creates every table and index at load", async () => {
@@ -76,10 +82,10 @@ describe("storage", () => {
       "table:call_trace",
       "index:call_trace_call_at",
       "table:instruction_revisions",
-      "table:legacy_token_usage",
     ]) {
       expect(names).toContain(expected);
     }
+    expect(names).not.toContain("table:legacy_token_usage");
   });
 });
 
@@ -95,25 +101,18 @@ describe("registration", () => {
     const cli = harness.registrations.cli;
     expect(cli?.name).toBe("dispatch");
     expect(cli?.commands.map((command) => command.name).sort()).toEqual(
-      ["call", "import", "live", "mute", "read", "status", "stop", "unmute", "usage"].sort(),
+      ["call", "live", "mute", "read", "status", "stop", "unmute", "usage"].sort(),
     );
   });
 
 });
 
 describe("wiring", () => {
-  it("bb dispatch --help lists every command from core, phone and import", async () => {
+  it("bb dispatch --help lists every command from core and phone", async () => {
     const { harness } = await load();
     const help = await harness.runCli(["--help"]);
     expect(help.exitCode).toBe(0);
     const listed = [...help.stdout.matchAll(/^ {2}bb dispatch ([a-z]+) /gm)].map((match) => match[1]);
-    expect(listed).toEqual(["live", "read", "usage", "stop", "mute", "unmute", "status", "call", "import"]);
-  });
-
-  it("the import command takes --apply, --dry-run, --include-legacy-usage and --json", async () => {
-    const { harness } = await load();
-    const help = await harness.runCli(["import", "--help"]);
-    expect(help.exitCode).toBe(0);
-    for (const flag of ["--from", "--apply", "--dry-run", "--include-legacy-usage", "--json"]) expect(help.stdout).toContain(flag);
+    expect(listed).toEqual(["live", "read", "usage", "stop", "mute", "unmute", "status", "call"]);
   });
 });

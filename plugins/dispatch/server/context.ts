@@ -16,14 +16,12 @@ export type ServerContext = {
 
 type Handlers = ExperimentalPluginRpcHandlersWithContext<RpcContract>;
 
-/** Methods P3 and P4 serve. P1 serves every other method. */
+/** Methods P3 serves. P1 serves every other method. */
 export type PhoneMethod = "phoneDial";
-export type ImportMethod = "importHandsfree";
-export type CoreMethod = Exclude<RpcMethod, PhoneMethod | ImportMethod>;
+export type CoreMethod = Exclude<RpcMethod, PhoneMethod>;
 
 export type CoreHandlers = Pick<Handlers, CoreMethod>;
 export type PhoneHandlers = Pick<Handlers, PhoneMethod>;
-export type ImportHandlers = Pick<Handlers, ImportMethod>;
 export type ReceiveHandlers = ExperimentalPluginRpcHandlersWithContext<ReceiveContract>;
 
 /** CLI subcommands keyed by invocation path. */

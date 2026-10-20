@@ -3,14 +3,12 @@
 import { receiveContract, rpcContract } from "../shared/contract.js";
 import type { ServerContext } from "./context.js";
 import { coreRpcHandlers } from "./register-core.js";
-import { importRpcHandlers } from "./register-import.js";
 import { phoneRpcHandlers, receiveRpcHandlers } from "./register-phone.js";
 
 export function registerRpc(ctx: ServerContext): void {
   ctx.bb.rpc.register(rpcContract, {
     ...coreRpcHandlers(ctx),
     ...phoneRpcHandlers(ctx),
-    ...importRpcHandlers(ctx),
   });
   // The Webhooks plugin finds this method by discovery and forwards verified
   // OpenAI phone events to it. Nothing else is discoverable.
