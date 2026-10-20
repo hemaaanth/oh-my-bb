@@ -1,0 +1,91 @@
+{
+  "name": "bb-plugin-dispatch",
+  "version": "0.1.0",
+  "description": "Drive BB by voice. Talk to a named agent in the app or over a phone call, and it reads, starts, and steers your threads.",
+  "license": "MIT",
+  "author": "Hemanth Soni",
+  "homepage": "https://github.com/hemaaanth/oh-my-bb/tree/main/plugins/dispatch",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hemaaanth/oh-my-bb.git",
+    "directory": "plugins/dispatch"
+  },
+  "bugs": {
+    "url": "https://github.com/hemaaanth/oh-my-bb/issues"
+  },
+  "keywords": [
+    "bb",
+    "voice",
+    "gpt-live",
+    "openai",
+    "twilio",
+    "phone"
+  ],
+  "type": "module",
+  "engines": {
+    "bb": ">=0.46.1",
+    "bbPluginSdk": ">=0.6.54"
+  },
+  "bb": {
+    "name": "Dispatch",
+    "description": "Drive BB by voice. Talk to a named agent in the app or over a phone call, and it reads, starts, and steers your threads.",
+    "branding": {
+      "icon": "./icons/dispatch.svg",
+      "experimental_icons": {
+        "dispatch": "./icons/dispatch.svg"
+      }
+    },
+    "server": "./server/index.ts",
+    "app": "./app/index.tsx",
+    "skills": [
+      "skills"
+    ]
+  },
+  "scripts": {
+    "build": "bb plugin build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@radix-ui/react-collapsible": "^1.2.1",
+    "@radix-ui/react-label": "^2.1.17",
+    "@radix-ui/react-scroll-area": "^1.4.0",
+    "@radix-ui/react-slider": "^1.6.1",
+    "@radix-ui/react-slot": "^1.5.0",
+    "@radix-ui/react-tabs": "^1.2.1",
+    "@radix-ui/react-toggle": "^1.2.1",
+    "@radix-ui/react-toggle-group": "^1.2.1",
+    "agent-robot-avatar": "^0.5.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.54",
+    "@radix-ui/react-alert-dialog": "^1.2.1",
+    "@radix-ui/react-context-menu": "^2.4.1",
+    "@radix-ui/react-dropdown-menu": "^2.2.1",
+    "@radix-ui/react-select": "^2.4.1",
+    "@radix-ui/react-tooltip": "^1.4.1",
+    "@testing-library/react": "16.3.2",
+    "@types/better-sqlite3": "7.6.12",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "bb-app": "0.46.1",
+    "better-sqlite3": "12.11.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cron-parser": "^5.10.2",
+    "esbuild": "0.28.2",
+    "hono": "^4.13.13",
+    "jsdom": "26.1.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwind-merge": "^3.4.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "esbuild@0.28.2": true
+  }
+}
