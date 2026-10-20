@@ -8,12 +8,12 @@ import {
   KV_KEYS,
   MEMORY_RETENTION_DAYS,
   REASONING_MODELS,
-  VOICES,
   VOICE_MODELS,
   defaultPreferences,
 } from "../shared/constants.js";
 import type { PetLook, PluginAccess, Preferences } from "../shared/contract.js";
 import type { ServerContext } from "./context.js";
+import { normaliseCustomVoices, normaliseVoice, normaliseVoiceStyle } from "./voices/normalise.js";
 
 type Loose = Record<string, unknown>;
 
@@ -98,7 +98,7 @@ export function normalisePreferences(raw: unknown, fallback: Preferences = defau
   const input = isObject(raw) ? raw : {};
   return {
     agentName: normaliseAgentName(input.agentName, fallback.agentName),
-    voice: oneOf(VOICES, input.voice, fallback.voice as (typeof VOICES)[number]),
+    voice: normaliseVoice(input.voice, fallback.voice),
     voiceModel: oneOf(VOICE_MODELS, input.voiceModel, fallback.voiceModel as (typeof VOICE_MODELS)[number]),
     reasoningModel: oneOf(REASONING_MODELS, input.reasoningModel, fallback.reasoningModel as (typeof REASONING_MODELS)[number]),
     announcements: bool(input.announcements, fallback.announcements),
@@ -109,6 +109,8 @@ export function normalisePreferences(raw: unknown, fallback: Preferences = defau
     pluginAccess: normaliseAccess(input.pluginAccess, fallback.pluginAccess),
     hotkeys: normaliseHotkeys(input.hotkeys, fallback.hotkeys),
     pet: normalisePet(input.pet, fallback.pet),
+    voiceStyle: normaliseVoiceStyle(input.voiceStyle, fallback.voiceStyle),
+    customVoices: normaliseCustomVoices(input.customVoices, fallback.customVoices),
   };
 }
 
@@ -133,6 +135,7 @@ export async function writePreferences(ctx: ServerContext, patch: unknown): Prom
     ...raw,
     hotkeys: { ...current.hotkeys, ...(isObject(raw.hotkeys) ? raw.hotkeys : {}) },
     pet: { ...current.pet, ...(isObject(raw.pet) ? raw.pet : {}) },
+    voiceStyle: { ...current.voiceStyle, ...(isObject(raw.voiceStyle) ? raw.voiceStyle : {}) },
   };
   return save(ctx, normalisePreferences(merged, current));
 }

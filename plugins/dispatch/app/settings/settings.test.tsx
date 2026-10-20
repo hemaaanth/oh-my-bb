@@ -4,7 +4,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AGENT_NAME_MAX, INSTRUCTIONS_LIMIT } from "../../shared/constants.js";
 import type { InstructionRevision } from "../../shared/contract.js";
-import { chooseSetting, installFakeLocalStorage, makePrefsRpc, makeStatus, openSetting } from "./support.js";
+import { installFakeLocalStorage, makePrefsRpc, makeStatus } from "./support.js";
 
 const stored = installFakeLocalStorage();
 const app = await loadPluginApp(() => import("../index.js"));
@@ -81,16 +81,26 @@ describe("Readiness", () => {
 
 const revision = (id: number, body: string, over: Partial<InstructionRevision> = {}): InstructionRevision => ({ id, at: Date.UTC(2026, 9, 19, 12), author: "user", note: "", body, ...over });
 
-function agentRpc(prefs = makePrefsRpc(), current: InstructionRevision | null = revision(3, "Be brief.\nNo emoji.")) {
+function agentRpc(prefs = makePrefsRpc(), current: InstructionRevision | null = revision(3, "Be brief.\nNo emoji."), hasKey = true) {
   const writeInstructions = vi.fn(async ({ body }: { body: string }) => revision(9, body));
   const restore = vi.fn(async ({ id }: { id: number }) => revision(10, id === 2 ? "Old text" : "x", { author: "user", note: `restored ${id}` }));
   const history = [revision(3, "Be brief.\nNo emoji."), revision(2, "Old text", { author: "agent", note: "agent edit" })];
+  const sample = vi.fn(async (_input: { voice: string }) => ({ wav: "UklGRg==", cached: false }));
+  const create = vi.fn(async ({ name, prompt }: { name: string; prompt: string }) =>
+    prefs.handlers.preferencesWrite({ customVoices: [...prefs.current.customVoices, { id: "voice_1", name, prompt, createdAt: "2026-10-20T00:00:00.000Z" }] }),
+  );
   return {
     prefs,
     writeInstructions,
     restore,
+    sample,
+    create,
     handlers: {
       ...prefs.handlers,
+      setupStatus: async () => makeStatus({ fields: { ...makeStatus().fields, openaiKey: hasKey } }),
+      voiceSample: sample,
+      voiceCreate: create,
+      voiceRemove: async ({ id }: { id: string }) => prefs.handlers.preferencesWrite({ customVoices: prefs.current.customVoices.filter((voice) => voice.id !== id) }),
       instructionsRead: async () => ({ current, limit: INSTRUCTIONS_LIMIT }),
       instructionsWrite: writeInstructions,
       instructionsHistory: async () => ({ revisions: history }),
@@ -196,23 +206,97 @@ describe("Agent", () => {
     expect(screen.queryByText(/Instruction history/)).toBeNull();
   });
 
-  it("opens a scoped voice menu with the keyboard and closes without writing", async () => {
+  it("lists the voices in groups with their details and saves a choice", async () => {
     const rpc = agentRpc();
     mount("agent", rpc.handlers);
-    await openSetting("Voice");
-    const current = await screen.findByRole("option", { name: "gleam" });
-    expect(current.getAttribute("aria-selected")).toBe("true");
-    expect(current.closest("[data-bb-portaled-overlay]")?.hasAttribute("data-bb-plugin-root")).toBe(true);
-    fireEvent.keyDown(current, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    const live = await screen.findByRole("region", { name: "GPT-Live" });
+    const gleam = within(live).getByRole("button", { name: /^Gleam/ });
+    expect(gleam.getAttribute("aria-pressed")).toBe("true");
+    expect(gleam.textContent).toContain("English, North American · Feminine");
+    expect(within(live).getByRole("button", { name: /^Marin/ }).textContent).toContain("GPT-Live default");
+    const realtime = screen.getByRole("region", { name: "Realtime (unconfirmed)" });
+    expect(within(realtime).getByText(/GPT-Live may refuse them/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Nova/ })).toBeNull();
+    fireEvent.click(within(realtime).getByRole("button", { name: /^Sage/ }));
+    await waitFor(() => expect(rpc.prefs.writes).toEqual([{ voice: "sage" }]));
+  });
+
+  it("keeps an unknown saved voice visible and chosen", async () => {
+    const rpc = agentRpc(makePrefsRpc({ voice: "nova" }));
+    mount("agent", rpc.handlers);
+    const saved = await screen.findByRole("region", { name: "Saved voice" });
+    const nova = within(saved).getByRole("button", { name: /^nova/ });
+    expect(nova.getAttribute("aria-pressed")).toBe("true");
+    expect(nova.textContent).toContain("No longer listed");
     expect(rpc.prefs.writes).toEqual([]);
   });
 
-  it("saves the voice", async () => {
+  it("plays one sample at a time and stops on a second press", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
     const rpc = agentRpc();
     mount("agent", rpc.handlers);
-    await chooseSetting("Voice", "sage");
-    await waitFor(() => expect(rpc.prefs.writes).toEqual([{ voice: "sage" }]));
+    expect(await screen.findByText("Uses your OpenAI key. About 1¢ per new sample.")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Play Gleam" }));
+    await waitFor(() => expect(rpc.sample).toHaveBeenCalledWith({ voice: "gleam" }));
+    const stop = await screen.findByRole("button", { name: "Stop Gleam" });
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Play Ripple" }));
+    expect(pause).toHaveBeenCalled();
+    await screen.findByRole("button", { name: "Stop Ripple" });
+    expect(screen.queryByRole("button", { name: "Stop Gleam" })).toBeNull();
+    expect(stop.isConnected).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Stop Ripple" }));
+    expect(await screen.findByRole("button", { name: "Play Ripple" })).toBeTruthy();
+    play.mockRestore();
+    pause.mockRestore();
+  });
+
+  it("disables samples and voice design without an OpenAI key", async () => {
+    const rpc = agentRpc(makePrefsRpc(), undefined, false);
+    mount("agent", rpc.handlers);
+    expect(await screen.findByText(/Add an OpenAI API key in Setup/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Play Gleam" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Preview with this style" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Create voice" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("saves a voice style choice and the notes on blur", async () => {
+    const rpc = agentRpc();
+    mount("agent", rpc.handlers);
+    const pace = await screen.findByRole("group", { name: "Pace" });
+    fireEvent.click(within(pace).getByRole("button", { name: "Brisk" }));
+    await waitFor(() => expect(rpc.prefs.writes[0]?.voiceStyle?.pace).toBe("brisk"));
+    await waitFor(() => expect(within(pace).getByRole("button", { name: "Brisk" }).getAttribute("aria-pressed")).toBe("true"));
+    const notes = screen.getByLabelText("Style notes") as HTMLTextAreaElement;
+    expect(notes.maxLength).toBe(500);
+    fireEvent.change(notes, { target: { value: "Spell out numbers." } });
+    fireEvent.blur(notes);
+    await waitFor(() => expect(rpc.prefs.writes[1]?.voiceStyle).toMatchObject({ pace: "brisk", notes: "Spell out numbers." }));
+  });
+
+  it("designs a voice and lists it under Your voices", async () => {
+    const rpc = agentRpc();
+    mount("agent", rpc.handlers);
+    fireEvent.click(await screen.findByText("Design a voice"));
+    const prompt = screen.getByLabelText("Description") as HTMLTextAreaElement;
+    expect(prompt.placeholder).toMatch(/^A calm, reassuring adult voice/);
+    fireEvent.change(screen.getByLabelText("Voice name"), { target: { value: "Calm" } });
+    fireEvent.change(prompt, { target: { value: "A calm voice." } });
+    fireEvent.click(screen.getByRole("button", { name: "Create voice" }));
+    await waitFor(() => expect(rpc.create).toHaveBeenCalledWith({ name: "Calm", prompt: "A calm voice." }));
+    const yours = await screen.findByRole("region", { name: "Your voices" });
+    expect(within(yours).getByRole("button", { name: /^Calm/ })).toBeTruthy();
+  });
+
+  it("shows the voice design error", async () => {
+    const rpc = agentRpc();
+    mount("agent", { ...rpc.handlers, voiceCreate: async () => Promise.reject(new Error("Your OpenAI key cannot create voices.")) });
+    fireEvent.click(await screen.findByText("Design a voice"));
+    fireEvent.change(screen.getByLabelText("Voice name"), { target: { value: "Calm" } });
+    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "A calm voice." } });
+    fireEvent.click(screen.getByRole("button", { name: "Create voice" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("cannot create voices");
   });
 });
 

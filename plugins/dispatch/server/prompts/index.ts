@@ -9,7 +9,9 @@ import { readPreferences } from "../preferences.js";
 import { callerTimeZone, formatWhen } from "../time-zone.js";
 import { threadTitle } from "../tools/live.js";
 import { exposedPlugins, listPlugins, type CommandPlugin } from "../tools/plugins.js";
+import { chosenCustomVoice } from "../voices/normalise.js";
 import { BACKEND_PROMPT, RUNTIME_HEADING, VOICE_PROMPT, YOURS_HEADING, fillName } from "./built-in.js";
+import { voiceStyleSection } from "./voice-style.js";
 
 export const PART_SEPARATOR = "\n\n";
 export const NO_INSTRUCTIONS = "None yet. The user has not saved any standing instructions.";
@@ -136,8 +138,10 @@ export async function assemblePrompts(
   const recent = recentCallsSection(ctx, preferences, now.getTime(), timeZone);
   const runtime = recent ? `${runtimeLines}${PART_SEPARATOR}${recent}` : runtimeLines;
   const yours = yoursSection(currentInstructions(ctx));
+  // The voice style belongs to the voice prompt only; the preview shows it in the built-in part.
+  const style = voiceStyleSection(preferences.voiceStyle, chosenCustomVoice(preferences));
   return {
-    voice: assembleParts(fillName(VOICE_PROMPT, preferences.agentName), runtime, yours),
+    voice: assembleParts([fillName(VOICE_PROMPT, preferences.agentName), style].join(PART_SEPARATOR), runtime, yours),
     backend: assembleParts(fillName(BACKEND_PROMPT, preferences.agentName), runtime, yours),
   };
 }

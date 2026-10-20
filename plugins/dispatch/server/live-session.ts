@@ -11,6 +11,7 @@ import { assemblePrompts } from "./prompts/index.js";
 import { isPresent } from "./settings.js";
 import { toFunctionTools } from "./tools/catalog.js";
 import { toolCatalog } from "./tools/index.js";
+import { sessionVoice } from "./voices/normalise.js";
 
 /** OpenAI error bodies in thrown messages are clipped to this. */
 export const OPENAI_ERROR_MAX = 300;
@@ -25,7 +26,8 @@ export const PHONE_BUSY_ERROR = "A phone call is in progress. End it before you 
 export type SessionBody = {
   model: string;
   instructions: string;
-  audio: { output: { voice: string } };
+  /** A voice name, or `{ id }` for a custom voice made with prompt-to-voice. */
+  audio: { output: { voice: string | { id: string } } };
   delegation: {
     type: "responses";
     responses: {
@@ -55,7 +57,7 @@ export async function buildSessionBody(
   return {
     model: preferences.voiceModel,
     instructions: prompts.voice.assembled,
-    audio: { output: { voice: preferences.voice } },
+    audio: { output: { voice: sessionVoice(preferences.voice) } },
     delegation: {
       type: "responses",
       responses: {
@@ -93,7 +95,7 @@ export const PHONE_DEVICE: DeviceProfile = {
 // ---------------------------------------------------------------------------
 // OpenAI requests. The key goes only into the Authorization header.
 
-async function openaiKey(ctx: ServerContext): Promise<string> {
+export async function openaiKey(ctx: ServerContext): Promise<string> {
   const values = await ctx.settings.get();
   if (!isPresent(values.openaiKey)) throw new Error(NO_KEY_ERROR);
   return values.openaiKey.trim();

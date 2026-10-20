@@ -14,6 +14,8 @@ import { readSetupStatus, registerReadiness } from "./readiness.js";
 import { executeServerTool } from "./tools/index.js";
 import { threadTitle } from "./tools/live.js";
 import { commandPlugins, listPlugins } from "./tools/plugins.js";
+import { createCustomVoice, removeCustomVoice } from "./voices/custom.js";
+import { voiceSample } from "./voices/sample.js";
 
 const OK = { ok: true } as const;
 
@@ -99,5 +101,10 @@ export function coreRpcHandlers(ctx: ServerContext): CoreHandlers {
       });
       return { views, missing };
     },
+
+    // §3.7 Voices
+    voiceSample: (input) => voiceSample(ctx, input),
+    voiceCreate: (input) => createCustomVoice(ctx, input),
+    voiceRemove: (input) => removeCustomVoice(ctx, input),
   };
 }

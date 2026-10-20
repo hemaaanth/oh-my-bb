@@ -76,6 +76,19 @@ CREATE TABLE call_summaries (
 );
 CREATE INDEX call_summaries_day ON call_summaries(local_day);`,
   },
+  {
+    // Voice samples are about 400 KB each, too big for a KV value.
+    id: "007-voice-samples",
+    sql: `CREATE TABLE voice_samples (
+  key TEXT PRIMARY KEY,
+  voice TEXT NOT NULL,
+  wav BLOB NOT NULL,
+  bytes INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  used_at INTEGER NOT NULL
+);
+CREATE INDEX voice_samples_used ON voice_samples(used_at);`,
+  },
 ] as const;
 
 export const MIGRATION_IDS = MIGRATIONS.map((migration) => migration.id);

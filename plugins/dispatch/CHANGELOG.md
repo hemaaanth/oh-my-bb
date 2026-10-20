@@ -18,6 +18,23 @@
   `bb dispatch forget [call-id]` delete one call's transcript and summary.
 - The console shows each call's summary.
 - A discoverable, read-only `read.calls` RPC for other plugins.
+- A grouped voice list: the 21 GPT-Live voices with language, accent, and
+  presentation, plus `marin`, and the Realtime voices under "Realtime
+  (unconfirmed)". `nova` is gone from the list. The default stays `gleam`, and
+  a saved voice that is no longer listed is kept.
+- Voice samples. Each voice has a play button. A new sample is one short
+  GPT-Live session on the server with the current style; it costs about 1¢.
+  Samples are cached in the plugin database (8 MB, least recently played go
+  first), are refused during a live call, and never touch calls or usage.
+  Migration 007 adds the `voice_samples` table.
+- Voice style: pace, energy, expressiveness, turn length, backchannels, and
+  notes. It is prompt-based: each choice is one sentence in a new
+  "# Voice style" section of the voice prompt, which now sets turn length.
+- Design a voice: create an OpenAI prompt-to-voice voice from a name and a
+  description, pick it, and remove it from the list. Calls send it as `{ id }`.
+  A key without `api.voices.write` gets a clear error.
+- New RPCs: `voiceSample`, `voiceCreate`, and `voiceRemove`. New preferences:
+  `voiceStyle` and `customVoices`.
 
 ## 0.2.0
 

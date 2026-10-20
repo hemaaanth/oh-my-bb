@@ -13,6 +13,7 @@ import {
   SECRET_IDS,
   TRACE_PAGE,
   USAGE_DAYS,
+  VOICE_STYLE_CHOICES,
   type SecretId,
 } from "./constants.js";
 
@@ -76,6 +77,20 @@ export const pluginAccessSchema = z.discriminatedUnion("mode", [
 ]);
 export type PluginAccess = z.infer<typeof pluginAccessSchema>;
 
+export const voiceStyleSchema = z.object({
+  pace: z.enum(VOICE_STYLE_CHOICES.pace),
+  energy: z.enum(VOICE_STYLE_CHOICES.energy),
+  expressiveness: z.enum(VOICE_STYLE_CHOICES.expressiveness),
+  length: z.enum(VOICE_STYLE_CHOICES.length),
+  backchannels: z.enum(VOICE_STYLE_CHOICES.backchannels),
+  notes: z.string(),
+});
+export type VoiceStyle = z.infer<typeof voiceStyleSchema>;
+
+/** A prompt-to-voice voice. `id` is OpenAI's `voice_…` id. */
+export const customVoiceSchema = z.object({ id: z.string(), name: z.string(), prompt: z.string(), createdAt: z.string() });
+export type CustomVoice = z.infer<typeof customVoiceSchema>;
+
 export const preferencesSchema = z.object({
   agentName: z.string().min(1).max(AGENT_NAME_MAX),
   voice: z.string(),
@@ -92,6 +107,8 @@ export const preferencesSchema = z.object({
   pluginAccess: pluginAccessSchema,
   hotkeys: z.object({ toggle: z.string(), mute: z.string() }),
   pet: petLookSchema,
+  voiceStyle: voiceStyleSchema,
+  customVoices: z.array(customVoiceSchema),
 });
 export type Preferences = z.infer<typeof preferencesSchema>;
 
@@ -113,6 +130,8 @@ const preferencesPatchSchema = z.looseObject({
   pluginAccess: z.looseObject({ mode: z.string() }).optional(),
   hotkeys: z.looseObject({}).optional(),
   pet: z.looseObject({}).optional(),
+  voiceStyle: z.looseObject({}).optional(),
+  customVoices: z.array(z.unknown()).optional(),
 }) as unknown as z.ZodType<Partial<Preferences>>;
 
 // ---------------------------------------------------------------------------
@@ -403,6 +422,14 @@ export const rpcContract = defineRpcContract({
       missing: z.array(z.string()),
     }),
   },
+
+  // §3.7 Voices. Samples never touch the calls ledger or usage.
+  voiceSample: {
+    input: z.object({ voice: z.string() }),
+    output: z.object({ wav: z.string(), cached: z.boolean() }),
+  },
+  voiceCreate: { input: z.object({ name: z.string(), prompt: z.string() }), output: preferencesSchema },
+  voiceRemove: { input: z.object({ id: z.string() }), output: preferencesSchema },
 });
 export type RpcContract = typeof rpcContract;
 

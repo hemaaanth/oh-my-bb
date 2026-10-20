@@ -3,6 +3,8 @@ import { CHANNELS } from "../shared/constants.js";
 import type { CallControlPayload } from "../shared/contract.js";
 import { APP_CONTEXT, DESKTOP_DEVICE, FULL_SETUP, makeContext, published } from "./core-test-host.js";
 import { getCall, insertCall, openCalls } from "./ledger.js";
+import { writePreferences } from "./preferences.js";
+import { PACE_SENTENCES } from "./prompts/voice-style.js";
 import {
   NO_KEY_ERROR,
   PHONE_BUSY_ERROR,
@@ -33,6 +35,31 @@ describe("session body", () => {
     expect(body.instructions).toContain("Juno");
     expect(body.delegation.responses.tools.every((tool) => tool.type === "function")).toBe(true);
     expect(JSON.stringify(body)).not.toContain(FULL_SETUP.openaiKey);
+  });
+
+  it("sends a custom voice as { id } and adds its description, in the app and phone bodies", async () => {
+    const { ctx } = await makeContext({ openaiKey: FULL_SETUP.openaiKey });
+    await writePreferences(ctx, {
+      voice: "voice_abc",
+      customVoices: [{ id: "voice_abc", name: "Calm", prompt: "A calm, low voice.", createdAt: "2026-10-20T00:00:00.000Z" }],
+      voiceStyle: { pace: "brisk" },
+    });
+    const app = await buildSessionBody(ctx, { channel: "app", device: DESKTOP_DEVICE, context: APP_CONTEXT });
+    const phone = await buildPhoneSessionBody(ctx);
+    for (const body of [app, phone]) {
+      expect(body.audio.output.voice).toEqual({ id: "voice_abc" });
+      expect(body.instructions).toContain("# Voice style");
+      expect(body.instructions).toContain("- Your voice: A calm, low voice.");
+      expect(body.instructions).toContain(PACE_SENTENCES.brisk);
+    }
+  });
+
+  it("keeps a listed or unknown voice as a name", async () => {
+    const { ctx } = await makeContext({ openaiKey: FULL_SETUP.openaiKey });
+    await writePreferences(ctx, { voice: "nova" });
+    const body = await buildPhoneSessionBody(ctx);
+    expect(body.audio.output.voice).toBe("nova");
+    expect(body.instructions).not.toContain("- Your voice:");
   });
 
   it("builds the phone body without app tools", async () => {

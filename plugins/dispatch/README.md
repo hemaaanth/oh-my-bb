@@ -33,6 +33,10 @@ starts new ones, sends them messages, and brings them on screen.
   stop or mute the call, and report usage.
 - **Your instructions.** Add standing instructions for the agent. Every saved
   version is kept, and you can restore one.
+- **Voices and voice style.** Pick from the GPT-Live voices, play a short sample
+  of each, and set pace, energy, expressiveness, turn length, and backchannels.
+  You can also design your own voice from a description. See
+  [Voices](#voices).
 
 ## Two modes
 
@@ -110,13 +114,47 @@ device, except where a row says it is saved for this device.
 | Section | What it holds |
 | --- | --- |
 | Readiness | Whether in-app voice and phone calls are ready, what is missing, the webhook route, and **Reload to apply** when needed. |
-| Agent | Name (up to 24 characters), voice, your instructions (up to 4,000 characters) with history, and a read-only view of the full prompt. |
+| Agent | Name (up to 24 characters), voice with samples, voice style, **Design a voice**, your instructions (up to 4,000 characters) with history, and a read-only view of the full prompt. |
 | Appearance | The pet's style, colour, head shape, pointer follow, antenna flash, and a live preview. The pointer ghost switch is per device. |
 | Calls | Microphone and speaker (per device), announcements, mobile drawer behaviour, the two keyboard shortcuts, **Call memory**, **Remember calls for** (30 days, 90 days, 1 year, or forever), and **Home time zone** for phone calls. The three memory controls are on the desktop page only. |
 | Tools | Which plugins' commands the agent may run: all, none, or the ones you pick. |
 | Advanced | Voice model, reasoning model, and **Reset preferences**. Reset keeps setup values and instructions. |
 
 On a phone, BB's mobile settings page has a short **Dispatch** section.
+
+## Voices
+
+The voice list has two groups. **GPT-Live** holds the 21 voices in OpenAI's
+GPT-Live voice table, with language, accent, and presentation, plus `marin`,
+the GPT-Live default. **Realtime (unconfirmed)** holds `alloy`, `ash`,
+`ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`, and `cedar`. They are
+not in the GPT-Live table, so GPT-Live may refuse them. The default voice is
+`gleam`. A saved voice that is no longer listed stays in use and shows under
+**Saved voice**.
+
+**Samples.** Each row has a play button. A new sample runs one short GPT-Live
+session on the BB server with your current voice style and a fixed line of
+about 8 seconds. It stops when the voice goes quiet, at `session.closed`, or
+after 15 seconds. It uses your OpenAI key and costs about 1¢. Dispatch keeps
+samples in its plugin database, up to 8 MB, and drops the least recently
+played first. A cached sample plays at once and costs nothing. Samples are
+refused while a call is live. They never appear in the console, calls, or
+usage.
+
+**Voice style is prompt-based.** GPT-Live has no speed or tone fields. Each
+choice becomes one sentence in a **# Voice style** section of the voice prompt.
+The voice model follows these sentences, but they are not exact controls.
+Style notes (up to 500 characters) go in the same section. The section is the
+only part of the prompt that sets pace, tone, and turn length. Look at it in
+**Agent → Full prompt**.
+
+**Design a voice.** Give a name and a description. Dispatch calls OpenAI
+`POST /v1/audio/voices` with your key, and the new voice shows under **Your
+voices**. Calls send it as `{ "id": "voice_…" }`, and its description goes at
+the top of the voice style section. The key needs the `api.voices.write`
+permission; Dispatch says so when it is missing. OpenAI allows 100 custom
+voices per organisation and documents no delete, so **Remove** only takes a
+voice off Dispatch's list.
 
 ## Start and stop
 
@@ -155,7 +193,7 @@ one.
 GPT-Live is billed by session time. Dispatch counts it at $0.05 per minute
 (checked 2026-10-19): cost = billed seconds / 60 × $0.05. The console and
 `bb dispatch usage` show minutes and cost per day for app and phone calls
-together.
+together. Voice samples cost about 1¢ each and are not counted.
 
 The reasoning model runs the agent's tools and writes one summary per call.
 Its tokens are billed on top and are not counted here, because the plugin
@@ -169,7 +207,8 @@ page for the full bill. Phone calls also cost Twilio minutes.
 - The OpenAI key goes only into the `Authorization` header of requests to
   `api.openai.com`.
 - In-app calls go from your browser to OpenAI. Dispatch's server creates the
-  session and never carries audio.
+  session and never carries call audio. Voice samples are the one exception:
+  the server records them from OpenAI and sends them to the settings page.
 - Transcripts, tool traces, and call summaries are stored in Dispatch's plugin
   database on the BB server. Transcripts and summaries are deleted after
   90 days by default. Change this, or turn call memory off, in **Calls**.

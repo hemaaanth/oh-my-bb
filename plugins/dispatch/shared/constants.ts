@@ -42,24 +42,88 @@ export const TRACE_PAGE = { default: 200, max: 500 } as const;
 export const USAGE_DAYS = { default: 30, max: 365 } as const;
 export const LIST_THREADS = { default: 15, max: 100 } as const;
 
+/** A voice the picker lists. `region` and `presentation` are null where the docs give none. */
+export type VoiceOption = {
+  name: string;
+  label: string;
+  language: string | null;
+  region: string | null;
+  presentation: "Feminine" | "Masculine" | null;
+  group: (typeof VOICE_GROUPS)[number];
+};
+export const VOICE_GROUPS = ["GPT-Live", "Realtime (unconfirmed)"] as const;
+const live = (name: string, language: string | null, region: string | null, presentation: VoiceOption["presentation"]): VoiceOption => ({
+  name,
+  label: name.charAt(0).toUpperCase() + name.slice(1),
+  language,
+  region,
+  presentation,
+  group: "GPT-Live",
+});
+const realtime = (name: string): VoiceOption => ({ ...live(name, null, null, null), group: "Realtime (unconfirmed)" });
 /**
- * GPT-Live voices. P0 assumption: the spec says "twelve" and names only
- * "gleam". P1 checks this list against the OpenAI docs and corrects it here.
+ * GPT-Live voices from the OpenAI voice table (checked 2026-10-20), then the
+ * GPT-Live default `marin`. The Realtime voices are not in the GPT-Live table;
+ * the picker lists them apart because GPT-Live may refuse them.
  */
-export const VOICES = [
-  "alloy",
-  "ash",
-  "ballad",
-  "cedar",
-  "coral",
-  "echo",
-  "gleam",
-  "marin",
-  "nova",
-  "sage",
-  "shimmer",
-  "verse",
-] as const;
+export const VOICE_OPTIONS: readonly VoiceOption[] = [
+  live("quartz", "English", "Australian", "Feminine"),
+  live("ripple", "English", "Australian", "Masculine"),
+  live("vesper", "English", "British", "Masculine"),
+  live("willow", "English", "Irish", "Feminine"),
+  live("stone", "English", "Irish", "Masculine"),
+  live("gleam", "English", "North American", "Feminine"),
+  live("meridian", "English", "North American", "Masculine"),
+  live("bossa", "Portuguese", "Brazilian", "Feminine"),
+  live("tempo", "Portuguese", "Brazilian", "Masculine"),
+  live("beacon", "English", "Filipino", "Masculine"),
+  live("delta", "English", "Southern U.S.", "Feminine"),
+  live("cinder", "English", "Southern U.S.", "Masculine"),
+  live("nuri", "German", null, "Feminine"),
+  live("juni", "German", null, "Feminine"),
+  live("flitz", "German", null, "Masculine"),
+  live("brise", "French", null, "Feminine"),
+  live("sillage", "French", null, "Masculine"),
+  live("nira", "Hindi", null, "Feminine"),
+  live("harema", "Japanese", null, "Feminine"),
+  live("shida", "Japanese", null, "Masculine"),
+  live("noeul", "Korean", null, "Feminine"),
+  live("marin", null, null, null),
+  ...["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "cedar"].map(realtime),
+];
+export const VOICE_NAMES: readonly string[] = VOICE_OPTIONS.map((voice) => voice.name);
+/** Custom voice ids from `POST /v1/audio/voices` start with this. */
+export const CUSTOM_VOICE_PREFIX = "voice_";
+export const CUSTOM_VOICE_NAME_MAX = 60;
+export const CUSTOM_VOICE_PROMPT_MAX = 1000;
+/** The example description from the OpenAI prompt-to-voice docs. */
+export const CUSTOM_VOICE_EXAMPLE =
+  "A calm, reassuring adult voice for a customer support assistant. Speak with an American English accent, a mid-range pitch, a smooth, warm tone, and a steady, conversational pace.";
+
+/** Voice style choices. GPT-Live has no speed or tone fields, so each choice is a sentence in the instructions. */
+export const VOICE_STYLE_CHOICES = {
+  pace: ["slower", "natural", "faster", "brisk"],
+  energy: ["calm", "neutral", "warm", "upbeat"],
+  expressiveness: ["flat", "balanced", "expressive"],
+  length: ["terse", "balanced", "chatty"],
+  backchannels: ["few", "moderate", "frequent"],
+} as const;
+export const VOICE_STYLE_NOTES_MAX = 500;
+
+/** Voice samples: one short client-mode session per new voice and style. */
+export const VOICE_SAMPLE = {
+  text: "Quick update: the thread Fix the header finished. It changed two files, and all the tests pass. Do you want me to open it?",
+  /** Hard stop for one sample session. */
+  capMs: 15_000,
+  /** The agent has finished speaking when no audio arrives for this long. */
+  quietMs: 1_500,
+  /** Wait this long for session.closed before the socket is released anyway. */
+  closeMs: 2_000,
+  /** Samples kept in the plugin database. The oldest used go first. */
+  cacheBytes: 8 * 1024 * 1024,
+  rate: 24_000,
+} as const;
+
 export const VOICE_MODELS = ["gpt-live-1"] as const;
 /** The first entry is the default, shown as "recommended". */
 export const REASONING_MODELS = ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.5"] as const;
@@ -101,6 +165,8 @@ export const defaultPreferences = (): Preferences => ({
   pluginAccess: { mode: "all" },
   hotkeys: { toggle: "Mod+Shift+H", mute: "Mod+Shift+U" },
   pet: { style: "outline", color: "theme", roundness: 50, followPointer: true, antennaFlash: false },
+  voiceStyle: { pace: "natural", energy: "neutral", expressiveness: "balanced", length: "balanced", backchannels: "moderate", notes: "" },
+  customVoices: [],
 });
 
 /** GPT-Live audio price. Reasoning tokens are billed separately and not counted. */
@@ -117,6 +183,8 @@ export const ENDPOINTS = {
     `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Calls.json`,
   responses: `${OPENAI_API}/responses`,
   sipTarget: (project: string) => `sip:${project}@sip.api.openai.com;transport=tls;secure=true`,
+  voices: `${OPENAI_API}/audio/voices`,
+  liveSocket: "wss://api.openai.com/v1/live/sessions",
 } as const;
 
 /** Sent as a system notice when a call connects, so the owner hears it is ready. */

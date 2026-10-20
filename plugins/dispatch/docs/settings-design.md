@@ -42,6 +42,28 @@ shared width, with no custom colours or inset shadows.
 
 No server, RPC, storage, or setup-secret behaviour changes. SDK stays at 0.6.49.
 
+## Voice settings — 2026-10-20
+
+The Agent section replaces the voice select with a voice list, a voice style
+group, and **Design a voice**.
+
+- Voice list: one bordered, scrolling box (at most 20rem high), with small
+  muted group headings: Saved voice, Your voices, GPT-Live, and Realtime
+  (unconfirmed). Each row is one pressable line: the name, then language,
+  accent, and presentation in muted text, and a check on the chosen voice. A
+  ghost icon button plays or stops the sample. Only one sample plays at a time.
+- The cost line sits above the list: "Uses your OpenAI key. About 1¢ per new
+  sample." With no key, the line says why the buttons are disabled.
+- Voice style: five rows with the quiet segmented control from Appearance
+  (Pace, Energy, Expressiveness, Turn length, Backchannels), then the style
+  notes field, saved on blur, with a character count. One muted line says the
+  style is instructions, not exact controls. **Preview with this style** plays
+  the chosen voice.
+- Design a voice: a closed disclosure with a name, a description (the OpenAI
+  docs example is the placeholder), and one **Create voice** button. Errors sit
+  under the button.
+- No marketing copy, no custom colours, no new components.
+
 ## Verification
 
 The package check passes typecheck, all tests, and build. The live plugin reloads

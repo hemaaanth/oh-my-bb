@@ -97,5 +97,8 @@ export function usePreferences() {
     }
   }, [rpcRef]);
 
-  return { prefs, error, save, reset };
+  /** Take preferences that another RPC returned, such as voiceCreate. */
+  const adopt = useCallback((next: Preferences) => setPrefs(next), []);
+
+  return { prefs, error, save, reset, adopt };
 }

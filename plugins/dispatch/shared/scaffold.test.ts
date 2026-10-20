@@ -18,6 +18,8 @@ describe("shared constants", () => {
       pluginAccess: { mode: "all" },
       hotkeys: { toggle: "Mod+Shift+H", mute: "Mod+Shift+U" },
       pet: { style: "outline", color: "theme", roundness: 50, followPointer: true, antennaFlash: false },
+      voiceStyle: { pace: "natural", energy: "neutral", expressiveness: "balanced", length: "balanced", backchannels: "moderate", notes: "" },
+      customVoices: [],
     });
     expect(preferencesSchema.parse(defaultPreferences())).toEqual(defaultPreferences());
   });
@@ -64,6 +66,9 @@ describe("shared constants", () => {
         "instructionsRestore",
         "promptPreview",
         "drawerResolveThreads",
+        "voiceSample",
+        "voiceCreate",
+        "voiceRemove",
       ].sort(),
     );
   });

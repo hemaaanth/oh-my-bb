@@ -2,15 +2,16 @@
 // the assembled prompt, and the revision history.
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import { useCallback, useEffect, useState } from "react";
-import { AGENT_NAME_MAX, CHANNELS, INSTRUCTIONS_LIMIT, VOICES } from "../../shared/constants.js";
+import { AGENT_NAME_MAX, CHANNELS, INSTRUCTIONS_LIMIT } from "../../shared/constants.js";
 import type { InstructionRevision, PromptParts, RpcContract } from "../../shared/contract.js";
 import { firstLine, formatDateTime } from "../console/format.js";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
-import { errorText, useLatest, usePreferences } from "./data.js";
-import { Group, Loading, Note, Row, SettingSelect } from "./layout.js";
+import { errorText, useLatest, usePreferences, useSetupStatus } from "./data.js";
+import { Group, Loading, Note, Row } from "./layout.js";
+import { VoiceSettings } from "./voice.js";
 
 function NameRow({ saved, save }: { saved: string; save: (name: string) => Promise<boolean> }) {
   const [draft, setDraft] = useState(saved);
@@ -221,15 +222,13 @@ function InstructionsEditor() {
 }
 
 export function AgentSection() {
-  const { prefs, error, save } = usePreferences();
+  const { prefs, error, save, adopt } = usePreferences();
+  const { status } = useSetupStatus();
   if (!prefs) return <Loading error={error} />;
-  const voices = VOICES.includes(prefs.voice as (typeof VOICES)[number]) ? [...VOICES] : [prefs.voice, ...VOICES];
   return (
     <Group>
       <NameRow saved={prefs.agentName} save={(agentName) => save({ agentName })} />
-      <Row label="Voice" htmlFor="dispatch-voice">
-        <SettingSelect id="dispatch-voice" label="Voice" value={prefs.voice} options={voices.map((voice) => ({ value: voice, label: voice }))} onValueChange={(voice) => void save({ voice })} />
-      </Row>
+      <VoiceSettings prefs={prefs} save={save} adopt={adopt} hasKey={status?.fields.openaiKey === true} />
       {error ? <Note tone="error">{error}</Note> : null}
       <InstructionsEditor />
     </Group>

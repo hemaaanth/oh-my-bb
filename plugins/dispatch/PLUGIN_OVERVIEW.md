@@ -3,8 +3,7 @@ Drive BB by voice. Talk to a named agent in the app or over a phone call, and it
 ## What you get
 
 Tap the pet in the sidebar footer, or press Mod+Shift+H, and say what you
-want. The agent, Juno by default, answers in one or two short sentences and
-acts first. It can:
+want. The agent, Juno by default, keeps its answers short and acts first. It can:
 
 - Tell you what is running, and read what a thread did last.
 - Start a thread, send it a message, change its model, rename, stop, or
@@ -14,6 +13,11 @@ acts first. It can:
 
 While a call is live, it also tells you when a thread finishes or fails. The
 pet shows what the agent is doing: listening, talking, reading, or working.
+
+Pick a voice and play a short sample of it. Set the voice style: pace,
+energy, expressiveness, turn length, and backchannels. The style is a set of
+sentences in the voice prompt, not an exact control. You can also design a
+voice from a description.
 
 The Dispatch console lists every call with its transcript, the tools it ran,
 and the voice minutes it used.
@@ -41,8 +45,9 @@ add it, Dispatch reloads itself.
 ## Cost
 
 Voice time is estimated at $0.05 per minute. The reasoning model's tokens,
-including call summaries, are billed by OpenAI on top and are not counted. Phone calls also use Twilio
-minutes.
+including call summaries, are billed by OpenAI on top and are not counted.
+Phone calls also use Twilio minutes. A new voice sample costs about 1¢ and is
+not counted.
 
 ## Standalone by default
 

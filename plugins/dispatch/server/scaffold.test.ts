@@ -59,7 +59,7 @@ describe("setup settings", () => {
 });
 
 describe("storage", () => {
-  it("lists migrations 001 to 006", () => {
+  it("lists migrations 001 to 007", () => {
     expect(MIGRATION_IDS).toEqual([
       "001-calls",
       "002-call-trace",
@@ -67,6 +67,7 @@ describe("storage", () => {
       "004-legacy-token-usage",
       "005-drop-legacy-token-usage",
       "006-call-summaries",
+      "007-voice-samples",
     ]);
   });
 
@@ -85,6 +86,8 @@ describe("storage", () => {
       "table:instruction_revisions",
       "table:call_summaries",
       "index:call_summaries_day",
+      "table:voice_samples",
+      "index:voice_samples_used",
     ]) {
       expect(names).toContain(expected);
     }
