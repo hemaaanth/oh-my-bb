@@ -12,8 +12,12 @@ jobs:
       matrix: ${{ steps.list.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
+      # Assign first so a list-packages.sh error fails this step instead of
+      # leaving an empty matrix and a red run with no failed job.
       - id: list
-        run: echo "matrix=$(scripts/list-packages.sh | jq -R -s -c 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+        run: |
+          packages="$(scripts/list-packages.sh)"
+          echo "matrix=$(jq -R -s -c 'split("\n") | map(select(length > 0))' <<< "$packages")" >> "$GITHUB_OUTPUT"
 
   validate:
     needs: packages
