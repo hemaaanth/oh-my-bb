@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- Loads on stable bb 0.46.1. 0.1.0 required plugin SDK 0.6.54, which only
+  nightly bb ships, so stable bb marked it incompatible. It now requires SDK
+  0.6.49 or later.
+
 ## 0.1.0
 
 - Configurable inbound endpoints on one route,
