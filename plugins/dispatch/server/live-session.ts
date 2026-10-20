@@ -1,7 +1,7 @@
 // The live session (SPEC §11.1, §5.4). Builds the one session body both
 // transports use, creates WebRTC sessions, accepts SIP sessions, and keeps
-// one call per BB server. Owned by P1. P3 calls buildSessionBody,
-// acceptSipSession, publishStop, and onCallStop for phone calls.
+// one call per BB server. The phone path uses buildPhoneSessionBody,
+// acceptSipSession, publishStop, and onCallStop.
 import { CHANNELS, ENDPOINTS } from "../shared/constants.js";
 import type { CallChannel, CallControlPayload, DeviceProfile, RpcOutput, RpcParsedInput, ToolContext } from "../shared/contract.js";
 import type { ServerContext } from "./context.js";
@@ -146,14 +146,18 @@ export async function createWebRtcSession(ctx: ServerContext, body: SessionBody,
   return parseCreatedSession(response);
 }
 
-/** Accept an incoming SIP session (the phone path). Throws on a non-2xx reply. */
+/**
+ * Accept an incoming SIP session (the phone path). The accept endpoint wants
+ * the body under a `session` key, and SIP negotiates the audio, so no
+ * transport goes in. Throws on a non-2xx reply.
+ */
 export async function acceptSipSession(ctx: ServerContext, sessionId: string, body: SessionBody): Promise<void> {
   const key = await openaiKey(ctx);
-  const { transport: _transport, ...withoutTransport } = body;
+  const { transport: _transport, ...session } = body;
   const response = await fetch(ENDPOINTS.acceptSession(sessionId), {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify(withoutTransport),
+    body: JSON.stringify({ session }),
   });
   if (!response.ok) throw await failure(response);
 }

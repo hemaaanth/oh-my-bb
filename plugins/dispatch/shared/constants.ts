@@ -87,6 +87,7 @@ export const OPENAI_API = "https://api.openai.com/v1";
 export const ENDPOINTS = {
   liveSessions: `${OPENAI_API}/live/sessions`,
   acceptSession: (sessionId: string) => `${OPENAI_API}/live/sessions/${encodeURIComponent(sessionId)}/accept`,
+  hangupSession: (sessionId: string) => `${OPENAI_API}/live/sessions/${encodeURIComponent(sessionId)}/hangup`,
   attachSession: (sessionId: string) => `wss://api.openai.com/v1/live/sessions/${encodeURIComponent(sessionId)}/attach`,
   twilioCalls: (accountSid: string) =>
     `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Calls.json`,

@@ -7,7 +7,7 @@ import { ENDPOINTS, WEBHOOKS_PLUGIN_ID } from "../shared/constants.js";
 import type { PhoneDialResult, ToolContext } from "../shared/contract.js";
 import type { ServerContext } from "./context.js";
 import { appendTrace, endCall, insertCall, openCalls } from "./ledger.js";
-import { PHONE_DEVICE, buildPhoneSessionBody, onCallStop, publishStop } from "./live-session.js";
+import { PHONE_DEVICE, acceptSipSession, buildPhoneSessionBody, onCallStop, publishStop } from "./live-session.js";
 import { readSetupStatus } from "./readiness.js";
 import { isPresent } from "./settings.js";
 import { executeServerTool } from "./tools/index.js";
@@ -103,29 +103,12 @@ export async function placeCall(ctx: ServerContext): Promise<PhoneDialResult> {
 // ---------------------------------------------------------------------------
 // Receive (SPEC §10.3)
 
-/** Accept a pending SIP session. The Live API wants the body under a `session` key. */
-async function acceptSession(ctx: ServerContext, sessionId: string): Promise<void> {
-  const [values, body] = await Promise.all([ctx.settings.get(), buildPhoneSessionBody(ctx)]);
-  if (!isPresent(values.openaiKey)) throw new Error("Dispatch has no OpenAI API key.");
-  // SIP negotiates the audio, so no transport goes in the session.
-  const { transport: _transport, ...session } = body;
-  const response = await fetch(ENDPOINTS.acceptSession(sessionId), {
-    method: "POST",
-    headers: { Authorization: `Bearer ${values.openaiKey.trim()}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ session }),
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`OpenAI ${response.status}${text.trim() ? `: ${clip(text)}` : ""}`);
-  }
-}
-
 /** End a SIP session from our side. Best effort: the hang-up may already have happened. */
 async function hangUpSession(ctx: ServerContext, sessionId: string): Promise<void> {
   try {
     const key = (await ctx.settings.get()).openaiKey;
     if (!isPresent(key)) return;
-    await fetch(`${ENDPOINTS.liveSessions}/${encodeURIComponent(sessionId)}/hangup`, {
+    await fetch(ENDPOINTS.hangupSession(sessionId), {
       method: "POST",
       headers: { Authorization: `Bearer ${key.trim()}` },
     });
@@ -154,7 +137,7 @@ export async function receiveCall(ctx: ServerContext, sessionId: string): Promis
 
   let failure: string | null = null;
   try {
-    await acceptSession(ctx, sessionId);
+    await acceptSipSession(ctx, sessionId, await buildPhoneSessionBody(ctx));
   } catch (error) {
     failure = messageOf(error);
   }
