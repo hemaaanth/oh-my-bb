@@ -10,7 +10,7 @@ import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SECRET_IDS } from "../shared/constants.js";
 import type { ImportReport } from "../shared/contract.js";
-import { mapConfig } from "./import-handsfree.js";
+import { mapConfig, PHONE_WEBHOOK_NOTE } from "./import-handsfree.js";
 import plugin from "./index.js";
 
 const SID = `AC${"0a".repeat(16)}`;
@@ -122,6 +122,7 @@ describe("dry run", () => {
     expect(report.instructions.imported).toBe(1);
     expect(report.legacyTokenRows).toBe(0);
     expect(report.skipped.join(" ")).toContain("Legacy token usage skipped (3 rows)");
+    expect(report.skipped).toContain(PHONE_WEBHOOK_NOTE);
 
     expect(count(bb, "calls")).toBe(0);
     expect(count(bb, "call_trace")).toBe(0);

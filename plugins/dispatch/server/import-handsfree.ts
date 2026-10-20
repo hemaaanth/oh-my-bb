@@ -189,6 +189,10 @@ function parsePluginAccess(raw: unknown): Preferences["pluginAccess"] | undefine
 type SecretPlan = { status: ImportReport["secrets"]; values: Partial<Record<SecretId, string>> };
 
 /** Read every old secret file. The values stay in `values`; only statuses go in the report. */
+/** Webhooks endpoints belong to the Webhooks plugin, so the import cannot move them. */
+export const PHONE_WEBHOOK_NOTE =
+  "Phone calls need your Webhooks endpoint to hand calls to Dispatch. Find the endpoint that hands to handsfree with `bb webhooks list`, then change its action to plugin dispatch with `bb webhooks update`. Until then, calls ring and hang up when answered.";
+
 function planSecrets(source: ImportSource): SecretPlan {
   const status = Object.fromEntries(SECRET_IDS.map((id) => [id, "absent"])) as ImportReport["secrets"];
   const values: Partial<Record<SecretId, string>> = {};
@@ -400,6 +404,7 @@ export async function runHandsfreeImport(ctx: ServerContext, options: ImportOpti
   if (!options.includeLegacyUsage && history.usageRows.length > 0) {
     skipped.push(`Legacy token usage skipped (${history.usageRows.length} rows). Pass --include-legacy-usage to copy it.`);
   }
+  if (secrets.status.openaiSipProject === "copied") skipped.push(PHONE_WEBHOOK_NOTE);
   const copyUsage = options.includeLegacyUsage ? history.usageRows : [];
   const instructions: 0 | 1 = history.hasPromptVersions ? 1 : 0;
 

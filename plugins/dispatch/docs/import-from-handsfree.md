@@ -74,6 +74,13 @@ The report says only **copied**, **absent**, or **invalid** for each one. It
 never shows a value. An invalid value fails the setting's format check and is
 left unset.
 
+**Webhooks endpoint.** It is not moved. The endpoint that receives OpenAI's
+call webhook belongs to the Webhooks plugin, and it still hands calls to
+`handsfree`. When the phone setup values were copied, the report says so.
+Change the endpoint's action to `{"type":"plugin","pluginId":"dispatch"}` with
+`bb webhooks update`. Until then, phone calls ring and then hang up when you
+answer.
+
 **Instructions.** Handsfree saved whole prompts. They do not fit Dispatch,
 which keeps its built-in prompt and adds yours after it. If Handsfree had
 prompt versions, the import adds one short revision instead, by author
