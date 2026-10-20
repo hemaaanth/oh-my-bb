@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - Remove `bb dispatch import --from handsfree`, its RPC, and its docs. Handsfree
   was never published, so no one else needs it. Migration 005 drops the empty

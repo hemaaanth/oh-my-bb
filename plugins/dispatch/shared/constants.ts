@@ -4,7 +4,7 @@ import type { Preferences } from "./contract.js";
 
 export const PLUGIN_ID = "dispatch";
 /** Equals `version` in package.json. A test keeps them in step. */
-export const DISPATCH_VERSION = "0.1.1";
+export const DISPATCH_VERSION = "0.2.0";
 export const CLI_COMMAND = "dispatch";
 
 /** Setup values, in the order the host form shows them (CONTRACTS §7). */

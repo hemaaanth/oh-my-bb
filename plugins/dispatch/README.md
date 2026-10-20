@@ -56,7 +56,7 @@ bb plugin install dispatch@oh-my-bb
 Or install it directly from Git:
 
 ```sh
-bb plugin install git:https://github.com/hemaaanth/oh-my-bb.git@^0.1.0 \
+bb plugin install git:https://github.com/hemaaanth/oh-my-bb.git@^0.2.0 \
   --plugin dispatch \
   --tag-prefix dispatch/
 ```

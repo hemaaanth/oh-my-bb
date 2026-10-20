@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-dispatch",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Drive BB by voice. Talk to a named agent in the app or over a phone call, and it reads, starts, and steers your threads.",
   "license": "MIT",
   "author": "Hemanth Soni",
