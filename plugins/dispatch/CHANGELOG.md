@@ -1,23 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- The agent greets you when a call connects, in the app and on the phone, so
-  you know it is ready to listen.
-- Phone calls use SRTP (`;secure=true`). GPT-Live rejected calls without it,
-  so the phone rang and hung up on answer.
-- On narrow screens the console header keeps the call buttons on their own row,
-  so status text no longer moves them.
-- Make the console denser with aligned call history, compact usage totals, and
-  grouped call actions. Daily usage and pricing stay in a disclosure.
-- Replace phone dial success toasts with waiting, live, and ended status in the
-  console, sidebar accessory, and footer pet. Hide provider call references and
-  mask phone numbers in displayed error and transcript text.
-- Match BB's settings controls: themed pickers, consistent rows, compact setup
-  status, collapsed instruction history, and a smaller pet mood picker.
-- Remove the static tool catalogue and duplicate credential list. Keep all six
-  settings groups, native secret fields, and the mobile controls.
-
 ## 0.1.0
 
 - In-app voice with OpenAI GPT-Live over WebRTC. Start or stop from the
@@ -54,3 +36,18 @@
   "Live" pill uses `experimental_sidebarAccessory`; SDK 0.6.53 and later
   ignore that field, so the pill is hidden there until Dispatch moves to
   `experimental_useBadge`.
+- The agent greets you when a call connects, in the app and on the phone, so
+  you know it is ready to listen.
+- Phone calls use TLS SIP with SRTP media (`;secure=true`), which GPT-Live
+  requires.
+- On narrow screens the console header keeps the call buttons on their own row,
+  so status text no longer moves them.
+- Make the console denser with aligned call history, compact usage totals, and
+  grouped call actions. Daily usage and pricing stay in a disclosure.
+- Replace phone dial success toasts with waiting, live, and ended status in the
+  console, sidebar accessory, and footer pet. Hide provider call references and
+  mask phone numbers in displayed error and transcript text.
+- Match BB's settings controls: themed pickers, consistent rows, compact setup
+  status, collapsed instruction history, and a smaller pet mood picker.
+- Remove the static tool catalogue and duplicate credential list. Keep all six
+  settings groups, native secret fields, and the mobile controls.
