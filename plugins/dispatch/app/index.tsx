@@ -12,6 +12,7 @@ import { rememberSettingsOpener } from "@/voice/settings-opener.js";
 import "./app.css";
 import { ComposerHook } from "./composer-hook.js";
 import { ConsolePanel, ConsoleSidebarAccessory } from "./console/index.js";
+import { ConsoleStatusOverlay } from "./console/presence.js";
 import { ViewsDrawer } from "./drawer/views-drawer.js";
 import { COMMANDS, COMPOSER, CONTENT_SCRIPTS, ICON, NAV_PANEL, OVERLAYS, SIDEBAR_FOOTER_PET, VIEWS_PANEL_ACTION, VIEWS_TAB } from "./ids.js";
 import { PET_ICON, PetIcon, petMenuJustOpened } from "./pet/pet.js";
@@ -54,6 +55,7 @@ export default definePluginApp((app) => {
   // Pointer ghost (SPEC §8) and the invisible fallback bindings (SPEC §6.3).
   app.slots.experimental_appOverlay({ id: OVERLAYS.pointerGhost, component: PointerGhostOverlay });
   app.slots.experimental_appOverlay({ id: OVERLAYS.bindings, component: BindingsOverlay });
+  app.slots.experimental_appOverlay({ id: OVERLAYS.callStatus, component: ConsoleStatusOverlay });
 
   // The composer hook: bindings for the call, no visible controls (SPEC §6.1).
   app.composer.customize({ id: COMPOSER.customization, actions: [{ id: COMPOSER.hook, component: ComposerHook }] });

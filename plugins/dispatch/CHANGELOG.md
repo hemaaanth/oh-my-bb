@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Make the console denser with aligned call history, compact usage totals, and
+  grouped call actions. Daily usage and pricing stay in a disclosure.
+- Replace phone dial success toasts with waiting, live, and ended status in the
+  console, sidebar accessory, and footer pet. Hide provider call references and
+  mask phone numbers in displayed error and transcript text.
 - Match BB's settings controls: themed pickers, consistent rows, compact setup
   status, collapsed instruction history, and a smaller pet mood picker.
 - Remove the static tool catalogue and duplicate credential list. Keep all six

@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CHANNELS } from "../../shared/constants.js";
 import type { CallRow, DeviceProfile, LiveStatus, TraceRow, UsageReport } from "../../shared/contract.js";
 import { installFakeLocalStorage, makePrefsRpc } from "../settings/support.js";
-import { registerStartCall, useConsoleBadge } from "./index.js";
-import { USAGE_NOTE } from "./usage.js";
+import { ConsolePanel, registerStartCall, useConsoleBadge } from "./index.js";
+import { ConsoleStatusOverlay } from "./presence.js";
+import { formatCallWhen } from "./format.js";
+import { USAGE_NOTE, usageTotals } from "./usage.js";
+import { ENDED_STATUS_MS, PHONE_WAIT_MS, phoneAttempt } from "../phone-status.js";
+import { IDLE_CALL, callStore } from "../../voice/call-store.js";
 
 const stored = installFakeLocalStorage();
 const app = await loadPluginApp(() => import("../index.js"));
@@ -64,7 +68,7 @@ const mount = (over: Fakes = {}, subPath = "") => {
         return target[key]?.(args as never);
       },
   });
-  const view = renderSlot(panel, { subPath }, { rpc: rpc as never, pluginId: "dispatch" });
+  const view = renderSlot({ ...panel, component: (props) => <><ConsoleStatusOverlay /><ConsolePanel {...props} /></> }, { subPath }, { rpc: rpc as never, pluginId: "dispatch" });
   return { view, calls };
 };
 const countOf = (calls: Array<{ name: string }>, name: string) => calls.filter((entry) => entry.name === name).length;
@@ -74,15 +78,30 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  phoneAttempt.set(null);
+  callStore.set(IDLE_CALL);
+  vi.useRealTimers();
 });
 
 describe("Calls list", () => {
-  it("shows the device, time, duration, channel, billed minutes and cost per row", async () => {
+  it("uses short calendar-relative dates", () => {
+    const now = new Date(2026, 9, 19, 12).getTime();
+    expect(formatCallWhen(new Date(2026, 9, 19, 10).getTime(), now)).toMatch(/^Today /);
+    expect(formatCallWhen(new Date(2026, 9, 18, 10).getTime(), now)).toMatch(/^Yesterday /);
+    expect(formatCallWhen(new Date(2026, 9, 1, 10).getTime(), now)).not.toMatch(/Today|Yesterday/);
+  });
+
+  it("aligns device, time, duration, cost and quiet status without redundant chips", async () => {
     mount();
-    const row = (await screen.findByRole("button", { name: /Chrome on Linux/ })) as HTMLElement;
-    expect(row.textContent).toContain("app");
+    const button = await screen.findByRole("button", { name: /Chrome on Linux/ });
+    const row = button.closest("tr")!;
     expect(row.textContent).toContain("1:30");
     expect(row.textContent).toContain("$0.08");
+    expect(row.textContent).toContain("Ended");
+    expect(row.textContent).not.toContain("1.5 min");
+    const table = within(screen.getByRole("region", { name: "Calls" })).getByRole("table");
+    expect(within(table).getAllByRole("columnheader").map((item) => item.textContent)).toEqual(["When", "Device", "Duration", "Cost", "Status"]);
+    expect(button.querySelector("[aria-label='In-app call']")).toBeTruthy();
   });
 
   it("asks for 50 per page and loads the next page on demand", async () => {
@@ -107,6 +126,13 @@ describe("Calls list", () => {
     expect(screen.getByRole("button", { name: /Pixel/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "All" }));
     expect(screen.getAllByRole("button", { name: /Chrome on Linux|Pixel/ })).toHaveLength(2);
+  });
+
+  it("shows an unclean ending as status text and stale open rows as not closed", async () => {
+    mount({ callsPage: async () => ({ calls: [call(1, { unclean: true }), call(2, { endedAt: null })], nextCursor: null }) });
+    const rows = (await screen.findAllByRole("button", { name: /Chrome on Linux/ })).map((button) => button.closest("tr")!);
+    expect(rows[0]!.textContent).toContain("Unclean end");
+    expect(rows[1]!.textContent).toContain("Not closed");
   });
 
   it("opens a transcript through the route when a row is clicked", async () => {
@@ -266,6 +292,57 @@ describe("Header", () => {
     await screen.findByRole("region", { name: "Transcript" });
   });
 
+  it("shows local app connection status before the session is live", async () => {
+    callStore.set({ ...IDLE_CALL, state: "connecting", nonce: "pending" });
+    mount();
+    expect((await screen.findAllByText("Connecting…")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Mute" })).toBeNull();
+  });
+
+  it("shows phone waiting, live and ended state without success details", async () => {
+    let status: LiveStatus = idle;
+    const sid = `CA${"a".repeat(32)}`;
+    const { view } = mount({ liveStatus: async () => status, phoneDial: async () => ({ status: "placed", detail: `Calling +15555550123 ${sid}` }) });
+    fireEvent.click(await screen.findByRole("button", { name: "Call my phone" }));
+    await screen.findByText("Waiting for you to answer…");
+    expect((screen.getByRole("button", { name: "Calling…" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(document.body.textContent).not.toContain(sid);
+    expect(document.body.textContent).not.toContain("+15555550123");
+    status = { live: true, channel: "phone", startedAt: Date.now() - 65_000, device: { ...device, label: "Phone" } };
+    await view.emitRealtime(CHANNELS.traceTail, { callId: "phone-1", events: [trace(101, "call.started", { channel: "phone" })] });
+    await screen.findByText("Phone call live");
+    expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Mute" })).toBeNull();
+    expect(phoneAttempt.get()).toBeNull();
+    status = idle;
+    await view.emitRealtime(CHANNELS.traceTail, { callId: "phone-1", events: [trace(102, "call.stopped")] });
+    await screen.findByText("Call ended");
+    expect(screen.getByRole("button", { name: "Call my phone" })).toBeTruthy();
+  });
+
+  it("ends a short phone session even if it closes before a live-status read", async () => {
+    const { view } = mount();
+    await screen.findByRole("button", { name: "Call my phone" });
+    act(() => phoneAttempt.set({ phase: "ringing", at: Date.now() - 1000 }));
+    const at = Date.now();
+    await view.emitRealtime(CHANNELS.traceTail, { callId: "short-phone", events: [
+      { ...trace(104, "call.started", { channel: "phone" }), at },
+      { ...trace(105, "call.closed"), at: at + 10 },
+    ] });
+    await screen.findByText("Call ended");
+    expect(phoneAttempt.get()).toBeNull();
+  });
+
+  it("clears phone waiting status when the incoming session fails", async () => {
+    const { view } = mount();
+    await screen.findByRole("button", { name: "Call my phone" });
+    act(() => phoneAttempt.set({ phase: "ringing", at: Date.now() - 1000 }));
+    await screen.findByText("Waiting for you to answer…");
+    await view.emitRealtime(CHANNELS.traceTail, { callId: "phone-1", events: [{ ...trace(103, "call.failed"), at: Date.now() }] });
+    await screen.findByText("Call failed");
+    expect(screen.getByRole("button", { name: "Call my phone" })).toBeTruthy();
+  });
+
   it("shows a failure from the server instead of throwing", async () => {
     mount({
       liveStatus: async () => live,
@@ -279,9 +356,23 @@ describe("Header", () => {
 });
 
 describe("Usage", () => {
+  it("totals today and the last seven calendar days without dropping zero-usage days", () => {
+    const report = usage({ perDay: [
+      { day: "2026-10-10", seconds: 600, usd: 0.5, calls: 1 },
+      { day: "2026-10-13", seconds: 120, usd: 0.1, calls: 1 },
+      { day: "2026-10-19", seconds: 60, usd: 0.05, calls: 1 },
+    ], totalSeconds: 780, totalUsd: 0.65 });
+    const totals = usageTotals(report, new Date(2026, 9, 19, 12).getTime());
+    expect(totals.map((total) => total.seconds)).toEqual([60, 180, 780]);
+    expect(usageTotals(usage({ perDay: [] }), new Date(2026, 9, 19).getTime())[0]!.seconds).toBe(0);
+  });
+
   it("shows the day rows, a total row and the exact pricing note", async () => {
     mount();
     const section = await screen.findByRole("region", { name: "Usage" });
+    const disclosure = (await within(section).findByText("Daily usage & pricing")).closest("details")!;
+    expect(disclosure.open).toBe(false);
+    fireEvent.click(within(section).getByText("Daily usage & pricing"));
     expect(within(section).getByText("Usage, last 30 days")).toBeTruthy();
     expect(within(section).getByText("2026-10-18")).toBeTruthy();
     expect(within(section).getByText("Total")).toBeTruthy();
@@ -293,11 +384,21 @@ describe("Usage", () => {
   it("shows a legacy row only when legacy token rows exist", async () => {
     mount({ usageReport: async () => usage({ legacyTokenRows: 12 }) });
     const section = await screen.findByRole("region", { name: "Usage" });
-    expect(within(section).getByText(/older token-based usage/).textContent).toContain("12");
+    expect((await within(section).findByText(/older token-based usage/)).textContent).toContain("12");
   });
 });
 
 describe("Realtime channels", () => {
+  it("redacts phone numbers and provider references in recorded errors and system detail", async () => {
+    const sid = `CA${"b".repeat(32)}`;
+    mount({ callTrace: async () => ({ events: [trace(1, "error", { message: `Could not call +15555550123: ${sid}` }), trace(2, "conn.state", { callSid: sid, number: "+15555550123" })], nextCursor: null }) }, "call-1");
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 system event" }));
+    expect(document.body.textContent).not.toContain(sid);
+    expect(document.body.textContent).not.toContain("+15555550123");
+    expect(document.body.textContent).toContain("•••0123");
+  });
+
   it("never renders a payload as markup", async () => {
     const { view } = mount({}, "call-1");
     await screen.findByRole("region", { name: "Transcript" });
@@ -310,21 +411,50 @@ describe("Realtime channels", () => {
 describe("Sidebar badge", () => {
   const Probe = () => {
     const badge = useConsoleBadge();
-    return <p data-testid="badge">{badge ? `${badge.text}|${badge.tone ?? "default"}` : "none"}</p>;
+    return <p data-testid="badge">{badge ? `${badge.phase}|${badge.text}|${badge.tone ?? "default"}` : "none"}</p>;
   };
-  const probe = () => {
-    const rpc = { liveStatus: async () => idle };
-    return renderSlot({ ...panel, component: Probe }, { subPath: "" }, { rpc: rpc as never, pluginId: "dispatch" });
+  const probe = (liveStatus: () => Promise<LiveStatus> = async () => idle) => {
+    const rpc = { liveStatus };
+    return renderSlot({ ...panel, component: () => <><ConsoleStatusOverlay /><Probe /></> }, { subPath: "" }, { rpc: rpc as never, pluginId: "dispatch" });
   };
+
+  it("follows a phone attempt and trace-driven live status without app presence", async () => {
+    let status: LiveStatus = idle;
+    const view = probe(async () => status);
+    await screen.findByTestId("badge");
+    act(() => phoneAttempt.set({ phase: "dialing", at: Date.now() }));
+    await waitFor(() => expect(screen.getByTestId("badge").textContent).toBe("dialing|Calling|default"));
+    act(() => phoneAttempt.set({ phase: "ringing", at: Date.now() }));
+    await waitFor(() => expect(screen.getByTestId("badge").textContent).toBe("ringing|Calling|default"));
+    status = { live: true, channel: "phone", startedAt: Date.now() - 65_000, device };
+    await view.emitRealtime(CHANNELS.traceTail, { callId: "phone-1", events: [trace(101, "call.started")] });
+    await waitFor(() => expect(screen.getByTestId("badge").textContent).toMatch(/^live\|1:0\d\|default$/));
+    status = idle;
+    await view.emitRealtime(CHANNELS.traceTail, { callId: "phone-1", events: [trace(102, "call.closed")] });
+    await waitFor(() => expect(screen.getByTestId("badge").textContent).toBe("ended|Ended|default"));
+  });
+
+  it("bounds waiting status when no phone session is confirmed", async () => {
+    vi.useFakeTimers();
+    probe();
+    await act(async () => {});
+    act(() => phoneAttempt.set({ phase: "ringing", at: Date.now() }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(PHONE_WAIT_MS + 1000); });
+    expect(screen.getByTestId("badge").textContent).toBe("unconfirmed|Not connected|default");
+    await act(async () => { await vi.advanceTimersByTimeAsync(ENDED_STATUS_MS + 1000); });
+    expect(screen.getByTestId("badge").textContent).toBe("none");
+    expect(phoneAttempt.get()).toBeNull();
+  });
 
   it("is empty when idle, then follows the presence channel", async () => {
     const view = probe();
     expect((await screen.findByTestId("badge")).textContent).toBe("none");
-    await view.emitRealtime(CHANNELS.presence, { nonce: "n", phase: "live", startedAt: 1, clientId: "c", realmId: "r" });
-    await waitFor(() => expect(screen.getByTestId("badge").textContent).toBe("Live|default"));
-    await view.emitRealtime(CHANNELS.presence, { nonce: "n", phase: "muted", startedAt: 1, clientId: "c", realmId: "r" });
-    await waitFor(() => expect(screen.getByTestId("badge").textContent).toBe("Muted|warning"));
+    const startedAt = Date.now() - 65_000;
+    await view.emitRealtime(CHANNELS.presence, { nonce: "n", phase: "live", startedAt, clientId: "c", realmId: "r" });
+    await waitFor(() => expect(screen.getByTestId("badge").textContent).toMatch(/^live\|1:0\d\|default$/));
+    await view.emitRealtime(CHANNELS.presence, { nonce: "n", phase: "muted", startedAt, clientId: "c", realmId: "r" });
+    await waitFor(() => expect(screen.getByTestId("badge").textContent).toMatch(/^muted\|1:0\d\|warning$/));
     await view.emitRealtime(CHANNELS.presence, { nonce: "n", phase: "idle", startedAt: null, clientId: "c", realmId: "r" });
-    await waitFor(() => expect(screen.getByTestId("badge").textContent).toBe("none"));
+    await waitFor(() => expect(screen.getByTestId("badge").textContent).toBe("ended|Ended|default"));
   });
 });

@@ -1,5 +1,6 @@
 // One transcript row per item (SPEC §13.3).
 import { useState, type ReactNode } from "react";
+import { privateCallText } from "../phone-status.js";
 import { formatClock } from "./format.js";
 import { StatusGlyph } from "./glyphs.js";
 import { clip, type TraceItem } from "./trace.js";
@@ -21,7 +22,7 @@ function Expandable({ summary, children, label }: { summary: ReactNode; children
 const Block = ({ title, body }: { title: string; body: string }) => (
   <div className="flex flex-col gap-0.5">
     <span className="text-xs text-muted-foreground">{title}</span>
-    <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-state-hover p-2 text-xs text-foreground">{clip(body)}</pre>
+    <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-state-hover p-2 text-xs text-foreground">{clip(privateCallText(body))}</pre>
   </div>
 );
 
@@ -41,7 +42,7 @@ export function TranscriptRow({ item, agentName }: { item: TraceItem; agentName:
           <Time at={item.at} />
           <div className="min-w-0 flex-1">
             <span className="text-xs font-medium text-muted-foreground">{item.who === "user" ? "You" : agentName}</span>
-            <p className="whitespace-pre-wrap text-sm text-foreground">{item.text}</p>
+            <p className="whitespace-pre-wrap text-sm text-foreground">{privateCallText(item.text)}</p>
           </div>
         </li>
       );
@@ -52,11 +53,11 @@ export function TranscriptRow({ item, agentName }: { item: TraceItem; agentName:
           <Time at={item.at} />
           {hasDetail ? (
             <Expandable
-              label={`details of ${item.title}`}
+              label={`details of ${privateCallText(item.title)}`}
               summary={
                 <>
                   <StatusGlyph status={item.status} />
-                  <span className="min-w-0 truncate">{item.title}</span>
+                  <span className="min-w-0 truncate">{privateCallText(item.title)}</span>
                 </>
               }
             >
@@ -66,7 +67,7 @@ export function TranscriptRow({ item, agentName }: { item: TraceItem; agentName:
           ) : (
             <span className="flex items-center gap-2 text-sm text-foreground">
               <StatusGlyph status={item.status} />
-              {item.title}
+              {privateCallText(item.title)}
             </span>
           )}
         </li>
@@ -76,7 +77,7 @@ export function TranscriptRow({ item, agentName }: { item: TraceItem; agentName:
       return (
         <li className="flex items-start gap-3 py-1.5">
           <Time at={item.at} />
-          <p className="text-sm italic text-muted-foreground">{item.text}</p>
+          <p className="text-sm italic text-muted-foreground">{privateCallText(item.text)}</p>
         </li>
       );
     case "error":
@@ -84,7 +85,7 @@ export function TranscriptRow({ item, agentName }: { item: TraceItem; agentName:
         <li className="flex items-start gap-3 py-1.5">
           <Time at={item.at} />
           <p role="alert" className="text-sm text-destructive">
-            {item.text}
+            {privateCallText(item.text)}
           </p>
         </li>
       );
@@ -99,7 +100,7 @@ export function TranscriptRow({ item, agentName }: { item: TraceItem; agentName:
                 <li key={event.id} className="flex gap-2">
                   <span className="tabular-nums">{formatClock(event.at)}</span>
                   <code>{event.kind}</code>
-                  {event.payload ? <span className="min-w-0 truncate">{clip(JSON.stringify(event.payload), 120)}</span> : null}
+                  {event.payload ? <span className="min-w-0 truncate">{clip(privateCallText(JSON.stringify(event.payload)), 120)}</span> : null}
                 </li>
               ))}
             </ul>

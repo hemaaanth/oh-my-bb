@@ -10,6 +10,8 @@ import "agent-robot-avatar";
 import type { AgentRobotAvatar } from "agent-robot-avatar";
 import { cn } from "@/app/lib/utils.js";
 import { usePortalScopeProps } from "@/app/lib/portal-scope.js";
+import { callStatusText, useConsoleCallState } from "@/app/console/presence.js";
+import { formatElapsed } from "@/app/console/format.js";
 import { useCall } from "@/voice/call-store.js";
 import { callMyPhone, toggleCall } from "@/voice/engine.js";
 import { useAgentName, usePrefs, useSetup } from "@/voice/preferences.js";
@@ -311,8 +313,15 @@ const MENU_ITEM =
  */
 export function PetIcon({ className }: { className?: string }) {
   const face = usePetFace();
+  const call = useConsoleCallState();
   const { state } = useCall();
   const name = useAgentName();
+  const phone = call.channel === "phone";
+  const waiting = call.phase === "dialing" || call.phase === "ringing";
+  const shownFace = phone ? (waiting ? "work" : call.live ? "awake" : call.phase === "failed" || call.phase === "unconfirmed" ? "oops" : "sleep") : face;
+  const label = phone || call.phase === "ended"
+    ? `${name} · ${callStatusText(call)}${call.live && call.startedAt !== null ? ` · ${formatElapsed((call.now - call.startedAt) / 1000)}` : ""}`
+    : `${name} · ${FACE_LABEL[face]}`;
   const setup = useSetup();
   const scope = usePortalScopeProps();
   // Unknown until the first read: leave the item on.
@@ -326,13 +335,15 @@ export function PetIcon({ className }: { className?: string }) {
       <ContextMenu.Trigger asChild>
         <span
           {...{ [PET_MARKER]: "" }}
-          title={`${name} · ${FACE_LABEL[face]}`}
+          role="img"
+          aria-label={label}
+          title={label}
           className={cn(
             "relative inline-flex shrink-0 select-none items-center justify-center [-webkit-touch-callout:none] before:absolute before:-inset-2",
             className,
           )}
         >
-          <Pet face={face} className="dispatch-pet-footer" />
+          <Pet face={shownFace} className="dispatch-pet-footer" />
         </span>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
@@ -343,8 +354,8 @@ export function PetIcon({ className }: { className?: string }) {
           <ContextMenu.Item className={MENU_ITEM} onSelect={() => void toggleCall()}>
             {state === "idle" ? `Wake ${name} here` : `Put ${name} to sleep`}
           </ContextMenu.Item>
-          <ContextMenu.Item className={MENU_ITEM} disabled={phoneBlocked} onSelect={() => void callMyPhone()}>
-            <span>Call my phone</span>
+          <ContextMenu.Item className={MENU_ITEM} disabled={phoneBlocked || waiting} onSelect={() => void callMyPhone()}>
+            <span>{waiting ? "Calling…" : "Call my phone"}</span>
             {phoneBlocked ? (
               <span className="text-xs text-muted-foreground">Needs: {setup.phone.missing.join(", ") || "phone setup"}</span>
             ) : null}

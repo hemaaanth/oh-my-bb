@@ -20,4 +20,18 @@ export const formatMinutes = (seconds: number): string => `${(Math.round((second
 
 export const formatUsd = (usd: number): string => (usd > 0 && usd < 0.01 ? "<$0.01" : `$${usd.toFixed(2)}`);
 
+/** Calendar-day keys, without UTC conversion (usage is reported by local day). */
+export function dayKey(at: number): string {
+  const date = new Date(at);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export function formatCallWhen(at: number, now = Date.now()): string {
+  const date = new Date(at);
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const day = dayKey(at) === dayKey(now) ? "Today" : dayKey(at) === dayKey(yesterday.getTime()) ? "Yesterday" : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return `${day} ${date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+}
+
 export const firstLine = (text: string): string => text.split("\n").find((line) => line.trim() !== "")?.trim() ?? "";

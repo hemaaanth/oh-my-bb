@@ -61,8 +61,8 @@ describe("app registration", () => {
     expect(app.icons.map((icon) => icon.name)).toContain("dispatch-pet");
   });
 
-  it("registers the pointer ghost and bindings overlays", () => {
-    expect(app.appOverlays.map((overlay) => overlay.id)).toEqual(["pointer-ghost", "bindings"]);
+  it("registers the pointer ghost, bindings and call-status overlays", () => {
+    expect(app.appOverlays.map((overlay) => overlay.id)).toEqual(["pointer-ghost", "bindings", "call-status"]);
   });
 
   it("registers the composer hook", () => {

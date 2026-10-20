@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
-import { act } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import { renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { createElement } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { defaultPreferences } from "@/shared/constants.js";
-import type { SetupStatus } from "@/shared/contract.js";
+import type { LiveStatus, SetupStatus } from "@/shared/contract.js";
+import { phoneAttempt } from "@/app/phone-status.js";
+import { ConsoleStatusOverlay } from "@/app/console/presence.js";
 import { callStore, IDLE_CALL, updateCall } from "@/voice/call-store.js";
 import { prefsStore, setupStore } from "@/voice/preferences.js";
 import { setSettingsFallback } from "@/voice/settings-opener.js";
@@ -50,6 +52,7 @@ beforeAll(() => {
 afterEach(() => {
   vi.useRealTimers();
   callStore.set(IDLE_CALL);
+  phoneAttempt.set(null);
   prefsStore.set(defaultPreferences());
   setupStore.set(null);
   setSettingsFallback(null);
@@ -58,6 +61,15 @@ afterEach(() => {
 });
 
 describe("footer pet", () => {
+  it("renders outside a plugin SDK slot, as host icon components do", () => {
+    const icon = render(createElement(PetIcon));
+    try {
+      expect(icon.container.querySelector("[data-dispatch-pet]")?.getAttribute("aria-label")).toBe("Juno · asleep");
+    } finally {
+      icon.unmount();
+    }
+  });
+
   it("sleeps with no call, ignores clicks, and draws an outline", async () => {
     vi.useFakeTimers();
     const icon = renderSlot({ component: PetIcon }, { className: "size-4" });
@@ -130,6 +142,33 @@ describe("footer pet", () => {
       await act(async () => items[2]!.click());
       expect(openSettings).toHaveBeenCalledTimes(1);
       expect(engine.callMyPhone).not.toHaveBeenCalled();
+    } finally {
+      icon.unmount();
+    }
+  });
+
+  it("shows phone waiting and live moods with an accessible status, then sleeps when the call ends", async () => {
+    let status: LiveStatus = { live: false, channel: null, startedAt: null, device: null };
+    const icon = renderSlot({ component: () => <><ConsoleStatusOverlay /><PetIcon /></> }, {}, { rpc: { liveStatus: async () => status } });
+    try {
+      await act(async () => {});
+      await act(async () => phoneAttempt.set({ phase: "dialing", at: Date.now() }));
+      expect(icon.container.querySelector(".dispatch-pet")?.getAttribute("data-mood")).toBe("work");
+      expect(icon.container.querySelector("[role=img]")?.getAttribute("aria-label")).toContain("Calling your phone…");
+      await act(async () => phoneAttempt.set({ phase: "ringing", at: Date.now() }));
+      expect(icon.container.querySelector("[title]")?.getAttribute("title")).toContain("Waiting for you to answer…");
+      expect(icon.getByRole("status", { name: "Dispatch call status" }).textContent).toBe("Dispatch: Waiting for you to answer…");
+      const at = Date.now();
+      status = { live: true, channel: "phone", startedAt: at - 65_000, device: null };
+      await icon.emitRealtime("trace-tail", { callId: "phone", events: [{ id: 1, callId: "phone", kind: "call.started", at, payload: { channel: "phone" } }] });
+      await act(async () => {});
+      expect(icon.container.querySelector(".dispatch-pet")?.getAttribute("data-mood")).toBe("awake");
+      expect(icon.container.querySelector("[role=img]")?.getAttribute("aria-label")).toMatch(/Phone call live · 1:0\d/);
+      status = { live: false, channel: null, startedAt: null, device: null };
+      await icon.emitRealtime("trace-tail", { callId: "phone", events: [{ id: 2, callId: "phone", kind: "call.closed", at: at + 1, payload: null }] });
+      await act(async () => {});
+      expect(icon.container.querySelector(".dispatch-pet")?.getAttribute("data-mood")).toBe("sleep");
+      expect(icon.container.querySelector("[role=img]")?.getAttribute("aria-label")).toContain("Call ended");
     } finally {
       icon.unmount();
     }

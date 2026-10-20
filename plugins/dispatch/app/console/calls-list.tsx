@@ -3,12 +3,12 @@ import { useRpc } from "@get-bb/plugin-sdk/app";
 import { useEffect, useState } from "react";
 import { CALLS_PAGE, LIVE_USD_PER_MINUTE } from "../../shared/constants.js";
 import type { CallChannel, CallRow, RpcContract } from "../../shared/contract.js";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { cn } from "../lib/utils";
+import { privateCallText } from "../phone-status.js";
 import { errorText, useLatest } from "../settings/data.js";
 import { Loading, Note } from "../settings/layout.js";
-import { formatDateTime, formatElapsed, formatMinutes, formatUsd } from "./format.js";
+import { formatCallWhen, formatDateTime, formatElapsed, formatUsd } from "./format.js";
+import type { CallState } from "./presence.js";
 import { DesktopGlyph, PhoneGlyph } from "./glyphs.js";
 
 type Chip = "all" | CallChannel;
@@ -72,9 +72,9 @@ export function useCalls(reloadKey: unknown) {
   return { calls, error, hasMore: cursor !== null, loadMore, loadingMore: more };
 }
 
-export function CallsList({ calls, error, hasMore, loadMore, loadingMore, onOpen }: ReturnType<typeof useCalls> & { onOpen: (call: CallRow) => void }) {
+export function CallsList({ calls, error, hasMore, loadMore, loadingMore, onOpen, live }: ReturnType<typeof useCalls> & { onOpen: (call: CallRow) => void; live: CallState }) {
   const [chip, setChip] = useState<Chip>("all");
-  if (!calls) return <Loading error={error} />;
+  if (!calls) return <Loading error={error ? privateCallText(error) : null} />;
   const shown = chip === "all" ? calls : calls.filter((call) => call.channel === chip);
 
   return (
@@ -83,26 +83,46 @@ export function CallsList({ calls, error, hasMore, loadMore, loadingMore, onOpen
         <h3 className="text-sm font-medium text-foreground">Calls</h3>
         <FilterChips label="Filter calls" chips={CHIPS} value={chip} onChange={setChip} />
       </div>
-      {shown.length === 0 ? <Note>{calls.length === 0 ? "No calls yet." : "No calls match this filter."}</Note> : null}
-      <ul className="flex flex-col">
-        {shown.map((call) => (
-          <li key={call.id}>
-            <button type="button" onClick={() => onOpen(call)} className={cn("flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring")}>
-              {call.channel === "phone" || call.device.mobile ? <PhoneGlyph /> : <DesktopGlyph />}
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-foreground">{call.device.label || "Unknown device"}</span>
-                <span className="text-xs text-muted-foreground">{formatDateTime(call.startedAt)}</span>
-              </span>
-              <Badge variant="outline">{call.channel}</Badge>
-              {call.unclean ? <Badge variant="secondary">unclean</Badge> : null}
-              <span className="w-14 text-right tabular-nums text-muted-foreground">{call.endedAt === null ? (call.unclean ? "—" : "Live") : formatElapsed((call.endedAt - call.startedAt) / 1000)}</span>
-              <span className="w-16 text-right tabular-nums text-muted-foreground">{formatMinutes(call.billedSeconds)}</span>
-              <span className="w-16 text-right tabular-nums text-foreground">{formatUsd((call.billedSeconds / 60) * LIVE_USD_PER_MINUTE)}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      {error ? <Note tone="error">{error}</Note> : null}
+      <div className="overflow-hidden rounded-md border border-border">
+        <table className="w-full table-fixed border-collapse text-sm">
+          <thead className="border-b border-border bg-surface-raised text-left text-xs text-muted-foreground">
+            <tr>
+              <th scope="col" className="hidden w-40 px-3 py-2 font-normal sm:table-cell">When</th>
+              <th scope="col" className="px-3 py-2 font-normal">Device</th>
+              <th scope="col" className="w-16 px-2 py-2 text-right font-normal sm:w-20 sm:px-3">Duration</th>
+              <th scope="col" className="w-16 px-2 py-2 text-right font-normal sm:w-20 sm:px-3">Cost</th>
+              <th scope="col" className="hidden w-28 px-3 py-2 font-normal sm:table-cell">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/60">
+            {shown.map((call) => {
+              const isLive = live.live && call.endedAt === null && !call.unclean && call.startedAt === live.startedAt && call.channel === live.channel;
+              const status = isLive ? "Live" : call.unclean ? "Unclean end" : call.endedAt === null ? "Not closed" : call.closeReason === "failed" ? "Failed" : "Ended";
+              const duration = call.endedAt !== null ? formatElapsed((call.endedAt - call.startedAt) / 1000) : isLive ? formatElapsed((live.now - call.startedAt) / 1000) : "—";
+              const cost = formatUsd((call.billedSeconds / 60) * LIVE_USD_PER_MINUTE);
+              const label = privateCallText(call.device.label || "Unknown device");
+              const when = formatCallWhen(call.startedAt, live.now);
+              return <tr key={call.id} onClick={() => onOpen(call)} className="group cursor-pointer hover:bg-state-hover focus-within:bg-state-hover">
+                <td className="hidden whitespace-nowrap px-3 py-2 text-xs tabular-nums text-muted-foreground sm:table-cell"><time dateTime={new Date(call.startedAt).toISOString()} title={formatDateTime(call.startedAt)}>{when}</time></td>
+                <td className="px-3 py-2">
+                  <button type="button" aria-label={`${label}, ${when}, ${status}`} className="flex w-full min-w-0 items-start gap-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <span className="mt-0.5 shrink-0 text-muted-foreground" aria-label={call.channel === "phone" ? "Phone call" : "In-app call"}>{call.channel === "phone" || call.device.mobile ? <PhoneGlyph /> : <DesktopGlyph />}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-foreground">{label}</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground sm:hidden">{when}<span className="ml-1.5 text-subtle-foreground">· {status}</span></span>
+                    </span>
+                  </button>
+                </td>
+                <td title={duration} className="truncate px-2 py-2 text-right text-xs tabular-nums text-muted-foreground sm:px-3">{duration}</td>
+                <td title={cost} className="truncate px-2 py-2 text-right text-xs tabular-nums text-foreground sm:px-3">{cost}</td>
+                <td className="hidden px-3 py-2 text-xs text-subtle-foreground sm:table-cell">{status}</td>
+              </tr>;
+            })}
+          </tbody>
+        </table>
+        {shown.length === 0 ? <p className="px-3 py-5 text-sm text-muted-foreground">{calls.length === 0 ? "No calls yet. Wake your agent to start a conversation." : "No calls match this filter."}</p> : null}
+      </div>
+      {error ? <Note tone="error">{privateCallText(error)}</Note> : null}
       {hasMore ? (
         <div>
           <Button variant="outline" size="sm" disabled={loadingMore} onClick={() => void loadMore()}>
