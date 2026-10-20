@@ -88,7 +88,7 @@ describe("buildDialSipTwiml", () => {
   it("bridges to the project over TLS and answers on bridge", () => {
     const twiml = buildDialSipTwiml("proj_abc123");
     expect(twiml).toContain('<Dial answerOnBridge="true">');
-    expect(twiml).toContain("<Sip>sip:proj_abc123@sip.api.openai.com;transport=tls</Sip>");
+    expect(twiml).toContain("<Sip>sip:proj_abc123@sip.api.openai.com;transport=tls;secure=true</Sip>");
   });
 });
 
@@ -131,7 +131,7 @@ describe("placeCall", () => {
     const form = new URLSearchParams(String(call!.init.body));
     expect(form.get("To")).toBe(FULL_SETUP.yourPhoneNumber);
     expect(form.get("From")).toBe(FULL_SETUP.twilioCallerNumber);
-    expect(form.get("Twiml")).toContain(`sip:${FULL_SETUP.openaiSipProject}@sip.api.openai.com;transport=tls`);
+    expect(form.get("Twiml")).toContain(`sip:${FULL_SETUP.openaiSipProject}@sip.api.openai.com;transport=tls;secure=true`);
     expect(form.get("Twiml")).toContain('answerOnBridge="true"');
   });
 

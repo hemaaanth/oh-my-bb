@@ -37,21 +37,22 @@ export function ConsoleHeader({ call, onViewTranscript }: { call: CallState; onV
 
   return (
     <header className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Narrow screens always stack the actions under the identity, so status text changes never move them. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-raised text-muted-foreground" aria-hidden="true">
             <Icon name="dispatch/dispatch" className="size-5" />
           </span>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="truncate text-sm font-semibold text-foreground">{name}</h1>
-            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="mt-0.5 flex min-w-0 items-center gap-2 whitespace-nowrap text-xs text-muted-foreground">
               {connecting || dialing ? <Icon name="Loading" className="size-3 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : call.live ? <span className="size-1.5 rounded-full bg-current" aria-hidden="true" /> : null}
-              <span>{callStatusText(call)}</span>
+              <span className="truncate">{callStatusText(call)}</span>
               {call.live && call.startedAt !== null ? <span className="tabular-nums text-foreground" aria-label="Elapsed call time">{formatElapsed((call.now - call.startedAt) / 1000)}</span> : null}
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Call actions">
+        <div className="flex shrink-0 items-center gap-2" role="group" aria-label="Call actions">
           {call.live ? <>
             {call.channel !== "phone" ? <Button variant="outline" size="sm" disabled={busy} onClick={() => void run(() => rpcRef.current.call("relayCommand", { command: call.muted ? "unmute" : "mute", ...(call.nonce ? { nonce: call.nonce } : {}) }))}>
               <Icon name="Mic" />{call.muted ? "Unmute" : "Mute"}

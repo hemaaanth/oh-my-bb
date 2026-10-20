@@ -91,7 +91,7 @@ export const ENDPOINTS = {
   attachSession: (sessionId: string) => `wss://api.openai.com/v1/live/sessions/${encodeURIComponent(sessionId)}/attach`,
   twilioCalls: (accountSid: string) =>
     `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Calls.json`,
-  sipTarget: (project: string) => `sip:${project}@sip.api.openai.com;transport=tls`,
+  sipTarget: (project: string) => `sip:${project}@sip.api.openai.com;transport=tls;secure=true`,
 } as const;
 
 /** The Webhooks plugin from oh-my-bb, an optional partner for phone calls. */

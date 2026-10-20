@@ -47,7 +47,9 @@ const escapeXml = (text: string): string =>
 /** TwiML that bridges the answered phone leg into OpenAI over SIP. */
 export function buildDialSipTwiml(projectId: string): string {
   // OpenAI takes SIP over TLS only. With plain SIP, OpenAI never sees the call
-  // and the person on the phone hears silence.
+  // and the person on the phone hears silence. GPT-Live also requires SRTP
+  // media (`secure=true`); without it, accept fails with srtp_required and the
+  // call hangs up on answer (seen 2026-10-19).
   const target = escapeXml(ENDPOINTS.sipTarget(projectId));
   // answerOnBridge keeps the ringback going until OpenAI picks up.
   return `<?xml version="1.0" encoding="UTF-8"?><Response><Dial answerOnBridge="true"><Sip>${target}</Sip></Dial></Response>`;

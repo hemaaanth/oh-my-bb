@@ -64,7 +64,7 @@ open in the BB app window, which helps when you are at a desk.
  placeCall ── publishes a stop for any app call, then:
         │  POST https://api.twilio.com/2010-04-01/Accounts/{SID}/Calls.json
         │    To=<your phone>  From=<Twilio number>
-        │    Twiml=<Dial answerOnBridge="true"><Sip>sip:proj_x@sip.api.openai.com;transport=tls</Sip>
+        │    Twiml=<Dial answerOnBridge="true"><Sip>sip:proj_x@sip.api.openai.com;transport=tls;secure=true</Sip>
         ▼
  Twilio rings your phone ── you answer ──► Twilio bridges the call to OpenAI
         ▼
@@ -86,8 +86,10 @@ open in the BB app window, which helps when you are at a desk.
 1. **Place the call.** `POST /Accounts/{AccountSid}/Calls.json` with
    `Authorization: Basic base64(SID:AuthToken)` and a form body of `To`, `From`
    and `Twiml`. The TwiML is
-   `<Response><Dial answerOnBridge="true"><Sip>sip:{proj}@sip.api.openai.com;transport=tls</Sip></Dial></Response>`.
+   `<Response><Dial answerOnBridge="true"><Sip>sip:{proj}@sip.api.openai.com;transport=tls;secure=true</Sip></Dial></Response>`.
    OpenAI takes SIP over TLS only. Without `;transport=tls` you hear silence.
+   GPT-Live also needs SRTP media, which `;secure=true` turns on. Without it,
+   accept fails with `srtp_required` and the call hangs up when you answer.
    `answerOnBridge` keeps the line ringing until OpenAI picks up.
    If Twilio answers with a non-2xx status, Dispatch shows `Twilio <status>:`
    and the first 300 characters of the body.
@@ -230,9 +232,10 @@ Twilio setup above. Other carriers are untested.
 
 Open questions to check on the first real call:
 
-- GPT-Live must accept the SRTP that Twilio's `<Dial><Sip>` offers. If it does
-  not, the fallback is GPT-Live outbound SIP through a Twilio Elastic SIP Trunk,
-  which drops the webhook but needs org-level outbound SIP.
+- GPT-Live requires SRTP (checked 2026-10-19: `srtp_required` without
+  `;secure=true`). Twilio offers one suite, `AES_CM_128_HMAC_SHA1_80`. If
+  GPT-Live rejects it, the fallback is GPT-Live outbound SIP through a Twilio
+  Elastic SIP Trunk, which drops the webhook but needs org-level outbound SIP.
 - The `hangup` endpoint behaviour, and whether closing the sideband alone also
   ends the call.
 - Some reports show an intermittent `404 session_id_not_found` on accept. The
