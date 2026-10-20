@@ -32,7 +32,7 @@
   longer blocked.
 - Fixes: the footer no longer crashes on usage cached before reset credits
   existed. The applier CLI has no top-level `await`, so BB can bundle it.
-- Requires BB 0.46.1 and plugin SDK 0.6.54. Development uses vitest 4 and
+- Requires BB 0.46.1 and plugin SDK 0.6.49, the SDK stable BB ships. Development uses vitest 4 and
   TypeScript 7.
 - Removed the unused `@radix-ui/react-dialog` dependency, an unused badge
   component, and a dead constant.
