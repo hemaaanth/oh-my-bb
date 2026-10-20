@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - Call memory. A few seconds after a call ends, the user's reasoning model
   writes a title and summary with the user's OpenAI key. Migration 006 adds
