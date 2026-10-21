@@ -72,3 +72,8 @@ it("tells the user why it cannot start, without echoing the gateway URL", () => 
   expect(malformed.status).toBe(1);
   expect(malformed.stderr).toMatch(/^fx-acp: .+\n$/);
 });
+
+it("refuses native credentials for BB-managed FX when gateway URLs are missing", async () => {
+  await expect(gatewayEnvironment({ BB_THREAD_ID: "thread-managed" })).rejects.toThrow(/required/);
+  await expect(gatewayEnvironment({ MODEL_GATEWAY_REQUIRED: "1" })).rejects.toThrow(/required/);
+});

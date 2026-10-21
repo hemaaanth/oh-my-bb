@@ -14,7 +14,7 @@ const FAKE = new URL("./fake-fx.mjs", import.meta.url).pathname;
 function start(env = {}) {
   const log = join(mkdtempSync(join(tmpdir(), "fx-acp-")), "fx.log");
   const child = spawn(process.execPath, [BIN, "--model", "gpt-6-astra"], {
-    env: { ...process.env, FX_BIN: FAKE, FAKE_FX_LOG: log, ...env },
+    env: { ...process.env, BB_THREAD_ID: "", MODEL_GATEWAY_REQUIRED: "", FX_BIN: FAKE, FAKE_FX_LOG: log, ...env },
     stdio: ["pipe", "pipe", "pipe"],
   });
   /** @type {any[]} */

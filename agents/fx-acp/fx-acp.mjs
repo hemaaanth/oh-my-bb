@@ -158,7 +158,11 @@ export function createRelay(io) {
 export async function gatewayEnvironment(env) {
   const responses = env.FX_E2E_OPENAI_CODEX_RESPONSES_URL;
   const models = env.FX_E2E_OPENAI_CODEX_MODELS_URL;
-  if (!responses && !models) return { env, close: () => {} };
+  if (!responses && !models) {
+    if (env.MODEL_GATEWAY_REQUIRED === "1" || env.BB_THREAD_ID)
+      throw new Error("Model Gateway is required for BB-managed FX. Check bb gateway status.");
+    return { env, close: () => {} };
+  }
   if (!responses || !models) throw new Error("Both FX gateway URLs are required.");
   for (const value of [responses, models]) {
     const url = new URL(value);

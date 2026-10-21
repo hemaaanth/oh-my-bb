@@ -1,6 +1,6 @@
 {
   "name": "fx-acp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Run FX as a BB ACP agent pinned to FX's Codex subscription provider.",
   "license": "MIT",
   "author": "Hemanth Soni",
