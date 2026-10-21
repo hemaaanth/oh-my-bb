@@ -180,8 +180,10 @@ omp, FX, nanocodex, Prime Agent, and Pi speak OpenAI Responses and default to
   changing it. Unknown custom targets use conservative 200,000/64,000 defaults.
 - Bodies from these harnesses are fitted to the ChatGPT Codex backend on a
   ChatGPT entry: the model is mapped, and `max_output_tokens`, `temperature`,
-  `top_p`, `stop` and `user` are dropped. Everything else, including
-  nanocodex's `additional_tools` input item, passes through.
+  `top_p`, `stop` and `user` are dropped. Function tools that omit `strict` get
+  `strict: false` so optional parameters stay optional. Explicit strict settings
+  are preserved. Everything else, including nanocodex's `additional_tools` input
+  item, passes through. API-key entries keep the client's request unchanged.
 - nanocodex `kimi-k3`, `@cf/zai-org/glm-5.3` and `mimo-v2.6-pro` skip ChatGPT
   entries. With no key entry to serve them they get a 400 naming
   `bb gateway key add`.

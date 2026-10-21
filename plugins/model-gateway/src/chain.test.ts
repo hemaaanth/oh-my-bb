@@ -224,6 +224,22 @@ describe("chain config", () => {
       ),
     ).toEqual({ model: "gpt-6-sol", input: [extra], store: false });
   });
+
+  it("keeps optional Pi tool arguments non-strict on ChatGPT without weakening explicit strict schemas", () => {
+    const parameters = {
+      type: "object",
+      properties: { path: { type: "string" }, offset: { type: "integer" } },
+      required: ["path"],
+    };
+    const optional = { type: "function", name: "read", parameters };
+    const strict = { type: "function", name: "strict_read", parameters, strict: true };
+    const loose = { type: "function", name: "loose_read", parameters, strict: false };
+    const search = { type: "web_search" };
+    expect(fitForChatGpt({ tools: [optional, strict, loose, search] }, "gpt-6.1-sol").tools).toEqual([
+      { ...optional, strict: false }, strict, loose, search,
+    ]);
+    expect(optional).not.toHaveProperty("strict");
+  });
 });
 
 describe("thread tokens", () => {
@@ -1333,7 +1349,7 @@ describe("chain failover in the hub", () => {
       model: "gpt-6.1-sol",
       instructions: "be brief",
       input: [{ role: "user", content: "hi" }],
-      tools: [tool],
+      tools: [{ ...tool, strict: false }],
       store: false,
       stream: true,
     });

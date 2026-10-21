@@ -387,9 +387,9 @@ const CHATGPT_REJECTED_FIELDS = [
 ];
 
 /**
- * A Responses body from omp, FX or nanocodex, fitted to the ChatGPT Codex
- * backend: the gateway model, and no sampling or output-limit fields. Every
- * other field, including nanocodex's `additional_tools` input item, is kept.
+ * A Responses body from omp, FX, nanocodex or Pi, fitted to the ChatGPT Codex
+ * backend: the gateway model, no sampling or output-limit fields, and explicit
+ * non-strict function tools unless the client requests strict mode.
  */
 export function fitForChatGpt(
   body: Record<string, unknown>,
@@ -397,6 +397,14 @@ export function fitForChatGpt(
 ): Record<string, unknown> {
   const fitted: Record<string, unknown> = { ...body, model };
   for (const field of CHATGPT_REJECTED_FIELDS) delete fitted[field];
+  if (Array.isArray(body.tools)) {
+    // ChatGPT defaults omitted strict to true; Pi's optional tool schemas are not strict.
+    fitted.tools = body.tools.map((tool) =>
+      isRecord(tool) && tool.type === "function" && tool.strict === undefined
+        ? { ...tool, strict: false }
+        : tool,
+    );
+  }
   return fitted;
 }
 

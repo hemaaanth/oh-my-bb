@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Keep Pi and other Responses clients' function tools non-strict on ChatGPT
+  when they omit `strict`. Optional tool schemas otherwise produce empty
+  `incomplete.max_output_tokens` replies with zero usage. Explicit strict
+  settings and API-key upstream requests are unchanged.
+
 ## 0.3.1 — 2026-10-21
 
 - Simplify the fallback pill to a vendor logo and model name on a subtle yellow tint.
