@@ -123,7 +123,7 @@ the gateway strips `gw-`. nanocodex's `kimi-k3`, `@cf/zai-org/glm-5.3` and
   the Pi thread.
 - Hempi and current `agent-<uuid>` provider declarations use Pi's chain and routing.
   The gateway discovers exact ids and rescans when provider registrations change.
-- Pi and OMP list the full current Codex catalog plus model-map additions. This
+- Pi and OMP list the current Claude and Codex catalog plus model-map additions. This
   includes `gpt-6.1-sol` with 500,000 context and 128,000 output tokens.
 - `bb gateway setup host [--print] [--check]` reconciles both OMP and Pi files.
   `--print` returns a nonsecret manifest; `--check` reports missing/stale files
@@ -131,13 +131,51 @@ the gateway strips `gw-`. nanocodex's `kimi-k3`, `@cf/zai-org/glm-5.3` and
   URL and the standalone `scripts/apply-setup-files.mjs` applier.
 - `bb gateway routing <acp-omp|acp-fx|acp-nanocodex|acp-prime-agent|pi> --off` stops routing one.
 
-## Legal rule
+## Claude OAuth opt-in
 
-Claude Max OAuth accounts (`claude-oauth`) serve only Claude Code. The hub
-enforces this per request. `bb gateway chain set` rejects a chain that puts a
-Claude OAuth account behind any other harness. Do not try to work around it.
-For Codex, omp, FX, nanocodex, Prime Agent and Pi, the only cross-vendor fallback is a paid
-API key.
+Claude subscription OAuth is restricted to Claude Code by default. An operator
+can accept the third-party harness risk with
+`bb gateway config set allowClaudeOAuthAcrossHarnesses true`. Both chain validation
+and request selection enforce this setting. Then add `claude-oauth:*` to the
+needed harness chains. Turning it off requires removing those chain entries first.
+
+OMP and Pi start with the requested model's subscription family when the chain
+starts with subscriptions. They preserve the remaining fallback order. Explicit
+API-key primary entries keep their configured priority. The observed route records
+both the requested and served model so a native Claude role is not shown as fallback.
+
+## API fallback approval
+
+Every API inference attempt, including Jev automatic model choice, requires an explicit grant for the authenticated
+thread and one named API account. No grant is inherited by another thread.
+The composer offers API fallback only after the chain reaches such an account.
+Approval lasts 15 minutes and at most 10 attempts, with one API request in flight
+per thread. Restarting the plugin clears approval. Approve outside inference,
+then retry if the thread stopped; subscription fallbacks can continue normally.
+
+Use `bb gateway credit status --thread <id>`,
+`bb gateway credit approve --thread <id> --account <id>`, or
+`bb gateway credit revoke --thread <id>` from the CLI.
+
+This is an account permission, not a dollar cap. Anthropic subscriber API credits
+belong to a linked Console organization. API billing may continue into purchased
+funds when included credits run out. No verified balance or included-only spending
+boundary is available here, so the UI does not invent one. Native Claude Code
+usage credits are separate from these API credits.
+
+## Managed execution
+
+Use `bb gateway setup host` for a complete host migration. It reconciles the OMP
+provider, extension, roles and enabled providers, plus Pi extensions, defaults and
+model scopes. It preserves model families and unrelated settings, backs up changed
+files, and rejects unsupported managed overrides. Shared `agents`, Hempi and legacy
+agent provider IDs all receive Pi gateway routing.
+
+When routing is enabled, the gateway transport remains configured even with no usable upstream. The hub rejects the request. BB logs and drops failed env contributions, so throwing in an env resolver cannot enforce routing. Managed harnesses also stop if required gateway credentials are missing. Pi and OMP
+managed sessions remove native model registrations before model selection; helper
+roles resolve only gateway models. Saved native credentials are not deleted.
+Sandboxes use the same setup manifest during create, heal and resume. Custom
+`PI_CODING_AGENT_DIR` directories are included when they are home-relative.
 
 ## Visibility
 
@@ -146,6 +184,8 @@ API key.
 - No thread header item of its own. The Sandboxes plugin's machine icon shows
   the route (model, upstream, chain, fallback cause) in its popover and marks
   a fallback with an amber dot. It reads RPC `thread.route`.
+- The composer shows a small `Fallback · <model>` pill only while a fallback
+  route is active. The model selector keeps the user's configured choice.
 - Settings > Model Gateway shows a status line, the Upstreams list, one Routes
   row per harness (Edit opens the chain and the Auto (Jev) switch), and
   Advanced (model map, Jev key and model, base URLs, limits). It edits the

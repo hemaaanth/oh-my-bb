@@ -128,7 +128,7 @@ describe("QuotaStore", () => {
       );
     database.exec(familyMigration);
     database.exec(windowMigration);
-    database.exec(QUOTA_MIGRATIONS.at(-1) ?? "");
+    database.exec(QUOTA_MIGRATIONS.find((sql) => sql.includes("ADD COLUMN reset_credits_json")) ?? "");
     const quotas = new QuotaStore(database);
 
     const migrated = quotas.get("11111111-1111-4111-8111-111111111111");

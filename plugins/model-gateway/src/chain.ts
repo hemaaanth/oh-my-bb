@@ -7,7 +7,7 @@ import type { Account, AccountQuota, ModelFamily } from "./contracts.js";
 import type { ProviderAdapter } from "./upstreams/provider-adapter.js";
 import { isQuotaExhausted } from "./upstreams/quota.js";
 import { ANTHROPIC_REPLAY, CHATGPT_REPLAY } from "./translate/reasoning-envelope.js";
-import { CODEX_MODELS } from "./model-catalog.js";
+import { CODEX_MODELS, GATEWAY_MODELS } from "./model-catalog.js";
 import {
   HARNESSES,
   KEY_LABEL,
@@ -59,8 +59,18 @@ export const chainsSchema = z
   .strict();
 export type Chains = z.infer<typeof chainsSchema>;
 
+const CLAUDE_FALLBACK_MAP = {
+  "gpt-6-astra": "claude-fable-5-1",
+  "gpt-6-luna": "claude-sonnet-5-5",
+  "gpt-5.6-luna": "claude-sonnet-5-5",
+  "gpt-5.6-terra": "claude-sonnet-5-5",
+  "gpt-*": "claude-opus-5-5",
+};
+
 // Decision 8.3, superseded 2026-09-28 with the current fallback tiers.
 export const DEFAULT_MODEL_MAP: Record<string, Record<string, string>> = {
+  "claude-oauth": CLAUDE_FALLBACK_MAP,
+  "claude-key": CLAUDE_FALLBACK_MAP,
   "chatgpt-oauth": {
     "claude-fable-*": "gpt-6-astra",
     "claude-opus-*": "gpt-6-sol",
@@ -127,17 +137,33 @@ export function expandChain(
   });
 }
 
+/** Mixed-model harnesses start with the requested subscription family. Keys keep their configured order. */
+export function modelChain(harness: Harness, entries: readonly string[], accounts: readonly Account[], model: string | null): string[] {
+  const chain = [...entries];
+  if (harness !== "acp-omp" && harness !== "pi") return chain;
+  const bare = model?.replace(/^gw-/u, "");
+  const kind = bare?.startsWith("claude-") ? "claude-oauth" : bare?.startsWith("gpt-") ? "chatgpt-oauth" : null;
+  if (kind === null) return chain;
+  const kinds = expandChain(chain, accounts).map((group) => group[0] === undefined ? null : upstreamKind(group[0]));
+  if (kinds[0] !== "claude-oauth" && kinds[0] !== "chatgpt-oauth") return chain;
+  const index = kinds.indexOf(kind);
+  if (index > 0) chain.unshift(...chain.splice(index, 1));
+  return chain;
+}
+
 /**
- * Legal guard (plan 4.4). Claude Max OAuth serves only a verified Claude Code
- * token on a Messages path. Every other upstream kind serves any harness.
+ * Claude OAuth requires a Claude Code identity unless the operator opts in
+ * to other authenticated harnesses. Every other kind serves any harness.
  */
 export function isLegalUpstream(
   kind: UpstreamKind,
   harness: Harness | null,
   path: string,
+  allowAcrossHarnesses = false,
 ): boolean {
   if (kind !== "claude-oauth") return true;
-  return harness === "claude-code" && /^\/v1\/messages(\/|$)/u.test(path);
+  return (harness === "claude-code" && /^\/v1\/messages(\/|$)/u.test(path)) ||
+    (allowAcrossHarnesses && harness !== null && /^\/v1\/(messages|responses)$/u.test(path));
 }
 
 /** Why a chain entry may not sit in this harness's chain; null when it may. */
@@ -145,13 +171,14 @@ export function chainEntryBlock(
   entry: string,
   harness: Harness,
   accounts: readonly Account[],
+  allowAcrossHarnesses = false,
 ): string | null {
   const account = accounts.find(({ id }) => id === entry);
   if (!KIND_ENTRY.test(entry) && account === undefined)
     return `Chain entry ${entry} is not a known account id.`;
   const kind =
     account === undefined ? KIND_ENTRY.exec(entry)?.[1] : upstreamKind(account);
-  return kind === "claude-oauth" && harness !== "claude-code"
+  return kind === "claude-oauth" && harness !== "claude-code" && !allowAcrossHarnesses
     ? "Claude OAuth accounts serve only the claude-code harness"
     : null;
 }
@@ -160,10 +187,11 @@ export function chainEntryBlock(
 export function assertLegalChains(
   chains: Chains,
   accounts: readonly Account[],
+  allowAcrossHarnesses = false,
 ): void {
   for (const harness of HARNESSES) {
     for (const entry of chains[harness]) {
-      const block = chainEntryBlock(entry, harness, accounts);
+      const block = chainEntryBlock(entry, harness, accounts, allowAcrossHarnesses);
       if (block === null) continue;
       throw new Error(
         block.endsWith(".")
@@ -182,6 +210,7 @@ export function assertLegalChains(
 export function chainEntryOptions(
   chains: Chains,
   accounts: readonly Account[],
+  allowAcrossHarnesses = false,
 ): Record<Harness, Array<{ entry: string; label: string; blocked: string | null }>> {
   return Object.fromEntries(
     HARNESSES.map((harness) => [
@@ -190,7 +219,7 @@ export function chainEntryOptions(
         (entry) => ({
           entry,
           label: entryTitle(entry, accounts),
-          blocked: chainEntryBlock(entry, harness, accounts),
+          blocked: chainEntryBlock(entry, harness, accounts, allowAcrossHarnesses),
         }),
       ),
     ]),
@@ -228,7 +257,7 @@ export const OMP_MODEL_PREFIX = "gw-";
 
 /** Model-map additions extend the current Codex catalog, rather than hiding it. */
 export function gatewayModels(modelMap: ModelMap): string[] {
-  return [...new Set([...Object.keys(CODEX_MODELS), ...Object.values(modelMap["chatgpt-oauth"] ?? {})])];
+  return [...new Set([...Object.keys(GATEWAY_MODELS), ...Object.values(modelMap["chatgpt-oauth"] ?? {})])];
 }
 
 /** The `gw-` ids OMP discovers cover the same models as Pi. */
@@ -570,7 +599,7 @@ export function contextWindow(
     headers.get("anthropic-beta")?.includes("context-1m") === true
   )
     return 1_000_000;
-  if (Object.hasOwn(CODEX_MODELS, model)) return CODEX_MODELS[model]!.contextWindow;
+  if (Object.hasOwn(GATEWAY_MODELS, model)) return GATEWAY_MODELS[model]!.contextWindow;
   return CONTEXT_WINDOWS.find(([pattern]) => pattern.test(model))?.[1] ?? null;
 }
 

@@ -793,6 +793,7 @@ const threadRouteRowSchema = z.object({
   auto_model: z.string().nullable(),
   auto_reason: z.string().nullable(),
   fallback_cause_json: z.string().nullable(),
+  requested_model: z.string().nullable(),
 });
 
 export interface ThreadRoute {
@@ -803,6 +804,7 @@ export interface ThreadRoute {
   stickyUntil: number | null;
   reason: string;
   usedAt: number;
+  requestedModel?: string | null;
   /** Upstream model id last served for the thread, when known. */
   model: string | null;
   /** P5: the client model Jev picked for this user turn; null fails open. */
@@ -823,6 +825,7 @@ function threadRoute(row: z.infer<typeof threadRouteRowSchema>): ThreadRoute {
     reason: row.reason,
     usedAt: row.used_at,
     model: row.model,
+    requestedModel: row.requested_model,
     autoModel: row.auto_model,
     autoReason: row.auto_reason,
     fallbackCause:
@@ -862,14 +865,14 @@ export class ThreadRouteStore {
   put(route: ThreadRoute): void {
     this.db
       .prepare(
-        `INSERT INTO thread_route (thread_id, harness, upstream_id, bound_at, sticky_until, reason, used_at, model, auto_model, auto_reason, fallback_cause_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO thread_route (thread_id, harness, upstream_id, bound_at, sticky_until, reason, used_at, model, auto_model, auto_reason, fallback_cause_json, requested_model)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(thread_id) DO UPDATE SET harness = excluded.harness,
          upstream_id = excluded.upstream_id, bound_at = excluded.bound_at,
          sticky_until = excluded.sticky_until, reason = excluded.reason,
          used_at = excluded.used_at, model = excluded.model,
          auto_model = excluded.auto_model, auto_reason = excluded.auto_reason,
-         fallback_cause_json = excluded.fallback_cause_json`,
+         fallback_cause_json = excluded.fallback_cause_json, requested_model = excluded.requested_model`,
       )
       .run(
         route.threadId,
@@ -883,6 +886,7 @@ export class ThreadRouteStore {
         route.autoModel,
         route.autoReason,
         route.fallbackCause === null ? null : JSON.stringify(route.fallbackCause),
+        route.requestedModel ?? null,
       );
   }
 
@@ -981,4 +985,5 @@ export const QUOTA_MIGRATIONS = [
 )`,
   `ALTER TABLE thread_route ADD COLUMN fallback_cause_json TEXT`,
   `ALTER TABLE account_quota ADD COLUMN reset_credits_json TEXT NOT NULL DEFAULT 'null'`,
+  `ALTER TABLE thread_route ADD COLUMN requested_model TEXT`,
 ];

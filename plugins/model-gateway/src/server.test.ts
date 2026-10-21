@@ -51,6 +51,15 @@ interface Fixture {
   account: AccountSummary;
 }
 
+// These tests isolate transport and account pooling. Real approval enforcement is
+// covered by chain.test.ts and credit-grants.test.ts, including concurrent use.
+vi.mock("./credit-grants.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./credit-grants.js")>();
+  return { ...actual, CreditGrants: class extends actual.CreditGrants {
+    override acquire() { return () => {}; }
+  } };
+});
+
 const cleanups: Array<() => Promise<void>> = [];
 
 function sdkStubs() {
@@ -360,6 +369,7 @@ describe("Account Pool config schema", () => {
       anthropicUpstreamBaseUrl: "https://api.anthropic.com",
       codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
       switchThreshold: 0.98,
+      allowClaudeOAuthAcrossHarnesses: false,
       chains: DEFAULT_CHAINS,
       modelMap: DEFAULT_MODEL_MAP,
       auto: DEFAULT_AUTO,
@@ -427,6 +437,7 @@ describe("Account Pool plugin", () => {
       anthropicUpstreamBaseUrl: "http://127.0.0.1:9000",
       codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
       switchThreshold: 0.75,
+      allowClaudeOAuthAcrossHarnesses: false,
       chains: DEFAULT_CHAINS,
       modelMap: DEFAULT_MODEL_MAP,
       auto: DEFAULT_AUTO,
@@ -1224,7 +1235,7 @@ describe("Account Pool plugin", () => {
         projectId: "project-one",
         hostId: "host-one",
       }),
-    ).toEqual([]);
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ name: "ANTHROPIC_BASE_URL" }), expect.objectContaining({ name: "ANTHROPIC_AUTH_TOKEN" })]));
     await expect(
       host.harness.behavior.resolveProviderEnvHealth("claude-code", {
         hostId: "host-one",
@@ -1731,7 +1742,7 @@ describe("Account Pool plugin", () => {
     expect(await resolveToken(fixture.host)).toBe(fixture.key);
   });
 
-  it("withholds env and proxied health when an enabled account secret is missing", async () => {
+  it("keeps gateway transport but withholds healthy status when an account secret is missing", async () => {
     const upstream = await startUpstream(async (request, response) => {
       await readRequestBody(request);
       response.writeHead(200, { "content-type": "application/json" });
@@ -1754,7 +1765,7 @@ describe("Account Pool plugin", () => {
         projectId: "project-one",
         hostId: "host-one",
       }),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ name: "ANTHROPIC_BASE_URL" }), expect.objectContaining({ name: "ANTHROPIC_AUTH_TOKEN" })]));
     await expect(
       fixture.host.harness.behavior.resolveProviderEnvHealth("claude-code", {
         hostId: "host-one",

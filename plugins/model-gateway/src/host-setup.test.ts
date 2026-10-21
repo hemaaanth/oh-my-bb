@@ -14,7 +14,7 @@ afterEach(async () => { await Promise.all(homes.splice(0).map((dir) => fs.rm(dir
 describe("host setup files", () => {
   it("uses the host URL, covers configured Pi dirs, and revises when URL or model map changes", () => {
     const generated = setup(undefined, [".pi/agent", ".profiles/sol"]);
-    expect(generated.files.map((file) => file.path)).toEqual([".omp/agent/models.yml", ".pi/agent/extensions/model-gateway.js", ".profiles/sol/extensions/model-gateway.js"]);
+    expect(generated.files.map((file) => file.path)).toEqual([".omp/agent/models.yml", ".pi/agent/extensions/model-gateway.js", ".profiles/sol/extensions/model-gateway.js", ".omp/agent/extensions/model-gateway.js", ".omp/agent/config.yml", ".pi/agent/settings.json", ".profiles/sol/settings.json"]);
     expect(generated.files[0]!.content).toContain("https://sandbox.example/api/v1/plugins/model-gateway/http/v1");
     expect(generated.files.every((file) => file.sha256 === sha256(file.content))).toBe(true);
     expect(setup().revision).not.toBe(setup("https://other.example").revision);
@@ -23,10 +23,10 @@ describe("host setup files", () => {
 
   it("checks a fresh HOME without writing, applies once, and is idempotent", async () => {
     const dir = await home(); const { files } = setup();
-    expect((await checkSetupFiles(dir, files)).files.map((file) => file.status)).toEqual(["missing", "missing"]);
+    expect((await checkSetupFiles(dir, files)).files.map((file) => file.status)).toEqual(["missing", "missing", "missing", "missing", "missing"]);
     expect(await fs.readdir(dir)).toEqual([]);
     expect((await applySetupFiles(dir, files)).files.every((file) => file.changed)).toBe(true);
-    expect((await applySetupFiles(dir, files)).files.map((file) => [file.status, file.changed, file.backup])).toEqual([["current", false, null], ["current", false, null]]);
+    expect((await applySetupFiles(dir, files)).files.every((file) => file.status === "current" && !file.changed && file.backup === null)).toBe(true);
     expect(await fs.readFile(path.join(dir, files[1]!.path), "utf8")).toBe(files[1]!.content);
   });
 
@@ -40,6 +40,16 @@ describe("host setup files", () => {
     const before = await fs.readFile(file, "utf8");
     await applySetupFiles(dir, setup("https://changed.example").files);
     expect(await fs.readFile(file, "utf8")).toBe(before.replace("https://sandbox.example", "https://changed.example"));
+  });
+
+  it("migrates OMP helper roles without native providers and rejects unsupported overrides", async () => {
+    const dir = await home(); const file = path.join(dir, ".omp/agent/config.yml");
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify({ theme: "dark", modelRoles: { smol: "openai-codex/gpt-6-luna:low", advisor: "anthropic/claude-opus-5:high" }, task: { agentModelOverrides: { reviewer: "@advisor" } } }));
+    await applySetupFiles(dir, setup().files);
+    expect(JSON.parse(await fs.readFile(file, "utf8"))).toMatchObject({ theme: "dark", enabledProviders: ["model-gateway"], modelRoles: { smol: "model-gateway/gw-gpt-6-luna:low", advisor: "model-gateway/gw-claude-opus-5:high" }, task: { agentModelOverrides: { reviewer: "@advisor" } } });
+    await fs.writeFile(file, JSON.stringify({ modelRoles: { tiny: "paid-provider/model" } }));
+    await expect(applySetupFiles(dir, setup().files)).rejects.toThrow(/Unsupported model override/);
   });
 
   it("refuses unmanaged conflicts before writing any file", async () => {

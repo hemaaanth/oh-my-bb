@@ -68,13 +68,14 @@ it("loads and serves HTTP while provider discovery is blocked", async () => {
 it("shares Pi routing across late providers, isolates threads, and makes removed ids inert", async () => {
   const gw = await gateway();
   const id = "agent-11111111-1111-4111-8111-111111111111";
-  await vi.waitFor(async () => expect(await gw.env("hempi")).toHaveLength(2));
+  await vi.waitFor(async () => expect(await gw.env("hempi")).toHaveLength(3));
   const initial = await gw.env("hempi");
-  expect(initial.map(({ name }) => name)).toEqual(["MODEL_GATEWAY_BASE_URL", "MODEL_GATEWAY_TOKEN"]);
-  expect(initial[0]!.value).toEqual({ serverPath: "/api/v1/plugins/model-gateway/http/v1" });
-  expect((await gw.env("hempi", "thread-two"))[1]!.value).not.toBe(initial[1]!.value);
-  gw.rescan([{ id, info: { family: "agents" } }]);
-  await vi.waitFor(async () => expect((await gw.env(id)).map(({ name }) => name)).toEqual(["MODEL_GATEWAY_BASE_URL", "MODEL_GATEWAY_TOKEN"]));
+  expect(initial.map(({ name }) => name)).toEqual(["MODEL_GATEWAY_REQUIRED", "MODEL_GATEWAY_BASE_URL", "MODEL_GATEWAY_TOKEN"]);
+  expect(initial[1]!.value).toEqual({ serverPath: "/api/v1/plugins/model-gateway/http/v1" });
+  expect((await gw.env("hempi", "thread-two"))[2]!.value).not.toBe(initial[2]!.value);
+  gw.rescan([{ id, info: { family: "agents" } }, { id: "agents", info: { family: "agents" } }]);
+  await vi.waitFor(async () => expect(await gw.env("agents")).toHaveLength(3));
+  await vi.waitFor(async () => expect((await gw.env(id)).map(({ name }) => name)).toEqual(["MODEL_GATEWAY_REQUIRED", "MODEL_GATEWAY_BASE_URL", "MODEL_GATEWAY_TOKEN"]));
   expect(await gw.env("hempi")).toEqual([]);
   await gw.host.harness.behavior.callRpc("routing.set", { provider: "pi", enabled: false });
   expect(await gw.env(id)).toEqual([]);
@@ -88,17 +89,32 @@ it("shares Pi routing across late providers, isolates threads, and makes removed
 it("gives Prime its own routing switch and rejects Claude OAuth chains", async () => {
   const gw = await gateway();
   const entries = await gw.env("acp-prime-agent");
-  expect(entries[0]!.value).toEqual({ serverPath: "/api/v1/plugins/model-gateway/http/v1" });
-  expect(entries[1]!.name).toBe("MODEL_GATEWAY_TOKEN");
+  expect(entries[1]!.value).toEqual({ serverPath: "/api/v1/plugins/model-gateway/http/v1" });
+  expect(entries[2]!.name).toBe("MODEL_GATEWAY_TOKEN");
   await expect(gw.host.harness.behavior.callRpc("chain.set", { harness: "acp-prime-agent", entries: ["claude-oauth:*"] })).rejects.toThrow(/claude-code/);
   await gw.host.harness.behavior.callRpc("routing.set", { provider: "acp-prime-agent", enabled: false });
   expect(await gw.env("acp-prime-agent")).toEqual([]);
-  expect((await gw.env("pi")).map(({ name }) => name)).toEqual(["MODEL_GATEWAY_BASE_URL", "MODEL_GATEWAY_TOKEN"]);
+  expect((await gw.env("pi")).map(({ name }) => name)).toEqual(["MODEL_GATEWAY_REQUIRED", "MODEL_GATEWAY_BASE_URL", "MODEL_GATEWAY_TOKEN"]);
+});
+
+it("keeps every managed transport on the gateway when all accounts are disabled", async () => {
+  const gw = await gateway();
+  await vi.waitFor(async () => expect(await gw.env("hempi")).toHaveLength(3));
+  const accounts = await gw.host.harness.behavior.callRpc("account.list", null) as Array<{ id: string }>;
+  for (const account of accounts) await gw.host.harness.behavior.callRpc("account.disable", { id: account.id });
+  for (const provider of ["claude-code", "codex", "acp-omp", "acp-fx", "acp-nanocodex", "acp-prime-agent", "pi", "hempi"])
+    expect((await gw.env(provider)).length, provider).toBeGreaterThan(0);
+  const entries = await gw.env("acp-omp");
+  const token = entries.find(({ name }) => name === "MODEL_GATEWAY_TOKEN")!.value as string;
+  const response = await gw.host.harness.behavior.fetchHttp("POST", "/v1/responses", {
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ model: "gpt-6-sol", input: "hi" }),
+  });
+  expect(response.status).toBe(503);
 });
 
 it("returns host setup files over the schema RPC with the caller's server URL", async () => {
   const gw = await gateway();
   const result = await gw.host.harness.behavior.callRpc("host.setupFiles", { hostId: "remote-host", serverBaseUrl: "https://remote.example", piAgentDirs: [".pi/agent", ".profiles/sol"] }) as { files: Array<{ content: string; path: string }> };
   expect(result.files[0]!.content).toContain("https://remote.example/api/v1/plugins/model-gateway/http/v1");
-  expect(result.files.map(({ path }) => path)).toEqual([".omp/agent/models.yml", ".pi/agent/extensions/model-gateway.js", ".profiles/sol/extensions/model-gateway.js"]);
+  expect(result.files.map(({ path }) => path)).toEqual([".omp/agent/models.yml", ".pi/agent/extensions/model-gateway.js", ".profiles/sol/extensions/model-gateway.js", ".omp/agent/extensions/model-gateway.js", ".omp/agent/config.yml", ".pi/agent/settings.json", ".profiles/sol/settings.json"]);
 });

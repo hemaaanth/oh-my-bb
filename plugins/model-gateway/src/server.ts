@@ -99,7 +99,13 @@ export function createAccountPoolPlugin(
           ...currentSettings,
           ...update,
         });
-        assertLegalChains(next.chains, await accounts.list());
+        if (update.allowClaudeOAuthAcrossHarnesses === true && !currentSettings.allowClaudeOAuthAcrossHarnesses) {
+          const defaults = accountPoolConfigSchema.parse({}).modelMap;
+          next.modelMap = { ...next.modelMap };
+          for (const kind of ["claude-oauth", "claude-key"])
+            next.modelMap[kind] ??= defaults[kind]!;
+        }
+        assertLegalChains(next.chains, await accounts.list(), next.allowClaudeOAuthAcrossHarnesses);
         await bb.storage.kv.set("config", next);
         currentSettings = next;
         bb.realtime.publish(MODEL_GATEWAY_CONFIG_CHANGED, {});
@@ -192,14 +198,14 @@ export function createAccountPoolPlugin(
       authBaseUrl: options.codexAuthBaseUrl,
       addAccount: (authenticated) => operations.addCodexOAuth(authenticated),
     });
-    // Responses harnesses are routable when their chain names an account they
-    // may use: a ChatGPT account or an API key (P4).
-    const chainUsable = async (harness: Exclude<Harness, "claude-code">) =>
-      expandChain(currentSettings.chains[harness], await accounts.list())
-        .flat()
-        .some((account) =>
-          isLegalUpstream(upstreamKind(account), harness, "/v1/responses"),
-        );
+    // An enabled account must be legal for this harness and its request protocol.
+    const chainUsable = async (harness: Harness) => {
+      for (const account of expandChain(currentSettings.chains[harness], await accounts.list()).flat()) {
+        if (!isLegalUpstream(upstreamKind(account), harness, harness === "claude-code" ? "/v1/messages" : "/v1/responses", currentSettings.allowClaudeOAuthAcrossHarnesses)) continue;
+        try { await accounts.readSecret(account.id); return true; } catch { /* Health excludes missing credentials. */ }
+      }
+      return false;
+    };
     if ((await accounts.list()).every((account) => !account.enabled)) {
       bb.status.needsConfiguration(NEEDS_ACCOUNT_MESSAGE);
     }
@@ -225,12 +231,12 @@ export function createAccountPoolPlugin(
             .constructor as typeof import("better-sqlite3"),
         }),
     );
+    // BB drops failed env contributions. Keep transport configured even when no upstream can serve.
     bb.providers.experimental_contributeEnv("claude-code", async (context) => {
       if (await isAccountPoolRouting(bb)) return [];
       if (
         !(await operations.isRoutingEnabled("claude")) ||
-        (await routing.isBypassed(context.threadId)) ||
-        !(await operations.hasUsableEnabledAccount("claude"))
+        (await routing.isBypassed(context.threadId))
       ) {
         return [];
       }
@@ -280,7 +286,7 @@ export function createAccountPoolPlugin(
         };
       }
       return (await operations.isRoutingEnabled("claude")) &&
-        (await operations.hasUsableEnabledAccount("claude"))
+        (await chainUsable("claude-code"))
         ? {
             label: (await hub.onFallback("claude-code"))
               ? "Gateway: on fallback"
@@ -294,8 +300,7 @@ export function createAccountPoolPlugin(
       if (await isAccountPoolRouting(bb)) return [];
       if (
         !(await operations.isRoutingEnabled("codex")) ||
-        (await routing.isBypassed(context.threadId)) ||
-        !(await chainUsable("codex"))
+        (await routing.isBypassed(context.threadId))
       ) {
         return [];
       }
@@ -346,6 +351,7 @@ export function createAccountPoolPlugin(
     > = {
       "acp-prime-agent": (token) => acpEnv.pi(token),
       "acp-omp": (token) => [
+        { name: "MODEL_GATEWAY_BASE_URL", value: { serverPath: `${http}/v1` }, reason: "Gateway endpoint for OMP's managed provider" },
         {
           name: "MODEL_GATEWAY_TOKEN",
           value: token,
@@ -398,15 +404,14 @@ export function createAccountPoolPlugin(
         (await operations.isRoutingEnabled(harness)) &&
         (await chainUsable(harness));
       bb.providers.experimental_contributeEnv(harness, async (context) => {
-        if (!(await routed()) || (await routing.isBypassed(context.threadId)))
-          return [];
-        return entries(
+        if (!(await operations.isRoutingEnabled(harness)) || await routing.isBypassed(context.threadId)) return [];
+        return [{ name: "MODEL_GATEWAY_REQUIRED", value: "1", reason: "BB-managed inference must use Model Gateway" }, ...entries(
           await hubTokens.forThread({
             hostId: context.hostId,
             threadId: context.threadId,
             harness,
           }),
-        );
+        )];
       });
       bb.providers.experimental_contributeEnvHealth(harness, async () =>
         (await routed())
@@ -414,7 +419,7 @@ export function createAccountPoolPlugin(
               label: (await hub.onFallback(harness))
                 ? "Gateway: on fallback"
                 : "Gateway",
-              statusMessage: "Model calls go through the Model Gateway hub.",
+              statusMessage: "Model Gateway is configured. The last observed request shows the active route.",
             }
           : null,
       );
@@ -431,16 +436,15 @@ export function createAccountPoolPlugin(
         if (disposed) return;
         activePi = new Set(catalog
           .filter((provider) => provider.info?.family === "agents" &&
-            (provider.id === "hempi" || /^agent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(provider.id)))
+            (provider.id === "hempi" || provider.id === "agents" || /^agent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(provider.id)))
           .map((provider) => provider.id));
         for (const id of activePi) {
           if (registeredPi.has(id)) continue;
           bb.providers.experimental_contributeEnv(id, async (context) => {
-            if (!activePi.has(id) || !(await operations.isRoutingEnabled("pi")) ||
-                !(await chainUsable("pi")) || await routing.isBypassed(context.threadId)) return [];
-            return acpEnv.pi(await hubTokens.forThread({
+            if (!activePi.has(id) || !(await operations.isRoutingEnabled("pi")) || await routing.isBypassed(context.threadId)) return [];
+            return [{ name: "MODEL_GATEWAY_REQUIRED", value: "1", reason: "BB-managed inference must use Model Gateway" }, ...acpEnv.pi(await hubTokens.forThread({
               hostId: context.hostId, threadId: context.threadId, harness: "pi",
-            }));
+            }))];
           });
           registeredPi.add(id);
         }

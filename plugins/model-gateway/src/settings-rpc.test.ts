@@ -129,7 +129,7 @@ it("edits the model map and Jev auto through the CLI's rules", async () => {
     pattern: "claude-*",
     model: null,
   })) as { modelMap: Record<string, unknown>; auto: { harnesses: string[] } };
-  expect(config.modelMap["claude-key"]).toBeUndefined();
+  expect(config.modelMap["claude-key"]).not.toHaveProperty("claude-*");
   await expect(call("auto.set", { harness: "pi", key: "missing" })).rejects.toThrow(
     "No responses-compatible-key is labelled missing.",
   );

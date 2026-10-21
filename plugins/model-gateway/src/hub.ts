@@ -1,4 +1,8 @@
 // Ported from the core Account Pooler (account-pool), MIT, Michael Yong 2026.
+import { promisify } from "node:util";
+import { gatewayModelDetails } from "./model-catalog.js";
+import { CreditGrants, CreditApprovalRequired } from "./credit-grants.js";
+import { zstdDecompress } from "node:zlib";
 import type {
   Account,
   AccountQuota,
@@ -7,6 +11,7 @@ import type {
   PoolProvider,
   PoolStatus,
 } from "./contracts.js";
+
 import { createClaudeAdapter } from "./upstreams/claude-adapter.js";
 import {
   createCodexAdapter,
@@ -52,6 +57,7 @@ import {
   contextWindow,
   exhaustedUntil,
   expandChain,
+  modelChain,
   fitForChatGpt,
   gatewayModel,
   harnessSchema,
@@ -91,6 +97,7 @@ import {
   wrapKeySse,
 } from "./translate/index.js";
 
+const decompressZstd = promisify(zstdDecompress);
 const ROUTE = "/api/v1/plugins/model-gateway/http";
 /** FX cannot send a header, and core routes plugin paths exactly, so its hub token rides in the query. */
 export const TOKEN_QUERY = "gateway_token";
@@ -132,6 +139,7 @@ const DROPPED_RESPONSE_HEADERS = new Set([
 ]);
 
 export interface HubSettings {
+  allowClaudeOAuthAcrossHarnesses?: boolean;
   anthropicUpstreamBaseUrl: string;
   codexUpstreamBaseUrl: string;
   switchThreshold: number;
@@ -328,6 +336,7 @@ export interface ThreadRouteStatus extends ThreadRoute {
   /** Position of the bound upstream in the harness chain; -1 when it left the chain. */
   entryIndex: number;
   entry: string | null;
+  chain: string[];
   upstreamLabel: string | null;
   upstreamKind: UpstreamKind | null;
 }
@@ -404,6 +413,7 @@ interface FailureSummary {
 class UpstreamConnectionError extends Error {}
 
 export class AccountPoolHub {
+  readonly credits: CreditGrants;
   private accepting = false;
   private stopped = new AbortController();
   private readonly inFlightByAccount = new Map<string, number>();
@@ -418,7 +428,9 @@ export class AccountPoolHub {
   /** `threadId|kind` pairs already reported through onDropped. */
   private readonly droppedNoted = new Set<string>();
 
-  constructor(private readonly options: HubOptions) {}
+  constructor(private readonly options: HubOptions) {
+    this.credits = new CreditGrants(options.now);
+  }
 
   async start(signal: AbortSignal): Promise<void> {
     this.affinityBindings = this.options.affinity.loadBindings(
@@ -469,6 +481,9 @@ export class AccountPoolHub {
           id,
           object: "model",
           owned_by: "model-gateway",
+          context_length: gatewayModelDetails(id).contextWindow,
+          max_output_tokens: gatewayModelDetails(id).maxTokens,
+          input: gatewayModelDetails(id).input,
         })),
       });
     return this.handleAuthenticated(
@@ -491,12 +506,20 @@ export class AccountPoolHub {
         "Model Gateway is not accepting requests.",
         STOPPING_RETRY_AFTER,
       );
-    return this.forward(
-      request,
-      new Uint8Array(await request.arrayBuffer()),
-      adapter,
-      identity,
-    );
+    let body = new Uint8Array(await request.arrayBuffer());
+    // Codex compresses requests; routing and model mapping need the JSON body.
+    if (request.headers.get("content-encoding")?.toLowerCase() === "zstd") {
+      try {
+        body = await decompressZstd(body, { maxOutputLength: 64 * 1024 * 1024 });
+      } catch {
+        return adapter.errorResponse(400, "Invalid or oversized zstd request body.");
+      }
+      const headers = new Headers(request.headers);
+      headers.delete("content-encoding");
+      headers.delete("content-length");
+      request = new Request(request.url, { method: request.method, headers, signal: request.signal });
+    }
+    return this.forward(request, body, adapter, identity);
   }
 
   /**
@@ -530,8 +553,8 @@ export class AccountPoolHub {
     const route = this.options.routes.get(threadId);
     if (route === null) return null;
     const harness = harnessSchema.parse(route.harness);
-    const chain = this.options.getSettings().chains[harness];
     const accounts = await this.options.accounts.list();
+    const chain = modelChain(harness, this.options.getSettings().chains[harness], accounts, route.requestedModel ?? null);
     const entryIndex = expandChain(chain, accounts).findIndex((entry) =>
       entry.some((account) => account.id === route.upstreamId),
     );
@@ -541,6 +564,7 @@ export class AccountPoolHub {
       harness,
       entryIndex,
       entry: chain[entryIndex] ?? null,
+      chain,
       upstreamLabel: account?.label ?? null,
       upstreamKind: account === undefined ? null : upstreamKind(account),
     };
@@ -695,19 +719,19 @@ export class AccountPoolHub {
     const fitResponses = client.provider === "codex" && harness !== "codex";
     let apiKeyOnly: string | null = null;
     const allAccounts = await this.options.accounts.list();
-    const entries = expandChain(settings.chains[harness], allAccounts).map(
+    let json = parseJson(body);
+    let entries = expandChain(settings.chains[harness], allAccounts).map(
       (accounts) =>
         accounts.filter((account) =>
-          isLegalUpstream(upstreamKind(account), identity?.harness ?? null, path),
+          isLegalUpstream(upstreamKind(account), identity?.harness ?? null, path, settings.allowClaudeOAuthAcrossHarnesses),
         ),
     );
     const route =
       identity === null ? null : this.options.routes.get(identity.threadId);
-    let json = parseJson(body);
     // P5: Jev's pick replaces the client model; the chain then routes it as usual.
     const auto = countTokens
       ? null
-      : await this.autoPick(harness, json, route, entries, allAccounts, signal);
+      : await this.autoPick(harness, json, route, entries, allAccounts, signal, identity?.threadId ?? null);
     if (
       auto?.model != null &&
       isRecord(json) &&
@@ -718,10 +742,14 @@ export class AccountPoolHub {
       body = new TextEncoder().encode(JSON.stringify(json));
     }
     const parsed = client.parseRequest(body, request.headers);
-    const family = parsed.family;
-    const model = requestModel(json);
+    const requestedModel = requestModel(json);
+    const model = requestedModel?.replace(/^gw-/u, "") ?? null;
+    const family = modelFamily(model);
+    const chain = modelChain(harness, settings.chains[harness], allAccounts, model);
+    const configured = settings.chains[harness];
+    entries = chain.map((entry) => entries[configured.indexOf(entry)] ?? []);
     const boundIndex =
-      route === null
+      route === null || (route.requestedModel != null && route.requestedModel !== model)
         ? -1
         : entries.findIndex((accounts) =>
             accounts.some((account) => account.id === route.upstreamId),
@@ -738,6 +766,11 @@ export class AccountPoolHub {
       isNewUserTurn(json),
       now,
     );
+    const approvedAccount = identity === null ? null : this.credits.status(identity.threadId).grant?.accountId;
+    const approvedIndex = entries.findIndex((accounts) => accounts.some((account) => account.id === approvedAccount));
+    if (approvedIndex > 0 && boundIndex > 0 && boundIndex !== approvedIndex) {
+      order.splice(0, order.length, approvedIndex, ...order.filter((index) => index !== approvedIndex));
+    }
     let estimate: number | null = null;
     let contextBlocked = false;
     let served = false;
@@ -765,11 +798,12 @@ export class AccountPoolHub {
             // Keys take the model map, else the client's model unchanged (for
             // example nanocodex kimi-k3 on a Kimi key); ChatGPT needs a mapping.
             model: cross
-              ? (mapModel(settings.modelMap, mapKey, model) ?? (isKey ? model : null))
+              ? (mapModel(settings.modelMap, mapKey, model) ?? (isKey || (upstream.provider === "claude" && model?.startsWith("claude-")) ? model : null))
               : isKey || fitResponses
                 ? gatewayModel(settings.modelMap, mapKey, model)
                 : model,
           };
+          if (cross && model !== null && candidate.model === null) continue;
           // ChatGPT cannot serve these; a later key entry can.
           if (
             kind === "chatgpt-oauth" &&
@@ -829,7 +863,7 @@ export class AccountPoolHub {
             entryParsed,
             candidate,
             translation,
-            identity?.hostId ?? null,
+            identity,
             rejected,
             signal,
           );
@@ -837,13 +871,16 @@ export class AccountPoolHub {
             failure = result.failure ?? failure;
             continue;
           }
-          if (identity !== null && result.account !== null && !countTokens) {
+          // Catalog and other auxiliary calls must not replace the inference route.
+          if (identity !== null && result.account !== null && request.method === "POST" &&
+              (path === "/v1/messages" || path === "/v1/responses")) {
             this.bindThread(identity, route, {
               index,
               boundIndex,
               sticky,
               account: result.account,
               model: candidate.model,
+              requestedModel: model,
               auto,
               primary: entries[0] ?? [],
               rejected,
@@ -897,6 +934,7 @@ export class AccountPoolHub {
       sticky: boolean;
       account: Account;
       model: string | null;
+      requestedModel: string | null;
       auto: JevPick | null;
       primary: readonly Account[];
       rejected: ReadonlyMap<string, number | null>;
@@ -916,6 +954,7 @@ export class AccountPoolHub {
       served.index === 0
         ? null
         : served.fallbackCause ?? (same ? route.fallbackCause : null);
+    if (served.index === 0 && served.account.kind === "oauth" && served.auto?.reason !== "fail open: API approval required") this.credits.clearOffers(identity.threadId);
     this.options.routes.put({
       threadId: identity.threadId,
       harness: identity.harness,
@@ -930,6 +969,7 @@ export class AccountPoolHub {
             : "primary exhausted",
       usedAt: now,
       model: served.model,
+      requestedModel: served.requestedModel,
       autoModel: served.auto?.model ?? null,
       autoReason: served.auto?.reason ?? null,
       fallbackCause: recordedCause,
@@ -955,6 +995,7 @@ export class AccountPoolHub {
     entries: readonly Account[][],
     accounts: readonly Account[],
     signal: AbortSignal,
+    threadId: string | null,
   ): Promise<JevPick | null> {
     const settings = this.options.getSettings();
     if (!settings.auto.harnesses.includes(harness)) return null;
@@ -988,21 +1029,33 @@ export class AccountPoolHub {
         upstreamKind(account) === "responses-compatible-key" &&
         account.label === settings.auto.key,
     );
-    if (key?.baseUrl === undefined)
+    if (!key?.enabled || key.baseUrl === undefined)
       return { model: null, reason: "fail open: no Jev key" };
     const secret = await this.options.accounts.readSecret(key.id).catch(() => null);
     if (secret?.kind !== "api-key")
       return { model: null, reason: "fail open: no Jev key" };
-    return askJev({
-      fetch: this.options.fetch,
-      baseUrl: key.baseUrl,
-      apiKey: secret.apiKey,
-      model: settings.auto.model,
-      prompt: lastUserText(json),
-      candidates,
-      signal,
-      timeoutMs: this.options.jevTimeoutMs,
-    });
+    const release = this.credits.acquire(threadId, key.id);
+    if (release === null) {
+      if (threadId !== null) {
+        this.credits.offer(threadId, key.id);
+        this.options.onRouteChanged(threadId);
+      }
+      return { model: null, reason: "fail open: API approval required" };
+    }
+    try {
+      return await askJev({
+        fetch: this.options.fetch,
+        baseUrl: key.baseUrl,
+        apiKey: secret.apiKey,
+        model: settings.auto.model,
+        prompt: lastUserText(json),
+        candidates,
+        signal,
+        timeoutMs: this.options.jevTimeoutMs,
+      });
+    } finally {
+      release();
+    }
   }
 
   private noteDropped(
@@ -1054,10 +1107,11 @@ export class AccountPoolHub {
     parsed: ReturnType<ProviderAdapter["parseRequest"]>,
     candidate: ChainCandidate,
     translation: Translation | null,
-    hostId: string | null,
+    identity: ThreadIdentity | null,
     rejected: Map<string, number | null>,
     signal: AbortSignal,
   ): Promise<EntryResult> {
+    const hostId = identity?.hostId ?? null;
     const adapter = candidate.upstream;
     const attempted = new Set<string>();
     const waited = new Set<string>();
@@ -1071,7 +1125,7 @@ export class AccountPoolHub {
     const candidateIds = new Set(
       candidate.accounts.map((account) => account.id),
     );
-    const family = parsed.family;
+    const family = modelFamily(candidate.model);
     const affinityKey =
       hostId === null || parsed.affinityId === null
         ? null
@@ -1116,11 +1170,11 @@ export class AccountPoolHub {
         }
         previousAccountId = selected.account.id;
         attempted.add(selected.account.id);
-        if (hostId !== null) {
+        if (identity !== null) {
           const changed = await this.options.accounts.recordUsed(
             selected.account.id,
             this.options.now(),
-            hostId,
+            identity.hostId,
           );
           if (changed) this.options.onAccountsChanged();
         }
@@ -1164,9 +1218,14 @@ export class AccountPoolHub {
               selected.account,
               secret,
               adapter,
+              identity?.threadId ?? null,
             );
           } catch (error) {
             signal.throwIfAborted();
+            if (error instanceof CreditApprovalRequired) {
+              failure = { status: 402, message: error.message, headers: {} };
+              break;
+            }
             if (!(error instanceof UpstreamConnectionError)) throw error;
             if (
               adapter.provider === "claude" &&
@@ -1792,7 +1851,20 @@ export class AccountPoolHub {
     account: Account,
     secret: AccountSecret,
     adapter: ProviderAdapter,
+    threadId: string | null,
   ): Promise<UpstreamResult> {
+    let releaseCredit: (() => void) | null = null;
+    const inference = request.method === "POST" && /^\/v1\/(messages|responses)$/u.test(routePath(request.url));
+    if (account.kind === "api-key" && inference) {
+      releaseCredit = this.credits.acquire(threadId, account.id);
+      if (releaseCredit === null) {
+        if (threadId !== null) {
+          this.credits.offer(threadId, account.id);
+          this.options.onRouteChanged(threadId);
+        }
+        throw new CreditApprovalRequired(`API fallback through ${account.label} requires approval for this thread. Use the composer's API fallback control or bb gateway credit approve --thread <id> --account <id>, then retry. API billing may consume purchased funds after included credits.`);
+      }
+    }
     const controller = new AbortController();
     const abortFromRequest = () => controller.abort(request.signal.reason);
     this.activeControllers.add(controller);
@@ -1809,6 +1881,7 @@ export class AccountPoolHub {
       request.signal.removeEventListener("abort", abortFromRequest);
       this.activeControllers.delete(controller);
       this.decrement(account.id);
+      releaseCredit?.();
     };
     try {
       const upstreamBody = new ArrayBuffer(body.byteLength);

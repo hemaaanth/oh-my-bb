@@ -126,6 +126,23 @@ export class PoolOperations {
     ) => Promise<void> = async () => {},
   ) {}
 
+  async creditStatus(threadId: string) {
+    const status = this.hub.credits.status(threadId);
+    const offered = (await this.accounts.list()).filter((account) => account.enabled && account.kind === "api-key" && status.offered.includes(account.id))
+      .map(({ id, label }) => ({ id, label }));
+    return { offered, grant: status.grant };
+  }
+
+  async approveCredits(threadId: string, accountId: string) {
+    const account = (await this.accounts.list()).find((entry) => entry.id === accountId && entry.enabled && entry.kind === "api-key");
+    if (!account) throw new Error("Choose an enabled API account.");
+    this.hub.credits.grant(threadId, accountId);
+    this.onAccountsChanged();
+    return this.creditStatus(threadId);
+  }
+
+  revokeCredits(threadId: string) { this.hub.credits.revoke(threadId); }
+
   async add(input: AccountAddInput): Promise<Account> {
     if (input.source.kind === "api-key") {
       if (input.provider !== "claude") {

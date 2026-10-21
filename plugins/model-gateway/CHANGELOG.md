@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0 — 2026-10-21
+
+- Route shared Agents and Hempi through the gateway. Managed runs fail when
+  required gateway settings are absent instead of using native credentials.
+- Add explicit operator opt-in for Claude OAuth across harnesses, with the
+  existing Messages/Responses translation and model-family fallback maps.
+- Require a thread-specific API account grant before billing: 15 minutes,
+  10 attempts, one at a time. The composer offers approval only when needed.
+- Reconcile OMP roles, Pi defaults, helper routing and native model registration
+  through the existing host manifest, including sandbox create/heal/resume.
+- Advertise model context, output and input metadata in OMP and Pi setup.
+
+- Decode Codex's zstd requests before inspecting the model and applying routing.
+- Model discovery no longer overwrites the chat's observed model route with an
+  unknown model. Only inference requests update the route.
+- A quiet composer pill shows the effective model during fallback. It disappears
+  on the primary route and leaves the model selector unchanged.
+
 ## 0.2.0
 
 - A request that waits out a short rate-limit hold no longer fails with 429

@@ -62,6 +62,11 @@ const fallbackCauseRpcSchema = z
   })
   .strict();
 
+const creditStatusSchema = z.object({
+  offered: z.array(z.object({ id: z.string().uuid(), label: z.string() }).strict()),
+  grant: z.object({ accountId: z.string().uuid(), expiresAt: z.number(), remaining: z.number().int() }).strict().nullable(),
+}).strict();
+
 export const accountPoolRpcContract = defineRpcContract({
   "host.setupFiles": {
     input: z.object({
@@ -72,12 +77,15 @@ export const accountPoolRpcContract = defineRpcContract({
     output: z.object({
       revision: z.string(),
       files: z.array(z.object({
-        path: z.string(), op: z.enum(["managed-block", "managed-file", "json-merge"]),
+        path: z.string(), op: z.enum(["managed-block", "managed-file", "json-merge", "omp-settings", "pi-settings"]),
         marker: z.string().optional(), key: z.string().optional(),
         content: z.string(), sha256: z.string(),
       }).strict()),
     }).strict(),
   },
+  "credit.status": { input: z.object({ threadId: z.string().min(1) }).strict(), output: creditStatusSchema },
+  "credit.approve": { input: z.object({ threadId: z.string().min(1), accountId: z.string().uuid() }).strict(), output: creditStatusSchema },
+  "credit.revoke": { input: z.object({ threadId: z.string().min(1) }).strict(), output: z.null() },
   "account.add": {
     input: accountAddInputSchema,
     output: accountSchema,
@@ -295,6 +303,9 @@ export function createRpcHandlers(
   return {
     "host.setupFiles": (input: Parameters<typeof hostSetupFiles>[0]) =>
       hostSetupFiles(input, config.get().modelMap),
+    "credit.status": ({ threadId }: { threadId: string }) => operations.creditStatus(threadId),
+    "credit.approve": ({ threadId, accountId }: { threadId: string; accountId: string }) => operations.approveCredits(threadId, accountId),
+    "credit.revoke": ({ threadId }: { threadId: string }) => { operations.revokeCredits(threadId); return null; },
     "account.add": (input: Parameters<PoolOperations["add"]>[0]) =>
       operations.add(input),
     "account.list": () => operations.list(),
@@ -360,7 +371,7 @@ export function createRpcHandlers(
     // account row, which has no secret field.
     "key.add": (input: KeyAddInput) => operations.addKey(input),
     "chain.options": async () =>
-      chainEntryOptions(config.get().chains, await operations.list()),
+      chainEntryOptions(config.get().chains, await operations.list(), config.get().allowClaudeOAuthAcrossHarnesses),
     "chain.set": ({ harness, entries }: { harness: Harness; entries: string[] }) =>
       setChain(config, harness, entries),
     "modelMap.set": ({
@@ -434,7 +445,7 @@ export function createRpcHandlers(
         accountLabel: route.upstreamLabel,
         model: route.model,
         chainIndex: route.entryIndex,
-        chain: config.get().chains[route.harness].map((entry) => entryTitle(entry, accounts)),
+        chain: route.chain.map((entry) => entryTitle(entry, accounts)),
         stickyUntil: route.stickyUntil,
         autoModel: route.autoModel,
         auto: route.autoReason,

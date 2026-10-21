@@ -92,9 +92,11 @@ const HELP = [
   "  bb gateway account hold <id> --until <+1h|ISO time> | --clear   Test hook: treat the account as exhausted",
   "  bb gateway routing <claude|codex|acp-omp|acp-fx|acp-nanocodex|acp-prime-agent|pi> [--off]",
   "  bb gateway config",
-  "  bb gateway config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>",
+  "  bb gateway config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|allowClaudeOAuthAcrossHarnesses> <value>",
   "  bb gateway token rotate --machine <id-or-name>",
   "  bb gateway bypass <thread-id> [--off]",
+  "  bb gateway credit status|revoke [--thread <id>]",
+  "  bb gateway credit approve --account <id> [--thread <id>]",
   "  bb gateway doctor",
   "  bb gateway import-pool",
   "  bb gateway setup omp [--print] [--server-url <url>]   Writes the gateway provider into ~/.omp/agent/models.yml on the BB server machine",
@@ -104,7 +106,7 @@ const HELP = [
   "  bb gateway setup nanocodex   Prints optional standalone nanocodex-acp setup",
   "  bb gateway setup pi [--print]   Writes the gateway provider extension into ~/.pi/agent/extensions on the BB server machine",
   "",
-  "API keys bill per token. Claude OAuth (Max) accounts serve only Claude Code.",
+  "API keys require per-thread approval and bill per token. Claude OAuth across harnesses requires operator opt-in.",
   "Accounts run sequentially by priority, then order added. The current fallback stays active until unavailable.",
   "Reorder includes every account for the provider and changes the next failover sequence; existing conversations stay pinned.",
 ].join("\n");
@@ -286,6 +288,7 @@ function formatConfig(config: AccountPoolConfig): string {
     `anthropicUpstreamBaseUrl: ${config.anthropicUpstreamBaseUrl}`,
     `codexUpstreamBaseUrl: ${config.codexUpstreamBaseUrl}`,
     `switchThreshold: ${config.switchThreshold}`,
+    `allowClaudeOAuthAcrossHarnesses: ${config.allowClaudeOAuthAcrossHarnesses}`,
   ].join("\n");
 }
 
@@ -303,6 +306,10 @@ function parseConfigUpdate(
     return accountPoolConfigSetInputSchema.parse({
       codexUpstreamBaseUrl: value,
     });
+  }
+  if (key === "allowClaudeOAuthAcrossHarnesses") {
+    if (value !== "true" && value !== "false") throw new Error("Expected true or false.");
+    return accountPoolConfigSetInputSchema.parse({ allowClaudeOAuthAcrossHarnesses: value === "true" });
   }
   if (key === "switchThreshold") {
     return accountPoolConfigSetInputSchema.parse({
@@ -500,7 +507,7 @@ export function registerPoolCli(
         name: "config-set",
         summary: "Update one Model Gateway routing configuration value",
         usage:
-          "bb gateway config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>",
+          "bb gateway config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|allowClaudeOAuthAcrossHarnesses> <value>",
       },
       {
         name: "token-rotate",
@@ -932,6 +939,16 @@ export function registerPoolCli(
             );
           }
           return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
+        }
+        if (argv[0] === "credit") {
+          const flags = parseFlags(argv.slice(2), [], ["thread", "account"]);
+          const threadId = flags.values.get("thread") ?? process.env.BB_THREAD_ID;
+          if (!threadId) throw new Error("Pass --thread <id>.");
+          if (argv[1] === "status") return { exitCode: 0, stdout: `${JSON.stringify(await operations.creditStatus(threadId), null, 2)}\n` };
+          if (argv[1] === "revoke") { operations.revokeCredits(threadId); return { exitCode: 0, stdout: "API fallback approval revoked.\n" }; }
+          if (argv[1] !== "approve" || !flags.values.get("account")) throw new Error("Use credit approve --thread <id> --account <id>.");
+          const approved = await operations.approveCredits(threadId, flags.values.get("account")!);
+          return { exitCode: 0, stdout: `API fallback approved for 15 minutes and up to 10 attempts, one at a time. API billing may consume purchased funds after included credits. Retry the thread to continue.\n${JSON.stringify(approved.grant)}\n` };
         }
         if (argv[0] === "setup" && argv[1] === "prime-agent" && argv.length === 2)
           return { exitCode: 0, stdout: PRIME_SETUP };

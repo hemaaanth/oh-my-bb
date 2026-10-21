@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { zstdCompressSync } from "node:zlib";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { Response as UndiciResponse } from "undici";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +17,7 @@ import {
   isLegalUpstream,
   isNewUserTurn,
   mapModel,
+  modelChain,
   needsApiKeyUpstream,
   orderEntries,
   readThreadToken,
@@ -26,7 +28,7 @@ import {
   DEFAULT_MODEL_MAP,
   type ThreadIdentity,
 } from "./chain.js";
-import { accountSchema, statusSchema, type Account } from "./contracts.js";
+import { accountSchema, accountSummarySchema, statusSchema, type Account } from "./contracts.js";
 import { createAccountPoolPlugin } from "./server.js";
 import { createClaudeAdapter } from "./upstreams/claude-adapter.js";
 import { createCodexAdapter } from "./upstreams/codex-adapter.js";
@@ -94,6 +96,16 @@ describe("chain config", () => {
     expect(chainsSchema.safeParse({ codex: ["anthropic-compatible-key:kimi"] }).success).toBe(true);
     expect(chainsSchema.safeParse({ codex: ["anthropic-compatible-key:bad label"] }).success).toBe(false);
     expect(() => assertLegalChains(chainsSchema.parse({ pi: ["claude-oauth:*"] }), [])).toThrow(/claude-code harness/u);
+  });
+
+  it("keeps OMP and Pi model families native before cross-vendor fallback", () => {
+    const max = account({});
+    const pro = account({ provider: "codex" });
+    const chain = ["chatgpt-oauth:*", "claude-oauth:*"];
+    expect(modelChain("pi", chain, [max, pro], "claude-opus-5")).toEqual([...chain].reverse());
+    expect(modelChain("acp-omp", chain, [max, pro], "gw-gpt-6-sol")).toEqual(chain);
+    expect(modelChain("codex", chain, [max, pro], "claude-opus-5")).toEqual(chain);
+    expect(modelChain("pi", ["claude-key:*", ...chain], [account({ kind: "api-key" }), max, pro], "claude-opus-5")[0]).toBe("claude-key:*");
   });
 
   it("maps automatic Claude fallbacks to the configured cost tiers", () => {
@@ -613,12 +625,19 @@ describe("chain failover in the hub", () => {
         projectId: "project-one",
         hostId: "host-one",
       });
+    const approve = async (key: string) => {
+      const [, threadId] = JSON.parse(Buffer.from(key.split(".")[0]!, "base64url").toString());
+      const accounts = accountSummarySchema.array().parse(await host.harness.behavior.callRpc("account.list", null));
+      for (const api of accounts.filter((account) => account.enabled && account.kind === "api-key"))
+        await host.harness.behavior.callRpc("credit.approve", { threadId, accountId: api.id });
+    };
     const send = async (
       key: string,
       body: object,
       route = "/v1/messages",
       extra: Record<string, string> = {},
     ) => {
+      await approve(key);
       const response = await host.harness.behavior.fetchHttp("POST", route, {
         headers: {
           authorization: `Bearer ${key}`,
@@ -654,6 +673,7 @@ describe("chain failover in the hub", () => {
       cli,
       token,
       env,
+      approve,
       send,
       route,
       setNow: (value: number) => {
@@ -835,6 +855,67 @@ describe("chain failover in the hub", () => {
     );
     expect(viaResponses.status).not.toBe(200);
     expect(gw.upstream.attempts).not.toContain("max-token");
+  });
+
+  it("uses normal fallback without spending, then honors a thread-scoped API approval", async () => {
+    const gw = await gateway({ withCodex: true });
+    const key = await gw.token("claude-code", "thr_approval");
+    gw.upstream.maxExhausted = true;
+    gw.upstream.reply = (who) => who === "pro-token" ? new Response(fixture("chatgpt-two-tools.sse").toString(), { headers: { "content-type": "text/event-stream" } }) : undefined;
+    const request = async (token = key) => {
+      const response = await gw.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(userTurn),
+      });
+      await response.text();
+      return response.status;
+    };
+    expect(await request()).toBe(200);
+    expect(gw.upstream.attempts).not.toContain("key-token");
+    expect(await gw.host.harness.behavior.callRpc("credit.status", { threadId: "thr_approval" })).toMatchObject({ offered: [{ id: gw.key.id }], grant: null });
+    await gw.host.harness.behavior.callRpc("credit.approve", { threadId: "thr_approval", accountId: gw.key.id });
+    expect(await request()).toBe(200);
+    expect(gw.upstream.attempts.at(-1)).toBe("key-token");
+    const fork = await gw.token("claude-code", "thr_approval_fork");
+    gw.upstream.attempts.length = 0;
+    expect(await request(fork)).toBe(200);
+    expect(gw.upstream.attempts).not.toContain("key-token");
+    gw.setNow(T + 16 * 60_000);
+    gw.upstream.attempts.length = 0;
+    expect(await request()).toBe(200);
+    expect(gw.upstream.attempts).not.toContain("key-token");
+  });
+
+  it("allows Claude OAuth on a Responses harness only after explicit operator opt-in", async () => {
+    const gw = await gateway({ withCodex: true });
+    await gw.host.harness.behavior.callRpc("config.set", { allowClaudeOAuthAcrossHarnesses: true });
+    expect((await gw.cli("chain", "set", "acp-omp", "claude-oauth:*", "chatgpt-oauth:*")).exitCode).toBe(0);
+    const entries = await gw.env("acp-omp", "thr_optin");
+    const token = entries.find((entry) => entry.name === "MODEL_GATEWAY_TOKEN")!.value as string;
+    gw.upstream.reply = (who) => who === "max-token" ? new Response(fixture("anthropic-two-tools.sse").toString(), { headers: { "content-type": "text/event-stream" } }) : undefined;
+    expect((await gw.send(token, { model: "gw-claude-opus-5", input: "hi", stream: true }, "/v1/responses")).status).toBe(200);
+    expect(gw.upstream.attempts.at(-1)).toBe("max-token");
+    expect(JSON.parse(gw.upstream.requests.at(-1)!.body).model).toBe("claude-opus-5");
+    expect(await gw.route("thr_optin")).toMatchObject({ entryIndex: 0 });
+    gw.upstream.reply = (who) => who === "pro-token" ? new Response(fixture("chatgpt-two-tools.sse").toString(), { headers: { "content-type": "text/event-stream" } }) : undefined;
+    expect((await gw.send(token, { model: "gw-gpt-6-sol", input: [{ type: "function_call_output", call_id: "helper", output: "done" }], stream: true }, "/v1/responses")).status).toBe(200);
+    expect(gw.upstream.attempts.at(-1)).toBe("pro-token");
+    expect(await gw.route("thr_optin")).toMatchObject({ entryIndex: 0, model: "gpt-6-sol" });
+    await gw.cli("chain", "set", "pi", "claude-oauth:*");
+    expect(await gw.env("pi", "thr_claude_only")).toEqual(expect.arrayContaining([expect.objectContaining({ name: "MODEL_GATEWAY_TOKEN" })]));
+    await expect(gw.host.harness.behavior.callRpc("config.set", { allowClaudeOAuthAcrossHarnesses: false })).rejects.toThrow(/claude-code/);
+  });
+
+  it("uses the Claude model family for translated subscription quota and stickiness", async () => {
+    const gw = await gateway({ withCodex: true });
+    await gw.host.harness.behavior.callRpc("config.set", { allowClaudeOAuthAcrossHarnesses: true });
+    await gw.cli("chain", "set", "acp-omp", "chatgpt-oauth:*", "claude-oauth:*");
+    const entries = await gw.env("acp-omp", "thr_opus_quota");
+    const token = entries.find((entry) => entry.name === "MODEL_GATEWAY_TOKEN")!.value as string;
+    gw.upstream.reply = (who) => who === "max-token"
+      ? Response.json({ rejected: true }, { status: 429, headers: { "anthropic-ratelimit-unified-7d_opus-status": "rejected", "anthropic-ratelimit-unified-7d_opus-reset": String(T / 1000 + 3600) } })
+      : who === "pro-token" ? new Response(fixture("chatgpt-two-tools.sse").toString(), { headers: { "content-type": "text/event-stream" } }) : undefined;
+    expect((await gw.send(token, { model: "gw-claude-opus-5", input: "hi", stream: true }, "/v1/responses")).status).toBe(200);
+    expect(await gw.route("thr_opus_quota")).toMatchObject({ entryIndex: 1, stickyUntil: T + 3600_000 });
   });
 
   it("rejects a token whose thread id was forged", async () => {
@@ -1215,8 +1296,8 @@ describe("chain failover in the hub", () => {
   it("routes omp through gw- models on ChatGPT, fitted to the Codex backend (S1)", async () => {
     const gw = await gateway({ withCodex: true });
     const entries = await gw.env("acp-omp", "thr_omp");
-    expect(entries.map(({ name }) => name)).toEqual(["MODEL_GATEWAY_TOKEN"]);
-    const key = entries[0]!.value as string;
+    expect(entries.map(({ name }) => name)).toEqual(["MODEL_GATEWAY_REQUIRED", "MODEL_GATEWAY_BASE_URL", "MODEL_GATEWAY_TOKEN"]);
+    const key = entries.find((entry) => entry.name === "MODEL_GATEWAY_TOKEN")!.value as string;
 
     // omp discovery (openai-models-list) gets gw- ids and never hits ChatGPT.
     const models = await gw.host.harness.behavior.fetchHttp("GET", "/v1/models", {
@@ -1260,6 +1341,50 @@ describe("chain failover in the hub", () => {
       entryIndex: 0,
       model: "gpt-6.1-sol",
     });
+  });
+
+  it("reads the model from compressed Codex requests and forwards decoded JSON", async () => {
+    const gw = await gateway({ withCodex: true });
+    const key = await gw.token("codex", "thr_compressed");
+    const body = { model: "gpt-6.1-sol", input: "hi", stream: true };
+    const compressed = zstdCompressSync(JSON.stringify(body));
+    const response = await gw.host.harness.behavior.fetchHttp("POST", "/v1/responses", {
+      headers: { authorization: `Bearer ${key}`, "content-encoding": "zstd", "content-type": "application/json", "content-length": String(compressed.length) },
+      body: compressed,
+    });
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(await gw.route("thr_compressed")).toMatchObject({ model: "gpt-6.1-sol" });
+    const sent = gw.upstream.requests.at(-1)!;
+    expect(JSON.parse(sent.body)).toEqual(body);
+    expect(sent.headers.has("content-encoding")).toBe(false);
+    expect(sent.headers.has("content-length")).toBe(false);
+    const attempts = gw.upstream.attempts.length;
+    const invalid = await gw.host.harness.behavior.fetchHttp("POST", "/v1/responses", {
+      headers: { authorization: `Bearer ${key}`, "content-encoding": "zstd" },
+      body: "not compressed",
+    });
+    expect(invalid.status).toBe(400);
+    expect(gw.upstream.attempts).toHaveLength(attempts);
+  });
+
+  it("does not let model discovery create or overwrite the chat's model route", async () => {
+    const gw = await gateway({ withCodex: true });
+    const key = await gw.token("codex", "thr_catalog");
+    const discover = () => gw.host.harness.behavior.fetchHttp("GET", "/v1/models", {
+      headers: { authorization: `Bearer ${key}` },
+    });
+    expect((await discover()).status).toBe(200);
+    expect(await gw.host.harness.behavior.callRpc("thread.route", { threadId: "thr_catalog" })).toBeNull();
+
+    expect((await gw.send(key, { model: "gpt-6.1-sol", input: "hi" }, "/v1/responses")).status).toBe(200);
+    const route = await gw.route("thr_catalog");
+    expect(route).toMatchObject({ model: "gpt-6.1-sol" });
+    const signals = gw.host.harness.inspection.realtimeSignals.length;
+    gw.setNow(T + 1_000);
+    expect((await discover()).status).toBe(200);
+    expect(await gw.route("thr_catalog")).toEqual(route);
+    expect(gw.host.harness.inspection.realtimeSignals).toHaveLength(signals);
   });
 
   it("serves the latest agent-level Codex model unchanged for Pi threads", async () => {
@@ -1331,7 +1456,7 @@ describe("chain failover in the hub", () => {
       `${modelsUrl.serverPath.slice(MOUNT.length)}&client_version=0.157.0`,
       { headers: fxHeaders },
     );
-    expect(await models.json()).toEqual({ models: [{ slug: "gpt-6-sol" }] });
+    expect(await models.json()).toMatchObject({ models: [{ slug: "gpt-6-sol" }] });
     expect(gw.upstream.requests.at(-1)!.url).toBe(
       "https://chatgpt.test/models?client_version=0.157.0",
     );
@@ -1353,10 +1478,11 @@ describe("chain failover in the hub", () => {
     const gw = await gateway({ withCodex: true });
     const entries = await gw.env("acp-nanocodex", "thr_nano");
     expect(entries.map(({ name, value }) => [name, value])).toEqual([
+      ["MODEL_GATEWAY_REQUIRED", "1"],
       ["NANOCODEX_API_BASE_URL", { serverPath: `${MOUNT}/v1` }],
       ["MODEL_GATEWAY_TOKEN", expect.any(String)],
     ]);
-    const key = entries[1]!.value as string;
+    const key = entries.find((entry) => entry.name === "MODEL_GATEWAY_TOKEN")!.value as string;
     gw.upstream.reply = () => completed("resp_nano");
     const socket = await gw.host.harness.behavior.experimental_openWebSocket(
       "/v1/responses",
@@ -1472,10 +1598,10 @@ describe("chain failover in the hub", () => {
     expect(gw.upstream.attempts.length).toBeGreaterThan(0);
   });
 
-  it("contributes env and health per ACP harness, off with routing --off or without a ChatGPT account", async () => {
+  it("keeps ACP transport without an account and removes it only when routing is off", async () => {
     const withoutCodex = await gateway();
     for (const harness of ["acp-omp", "acp-fx", "acp-nanocodex"]) {
-      expect(await withoutCodex.env(harness, "thr_none")).toEqual([]);
+      expect((await withoutCodex.env(harness, "thr_none")).length).toBeGreaterThan(0);
       expect(
         await withoutCodex.host.harness.behavior.resolveProviderEnvHealth(harness, {
           hostId: "host-one",
@@ -1714,6 +1840,7 @@ describe("chain failover in the hub", () => {
     await gw.cli("chain", "set", "acp-nanocodex", "chatgpt-oauth:*", "anthropic-compatible-key:kimi");
     gw.upstream.reply = () => anthropicTwoTools();
     const token = (await valueOf(gw.env("acp-nanocodex", "thr_nano_kimi"), "MODEL_GATEWAY_TOKEN")) as string;
+    await gw.approve(token);
     const socket = await gw.host.harness.behavior.experimental_openWebSocket("/v1/responses", {
       headers: { authorization: `Bearer ${token}` },
     });
@@ -1954,6 +2081,21 @@ describe("chain failover in the hub", () => {
     Response.json({ choices: [{ message: { role: "assistant", content: JSON.stringify({ choice, confidence }) } }] });
   const isJev = (url: string) => url === `${OPENROUTER}/chat/completions`;
 
+  it("does not spend on the automatic model chooser without a thread grant", async () => {
+    const gw = await gateway({ withCodex: true });
+    await addKey(gw, "responses-compatible-key", "openrouter", OPENROUTER, "sk-or");
+    await gw.cli("auto", "codex", "--key", "openrouter");
+    gw.upstream.reply = (_who, _signal, url) => isJev(url) ? jevAnswer("gpt-6-luna", 0.9) : completed("resp_unapproved_auto");
+    const token = await gw.token("codex", "thr_no_auto_spend");
+    const response = await gw.host.harness.behavior.fetchHttp("POST", "/v1/responses", {
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(codexBody([codexUser])),
+    });
+    await response.text();
+    expect(response.status).toBe(200);
+    expect(gw.upstream.requests.some((request) => isJev(request.url))).toBe(false);
+    expect(await gw.host.harness.behavior.callRpc("credit.status", { threadId: "thr_no_auto_spend" })).toMatchObject({ offered: [{ label: "openrouter" }], grant: null });
+  });
+
   it("asks Jev at each new user turn, keeps the pick through the tool loop, and fails open", async () => {
     const gw = await gateway({ withCodex: true });
     await addKey(gw, "responses-compatible-key", "openrouter", OPENROUTER, "sk-or");
@@ -2103,14 +2245,15 @@ describe("chain failover in the hub", () => {
 
   it("routes Pi through the gateway: env, health, routing --off, and the legal guard", async () => {
     const withoutCodex = await gateway();
-    expect(await withoutCodex.env("pi", "thr_pi_none")).toEqual([]);
+    expect(await withoutCodex.env("pi", "thr_pi_none")).toEqual(expect.arrayContaining([expect.objectContaining({ name: "MODEL_GATEWAY_BASE_URL" })]));
     const gw = await gateway({ withCodex: true, config: { chains: { pi: ["claude-oauth:*", "chatgpt-oauth:*"] } } });
     const entries = await gw.env("pi", "thr_pi");
     expect(entries.map(({ name, value }) => [name, value])).toEqual([
+      ["MODEL_GATEWAY_REQUIRED", "1"],
       ["MODEL_GATEWAY_BASE_URL", { serverPath: `${MOUNT}/v1` }],
       ["MODEL_GATEWAY_TOKEN", expect.any(String)],
     ]);
-    const token = entries[1]!.value as string;
+    const token = entries.find((entry) => entry.name === "MODEL_GATEWAY_TOKEN")!.value as string;
     expect(await gw.host.harness.behavior.resolveProviderEnvHealth("pi", { hostId: "host-one" })).toMatchObject({ label: "Gateway" });
     // The stored chain names Claude OAuth; Pi still never reaches Max, on either route.
     expect((await gw.cli("chain", "set", "pi", "claude-oauth:*")).stderr).toMatch(/claude-code harness/u);

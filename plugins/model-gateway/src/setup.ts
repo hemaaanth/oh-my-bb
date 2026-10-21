@@ -8,7 +8,7 @@ import {
 } from "../scripts/apply-setup-files.mjs";
 export { ompSnippet, upsertOmpProvider, applySetupFiles, checkSetupFiles } from "../scripts/apply-setup-files.mjs";
 import { gatewayModels, type ModelMap } from "./chain.js";
-import { CODEX_MODELS } from "./model-catalog.js";
+import { gatewayModelDetails } from "./model-catalog.js";
 
 export function gatewayBaseUrl(serverUrl: string): string {
   const url = new URL(serverUrl);
@@ -139,7 +139,7 @@ export function piExtension(models: readonly string[]): string {
   return `${PI_MARKER}. Rerun that command to update; edits are overwritten.
 // Routes Pi through the BB Model Gateway. BB sets MODEL_GATEWAY_BASE_URL and
 // MODEL_GATEWAY_TOKEN for each Pi thread it routes.
-const MODELS = ${JSON.stringify(models.map((id) => ({ id, input: ["text", "image"], ...(Object.hasOwn(CODEX_MODELS, id) ? CODEX_MODELS[id] : { contextWindow: 272000, maxTokens: 128000 }) })))};
+const MODELS = ${JSON.stringify(models.map(gatewayModelDetails))};
 
 export default function modelGateway(pi) {
   pi.registerProvider("model-gateway", {
@@ -155,6 +155,22 @@ export default function modelGateway(pi) {
       contextWindow,
       maxTokens,
     })),
+  });
+  pi.on("session_start", async (_event, ctx) => {
+    if (process.env.MODEL_GATEWAY_REQUIRED !== "1" && !process.env.BB_THREAD_ID && ctx.model?.provider !== "model-gateway") return;
+    const selected = ctx.model;
+    const models = ctx.modelRegistry?.getAll?.() ?? ctx.models?.list?.() ?? [];
+    for (const provider of new Set(models.map((model) => model.provider))) {
+      if (provider !== "model-gateway") pi.registerProvider(provider, { models: [] });
+    }
+    if (selected && selected.provider !== "model-gateway") {
+      const id = MODELS.find((model) => model.id === selected.id || model.id === \`gw-\${selected.id}\`)?.id;
+      const routed = id && (ctx.modelRegistry?.find("model-gateway", id) ?? ctx.models?.resolve(\`model-gateway/\${id}\`));
+      if (!routed || !await pi.setModel(routed)) {
+        ctx.shutdown();
+        throw new Error("Select an available Model Gateway model before continuing.");
+      }
+    }
   });
 }
 `;
@@ -200,11 +216,11 @@ export function setupGuides(serverUrl: string): Record<
   string
 > {
   return {
-    "acp-omp": `Run once on the BB server machine:\n\n   bb gateway setup omp\n\nOr add this under providers: in ~/.omp/agent/models.yml:\n\n${ompSnippet(gatewayBaseUrl(serverUrl))}\nOther hosts: bb gateway setup omp --print --server-url <that host's BB_SERVER_URL>.\n`,
+    "acp-omp": `Run once on each execution host:\n\n   bb gateway setup host\n\nOr add this under providers: in ~/.omp/agent/models.yml:\n\n${ompSnippet(gatewayBaseUrl(serverUrl))}\nOther hosts: bb gateway setup omp --print --server-url <that host's BB_SERVER_URL>.\n`,
     "acp-fx": FX_SETUP,
     "acp-nanocodex": NANOCODEX_SETUP,
     "acp-prime-agent": PRIME_SETUP,
-    pi: "Run once on the BB server machine:\n\n   bb gateway setup pi\n\nOther hosts and sandboxes: save the output of bb gateway setup pi --print as ~/.pi/agent/extensions/model-gateway.js. Run it again after the model map changes.\n",
+    pi: "Run once on each execution host:\n\n   bb gateway setup host\n\nOther hosts and sandboxes: save the output of bb gateway setup pi --print as ~/.pi/agent/extensions/model-gateway.js. Run it again after the model map changes.\n",
   };
 }
 
@@ -212,7 +228,7 @@ export function hostSetupFiles(
   input: { hostId: string; serverBaseUrl: string; piAgentDirs?: string[] },
   modelMap: ModelMap,
 ): { revision: string; files: SetupFile[] } {
-  const content = ompSnippet(gatewayBaseUrl(input.serverBaseUrl));
+  const content = ompSnippet(gatewayBaseUrl(input.serverBaseUrl), gatewayModels(modelMap).map((id) => ({ ...gatewayModelDetails(id), id: `gw-${id}` })));
   const files: SetupFile[] = [{
     path: ".omp/agent/models.yml", op: "managed-block", marker: BEGIN,
     content, sha256: sha256(content),
@@ -224,6 +240,15 @@ export function hostSetupFiles(
       path: `${dir}/extensions/model-gateway.js`, op: "managed-file",
       marker: PI_MARKER, content, sha256: sha256(content),
     });
+  }
+  const ompExtension = piExtension(gatewayModels(modelMap).map((id) => `gw-${id}`))
+    .replace(/managed by bb gateway setup pi/gu, "managed by bb gateway setup host")
+    .replace(/http:\/\/127\.0\.0\.1:9\/model-gateway-not-routed/gu, gatewayBaseUrl(input.serverBaseUrl));
+  files.push({ path: ".omp/agent/extensions/model-gateway.js", op: "managed-file", marker: PI_MARKER.replace("setup pi", "setup host"), content: ompExtension, sha256: sha256(ompExtension) });
+  files.push({ path: ".omp/agent/config.yml", op: "omp-settings", content: "{}", sha256: sha256("{}") });
+  for (const dir of new Set(input.piAgentDirs ?? [".pi/agent"])) {
+    const content = JSON.stringify({ defaultProvider: "model-gateway", defaultModel: "gpt-6.1-sol" });
+    files.push({ path: `${dir}/settings.json`, op: "pi-settings", content, sha256: sha256(content) });
   }
   return { revision: sha256(JSON.stringify({ files: files.map(({ path, sha256 }) => [path, sha256]), modelMap })), files };
 }

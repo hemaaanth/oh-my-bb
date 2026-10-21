@@ -40,6 +40,7 @@ export const accountPoolConfigSchema = z
     switchThreshold: switchThresholdSchema.default(
       DEFAULT_MODEL_GATEWAY_CONFIG.switchThreshold,
     ),
+    allowClaudeOAuthAcrossHarnesses: z.boolean().default(false),
     chains: chainsSchema.default(DEFAULT_CHAINS),
     modelMap: modelMapSchema.default(DEFAULT_MODEL_MAP),
     auto: autoSchema.default(DEFAULT_AUTO),
@@ -53,6 +54,7 @@ export const accountPoolConfigSetInputSchema = z
     anthropicUpstreamBaseUrl: httpUrlSchema.optional(),
     codexUpstreamBaseUrl: httpUrlSchema.optional(),
     switchThreshold: switchThresholdSchema.optional(),
+    allowClaudeOAuthAcrossHarnesses: z.boolean().optional(),
     chains: chainsSchema.optional(),
     modelMap: modelMapSchema.optional(),
     auto: autoSchema.optional(),

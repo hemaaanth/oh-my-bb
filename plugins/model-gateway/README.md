@@ -172,12 +172,12 @@ omp, FX, nanocodex, Prime Agent, and Pi speak OpenAI Responses and default to
   hub also accepts `x-bb-model-gateway-token` and a bearer.
 - omp sees ChatGPT models as `gw-<model>` (omp routes known ids to its
   built-in provider). `GET /v1/models` for an omp token lists them.
-- Pi and OMP discovery include the current nine-model Codex catalog, not only
+- Pi and OMP discovery include the current Claude and Codex catalog, not only
   model-map targets. This includes `gpt-6.1-sol` (500,000 context, 128,000 output)
   and Spark (128,000 context/output, text only). Other current models use
   272,000 context and 128,000 output. Custom model-map targets extend this list.
   `src/model-catalog.ts` is the shared snapshot; refresh host setup files after
-  changing it. Unknown custom targets retain the previous 272,000/128,000 defaults.
+  changing it. Unknown custom targets use conservative 200,000/64,000 defaults.
 - Bodies from these harnesses are fitted to the ChatGPT Codex backend on a
   ChatGPT entry: the model is mapped, and `max_output_tokens`, `temperature`,
   `top_p`, `stop` and `user` are dropped. Everything else, including
@@ -194,7 +194,7 @@ omp, FX, nanocodex, Prime Agent, and Pi speak OpenAI Responses and default to
   thread they cannot connect. `setup pi` refuses to overwrite a file it did not
   write and backs up a changed one.
 - Hempi and family `agents` declarations named `agent-<uuid>` share Pi's chain
-  and routing switch. Exact ids come from the provider catalog. The gateway
+  and routing switch. The shared `agents` id and exact ids come from the provider catalog. The gateway
   rescans on `provider-registrations-changed`; removed ids contribute no env.
 - Prime's adapter builds a private per-launch config and daemon socket. Its
   config stores only the `MODEL_GATEWAY_TOKEN` env reference. Concurrent ACP
@@ -223,12 +223,51 @@ It validates all files before writing, rejects traversal and symlinks, preserves
 unrelated config, refuses unmanaged conflicts, and backs up changed files.
 Run it as the host user. A check creates no directories or backups.
 
-## Legal rule
+## Claude OAuth opt-in
 
-Claude Max OAuth accounts serve only Claude Code on `/v1/messages*`. This is
-checked per request (`isLegalUpstream` in `src/chain.ts`), and chain settings
-that break it are rejected. So for Codex, omp, FX, nanocodex, Prime Agent and Pi
-the only cross-vendor fallback is a paid API key.
+Claude subscription OAuth is restricted to Claude Code by default. An operator
+can accept the third-party harness risk with
+`bb gateway config set allowClaudeOAuthAcrossHarnesses true`. Both chain validation
+and request selection enforce this setting. Then add `claude-oauth:*` to the
+needed harness chains. Turning it off requires removing those chain entries first.
+
+OMP and Pi start with the requested model's subscription family when the chain
+starts with subscriptions. They preserve the remaining fallback order. Explicit
+API-key primary entries keep their configured priority. The observed route records
+both the requested and served model so a native Claude role is not shown as fallback.
+
+## API fallback approval
+
+Every API inference attempt, including Jev automatic model choice, requires an explicit grant for the authenticated
+thread and one named API account. No grant is inherited by another thread.
+The composer offers API fallback only after the chain reaches such an account.
+Approval lasts 15 minutes and at most 10 attempts, with one API request in flight
+per thread. Restarting the plugin clears approval. Approve outside inference,
+then retry if the thread stopped; subscription fallbacks can continue normally.
+
+Use `bb gateway credit status --thread <id>`,
+`bb gateway credit approve --thread <id> --account <id>`, or
+`bb gateway credit revoke --thread <id>` from the CLI.
+
+This is an account permission, not a dollar cap. Anthropic subscriber API credits
+belong to a linked Console organization. API billing may continue into purchased
+funds when included credits run out. No verified balance or included-only spending
+boundary is available here, so the UI does not invent one. Native Claude Code
+usage credits are separate from these API credits.
+
+## Managed execution
+
+Use `bb gateway setup host` for a complete host migration. It reconciles the OMP
+provider, extension, roles and enabled providers, plus Pi extensions, defaults and
+model scopes. It preserves model families and unrelated settings, backs up changed
+files, and rejects unsupported managed overrides. Shared `agents`, Hempi and legacy
+agent provider IDs all receive Pi gateway routing.
+
+When routing is enabled, the gateway transport remains configured even with no usable upstream. The hub rejects the request. BB logs and drops failed env contributions, so throwing in an env resolver cannot enforce routing. Managed harnesses also stop if required gateway credentials are missing. Pi and OMP
+managed sessions remove native model registrations before model selection; helper
+roles resolve only gateway models. Saved native credentials are not deleted.
+Sandboxes use the same setup manifest during create, heal and resume. Custom
+`PI_CODING_AGENT_DIR` directories are included when they are home-relative.
 
 ## BB upgrade caveat
 

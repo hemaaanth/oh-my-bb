@@ -340,6 +340,53 @@ describe("Model Gateway thread header", () => {
   });
 });
 
+describe("Gateway composer fallback", () => {
+  it("shows only during fallback and updates without changing the selected model", async () => {
+    let route: { model: string; chainIndex: number; chain: string[]; accountLabel: string } | null = null;
+    const action = app.composerCustomizations.find((item) => item.id === "gateway-fallback")!.actions![0]!;
+    const slot = renderSlot(action, {}, {
+      composer: { scope: { kind: "thread", threadId: "thr_fallback" } },
+      rpc: { "thread.route": () => route, "credit.status": () => ({ offered: [], grant: null }) },
+    });
+    await waitFor(() => expect(slot.inspection.rpcCalls.length).toBeGreaterThan(0));
+    expect(slot.queryByRole("status")).toBeNull();
+    route = { model: "gpt-6-sol", chainIndex: 1, chain: ["Claude Max", "ChatGPT"], accountLabel: "fallback account" };
+    await slot.emitRealtime("model-gateway.route-changed", { threadId: "thr_fallback" });
+    expect((await slot.findByRole("status")).textContent).toBe("Fallback · gpt-6-sol");
+    expect(slot.getByRole("status").title).toContain("fallback account");
+    expect(slot.composer.selections).toHaveLength(0);
+    await slot.setComposerScope({ kind: "thread", threadId: "thr_other" });
+    route = null;
+    await slot.emitRealtime("model-gateway.route-changed", { threadId: "thr_other" });
+    await waitFor(() => expect(slot.queryByRole("status")).toBeNull());
+    await slot.setComposerScope({ kind: "thread", threadId: "thr_fallback" });
+    route = { model: "gpt-6-sol", chainIndex: 1, chain: ["Claude Max", "ChatGPT"], accountLabel: "fallback account" };
+    await slot.emitRealtime("model-gateway.route-changed", { threadId: "thr_fallback" });
+    await slot.findByRole("status");
+    route = { ...route, chainIndex: 0 };
+    await slot.emitRealtime("model-gateway.route-changed", { threadId: "thr_fallback" });
+    await waitFor(() => expect(slot.queryByRole("status")).toBeNull());
+  });
+  it("offers account-specific approval only after an API fallback is encountered", async () => {
+    let approved = false;
+    const action = app.composerCustomizations.find((item) => item.id === "gateway-fallback")!.actions![0]!;
+    const slot = renderSlot(action, {}, {
+      composer: { scope: { kind: "thread", threadId: "thr_credit_ui" } },
+      rpc: {
+        "thread.route": () => null,
+        "credit.status": () => ({ offered: [{ id: "api-account", label: "Console credits" }], grant: approved ? { accountId: "api-account", expiresAt: Date.now() + 900000, remaining: 10 } : null }),
+        "credit.approve": (input: unknown) => { expect(input).toEqual({ threadId: "thr_credit_ui", accountId: "api-account" }); approved = true; return {}; },
+      } as never,
+    });
+    fireEvent.click(await slot.findByRole("button", { name: "API fallback…" }));
+    expect(await slot.findByText(/not a dollar spending cap/)).toBeTruthy();
+    fireEvent.click(await slot.findByRole("button", { name: "Allow Console credits" }));
+    await waitFor(() => expect(slot.queryByRole("button", { name: "API fallback…" })).toBeNull());
+    expect(approved).toBe(true);
+  });
+
+});
+
 describe("Model usage footer", () => {
   it("shows one row per provider account across duplicate logins", async () => {
     const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
