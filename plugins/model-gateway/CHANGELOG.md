@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — 2026-10-21
+
+- Simplify the fallback pill to a vendor logo and model name on a subtle yellow tint.
+- Use picker-style model names in gateway labels, OMP and Pi.
+
 ## 0.3.0 — 2026-10-21
 
 - Route shared Agents and Hempi through the gateway. Managed runs fail when

@@ -1,8 +1,18 @@
+import { modelDisplayName } from "./model-catalog.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { contextWindow, gatewayModels, ompModels, DEFAULT_MODEL_MAP } from "./chain.js";
 import { piExtension } from "./setup.js";
 
 afterEach(() => vi.unstubAllEnvs());
+
+it.each([
+  ["gpt-6.1-sol", "6.1-Sol"], ["model-gateway/gw-gpt-6-sol", "6-Sol"],
+  ["gpt-5.3-codex-spark", "5.3-Spark"], ["gpt-5.5", "5.5"],
+  ["claude-opus-5-5", "Opus 5.5"], ["claude-sonnet-4-5-20250929", "Sonnet 4.5"],
+  ["kimi-k3", "kimi-k3"],
+])("labels %s as %s without changing custom IDs", (id, label) => {
+  expect(modelDisplayName(id)).toBe(label);
+});
 
 describe("Codex discovery", () => {
   it("loads the Pi extension with current tier models and accurate limits, independent of model-map targets", async () => {
@@ -13,7 +23,7 @@ describe("Codex discovery", () => {
     const registered: Record<string, { models: Array<{ id: string; contextWindow: number; maxTokens: number; input: string[] }> }> = {};
     extension.default({ on: () => {}, registerProvider: (name: string, config: typeof registered[string]) => { registered[name] = config; } });
     const models = registered["model-gateway"]!.models;
-    expect(models.find(({ id }) => id === "gpt-6.1-sol")).toMatchObject({ contextWindow: 500000, maxTokens: 128000 });
+    expect(models.find(({ id }) => id === "gpt-6.1-sol")).toMatchObject({ name: "6.1-Sol", contextWindow: 500000, maxTokens: 128000 });
     expect(models.find(({ id }) => id === "gpt-5.3-codex-spark")).toMatchObject({ contextWindow: 128000, maxTokens: 128000, input: ["text"] });
     for (const id of ["gpt-6-astra", "gpt-6-sol", "gpt-5.6-terra", "gpt-6-luna", "custom-target"])
       expect(models.some((model) => model.id === id)).toBe(true);

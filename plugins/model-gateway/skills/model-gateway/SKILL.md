@@ -184,8 +184,8 @@ Sandboxes use the same setup manifest during create, heal and resume. Custom
 - No thread header item of its own. The Sandboxes plugin's machine icon shows
   the route (model, upstream, chain, fallback cause) in its popover and marks
   a fallback with an amber dot. It reads RPC `thread.route`.
-- The composer shows a small `Fallback · <model>` pill only while a fallback
-  route is active. The model selector keeps the user's configured choice.
+- The composer shows a soft yellow pill with the vendor logo and model name only while a fallback
+  route is active. Its hover text has the full model ID and account. The model selector keeps the user's configured choice.
 - Settings > Model Gateway shows a status line, the Upstreams list, one Routes
   row per harness (Edit opens the chain and the Auto (Jev) switch), and
   Advanced (model map, Jev key and model, base URLs, limits). It edits the

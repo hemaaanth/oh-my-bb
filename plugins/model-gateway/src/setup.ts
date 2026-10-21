@@ -146,9 +146,9 @@ export default function modelGateway(pi) {
     baseUrl: process.env.MODEL_GATEWAY_BASE_URL ?? "http://127.0.0.1:9/model-gateway-not-routed",
     apiKey: process.env.MODEL_GATEWAY_TOKEN ?? "model-gateway-not-routed",
     api: "openai-responses",
-    models: MODELS.map(({ id, input, contextWindow, maxTokens }) => ({
+    models: MODELS.map(({ id, name, input, contextWindow, maxTokens }) => ({
       id,
-      name: \`\${id} (Model Gateway)\`,
+      name,
       reasoning: true,
       input,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

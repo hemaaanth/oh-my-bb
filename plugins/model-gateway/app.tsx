@@ -32,6 +32,7 @@ import {
   useRealtimeConnectionState,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
+import { modelDisplayName } from "./src/model-catalog.js";
 import { FxIcon, GatewayChatGPTIcon, GatewayClaudeIcon, NanocodexIcon } from "./provider-icons";
 import { Button } from "@/components/ui/button";
 import {
@@ -134,9 +135,9 @@ function upstreamName(
     : UPSTREAM_TITLES[kind];
 }
 
-/** `auto → claude-opus-5-5 (jev 0.82)` when Jev changed the model. */
+/** Show the selected model and Jev reason. */
 function autoPick(autoModel: string | null, reason: string | null): string {
-  return `auto → ${autoModel}${reason === null ? "" : ` (${reason})`}`;
+  return `auto → ${autoModel === null ? "" : modelDisplayName(autoModel)}${reason === null ? "" : ` (${reason})`}`;
 }
 
 interface RoutingState {
@@ -571,10 +572,10 @@ function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
     </section>
   );
 }
-/** `claude-sonnet-5` → Sonnet, `claude-opus-*` → Opus; other ids stay as written. */
+/** Keep wildcard families short; use picker names for concrete models. */
 function modelName(model: string): string {
   const family = /^claude-([a-z]+)-/u.exec(model)?.[1];
-  return family === undefined ? model : capitalize(family);
+  return model.includes("*") && family !== undefined ? capitalize(family) : modelDisplayName(model);
 }
 /** "Sonnet or Opus", "gpt-6-luna, gpt-6-sol or gpt-6-astra". */
 function orList(items: string[]): string {
@@ -612,7 +613,7 @@ function mappedModelLines(
     if (byTarget.size === 0) return [];
     return [
       `On ${labels(entry)}: ${[...byTarget]
-        .map(([model, patterns]) => `${patterns.join(", ")} → ${model}`)
+        .map(([model, patterns]) => `${patterns.join(", ")} → ${modelDisplayName(model)}`)
         .join(" · ")}`,
     ];
   });
@@ -2186,7 +2187,7 @@ function ModelGatewaySettings() {
                         {route.autoModel === null
                           ? route.model === null
                             ? ""
-                            : ` · ${route.model}`
+                            : ` · ${modelDisplayName(route.model)}`
                           : ` · ${autoPick(route.autoModel, route.autoReason)}`}
                       </span>
                       <span className="shrink-0 text-xs text-subtle-foreground/75">
@@ -2785,6 +2786,18 @@ function LoginDrawer({
   );
 }
 
+export function GatewayModelPill({ model, accountLabel }: { model: string; accountLabel: string | null }) {
+  const label = modelDisplayName(model);
+  const bare = model.replace(/^(?:model-gateway|openai-codex|openai|anthropic)\//u, "").replace(/^gw-/u, "");
+  const VendorIcon = bare.startsWith("gpt-") ? GatewayChatGPTIcon : bare.startsWith("claude-") ? GatewayClaudeIcon : null;
+  return <span role="status" aria-label={`Fallback: ${label}`}
+    title={`Fallback: ${model}${accountLabel ? ` via ${accountLabel}` : ""}. Configured model unchanged.`}
+    className="inline-flex max-w-48 items-center gap-1.5 rounded-full bg-warning/5 px-2 py-0.5 text-xs text-muted-foreground">
+    {VendorIcon === null ? null : <VendorIcon className="size-3.5 shrink-0" />}
+    <span className="truncate">{label}</span>
+  </span>;
+}
+
 function GatewayFallbackIndicator() {
   const composer = useComposer();
   const threadId = composer.scope.kind === "thread" ? composer.scope.threadId : null;
@@ -2823,10 +2836,7 @@ function GatewayFallbackIndicator() {
   const offer = credits !== null && credits.offered.length > 0 && credits.grant === null;
   if (!fallback && !offer) return null;
   return <>
-    {fallback ? <span role="status" title={`Using ${target}${route?.accountLabel ? ` via ${route.accountLabel}` : ""}. Configured model unchanged.`} className="inline-flex max-w-48 items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-      <span aria-hidden="true" className="size-1 shrink-0 rounded-full bg-warning" />
-      <span className="truncate">Fallback · {target}</span>
-    </span> : null}
+    {fallback ? <GatewayModelPill model={target} accountLabel={route?.accountLabel ?? null} /> : null}
     {offer ? <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setOpen(true)}>API fallback…</Button> : null}
     <ResponsiveDrawerShell open={open} onOpenChange={setOpen} srLabel="API fallback approval">
       <DrawerFrame title="Use API fallback" onClose={() => setOpen(false)}>

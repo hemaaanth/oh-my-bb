@@ -21,9 +21,19 @@ export const CLAUDE_MODELS: typeof CODEX_MODELS = {
 };
 export const GATEWAY_MODELS = { ...CODEX_MODELS, ...CLAUDE_MODELS };
 
+/** Match picker labels while keeping transport IDs unchanged. */
+export function modelDisplayName(model: string): string {
+  const bare = model.replace(/^(?:model-gateway|openai-codex|openai|anthropic)\//u, "").replace(/^gw-/u, "");
+  const gpt = /^gpt-(\d+(?:\.\d+)*)(?:-(astra|sol|luna|terra|codex-spark))?$/u.exec(bare);
+  if (gpt) return `${gpt[1]}${gpt[2] ? `-${gpt[2] === "codex-spark" ? "Spark" : gpt[2][0]!.toUpperCase() + gpt[2].slice(1)}` : ""}`;
+  const claude = /^claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/u.exec(bare);
+  if (claude) return `${claude[1]![0]!.toUpperCase()}${claude[1]!.slice(1)} ${claude[2]}${claude[3] ? `.${claude[3]}` : ""}`;
+  return model;
+}
+
 export function gatewayModelDetails(id: string) {
   const known = GATEWAY_MODELS[id.replace(/^gw-/u, "")];
-  return { id, name: id, reasoning: true, input: known?.input ?? ["text", "image"],
+  return { id, name: modelDisplayName(id), reasoning: true, input: known?.input ?? ["text", "image"],
     contextWindow: known?.contextWindow ?? 200000, maxTokens: known?.maxTokens ?? 64000,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 }

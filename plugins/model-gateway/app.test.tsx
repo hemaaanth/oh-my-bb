@@ -244,7 +244,7 @@ describe("Model Gateway settings", () => {
       }),
     });
     await slot.findByText(
-      "On ChatGPT: Opus, Fable → gpt-6-astra · Sonnet → gpt-6-sol",
+      "On ChatGPT: Opus, Fable → 6-Astra · Sonnet → 6-Sol",
     );
     expect(document.body.textContent).toContain("Claude Max → ChatGPT");
     expect(document.body.textContent).not.toContain("claude-oauth:*");
@@ -310,7 +310,7 @@ describe("Model Gateway settings", () => {
     const toggle = await slot.findByRole("switch", {
       name: "Auto (Jev) for Claude Code",
     });
-    expect(slot.getAllByText(/Jev picks Sonnet or Opus/).length).toBeGreaterThan(0);
+    expect(slot.getAllByText(/Jev picks Sonnet 5 or Opus 5.5/).length).toBeGreaterThan(0);
     expect(slot.getAllByText(/OpenRouter lists only typesafe\/jev-router/).length).toBeGreaterThan(0);
     await waitFor(() => expect(toggle.hasAttribute("disabled")).toBe(false));
     fireEvent.click(toggle);
@@ -321,7 +321,7 @@ describe("Model Gateway settings", () => {
       }),
     );
     await slot.findByText(
-      "Auto (Jev): Jev picks Sonnet or Opus on each new user turn.",
+      "Auto (Jev): Jev picks Sonnet 5 or Opus 5.5 on each new user turn.",
     );
   });
 
@@ -352,8 +352,11 @@ describe("Gateway composer fallback", () => {
     expect(slot.queryByRole("status")).toBeNull();
     route = { model: "gpt-6-sol", chainIndex: 1, chain: ["Claude Max", "ChatGPT"], accountLabel: "fallback account" };
     await slot.emitRealtime("model-gateway.route-changed", { threadId: "thr_fallback" });
-    expect((await slot.findByRole("status")).textContent).toBe("Fallback · gpt-6-sol");
+    expect((await slot.findByRole("status")).textContent).toBe("6-Sol");
     expect(slot.getByRole("status").title).toContain("fallback account");
+    expect(slot.getByRole("status").getAttribute("aria-label")).toBe("Fallback: 6-Sol");
+    expect(slot.getByRole("status").querySelector("svg")).not.toBeNull();
+    expect(slot.getByRole("status").className).toContain("bg-warning/5");
     expect(slot.composer.selections).toHaveLength(0);
     await slot.setComposerScope({ kind: "thread", threadId: "thr_other" });
     route = null;
