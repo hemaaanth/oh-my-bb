@@ -1,0 +1,80 @@
+{
+  "name": "bb-plugin-browser",
+  "version": "0.3.0",
+  "description": "Automate Brave with isolated logins, live viewing and manual handoff.",
+  "type": "module",
+  "bin": {
+    "bb-browser": "docker/trusted-browser.mjs"
+  },
+  "engines": {
+    "bb": ">=0.46.1",
+    "bbPluginSdk": ">=0.6.49",
+    "node": ">=22.15"
+  },
+  "bb": {
+    "name": "Browser",
+    "description": "Automate Brave with isolated logins, live viewing and manual handoff.",
+    "branding": {
+      "icon": "Globe"
+    },
+    "server": "./src/server.ts",
+    "app": "./app.tsx",
+    "host": "./src/host.ts",
+    "skills": [
+      "skills"
+    ]
+  },
+  "keywords": [
+    "bb-plugin",
+    "browser",
+    "brave"
+  ],
+  "scripts": {
+    "build": "bb plugin build && node scripts/runtime-build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "^1.2.4",
+    "better-sqlite3": "12.10.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.49",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.2.7",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cron-parser": "5.10.0",
+    "hono": "4.13.13",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.4.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1",
+    "ws": "8.22.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.14.6",
+    "brace-expansion": "5.0.12"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.10.0": true,
+    "cbor-extract@2.2.2": true,
+    "protobufjs@7.6.5": true
+  },
+  "license": "MIT",
+  "author": "Hemanth Soni",
+  "homepage": "https://github.com/hemaaanth/oh-my-bb/tree/main/plugins/browser",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hemaaanth/oh-my-bb.git",
+    "directory": "plugins/browser"
+  },
+  "bugs": {
+    "url": "https://github.com/hemaaanth/oh-my-bb/issues"
+  }
+}

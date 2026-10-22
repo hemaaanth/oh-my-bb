@@ -1,0 +1,200 @@
+name: Sandbox image
+
+# Builds the provider-neutral runtime image in CI. Provider registration stays
+# in BB, where the installation's provider credentials are stored.
+run-name: Sandbox image ${{ inputs.version || github.ref_name }}
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          Image tag. Defaults to the UTC timestamp shape the plugin generates
+          (20260820t031500z); `bb sandbox register-image` only auto-resolves
+          that shape, so any other value needs an explicit --reference.
+        required: false
+        type: string
+      bb_app_version:
+        description: bb-app npm version installed into the image
+        required: false
+        default: latest
+        type: string
+      omp_version:
+        description: OMP release; blank uses the pin in install-harnesses.sh
+        required: false
+        type: string
+      claude_code_version:
+        description: Claude Code npm version; blank uses the pin
+        required: false
+        type: string
+      codex_version:
+        description: Codex CLI npm version; blank uses the pin
+        required: false
+        type: string
+      fx_version:
+        description: FX release; blank uses the pin
+        required: false
+        type: string
+      pi_version:
+        description: Pi npm version; blank uses the pin
+        required: false
+        type: string
+      prime_agent_version:
+        description: Prime Agent release; blank uses the pin
+        required: false
+        type: string
+      adapters_ref:
+        description: Immutable oh-my-bb commit containing all three ACP adapters
+        required: false
+        type: string
+  push:
+    # A dedicated prefix: an ordinary release tag must not kick off a 3 GB build.
+    tags: ["sandbox-image-v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/bb-sandbox
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    # Cached and rebuilt toolchain layers coexist during a changed build.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the image version
+        id: version
+        run: |
+          version="${{ inputs.version }}"
+          if [ -z "$version" ]; then
+            version="$(date -u +%Y%m%dt%H%M%Sz)"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Resolve blanks to the installer's pins here, not in the image, so the
+      # bb.harness.* labels always name what was installed.
+      - name: Resolve harness versions
+        id: harness
+        env:
+          BB_APP_INPUT: ${{ inputs.bb_app_version }}
+          OMP_INPUT: ${{ inputs.omp_version }}
+          CLAUDE_CODE_INPUT: ${{ inputs.claude_code_version }}
+          CODEX_INPUT: ${{ inputs.codex_version }}
+          FX_INPUT: ${{ inputs.fx_version }}
+          PI_INPUT: ${{ inputs.pi_version }}
+          PRIME_AGENT_INPUT: ${{ inputs.prime_agent_version }}
+          ADAPTERS_INPUT: ${{ inputs.adapters_ref }}
+        run: |
+          pin() {
+            sed -n "s/^$1=\"\\\${$1:-\(.*\)}\"$/\1/p" plugins/sandboxes/docker/install*sh
+          }
+          resolve() {
+            value="$2"
+            [ -n "$value" ] || value="$(pin "$1")"
+            [ -n "$value" ] || { echo "No version for $1" >&2; exit 1; }
+            echo "$3=$value" >> "$GITHUB_OUTPUT"
+          }
+          resolve OMP_VERSION "$OMP_INPUT" omp
+          resolve CLAUDE_CODE_VERSION "$CLAUDE_CODE_INPUT" claude_code
+          resolve CODEX_VERSION "$CODEX_INPUT" codex
+          resolve FX_VERSION "$FX_INPUT" fx
+          resolve PI_VERSION "$PI_INPUT" pi
+          resolve PRIME_AGENT_VERSION "$PRIME_AGENT_INPUT" prime_agent
+          ref="${ADAPTERS_INPUT:-$(pin ADAPTERS_REF)}"
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "adapters_ref must be an immutable commit" >&2; exit 1; }
+          echo "adapters_ref=$ref" >> "$GITHUB_OUTPUT"
+          for name in fx-acp nanocodex-acp prime-agent-acp; do
+            curl -fsSL "https://raw.githubusercontent.com/hemaaanth/oh-my-bb/$ref/agents/$name/$name.mjs" -o "/tmp/$name"
+            key="${name//-/_}"
+            echo "${key}_sha256=$(sha256sum "/tmp/$name" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          done
+          bb_app="${BB_APP_INPUT:-latest}"
+          if [ "$bb_app" = "latest" ]; then
+            bb_app="$(npm view bb-app@latest version)"
+          fi
+          [ -n "$bb_app" ] || { echo "No version for bb-app" >&2; exit 1; }
+          echo "bb_app=$bb_app" >> "$GITHUB_OUTPUT"
+
+      - name: Free space for cached and rebuilt image layers
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h /
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME || github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: plugins/sandboxes/docker
+          file: plugins/sandboxes/docker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            BB_APP_VERSION=${{ steps.harness.outputs.bb_app }}
+            OMP_VERSION=${{ steps.harness.outputs.omp }}
+            CLAUDE_CODE_VERSION=${{ steps.harness.outputs.claude_code }}
+            CODEX_VERSION=${{ steps.harness.outputs.codex }}
+            FX_VERSION=${{ steps.harness.outputs.fx }}
+            PI_VERSION=${{ steps.harness.outputs.pi }}
+            PRIME_AGENT_VERSION=${{ steps.harness.outputs.prime_agent }}
+            ADAPTERS_REF=${{ steps.harness.outputs.adapters_ref }}
+            FX_ACP_SHA256=${{ steps.harness.outputs.fx_acp_sha256 }}
+            NANOCODEX_ACP_SHA256=${{ steps.harness.outputs.nanocodex_acp_sha256 }}
+            PRIME_AGENT_ACP_SHA256=${{ steps.harness.outputs.prime_agent_acp_sha256 }}
+          tags: |
+            ${{ env.IMAGE_REPOSITORY }}:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE_REPOSITORY }}:latest
+          # 32 layers of toolchain installs; without the cache every run pays
+          # for all of them.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Keep the pushed artifact a plain single-platform manifest, exactly
+          # what the plugin's local buildx path produced. An attestation index
+          # adds an unknown/unknown entry that provider image pulls trip over.
+          provenance: false
+          sbom: false
+
+      - name: Release build cache
+        run: docker buildx prune --all --force
+
+      - name: Smoke test
+        run: >-
+          docker run --rm --privileged
+          "${{ env.IMAGE_REPOSITORY }}:${{ steps.version.outputs.version }}"
+          bb-sandbox-smoke-test
+
+      - name: Summarize
+        run: |
+          {
+            echo "### Sandbox image pushed"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Tag | \`${{ env.IMAGE_REPOSITORY }}:${{ steps.version.outputs.version }}\` |"
+            echo "| Digest | \`${{ steps.build.outputs.digest }}\` |"
+            echo "| bb-app | \`${{ steps.harness.outputs.bb_app }}\` |"
+            echo "| Claude Code | \`${{ steps.harness.outputs.claude_code }}\` |"
+            echo "| Codex CLI | \`${{ steps.harness.outputs.codex }}\` |"
+            echo "| OMP | \`${{ steps.harness.outputs.omp }}\` |"
+            echo "| FX | \`${{ steps.harness.outputs.fx }}\` |"
+            echo "| Pi | \`${{ steps.harness.outputs.pi }}\` |"
+            echo "| Prime Agent | \`${{ steps.harness.outputs.prime_agent }}\` |"
+            echo "| ACP adapter commit | \`${{ steps.harness.outputs.adapters_ref }}\` |"
+            echo
+            echo "Register it with the providers from the bb server:"
+            echo
+            echo '```bash'
+            echo "bb sandbox register-image"
+            echo "bb sandbox register-image --reference ${{ steps.version.outputs.version }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -219,7 +219,7 @@ server's loopback address. Pi dirs are home-relative; the default is `.pi/agent`
 The revision covers file content digests and the model map. No token is returned.
 
 Standalone Pi on the BB server machine can opt in with
-`bb gateway setup pi --standalone --machine <id-or-name>` (for example `hemarchy`).
+`bb gateway setup pi --standalone --machine <id-or-name>` (for example `workstation`).
 This writes `~/.pi/agent/model-gateway-standalone.json` with mode 0600, without
 printing its bearer token. Restart Pi after setup. BB must remain running.
 BB-managed sessions always require their own contributed credentials and never

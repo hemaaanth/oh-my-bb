@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "BB Browser",
+  "version": "2.1.0",
+  "description": "Paired regular-profile relay and optional cookie export for BB Browser.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtlOpZB8BEfTg3Cb2yWvAbBL8zPNUjK6l0Tw2enTJSf/rvBuxWoBsFQpouDFOo9k165FkqLqXI59ji9TlO8Xg129s/Lc7/lAQy9vw1Gl8mUQ2+0QIOIcajUSR1413yWiVH0ljCrixNNXjY40vmIz4iBV/ZySPFr09tdbhp0UalTGm1gvgabp6zafiAQUpI7uxfS4DKVjB7imY+f38hSpbjpifo1jOPDVhVAYvIH5VDVHxHBXM25jV2TNcq/McxzoDkMpZfYM8b8qWNInYtebxF43SVKMQiW6Nxb2zD4d49BcY/XmmEGOSFc/j9NxkSZ5/lO1HLV3DIpqPv4HfJwSoswIDAQAB",
+  "permissions": [
+    "cookies",
+    "storage",
+    "alarms",
+    "debugger",
+    "tabs",
+    "tabGroups"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "BB Browser",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
+}

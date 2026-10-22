@@ -30,6 +30,13 @@ as `fx-acp/v0.1.0`.
 
 ## Packages
 
+- [`plugins/browser`](plugins/browser) automates Brave with isolated logins,
+  live viewing and manual handoff.
+- [`plugins/sandboxes`](plugins/sandboxes) runs cloud development machines with
+  private browser desktops, previews and lifecycle cleanup.
+- [`plugins/workspace-scripts`](plugins/workspace-scripts) runs repository commands
+  and services from the thread’s machine menu.
+
 - [`plugins/dispatch`](plugins/dispatch) lets you drive BB by voice. A named agent
   answers in the app or over a phone call, and reads, starts, and steers threads.
 - [`plugins/model-gateway`](plugins/model-gateway) routes supported BB harnesses
