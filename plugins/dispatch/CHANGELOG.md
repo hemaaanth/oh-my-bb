@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add experimental in-app Podcast mode with project people, scoped thread control, optional Journal reads, and queued spoken updates.
+- Preserve project speaker labels in call transcripts.
+
 ## 0.3.1
 
 - Built-in voice samples. Every listed voice has a pre-made sample of the

@@ -5,7 +5,7 @@ import type { TraceRow } from "../../shared/contract.js";
 export type ActionStatus = "running" | "ok" | "error";
 
 export type TraceItem =
-  | { type: "speech"; id: number; at: number; who: "user" | "agent"; text: string }
+  | { type: "speech"; id: number; at: number; who: "user" | "agent"; text: string; speaker?: string }
   | { type: "action"; id: number; at: number; title: string; status: ActionStatus; args: unknown; output: string | null; callId: string | null }
   | { type: "notice"; id: number; at: number; text: string }
   | { type: "error"; id: number; at: number; text: string }
@@ -92,7 +92,7 @@ export function groupTrace(rows: readonly TraceRow[]): TraceItem[] {
       if (system) system.events.push(row);
       else items.push((system = { type: "system", id: row.id, at: row.at, events: [row] }));
     } else if (group === "speech") {
-      items.push({ type: "speech", id: row.id, at: row.at, who: row.kind === "speech.user" ? "user" : "agent", text: text(payload.text) });
+      items.push({ type: "speech", id: row.id, at: row.at, who: row.kind === "speech.user" ? "user" : "agent", text: text(payload.text), ...(typeof payload.speaker === "string" ? { speaker: payload.speaker } : {}) });
     } else if (group === "notice") {
       items.push({ type: "notice", id: row.id, at: row.at, text: text(payload.digest) });
     } else if (group === "error") {

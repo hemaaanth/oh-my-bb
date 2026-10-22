@@ -2,6 +2,7 @@
 // bindings overlay installs it once. The pet, the shortcuts, the palette
 // commands and the console's "Wake" button all reach it through here.
 
+import { podcastEngine } from "./podcast/controller.js";
 import type { PluginRpcClient } from "@get-bb/plugin-sdk/app";
 import type { RpcContract } from "@/shared/contract.js";
 import { registerStartCall } from "@/app/console/index.js";
@@ -29,12 +30,12 @@ export const callEngine = () => engine;
 /** The RPC client, for surfaces that run outside the plugin's React tree (footer icon, palette). */
 export const engineRpc = () => engineRpcClient;
 
-export const toggleCall = () => engine?.toggle() ?? Promise.resolve();
+export const toggleCall = () => podcastEngine()?.active ? podcastEngine()!.stop() : engine?.toggle() ?? Promise.resolve();
 
-export const toggleMute = () => engine?.toggleMute() ?? Promise.resolve();
+export const toggleMute = () => podcastEngine()?.active ? Promise.resolve(podcastEngine()!.toggleMute()) : engine?.toggleMute() ?? Promise.resolve();
 
 /** Stop the call this realm shows, its own or a mirrored one. Never starts one. */
-export const stopCall = () => (engine && callStore.get().state !== "idle" ? engine.toggle() : Promise.resolve());
+export const stopCall = () => podcastEngine()?.active ? podcastEngine()!.stop() : (engine && callStore.get().state !== "idle" ? engine.toggle() : Promise.resolve());
 
 /** "Call my phone" from the pet menu or the palette. P3's helper shows the result. */
 export function callMyPhone() {
@@ -86,7 +87,7 @@ export function installCallEngine(rpc: PluginRpcClient<RpcContract>): () => void
   const onPageHide = () => void installed.stop("pagehide");
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("pagehide", onPageHide);
-  const unregisterStart = registerStartCall(() => installed.wake());
+  const unregisterStart = registerStartCall(() => podcastEngine()?.active ? Promise.resolve() : installed.wake());
 
   return () => {
     unregisterStart();

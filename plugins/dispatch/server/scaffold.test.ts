@@ -1,6 +1,7 @@
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { METHOD_NAMES, READ_CALLS_METHOD, RECEIVE_METHOD } from "../shared/contract.js";
+import { podcastContract } from "../shared/podcast.js";
 import plugin from "./index.js";
 import { MIGRATION_IDS } from "./migrations.js";
 import { SETUP_FORMATS, SETUP_SETTINGS } from "./settings.js";
@@ -59,7 +60,7 @@ describe("setup settings", () => {
 });
 
 describe("storage", () => {
-  it("lists migrations 001 to 007", () => {
+  it("lists migrations 001 to 008", () => {
     expect(MIGRATION_IDS).toEqual([
       "001-calls",
       "002-call-trace",
@@ -68,6 +69,7 @@ describe("storage", () => {
       "005-drop-legacy-token-usage",
       "006-call-summaries",
       "007-voice-samples",
+      "008-podcast-updates",
     ]);
   });
 
@@ -87,6 +89,7 @@ describe("storage", () => {
       "table:call_summaries",
       "index:call_summaries_day",
       "table:voice_samples",
+      "table:podcast_updates",
       "index:voice_samples_used",
     ]) {
       expect(names).toContain(expected);
@@ -98,7 +101,7 @@ describe("storage", () => {
 describe("registration", () => {
   it("registers every RPC method and publishes only webhooks_receive and read.calls", async () => {
     const { harness } = await load();
-    expect([...harness.registrations.rpcMethods].sort()).toEqual([...METHOD_NAMES, RECEIVE_METHOD, READ_CALLS_METHOD].sort());
+    expect([...harness.registrations.rpcMethods].sort()).toEqual([...METHOD_NAMES, ...Object.keys(podcastContract), RECEIVE_METHOD, READ_CALLS_METHOD].sort());
     expect(harness.registrations.experimental_publishedRpcMethods.map((entry) => entry.method)).toEqual([RECEIVE_METHOD, READ_CALLS_METHOD]);
   });
 
