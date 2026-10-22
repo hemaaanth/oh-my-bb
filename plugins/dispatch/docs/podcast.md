@@ -13,7 +13,7 @@ then give an instruction. For example:
 - “Hold the updates.” / “Resume updates.”
 
 **Project people** edits the speakers and selects participating projects.
-Changes take effect on the next call. A call supports up to 30 projects. The
+Changes take effect on the next call. A call supports up to 100 projects. The
 thirteen built-in speech voices repeat beyond thirteen projects. Styles can
 still differ. A typed instruction field is available during a call.
 

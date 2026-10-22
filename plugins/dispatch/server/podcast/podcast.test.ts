@@ -243,3 +243,11 @@ it("expires abandoned calls but keeps a browser with heartbeats alive", async ()
     await expect(harness.behavior.callRpc("podcastUpdates", session)).rejects.toThrow("ended");
   } finally { vi.useRealTimers(); }
 });
+
+
+it("opens a call with more than thirty participating projects", async () => {
+  const overrides = stubs();
+  overrides.projects = { list: async () => Array.from({ length: 42 }, (_, index) => projectRow({ id: `proj_${index}`, name: `Project ${index}` })) } as unknown as Stubs["projects"];
+  const { session } = await service([], overrides);
+  expect(session.callId).toBeTruthy();
+});

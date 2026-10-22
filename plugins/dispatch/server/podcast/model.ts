@@ -14,7 +14,7 @@ export async function reason(ctx: ServerContext, input: { model: string; instruc
     model: input.model, instructions: input.instructions, input: input.input,
     ...(input.tools ? { tools: input.tools, parallel_tool_calls: false } : {}),
     ...(input.schema ? { text: { format: { type: "json_schema", name: "project_route", strict: true, schema: input.schema } } } : {}),
-    max_output_tokens: 2500, store: false, include: ["reasoning.encrypted_content"],
+    max_output_tokens: input.schema ? 8000 : 2500, store: false, include: ["reasoning.encrypted_content"],
   }, signal);
   const body: unknown = await response.json();
   const result = body as { output?: ModelItem[]; usage?: unknown; status?: string };
