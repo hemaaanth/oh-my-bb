@@ -3,9 +3,33 @@
   "schemaVersion": 1,
   "name": "oh-my-bb",
   "plugins": [
-    { "name": "dispatch", "source": "./plugins/dispatch" },
-    { "name": "model-gateway", "source": "./plugins/model-gateway" },
-    { "name": "pages", "source": "./plugins/pages" },
-    { "name": "webhooks", "source": "./plugins/webhooks" }
+    {
+      "name": "dispatch",
+      "source": "./plugins/dispatch"
+    },
+    {
+      "name": "model-gateway",
+      "source": "./plugins/model-gateway"
+    },
+    {
+      "name": "pages",
+      "source": "./plugins/pages"
+    },
+    {
+      "name": "webhooks",
+      "source": "./plugins/webhooks"
+    },
+    {
+      "name": "browser",
+      "source": "./plugins/browser"
+    },
+    {
+      "name": "sandboxes",
+      "source": "./plugins/sandboxes"
+    },
+    {
+      "name": "workspace-scripts",
+      "source": "./plugins/workspace-scripts"
+    }
   ]
 }

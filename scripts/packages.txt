@@ -7,3 +7,7 @@ plugins/webhooks
 agents/fx-acp
 agents/nanocodex-acp
 agents/prime-agent-acp
+
+plugins/browser
+plugins/sandboxes
+plugins/workspace-scripts

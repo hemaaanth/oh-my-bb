@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BB Browser · Settings</title><link rel="icon" href="icons/32.png"><link rel="stylesheet" href="extension.css"></head><body><main>
+<header><img src="bb.svg" alt=""><h1>Browser connection</h1></header>
+<p class="muted">Pair your regular profile in BB Settings → Browser → Browser connection.</p>
+<form id="pair">
+<label for="server">BB address</label><input id="server" type="url" placeholder="https://bb.example.com" required autocomplete="off">
+<label for="code">Pairing code</label><input id="code" type="password" required autocomplete="off" spellcheck="false">
+<div class="actions"><button class="primary" type="submit">Connect to BB</button><button type="button" id="disconnect">Disconnect</button></div>
+</form>
+<label class="check"><input id="export" type="checkbox">Allow cookie export</label>
+<p id="status" role="status" aria-live="polite"></p>
+<small>Only this profile is shared. Private windows are excluded. Cookie export runs after changes and every minute. Managed agent profiles only need the extension for tab groups; no pairing required.</small>
+<script src="options.js"></script></main></body></html>

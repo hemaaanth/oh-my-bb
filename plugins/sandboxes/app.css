@@ -1,0 +1,11 @@
+/*
+ * This surface owns project and sandbox selection. Keep bb's native
+ * permission control, while removing the duplicate project/environment group
+ * from the embedded composer footer.
+ */
+.sandbox-cloud-composer
+  > [data-app-composer][data-promptbox-shell]
+  > :last-child
+  > :first-child {
+  display: none;
+}
