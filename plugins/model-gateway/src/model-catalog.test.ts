@@ -1,7 +1,11 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { modelDisplayName } from "./model-catalog.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { contextWindow, gatewayModels, ompModels, DEFAULT_MODEL_MAP } from "./chain.js";
-import { piExtension } from "./setup.js";
+import { piExtension, writePiStandalone } from "./setup.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -16,6 +20,8 @@ it.each([
 
 describe("Codex discovery", () => {
   it("loads the Pi extension with current tier models and accurate limits, independent of model-map targets", async () => {
+    vi.stubEnv("MODEL_GATEWAY_BASE_URL", "http://gateway.test/v1");
+    vi.stubEnv("MODEL_GATEWAY_TOKEN", "test-token");
     const map = { "chatgpt-oauth": { "custom-alias": "custom-target" } };
     const source = piExtension(gatewayModels(map));
     // The generated extension exists only at runtime; exercise its module-loading boundary.
@@ -32,6 +38,8 @@ describe("Codex discovery", () => {
 
   it("removes native routes and stops a managed session when its model cannot be routed", async () => {
     vi.stubEnv("MODEL_GATEWAY_REQUIRED", "1");
+    vi.stubEnv("MODEL_GATEWAY_BASE_URL", "http://gateway.test/v1");
+    vi.stubEnv("MODEL_GATEWAY_TOKEN", "test-token");
     const source = piExtension(gatewayModels(DEFAULT_MODEL_MAP));
     const extension = await import(/* @vite-ignore */ `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
     const hooks: Record<string, (event: unknown, ctx: unknown) => Promise<void>> = {};
@@ -55,4 +63,39 @@ describe("Codex discovery", () => {
     expect(contextWindow("gpt-6-sol", new Headers())).toBe(272000);
     expect(ompModels(DEFAULT_MODEL_MAP)).toContain("gw-gpt-6.1-sol");
   });
+});
+
+
+it("uses standalone credentials only outside managed BB sessions", async () => {
+  const home = await fs.mkdtemp(path.join(tmpdir(), "mgw-extension-"));
+  try {
+    vi.stubEnv("BB_THREAD_ID", "");
+    vi.stubEnv("MODEL_GATEWAY_REQUIRED", "");
+    vi.stubEnv("MODEL_GATEWAY_BASE_URL", undefined);
+    vi.stubEnv("MODEL_GATEWAY_TOKEN", undefined);
+    await fs.mkdir(path.join(home, "extensions"));
+    const file = path.join(home, "extensions", "model-gateway.mjs");
+    await fs.writeFile(file, piExtension(["gpt-6.1-sol"]));
+    await writePiStandalone(home, "http://standalone.test/v1", "standalone-token");
+    const extension = await import(/* @vite-ignore */ pathToFileURL(file).href);
+    let config: { baseUrl: string; apiKey: string };
+    let start: (event: unknown, ctx: unknown) => Promise<void>;
+    const api = { on: (_name: string, hook: typeof start) => { start = hook; }, registerProvider: (_name: string, value: typeof config) => { config = value; } };
+    extension.default(api);
+    expect(config!).toMatchObject({ baseUrl: "http://standalone.test/v1", apiKey: "standalone-token" });
+    await start!({}, { model: { provider: "model-gateway" } });
+    expect(process.env.MODEL_GATEWAY_BASE_URL).toBe("http://standalone.test/v1");
+    expect(process.env.MODEL_GATEWAY_TOKEN).toBe("standalone-token");
+    vi.stubEnv("MODEL_GATEWAY_BASE_URL", undefined);
+    vi.stubEnv("MODEL_GATEWAY_TOKEN", undefined);
+    vi.stubEnv("MODEL_GATEWAY_REQUIRED", "1");
+    extension.default(api);
+    const ctx = { model: { provider: "model-gateway" }, shutdown: vi.fn() };
+    await expect(start!({}, ctx)).rejects.toThrow(/credentials are missing/);
+    expect(ctx.shutdown).toHaveBeenCalledOnce();
+    vi.stubEnv("MODEL_GATEWAY_BASE_URL", "http://managed.test/v1");
+    vi.stubEnv("MODEL_GATEWAY_TOKEN", "managed-token");
+    extension.default(api);
+    expect(config!).toMatchObject({ baseUrl: "http://managed.test/v1", apiKey: "managed-token" });
+  } finally { await fs.rm(home, { recursive: true, force: true }); }
 });

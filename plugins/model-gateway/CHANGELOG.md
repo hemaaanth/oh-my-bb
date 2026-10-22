@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Remove gateway API spending approvals, request-count limits and expiry. Configured API accounts and Jev now run under upstream billing and key protections.
+
 - Keep Pi and other Responses clients' function tools non-strict on ChatGPT
   when they omit `strict`. Optional tool schemas otherwise produce empty
   `incomplete.max_output_tokens` replies with zero usage. Explicit strict

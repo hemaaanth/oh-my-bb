@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 // Ported from the core Account Pooler (account-pool), MIT, Michael Yong 2026.
 import type {
   Account,
@@ -125,23 +126,6 @@ export class PoolOperations {
       accountId: string,
     ) => Promise<void> = async () => {},
   ) {}
-
-  async creditStatus(threadId: string) {
-    const status = this.hub.credits.status(threadId);
-    const offered = (await this.accounts.list()).filter((account) => account.enabled && account.kind === "api-key" && status.offered.includes(account.id))
-      .map(({ id, label }) => ({ id, label }));
-    return { offered, grant: status.grant };
-  }
-
-  async approveCredits(threadId: string, accountId: string) {
-    const account = (await this.accounts.list()).find((entry) => entry.id === accountId && entry.enabled && entry.kind === "api-key");
-    if (!account) throw new Error("Choose an enabled API account.");
-    this.hub.credits.grant(threadId, accountId);
-    this.onAccountsChanged();
-    return this.creditStatus(threadId);
-  }
-
-  revokeCredits(threadId: string) { this.hub.credits.revoke(threadId); }
 
   async add(input: AccountAddInput): Promise<Account> {
     if (input.source.kind === "api-key") {
@@ -364,7 +348,7 @@ export class PoolOperations {
     };
   }
 
-  async rotateToken(machine: string): Promise<HubTokenSummary> {
+  private async findMachine(machine: string): Promise<PoolHost> {
     const hosts = await this.listHosts();
     const matches = hosts.filter(
       (host) => host.id === machine || host.name === machine,
@@ -376,6 +360,16 @@ export class PoolOperations {
     const host = matches[0];
     if (host === undefined)
       throw new Error(`Machine ${machine} does not exist.`);
+    return host;
+  }
+
+  async standalonePiToken(machine: string): Promise<string> {
+    const host = await this.findMachine(machine);
+    return this.hubTokens.forThread({ hostId: host.id, threadId: `standalone-pi-${randomUUID()}`, harness: "pi" });
+  }
+
+  async rotateToken(machine: string): Promise<HubTokenSummary> {
+    const host = await this.findMachine(machine);
     const token = await this.hubTokens.rotate(host.id);
     return { ...token, hostName: host.name };
   }

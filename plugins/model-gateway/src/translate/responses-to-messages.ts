@@ -12,7 +12,7 @@ type Rec = Record<string, unknown>;
 const isRec = (v: unknown): v is Rec => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** Responses usage counts cached tokens inside input_tokens; Anthropic counts them apart. */
-function anthropicUsage(usage: unknown, webSearchRequests = 0): Rec {
+function anthropicUsage(usage: unknown, webSearchRequests = 0, serviceTier?: unknown): Rec {
   const u = isRec(usage) ? usage : {};
   const details = isRec(u.input_tokens_details) ? u.input_tokens_details : {};
   const cached = typeof details.cached_tokens === "number" ? details.cached_tokens : 0;
@@ -22,6 +22,7 @@ function anthropicUsage(usage: unknown, webSearchRequests = 0): Rec {
     output_tokens: typeof u.output_tokens === "number" ? u.output_tokens : 0,
     cache_read_input_tokens: cached,
     cache_creation_input_tokens: 0,
+    ...(serviceTier === "priority" ? { speed: "fast" } : serviceTier === "default" ? { speed: "standard" } : {}),
     ...(webSearchRequests > 0 ? { server_tool_use: { web_search_requests: webSearchRequests } } : {}),
   };
 }
@@ -147,10 +148,10 @@ export async function* responsesStreamToMessages(
     return block;
   };
   const current = (): Block | null => open;
-  const finish = (stopReason: string, usage: unknown) => {
+  const finish = (stopReason: string, usage: unknown, serviceTier?: unknown) => {
     start();
     close();
-    emit({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: null }, usage: anthropicUsage(usage, webSearchRequests) });
+    emit({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: null }, usage: anthropicUsage(usage, webSearchRequests, serviceTier) });
     emit({ type: "message_stop" });
     terminated = true;
   };
@@ -285,14 +286,14 @@ export async function* responsesStreamToMessages(
           fail({ message: "upstream completed without assistant content" });
           break;
         }
-        finish(sawToolUse ? "tool_use" : "end_turn", response.usage);
+        finish(sawToolUse ? "tool_use" : "end_turn", response.usage, response.service_tier);
         break;
       }
       case "response.incomplete": {
         const response = isRec(event.response) ? event.response : {};
         const reason = isRec(response.incomplete_details) ? response.incomplete_details.reason : undefined;
-        if (reason === "max_output_tokens") finish("max_tokens", response.usage);
-        else if (reason === "content_filter") finish("refusal", response.usage);
+        if (reason === "max_output_tokens") finish("max_tokens", response.usage, response.service_tier);
+        else if (reason === "content_filter") finish("refusal", response.usage, response.service_tier);
         else fail({ message: `upstream response was incomplete (${String(reason)})` });
         break;
       }
@@ -392,6 +393,6 @@ export function responsesJsonToMessages(
     model: requestModel,
     stop_reason: reason === "max_output_tokens" ? "max_tokens" : reason === "content_filter" ? "refusal" : sawToolUse ? "tool_use" : "end_turn",
     stop_sequence: null,
-    usage: anthropicUsage(body.usage, webSearchRequests),
+    usage: anthropicUsage(body.usage, webSearchRequests, body.service_tier),
   };
 }

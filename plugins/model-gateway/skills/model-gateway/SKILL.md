@@ -121,6 +121,19 @@ the gateway strips `gw-`. nanocodex's `kimi-k3`, `@cf/zai-org/glm-5.3` and
   changed one. Other hosts and sandboxes: save `bb gateway setup pi --print`
   there; the file is the same everywhere. Then pick a `model-gateway` model in
   the Pi thread.
+- Standalone Pi on the BB server machine: `bb gateway setup pi --standalone --machine <id-or-name>`
+  writes a private local credentials file; restart Pi. BB must keep running.
+  Managed sessions never fall back to those credentials. Standalone sessions share
+  that saved route identity. Rerun setup after rotating its machine token.
+- Pi Fast mode sends `service_tier: "priority"`. ChatGPT routes preserve it;
+  Claude Opus 5.5, Opus 5, and Opus 4.8 routes translate it to `speed: "fast"`
+  with the required beta header for preview models. Claude Fast mode uses paid
+  usage credits, including on subscription accounts. Unsupported Claude models
+  run at standard speed and the dropped priority setting is recorded.
+  Claude's actual `usage.speed` becomes Responses `service_tier` in JSON and SSE.
+  Claude Code Fast mode also becomes priority on a ChatGPT fallback.
+  Codex subscription responses may say `default` even for native Fast mode;
+  do not use that label alone to conclude the feature is off.
 - Hempi and current `agent-<uuid>` provider declarations use Pi's chain and routing.
   The gateway discovers exact ids and rescans when provider registrations change.
 - Pi and OMP list the current Claude and Codex catalog plus model-map additions. This
@@ -144,24 +157,12 @@ starts with subscriptions. They preserve the remaining fallback order. Explicit
 API-key primary entries keep their configured priority. The observed route records
 both the requested and served model so a native Claude role is not shown as fallback.
 
-## API fallback approval
+## API spending
 
-Every API inference attempt, including Jev automatic model choice, requires an explicit grant for the authenticated
-thread and one named API account. No grant is inherited by another thread.
-The composer offers API fallback only after the chain reaches such an account.
-Approval lasts 15 minutes and at most 10 attempts, with one API request in flight
-per thread. Restarting the plugin clears approval. Approve outside inference,
-then retry if the thread stopped; subscription fallbacks can continue normally.
-
-Use `bb gateway credit status --thread <id>`,
-`bb gateway credit approve --thread <id> --account <id>`, or
-`bb gateway credit revoke --thread <id>` from the CLI.
-
-This is an account permission, not a dollar cap. Anthropic subscriber API credits
-belong to a linked Console organization. API billing may continue into purchased
-funds when included credits run out. No verified balance or included-only spending
-boundary is available here, so the UI does not invent one. Native Claude Code
-usage credits are separate from these API credits.
+Configured API accounts run automatically in chain order, including automatic
+model choice through Jev. Model Gateway adds no spending approval, request-count
+limit, or approval expiry. Billing limits, prepaid balances, auto-reload settings,
+and key restrictions are enforced by the upstream provider.
 
 ## Managed execution
 
@@ -258,6 +259,6 @@ bb gateway setup omp [--print] [--server-url <url>]
 bb gateway setup fx
 bb gateway setup nanocodex
 bb gateway setup prime-agent
-bb gateway setup pi [--print]
+bb gateway setup pi [--print] [--standalone --machine <id-or-name>]
 bb gateway setup host [--print] [--check]
 ```

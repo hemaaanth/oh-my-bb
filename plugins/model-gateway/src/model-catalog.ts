@@ -37,3 +37,9 @@ export function gatewayModelDetails(id: string) {
     contextWindow: known?.contextWindow ?? 200000, maxTokens: known?.maxTokens ?? 64000,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 }
+
+
+/** Fast mode is available only on these Opus models. */
+export function supportsClaudeFast(model: string): boolean {
+  return /^claude-opus-(?:5(?:-5)?|4-8)(?:-\d{8})?$/.test(model);
+}

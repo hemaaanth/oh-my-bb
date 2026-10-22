@@ -219,10 +219,11 @@ describe("chain config", () => {
           stop: ["x"],
           user: "u",
           store: false,
+          service_tier: "priority",
         },
         "gpt-6-sol",
       ),
-    ).toEqual({ model: "gpt-6-sol", input: [extra], store: false });
+    ).toEqual({ model: "gpt-6-sol", input: [extra], store: false, service_tier: "priority" });
   });
 
   it("keeps optional Pi tool arguments non-strict on ChatGPT without weakening explicit strict schemas", () => {
@@ -641,19 +642,12 @@ describe("chain failover in the hub", () => {
         projectId: "project-one",
         hostId: "host-one",
       });
-    const approve = async (key: string) => {
-      const [, threadId] = JSON.parse(Buffer.from(key.split(".")[0]!, "base64url").toString());
-      const accounts = accountSummarySchema.array().parse(await host.harness.behavior.callRpc("account.list", null));
-      for (const api of accounts.filter((account) => account.enabled && account.kind === "api-key"))
-        await host.harness.behavior.callRpc("credit.approve", { threadId, accountId: api.id });
-    };
     const send = async (
       key: string,
       body: object,
       route = "/v1/messages",
       extra: Record<string, string> = {},
     ) => {
-      await approve(key);
       const response = await host.harness.behavior.fetchHttp("POST", route, {
         headers: {
           authorization: `Bearer ${key}`,
@@ -689,7 +683,6 @@ describe("chain failover in the hub", () => {
       cli,
       token,
       env,
-      approve,
       send,
       route,
       setNow: (value: number) => {
@@ -873,32 +866,18 @@ describe("chain failover in the hub", () => {
     expect(gw.upstream.attempts).not.toContain("max-token");
   });
 
-  it("uses normal fallback without spending, then honors a thread-scoped API approval", async () => {
+  it("uses configured API fallback across threads, time, and more than ten requests without a grant", async () => {
     const gw = await gateway({ withCodex: true });
-    const key = await gw.token("claude-code", "thr_approval");
     gw.upstream.maxExhausted = true;
-    gw.upstream.reply = (who) => who === "pro-token" ? new Response(fixture("chatgpt-two-tools.sse").toString(), { headers: { "content-type": "text/event-stream" } }) : undefined;
-    const request = async (token = key) => {
-      const response = await gw.host.harness.behavior.fetchHttp("POST", "/v1/messages", {
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(userTurn),
-      });
-      await response.text();
-      return response.status;
-    };
-    expect(await request()).toBe(200);
-    expect(gw.upstream.attempts).not.toContain("key-token");
-    expect(await gw.host.harness.behavior.callRpc("credit.status", { threadId: "thr_approval" })).toMatchObject({ offered: [{ id: gw.key.id }], grant: null });
-    await gw.host.harness.behavior.callRpc("credit.approve", { threadId: "thr_approval", accountId: gw.key.id });
-    expect(await request()).toBe(200);
-    expect(gw.upstream.attempts.at(-1)).toBe("key-token");
-    const fork = await gw.token("claude-code", "thr_approval_fork");
-    gw.upstream.attempts.length = 0;
-    expect(await request(fork)).toBe(200);
-    expect(gw.upstream.attempts).not.toContain("key-token");
-    gw.setNow(T + 16 * 60_000);
-    gw.upstream.attempts.length = 0;
-    expect(await request()).toBe(200);
-    expect(gw.upstream.attempts).not.toContain("key-token");
+    for (const threadId of ["thr_api", "thr_api_fork"]) {
+      const key = await gw.token("claude-code", threadId);
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const response = await gw.send(key, userTurn);
+        expect(response.status).toBe(200);
+        expect(gw.upstream.attempts.at(-1)).toBe("key-token");
+      }
+      gw.setNow(T + 16 * 60_000);
+    }
   });
 
   it("allows Claude OAuth on a Responses harness only after explicit operator opt-in", async () => {
@@ -1669,6 +1648,30 @@ describe("chain failover in the hub", () => {
     }
   });
 
+  it("sets up standalone Pi without returning credentials and authenticates its Pi-scoped token", async () => {
+    const gw = await gateway({ withCodex: true });
+    const agentDir = await mkdtemp(path.join(tmpdir(), "mgw-pi-cli-"));
+    const previous = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    try {
+      expect((await gw.cli("setup", "pi", "--standalone")).exitCode).toBe(1);
+      expect((await gw.cli("setup", "pi", "--standalone", "--machine", "One", "--print")).exitCode).toBe(1);
+      const result = await gw.cli("setup", "pi", "--standalone", "--machine", "One");
+      expect(result.exitCode).toBe(0);
+      const file = path.join(agentDir, "model-gateway-standalone.json");
+      const { apiKey } = JSON.parse(await fs.readFile(file, "utf8"));
+      expect(result.stdout).not.toContain(apiKey);
+      expect(readThreadToken(apiKey)).toMatchObject({ hostId: "host-one", harness: "pi" });
+      gw.upstream.reply = () => completed("resp_standalone");
+      const response = await gw.send(apiKey, { model: "gpt-6.1-sol", input: "hi", service_tier: "priority" }, "/v1/responses");
+      expect(response.status).toBe(200);
+    } finally {
+      if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = previous;
+      await fs.rm(agentDir, { recursive: true, force: true });
+    }
+  });
+
   // P4: API-key upstreams, Responses -> Messages translation, Pi.
   const KIMI = "https://kimi.test/anthropic";
   const OPENROUTER = "https://openrouter.test/api/v1";
@@ -1856,7 +1859,6 @@ describe("chain failover in the hub", () => {
     await gw.cli("chain", "set", "acp-nanocodex", "chatgpt-oauth:*", "anthropic-compatible-key:kimi");
     gw.upstream.reply = () => anthropicTwoTools();
     const token = (await valueOf(gw.env("acp-nanocodex", "thr_nano_kimi"), "MODEL_GATEWAY_TOKEN")) as string;
-    await gw.approve(token);
     const socket = await gw.host.harness.behavior.experimental_openWebSocket("/v1/responses", {
       headers: { authorization: `Bearer ${token}` },
     });
@@ -2097,7 +2099,7 @@ describe("chain failover in the hub", () => {
     Response.json({ choices: [{ message: { role: "assistant", content: JSON.stringify({ choice, confidence }) } }] });
   const isJev = (url: string) => url === `${OPENROUTER}/chat/completions`;
 
-  it("does not spend on the automatic model chooser without a thread grant", async () => {
+  it("uses the configured automatic model chooser without a thread grant", async () => {
     const gw = await gateway({ withCodex: true });
     await addKey(gw, "responses-compatible-key", "openrouter", OPENROUTER, "sk-or");
     await gw.cli("auto", "codex", "--key", "openrouter");
@@ -2108,8 +2110,7 @@ describe("chain failover in the hub", () => {
     });
     await response.text();
     expect(response.status).toBe(200);
-    expect(gw.upstream.requests.some((request) => isJev(request.url))).toBe(false);
-    expect(await gw.host.harness.behavior.callRpc("credit.status", { threadId: "thr_no_auto_spend" })).toMatchObject({ offered: [{ label: "openrouter" }], grant: null });
+    expect(gw.upstream.requests.some((request) => isJev(request.url))).toBe(true);
   });
 
   it("asks Jev at each new user turn, keeps the pick through the tool loop, and fails open", async () => {
@@ -2257,6 +2258,20 @@ describe("chain failover in the hub", () => {
     expect((await gw.send(token, body, "/v1/responses")).status).toBe(200);
     expect(gw.upstream.attempts).toEqual(["sk-or", "pro-token"]);
     expect(JSON.parse(gw.upstream.requests.at(-1)!.body).model).toBe("gpt-6-luna");
+  });
+
+  it("serves Pi Claude Fast requests with the required headers and actual reported speed", async () => {
+    const gw = await gateway({ config: { allowClaudeOAuthAcrossHarnesses: true, chains: { pi: ["claude-oauth:*"] } } });
+    gw.upstream.reply = () => Response.json({ content: [{ type: "text", text: "FAST_OK" }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1, speed: "fast" } });
+    const token = (await gw.env("pi", "thr_pi_claude_fast")).find(entry => entry.name === "MODEL_GATEWAY_TOKEN")!.value as string;
+    for (const model of ["claude-opus-5-5", "claude-opus-5"]) {
+      const response = await gw.send(token, { model, input: "Hello", service_tier: "priority", max_output_tokens: 64, stream: false }, "/v1/responses");
+      expect(response.status).toBe(200);
+      expect(JSON.parse(response.text)).toMatchObject({ service_tier: "priority" });
+      const upstream = gw.upstream.requests.at(-1)!;
+      expect(JSON.parse(upstream.body)).toMatchObject({ model, speed: "fast", max_tokens: 64 });
+      expect(upstream.headers.get("anthropic-beta")).toBe(model === "claude-opus-5" ? "fast-mode-2026-02-01" : null);
+    }
   });
 
   it("routes Pi through the gateway: env, health, routing --off, and the legal guard", async () => {

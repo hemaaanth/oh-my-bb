@@ -218,6 +218,27 @@ RPC `host.setupFiles({ hostId, serverBaseUrl, piAgentDirs? })` returns
 server's loopback address. Pi dirs are home-relative; the default is `.pi/agent`.
 The revision covers file content digests and the model map. No token is returned.
 
+Standalone Pi on the BB server machine can opt in with
+`bb gateway setup pi --standalone --machine <id-or-name>` (for example `hemarchy`).
+This writes `~/.pi/agent/model-gateway-standalone.json` with mode 0600, without
+printing its bearer token. Restart Pi after setup. BB must remain running.
+BB-managed sessions always require their own contributed credentials and never
+use the standalone file. Standalone launches share the saved route identity;
+rerunning setup creates a new one. Rerun setup after rotating the machine token.
+Remote standalone setup is not supported by this command.
+
+Pi Fast mode sends `service_tier: "priority"` through the Responses provider.
+The gateway preserves this on ChatGPT routes and translates it to `speed: "fast"`
+for Claude Opus 5.5, Opus 5, and Opus 4.8. Preview models receive the required
+`fast-mode-2026-02-01` beta header. Claude Fast mode uses paid usage credits,
+including on subscription accounts. Unsupported Claude models run at standard
+speed and the route records the dropped priority setting. Claude's returned
+`usage.speed` is preserved as the Responses `service_tier` in JSON and streams.
+Claude Code Fast mode also becomes priority service on a ChatGPT fallback.
+The upstream chooses the served tier. Codex subscription responses can report
+`default` even with native Fast mode, so that label alone does not establish
+whether acceleration occurred.
+
 `scripts/apply-setup-files.mjs` is the standalone Node applier for remote hosts.
 Copy that one file and pass `{ home?, files, check? }` as JSON on stdin.
 Its stdout is `{ files: [{ path, status, changed, backup }] }`.
@@ -238,24 +259,12 @@ starts with subscriptions. They preserve the remaining fallback order. Explicit
 API-key primary entries keep their configured priority. The observed route records
 both the requested and served model so a native Claude role is not shown as fallback.
 
-## API fallback approval
+## API spending
 
-Every API inference attempt, including Jev automatic model choice, requires an explicit grant for the authenticated
-thread and one named API account. No grant is inherited by another thread.
-The composer offers API fallback only after the chain reaches such an account.
-Approval lasts 15 minutes and at most 10 attempts, with one API request in flight
-per thread. Restarting the plugin clears approval. Approve outside inference,
-then retry if the thread stopped; subscription fallbacks can continue normally.
-
-Use `bb gateway credit status --thread <id>`,
-`bb gateway credit approve --thread <id> --account <id>`, or
-`bb gateway credit revoke --thread <id>` from the CLI.
-
-This is an account permission, not a dollar cap. Anthropic subscriber API credits
-belong to a linked Console organization. API billing may continue into purchased
-funds when included credits run out. No verified balance or included-only spending
-boundary is available here, so the UI does not invent one. Native Claude Code
-usage credits are separate from these API credits.
+Configured API accounts run automatically in chain order, including automatic
+model choice through Jev. Model Gateway adds no spending approval, request-count
+limit, or approval expiry. Billing limits, prepaid balances, auto-reload settings,
+and key restrictions are enforced by the upstream provider.
 
 ## Managed execution
 

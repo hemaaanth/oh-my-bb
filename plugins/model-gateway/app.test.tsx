@@ -346,7 +346,7 @@ describe("Gateway composer fallback", () => {
     const action = app.composerCustomizations.find((item) => item.id === "gateway-fallback")!.actions![0]!;
     const slot = renderSlot(action, {}, {
       composer: { scope: { kind: "thread", threadId: "thr_fallback" } },
-      rpc: { "thread.route": () => route, "credit.status": () => ({ offered: [], grant: null }) },
+      rpc: { "thread.route": () => route },
     });
     await waitFor(() => expect(slot.inspection.rpcCalls.length).toBeGreaterThan(0));
     expect(slot.queryByRole("status")).toBeNull();
@@ -369,23 +369,6 @@ describe("Gateway composer fallback", () => {
     route = { ...route, chainIndex: 0 };
     await slot.emitRealtime("model-gateway.route-changed", { threadId: "thr_fallback" });
     await waitFor(() => expect(slot.queryByRole("status")).toBeNull());
-  });
-  it("offers account-specific approval only after an API fallback is encountered", async () => {
-    let approved = false;
-    const action = app.composerCustomizations.find((item) => item.id === "gateway-fallback")!.actions![0]!;
-    const slot = renderSlot(action, {}, {
-      composer: { scope: { kind: "thread", threadId: "thr_credit_ui" } },
-      rpc: {
-        "thread.route": () => null,
-        "credit.status": () => ({ offered: [{ id: "api-account", label: "Console credits" }], grant: approved ? { accountId: "api-account", expiresAt: Date.now() + 900000, remaining: 10 } : null }),
-        "credit.approve": (input: unknown) => { expect(input).toEqual({ threadId: "thr_credit_ui", accountId: "api-account" }); approved = true; return {}; },
-      } as never,
-    });
-    fireEvent.click(await slot.findByRole("button", { name: "API fallback…" }));
-    expect(await slot.findByText(/not a dollar spending cap/)).toBeTruthy();
-    fireEvent.click(await slot.findByRole("button", { name: "Allow Console credits" }));
-    await waitFor(() => expect(slot.queryByRole("button", { name: "API fallback…" })).toBeNull());
-    expect(approved).toBe(true);
   });
 
 });

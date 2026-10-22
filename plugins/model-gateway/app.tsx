@@ -1959,7 +1959,7 @@ function ModelGatewaySettings() {
               </ConfigFieldRow>
               <div className="flex items-center justify-between gap-4 py-2.5">
                 <div><div className="text-sm">Claude subscription OAuth in other harnesses</div>
-                  <p className="mt-0.5 text-xs text-muted-foreground">Opt in at your own risk. This use may conflict with Anthropic's subscription terms. API spending still requires separate approval.</p></div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Opt in at your own risk. This use may conflict with Anthropic's subscription terms.</p></div>
                 <Switch aria-label="Allow Claude OAuth across harnesses" checked={config?.allowClaudeOAuthAcrossHarnesses ?? false} disabled={config === null || pending !== null}
                   onCheckedChange={(checked) => void saveConfig("claude-oauth-opt-in", () => rpc.call("config.set", { allowClaudeOAuthAcrossHarnesses: checked }))} />
               </div>
@@ -2804,57 +2804,27 @@ function GatewayFallbackIndicator() {
   const rpc = useRpc<typeof accountPoolRpcContract>();
   const connection = useRealtimeConnectionState();
   const [revision, refresh] = useState(0);
-  const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
   const [state, setState] = useState<{
     threadId: string;
     route: Pick<Route, "model" | "chainIndex" | "chain" | "accountLabel"> | null;
-    credits: { offered: Array<{ id: string; label: string }>; grant: { accountId: string; expiresAt: number; remaining: number } | null };
   } | null>(null);
   useRealtime(MODEL_GATEWAY_ROUTE_CHANGED, (payload) => {
     if (typeof payload === "object" && payload !== null && "threadId" in payload && payload.threadId === threadId)
       refresh((value) => value + 1);
   });
   useEffect(() => {
-    setOpen(false);
-    setError(null);
-  }, [threadId]);
-  useEffect(() => {
     if (threadId === null) return;
     let current = true;
-    void Promise.all([rpc.call("thread.route", { threadId }), rpc.call("credit.status", { threadId })]).then(
-      ([route, credits]) => { if (current) setState({ threadId, route, credits }); },
+    void rpc.call("thread.route", { threadId }).then(
+      (route) => { if (current) setState({ threadId, route }); },
       () => { if (current) setState(null); },
     );
     return () => { current = false; };
   }, [rpc, threadId, revision, connection]);
   const route = state?.threadId === threadId ? state.route : null;
-  const credits = state?.threadId === threadId ? state.credits : null;
-  const fallback = route !== null && route.chainIndex > 0;
-  const target = route?.model ?? route?.chain[route.chainIndex] ?? "Gateway";
-  const offer = credits !== null && credits.offered.length > 0 && credits.grant === null;
-  if (!fallback && !offer) return null;
-  return <>
-    {fallback ? <GatewayModelPill model={target} accountLabel={route?.accountLabel ?? null} /> : null}
-    {offer ? <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setOpen(true)}>API fallback…</Button> : null}
-    <ResponsiveDrawerShell open={open} onOpenChange={setOpen} srLabel="API fallback approval">
-      <DrawerFrame title="Use API fallback" onClose={() => setOpen(false)}>
-        <p className="text-sm text-muted-foreground">Keep the normal fallback, or approve one API account for this thread for 15 minutes and up to 10 attempts, one at a time.</p>
-        <p className="text-sm text-muted-foreground">API billing may consume purchased funds after included credits. This is not a dollar spending cap. Remaining included-credit balance is not verified.</p>
-        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-        {credits?.offered.map((account) => <Button key={account.id} variant="outline" disabled={pending} onClick={() => {
-          if (threadId === null) return;
-          setPending(true);
-          void rpc.call("credit.approve", { threadId, accountId: account.id }).then(
-            () => { setOpen(false); refresh((value) => value + 1); },
-            (cause: unknown) => setError(cause instanceof Error ? cause.message : "Could not approve API fallback."),
-          ).finally(() => setPending(false));
-        }}>Allow {account.label}</Button>)}
-        <p className="text-xs text-muted-foreground">After approval, retry the thread if it stopped. Included-credits-only spending is unavailable until a reliable spending boundary is verified.</p>
-      </DrawerFrame>
-    </ResponsiveDrawerShell>
-  </>;
+  if (route === null || route.chainIndex === 0) return null;
+  const target = route.model ?? route.chain[route.chainIndex] ?? "Gateway";
+  return <GatewayModelPill model={target} accountLabel={route.accountLabel} />;
 }
 
 export default definePluginApp((app) => {

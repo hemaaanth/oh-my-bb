@@ -1,7 +1,6 @@
 // Ported from the core Account Pooler (account-pool), MIT, Michael Yong 2026.
 import { promisify } from "node:util";
 import { gatewayModelDetails } from "./model-catalog.js";
-import { CreditGrants, CreditApprovalRequired } from "./credit-grants.js";
 import { zstdDecompress } from "node:zlib";
 import type {
   Account,
@@ -236,6 +235,8 @@ export function translateFor(
           "content-type": "application/json",
           accept: streaming ? "text/event-stream" : "application/json",
           "anthropic-version": "2023-06-01",
+          ...(translated.body.speed === "fast" && !/^claude-opus-5-5(?:-\d{8})?$/.test(upstreamModel)
+            ? { "anthropic-beta": "fast-mode-2026-02-01" } : {}),
         },
         signal: request.signal,
       }),
@@ -413,7 +414,6 @@ interface FailureSummary {
 class UpstreamConnectionError extends Error {}
 
 export class AccountPoolHub {
-  readonly credits: CreditGrants;
   private accepting = false;
   private stopped = new AbortController();
   private readonly inFlightByAccount = new Map<string, number>();
@@ -429,7 +429,6 @@ export class AccountPoolHub {
   private readonly droppedNoted = new Set<string>();
 
   constructor(private readonly options: HubOptions) {
-    this.credits = new CreditGrants(options.now);
   }
 
   async start(signal: AbortSignal): Promise<void> {
@@ -731,7 +730,7 @@ export class AccountPoolHub {
     // P5: Jev's pick replaces the client model; the chain then routes it as usual.
     const auto = countTokens
       ? null
-      : await this.autoPick(harness, json, route, entries, allAccounts, signal, identity?.threadId ?? null);
+      : await this.autoPick(harness, json, route, entries, allAccounts, signal);
     if (
       auto?.model != null &&
       isRecord(json) &&
@@ -766,11 +765,6 @@ export class AccountPoolHub {
       isNewUserTurn(json),
       now,
     );
-    const approvedAccount = identity === null ? null : this.credits.status(identity.threadId).grant?.accountId;
-    const approvedIndex = entries.findIndex((accounts) => accounts.some((account) => account.id === approvedAccount));
-    if (approvedIndex > 0 && boundIndex > 0 && boundIndex !== approvedIndex) {
-      order.splice(0, order.length, approvedIndex, ...order.filter((index) => index !== approvedIndex));
-    }
     let estimate: number | null = null;
     let contextBlocked = false;
     let served = false;
@@ -954,7 +948,6 @@ export class AccountPoolHub {
       served.index === 0
         ? null
         : served.fallbackCause ?? (same ? route.fallbackCause : null);
-    if (served.index === 0 && served.account.kind === "oauth" && served.auto?.reason !== "fail open: API approval required") this.credits.clearOffers(identity.threadId);
     this.options.routes.put({
       threadId: identity.threadId,
       harness: identity.harness,
@@ -995,7 +988,6 @@ export class AccountPoolHub {
     entries: readonly Account[][],
     accounts: readonly Account[],
     signal: AbortSignal,
-    threadId: string | null,
   ): Promise<JevPick | null> {
     const settings = this.options.getSettings();
     if (!settings.auto.harnesses.includes(harness)) return null;
@@ -1034,28 +1026,16 @@ export class AccountPoolHub {
     const secret = await this.options.accounts.readSecret(key.id).catch(() => null);
     if (secret?.kind !== "api-key")
       return { model: null, reason: "fail open: no Jev key" };
-    const release = this.credits.acquire(threadId, key.id);
-    if (release === null) {
-      if (threadId !== null) {
-        this.credits.offer(threadId, key.id);
-        this.options.onRouteChanged(threadId);
-      }
-      return { model: null, reason: "fail open: API approval required" };
-    }
-    try {
-      return await askJev({
-        fetch: this.options.fetch,
-        baseUrl: key.baseUrl,
-        apiKey: secret.apiKey,
-        model: settings.auto.model,
-        prompt: lastUserText(json),
-        candidates,
-        signal,
-        timeoutMs: this.options.jevTimeoutMs,
-      });
-    } finally {
-      release();
-    }
+    return askJev({
+      fetch: this.options.fetch,
+      baseUrl: key.baseUrl,
+      apiKey: secret.apiKey,
+      model: settings.auto.model,
+      prompt: lastUserText(json),
+      candidates,
+      signal,
+      timeoutMs: this.options.jevTimeoutMs,
+    });
   }
 
   private noteDropped(
@@ -1218,14 +1198,9 @@ export class AccountPoolHub {
               selected.account,
               secret,
               adapter,
-              identity?.threadId ?? null,
             );
           } catch (error) {
             signal.throwIfAborted();
-            if (error instanceof CreditApprovalRequired) {
-              failure = { status: 402, message: error.message, headers: {} };
-              break;
-            }
             if (!(error instanceof UpstreamConnectionError)) throw error;
             if (
               adapter.provider === "claude" &&
@@ -1851,20 +1826,7 @@ export class AccountPoolHub {
     account: Account,
     secret: AccountSecret,
     adapter: ProviderAdapter,
-    threadId: string | null,
   ): Promise<UpstreamResult> {
-    let releaseCredit: (() => void) | null = null;
-    const inference = request.method === "POST" && /^\/v1\/(messages|responses)$/u.test(routePath(request.url));
-    if (account.kind === "api-key" && inference) {
-      releaseCredit = this.credits.acquire(threadId, account.id);
-      if (releaseCredit === null) {
-        if (threadId !== null) {
-          this.credits.offer(threadId, account.id);
-          this.options.onRouteChanged(threadId);
-        }
-        throw new CreditApprovalRequired(`API fallback through ${account.label} requires approval for this thread. Use the composer's API fallback control or bb gateway credit approve --thread <id> --account <id>, then retry. API billing may consume purchased funds after included credits.`);
-      }
-    }
     const controller = new AbortController();
     const abortFromRequest = () => controller.abort(request.signal.reason);
     this.activeControllers.add(controller);
@@ -1881,7 +1843,6 @@ export class AccountPoolHub {
       request.signal.removeEventListener("abort", abortFromRequest);
       this.activeControllers.delete(controller);
       this.decrement(account.id);
-      releaseCredit?.();
     };
     try {
       const upstreamBody = new ArrayBuffer(body.byteLength);

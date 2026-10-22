@@ -7,6 +7,7 @@
 // Foreign reasoning (ChatGPT encrypted items, other models' thinking) is dropped before
 // sending. Anthropic thinking comes back as a `reasoning` item carrying a gateway
 // envelope, which is replayed to the same model and dropped for everything else.
+import { supportsClaudeFast } from "../model-catalog.js";
 import { randomUUID } from "node:crypto";
 import { ANTHROPIC_REPLAY, decodeThinkingEnvelope, encodeThinkingEnvelope, type ThinkingEnvelope } from "./reasoning-envelope.js";
 import { TranslateError } from "./messages-to-responses.js";
@@ -314,6 +315,10 @@ export function responsesToMessages(
 
   const maxOut = typeof raw.max_output_tokens === "number" ? raw.max_output_tokens : DEFAULT_MAX_TOKENS;
   const body: Rec = { model, max_tokens: maxOut, messages: paired, stream };
+  if (raw.service_tier === "priority") {
+    if (supportsClaudeFast(model)) body.speed = "fast";
+    else dropped.add("service_tier:priority");
+  }
   if (system.length > 0) body.system = system.join("\n\n");
   if (tools.length > 0) body.tools = tools;
   if (typeof raw.temperature === "number") body.temperature = raw.temperature;
@@ -367,6 +372,14 @@ export interface OutputOptions {
 }
 
 const newId = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "")}`;
+
+/** Report only the speed actually returned by Anthropic. */
+function responseServiceTier(usage: unknown): Rec {
+  if (!isRec(usage)) return {};
+  if (usage.speed === "fast") return { service_tier: "priority" };
+  if (usage.speed === "standard") return { service_tier: "default" };
+  return {};
+}
 
 /** Anthropic counts cache reads and writes apart from input_tokens; Responses includes them. */
 function responsesUsage(usage: Rec): Rec {
@@ -466,6 +479,7 @@ export function messagesJsonToResponses(json: unknown, options: OutputOptions): 
     model: options.requestModel,
     output,
     usage: responsesUsage(isRec(message.usage) ? message.usage : {}),
+    ...responseServiceTier(message.usage),
     ...(incomplete ? { incomplete_details: incomplete } : {}),
   };
 }
@@ -534,7 +548,7 @@ export async function* messagesStreamToResponses(
   const terminal = function* (): Generator<Uint8Array> {
     yield* close();
     const { status, incomplete } = outcome(stopReason);
-    const response = { ...snapshot(status, output), usage: responsesUsage(usage), ...(incomplete ? { incomplete_details: incomplete } : {}) };
+    const response = { ...snapshot(status, output), ...responseServiceTier(usage), usage: responsesUsage(usage), ...(incomplete ? { incomplete_details: incomplete } : {}) };
     yield frame(status === "completed" ? "response.completed" : "response.incomplete", { response });
   };
   const failed = function* (error: Rec): Generator<Uint8Array> {

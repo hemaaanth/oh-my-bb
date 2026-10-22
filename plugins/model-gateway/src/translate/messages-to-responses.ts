@@ -23,6 +23,7 @@ export interface ResponsesRequest {
   max_output_tokens?: number;
   temperature?: number;
   top_p?: number;
+  service_tier?: "priority";
   store: false;
   stream: true;
 }
@@ -280,6 +281,8 @@ export function messagesToResponses(
   };
   const tools = toolsToResponses(raw.tools, loadedTools);
   if (tools) Object.assign(body, { tools }, toolChoice(raw.tool_choice));
+
+  if (raw.speed === "fast") body.service_tier = "priority";
 
   // Thinking on: request summaries and encrypted reasoning so it can ride back as a
   // thinking block. Thinking off (e.g. the session-title call): lowest effort, and no

@@ -27,6 +27,10 @@ share Pi's chain and routing. FX, nanocodex, and Prime Agent use separate,
 optional ACP adapters; Model Gateway neither installs nor requires them.
 Routed FX and Prime Agent need no local provider login.
 
+Standalone Pi on the BB server machine can use `bb gateway setup pi --standalone --machine <name>`.
+It saves private credentials and requires BB to keep running. BB-managed sessions keep their own credentials.
+Pi Fast mode supports gateway GPT models and supported Claude Opus models. Claude Fast mode uses paid usage credits. The gateway carries the speed setting across protocol fallbacks and preserves Claude’s reported speed.
+
 Automatic model selection through Jev is optional. It sends the truncated last
 user message and candidate model names to OpenRouter for each eligible turn.
 
@@ -36,3 +40,5 @@ You provide the Claude, ChatGPT, or API-key accounts you choose to route. Claude
 Max OAuth accounts may serve only Claude Code. API-key fallbacks bill per token,
 and Jev requires an OpenRouter API key. Model Gateway stores credentials in BB's
 plugin data directory and never returns secret values through its CLI or UI.
+
+Configured API accounts run automatically. Spending is governed by upstream billing and key protections; the gateway adds no approval gate.

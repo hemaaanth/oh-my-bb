@@ -62,11 +62,6 @@ const fallbackCauseRpcSchema = z
   })
   .strict();
 
-const creditStatusSchema = z.object({
-  offered: z.array(z.object({ id: z.string().uuid(), label: z.string() }).strict()),
-  grant: z.object({ accountId: z.string().uuid(), expiresAt: z.number(), remaining: z.number().int() }).strict().nullable(),
-}).strict();
-
 export const accountPoolRpcContract = defineRpcContract({
   "host.setupFiles": {
     input: z.object({
@@ -83,9 +78,6 @@ export const accountPoolRpcContract = defineRpcContract({
       }).strict()),
     }).strict(),
   },
-  "credit.status": { input: z.object({ threadId: z.string().min(1) }).strict(), output: creditStatusSchema },
-  "credit.approve": { input: z.object({ threadId: z.string().min(1), accountId: z.string().uuid() }).strict(), output: creditStatusSchema },
-  "credit.revoke": { input: z.object({ threadId: z.string().min(1) }).strict(), output: z.null() },
   "account.add": {
     input: accountAddInputSchema,
     output: accountSchema,
@@ -303,9 +295,6 @@ export function createRpcHandlers(
   return {
     "host.setupFiles": (input: Parameters<typeof hostSetupFiles>[0]) =>
       hostSetupFiles(input, config.get().modelMap),
-    "credit.status": ({ threadId }: { threadId: string }) => operations.creditStatus(threadId),
-    "credit.approve": ({ threadId, accountId }: { threadId: string; accountId: string }) => operations.approveCredits(threadId, accountId),
-    "credit.revoke": ({ threadId }: { threadId: string }) => { operations.revokeCredits(threadId); return null; },
     "account.add": (input: Parameters<PoolOperations["add"]>[0]) =>
       operations.add(input),
     "account.list": () => operations.list(),

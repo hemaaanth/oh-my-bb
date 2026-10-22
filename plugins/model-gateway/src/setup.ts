@@ -1,6 +1,7 @@
 // `bb gateway setup omp|fx|nanocodex|pi`. The
 // CLI runs inside the BB server, so `setup omp|pi` edit the server machine's home.
 import fs from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import {
@@ -132,19 +133,29 @@ const PI_MARKER = "// >>> model-gateway (managed by bb gateway setup pi)";
 /**
  * A Pi extension that registers the `model-gateway` provider. Pi 0.87 ignores
  * base-URL env vars and does not expand env in a models.json `baseUrl`, so the
- * extension reads the per-thread env BB contributes. Without that env (outside
- * BB, or BB's model catalog) the models stay listed but cannot connect.
+ * extension reads the per-thread env BB contributes. Standalone Pi can opt in
+ * with a local credentials file; BB-managed sessions never read that file.
  */
 export function piExtension(models: readonly string[]): string {
   return `${PI_MARKER}. Rerun that command to update; edits are overwritten.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 // Routes Pi through the BB Model Gateway. BB sets MODEL_GATEWAY_BASE_URL and
 // MODEL_GATEWAY_TOKEN for each Pi thread it routes.
 const MODELS = ${JSON.stringify(models.map(gatewayModelDetails))};
 
 export default function modelGateway(pi) {
+  const managed = process.env.MODEL_GATEWAY_REQUIRED === "1" || !!process.env.BB_THREAD_ID;
+  let standalone;
+  if (!managed && !process.env.MODEL_GATEWAY_BASE_URL && !process.env.MODEL_GATEWAY_TOKEN) {
+    try { standalone = JSON.parse(readFileSync(fileURLToPath(new URL("../model-gateway-standalone.json", import.meta.url)), "utf8")); }
+    catch (error) { if (error.code !== "ENOENT") throw new Error("Cannot read standalone Model Gateway settings. Rerun bb gateway setup pi --standalone --machine <name>."); }
+  }
+  const baseUrl = process.env.MODEL_GATEWAY_BASE_URL ?? standalone?.baseUrl;
+  const apiKey = process.env.MODEL_GATEWAY_TOKEN ?? standalone?.apiKey;
   pi.registerProvider("model-gateway", {
-    baseUrl: process.env.MODEL_GATEWAY_BASE_URL ?? "http://127.0.0.1:9/model-gateway-not-routed",
-    apiKey: process.env.MODEL_GATEWAY_TOKEN ?? "model-gateway-not-routed",
+    baseUrl: baseUrl ?? "http://127.0.0.1:9/model-gateway-not-routed",
+    apiKey: apiKey ?? "model-gateway-not-routed",
     api: "openai-responses",
     models: MODELS.map(({ id, name, input, contextWindow, maxTokens }) => ({
       id,
@@ -158,6 +169,14 @@ export default function modelGateway(pi) {
   });
   pi.on("session_start", async (_event, ctx) => {
     if (process.env.MODEL_GATEWAY_REQUIRED !== "1" && !process.env.BB_THREAD_ID && ctx.model?.provider !== "model-gateway") return;
+    if (!baseUrl || !apiKey) {
+      ctx.shutdown();
+      throw new Error("Model Gateway credentials are missing. Launch Pi inside BB, or run bb gateway setup pi --standalone --machine <name> on the BB server machine.");
+    }
+    if (standalone) {
+      process.env.MODEL_GATEWAY_BASE_URL = baseUrl;
+      process.env.MODEL_GATEWAY_TOKEN = apiKey;
+    }
     const selected = ctx.model;
     const models = ctx.modelRegistry?.getAll?.() ?? ctx.models?.list?.() ?? [];
     for (const provider of new Set(models.map((model) => model.provider))) {
@@ -251,4 +270,16 @@ export function hostSetupFiles(
     files.push({ path: `${dir}/settings.json`, op: "pi-settings", content, sha256: sha256(content) });
   }
   return { revision: sha256(JSON.stringify({ files: files.map(({ path, sha256 }) => [path, sha256]), modelMap })), files };
+}
+
+/** Standalone credentials stay separate from the portable, managed extension. */
+export async function writePiStandalone(agentDir: string, baseUrl: string, apiKey: string): Promise<string> {
+  const file = path.join(agentDir, "model-gateway-standalone.json");
+  await fs.mkdir(agentDir, { recursive: true });
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(temporary, `${JSON.stringify({ baseUrl, apiKey })}\n`, { mode: 0o600, flag: "wx" });
+    await fs.rename(temporary, file);
+  } finally { await fs.rm(temporary, { force: true }); }
+  return file;
 }

@@ -56,6 +56,7 @@ import {
   piExtension,
   writeOmpProvider,
   writePiExtension,
+  writePiStandalone,
 } from "./setup.js";
 
 interface ParsedFlags {
@@ -95,8 +96,6 @@ const HELP = [
   "  bb gateway config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|allowClaudeOAuthAcrossHarnesses> <value>",
   "  bb gateway token rotate --machine <id-or-name>",
   "  bb gateway bypass <thread-id> [--off]",
-  "  bb gateway credit status|revoke [--thread <id>]",
-  "  bb gateway credit approve --account <id> [--thread <id>]",
   "  bb gateway doctor",
   "  bb gateway import-pool",
   "  bb gateway setup omp [--print] [--server-url <url>]   Writes the gateway provider into ~/.omp/agent/models.yml on the BB server machine",
@@ -104,9 +103,9 @@ const HELP = [
   "  bb gateway setup prime-agent   Prints optional standalone Prime ACP setup",
   "  bb gateway setup fx   Prints optional standalone fx-acp setup",
   "  bb gateway setup nanocodex   Prints optional standalone nanocodex-acp setup",
-  "  bb gateway setup pi [--print]   Writes the gateway provider extension into ~/.pi/agent/extensions on the BB server machine",
+  "  bb gateway setup pi [--print] [--standalone --machine <id-or-name>]   Writes the gateway provider extension into ~/.pi/agent/extensions on the BB server machine",
   "",
-  "API keys require per-thread approval and bill per token. Claude OAuth across harnesses requires operator opt-in.",
+  "API keys bill per token; upstream billing and key protections govern spending. Claude OAuth across harnesses requires operator opt-in.",
   "Accounts run sequentially by priority, then order added. The current fallback stays active until unavailable.",
   "Reorder includes every account for the provider and changes the next failover sequence; existing conversations stay pinned.",
 ].join("\n");
@@ -536,7 +535,7 @@ export function registerPoolCli(
         summary:
           "Reconcile host gateway files, or print optional ACP adapter setup",
         usage:
-          "bb gateway setup host [--print] [--check]\nbb gateway setup omp [--print] [--server-url <url>]\nbb gateway setup fx\nbb gateway setup nanocodex\nbb gateway setup prime-agent\nbb gateway setup pi [--print]",
+          "bb gateway setup host [--print] [--check]\nbb gateway setup omp [--print] [--server-url <url>]\nbb gateway setup fx\nbb gateway setup nanocodex\nbb gateway setup prime-agent\nbb gateway setup pi [--print] [--standalone --machine <id-or-name>]",
       },
     ],
     async run(argv, ctx): Promise<PluginCliResult> {
@@ -940,16 +939,6 @@ export function registerPoolCli(
           }
           return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
         }
-        if (argv[0] === "credit") {
-          const flags = parseFlags(argv.slice(2), [], ["thread", "account"]);
-          const threadId = flags.values.get("thread") ?? process.env.BB_THREAD_ID;
-          if (!threadId) throw new Error("Pass --thread <id>.");
-          if (argv[1] === "status") return { exitCode: 0, stdout: `${JSON.stringify(await operations.creditStatus(threadId), null, 2)}\n` };
-          if (argv[1] === "revoke") { operations.revokeCredits(threadId); return { exitCode: 0, stdout: "API fallback approval revoked.\n" }; }
-          if (argv[1] !== "approve" || !flags.values.get("account")) throw new Error("Use credit approve --thread <id> --account <id>.");
-          const approved = await operations.approveCredits(threadId, flags.values.get("account")!);
-          return { exitCode: 0, stdout: `API fallback approved for 15 minutes and up to 10 attempts, one at a time. API billing may consume purchased funds after included credits. Retry the thread to continue.\n${JSON.stringify(approved.grant)}\n` };
-        }
         if (argv[0] === "setup" && argv[1] === "prime-agent" && argv.length === 2)
           return { exitCode: 0, stdout: PRIME_SETUP };
         if (argv[0] === "setup" && argv[1] === "host") {
@@ -973,7 +962,10 @@ export function registerPoolCli(
         if (argv[0] === "setup" && argv[1] === "nanocodex" && argv.length === 2)
           return { exitCode: 0, stdout: NANOCODEX_SETUP };
         if (argv[0] === "setup" && argv[1] === "pi") {
-          const flags = parseFlags(argv.slice(2), ["print"], []);
+          const flags = parseFlags(argv.slice(2), ["print", "standalone"], ["machine"]);
+          if (flags.booleans.has("standalone") && (flags.booleans.has("print") || !flags.values.get("machine")))
+            throw new Error("Standalone setup writes credentials on the BB server machine. Use bb gateway setup pi --standalone --machine <id-or-name> without --print.");
+          if (flags.values.has("machine") && !flags.booleans.has("standalone")) throw new Error("--machine requires --standalone.");
           const models = gatewayModels(config.get().modelMap);
           if (flags.booleans.has("print"))
             return {
@@ -985,9 +977,16 @@ export function registerPoolCli(
             models,
             Date.now(),
           );
+          const standaloneFile = flags.booleans.has("standalone")
+            ? await writePiStandalone(
+                process.env.PI_CODING_AGENT_DIR ?? path.join(homedir(), ".pi", "agent"),
+                gatewayBaseUrl(bb.server.loopbackBaseUrl),
+                await operations.standalonePiToken(flags.values.get("machine")!),
+              ) : null;
           return {
             exitCode: 0,
             stdout: `${[
+              ...(standaloneFile ? [`Configured standalone Pi in ${standaloneFile} (mode 0600). BB must be running. Restart Pi.`] : []),
               result.changed
                 ? `Wrote the model-gateway Pi extension to ${result.file} on the BB server machine.`
                 : `${result.file} is already up to date.`,

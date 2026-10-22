@@ -51,15 +51,6 @@ interface Fixture {
   account: AccountSummary;
 }
 
-// These tests isolate transport and account pooling. Real approval enforcement is
-// covered by chain.test.ts and credit-grants.test.ts, including concurrent use.
-vi.mock("./credit-grants.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./credit-grants.js")>();
-  return { ...actual, CreditGrants: class extends actual.CreditGrants {
-    override acquire() { return () => {}; }
-  } };
-});
-
 const cleanups: Array<() => Promise<void>> = [];
 
 function sdkStubs() {

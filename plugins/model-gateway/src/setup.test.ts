@@ -8,6 +8,7 @@ import {
   ompSnippet,
   upsertOmpProvider,
   writeOmpProvider,
+  writePiStandalone,
 } from "./setup.js";
 
 const URL_A = gatewayBaseUrl("http://127.0.0.1:38886/");
@@ -81,4 +82,17 @@ describe("bb gateway setup omp", () => {
       await fs.rm(home, { recursive: true, force: true });
     }
   });
+});
+
+
+it("writes standalone Pi credentials privately, including over an existing permissive file", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "mgw-pi-"));
+  try {
+    const file = await writePiStandalone(home, URL_A, "test-token");
+    expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
+    await fs.chmod(file, 0o644);
+    await writePiStandalone(home, URL_B, "replacement");
+    expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(await fs.readFile(file, "utf8"))).toEqual({ baseUrl: URL_B, apiKey: "replacement" });
+  } finally { await fs.rm(home, { recursive: true, force: true }); }
 });
