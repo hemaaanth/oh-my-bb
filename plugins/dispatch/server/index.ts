@@ -6,6 +6,7 @@ import { CLI_COMMAND, DISPATCH_VERSION } from "../shared/constants.js";
 import { coreCommands } from "./cli.js";
 import type { ServerContext } from "./context.js";
 import { MIGRATION_STATEMENTS } from "./migrations.js";
+import { registerPodcast } from "./podcast/service.js";
 import { registerCore } from "./register-core.js";
 import { phoneCommands, registerPhone } from "./register-phone.js";
 import { registerRpc } from "./rpc.js";
@@ -31,6 +32,7 @@ export default async function plugin(bb: BbPluginApi) {
   registerCore(ctx);
   registerPhone(ctx);
   registerRpc(ctx);
+  registerPodcast(ctx);
 
   bb.cli.register(
     defineCli({

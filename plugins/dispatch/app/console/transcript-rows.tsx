@@ -41,7 +41,7 @@ export function TranscriptRow({ item, agentName }: { item: TraceItem; agentName:
         <li className="flex items-start gap-3 py-1.5">
           <Time at={item.at} />
           <div className="min-w-0 flex-1">
-            <span className="text-xs font-medium text-muted-foreground">{item.who === "user" ? "You" : agentName}</span>
+            <span className="text-xs font-medium text-muted-foreground">{item.who === "user" ? "You" : item.speaker ?? agentName}</span>
             <p className="whitespace-pre-wrap text-sm text-foreground">{privateCallText(item.text)}</p>
           </div>
         </li>

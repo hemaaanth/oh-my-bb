@@ -7,6 +7,7 @@ import { NAV_PANEL } from "../ids.js";
 import { Icon } from "../components/ui/icon";
 import { usePreferences } from "../settings/data.js";
 import { useCalls, CallsList } from "./calls-list.js";
+import { PodcastPanel } from "./podcast.js";
 import { ConsoleHeader } from "./header.js";
 import { useConsoleCallState, useConsoleBadge } from "./presence.js";
 import { Transcript } from "./transcript.js";
@@ -65,6 +66,7 @@ export function ConsolePanel({ subPath }: PluginNavPanelProps) {
     <div className="h-full min-h-0 overflow-y-auto">
       <main className="mx-auto w-full max-w-5xl space-y-5 px-4 py-4 md:px-5" aria-label="Dispatch console">
         <ConsoleHeader call={call} onViewTranscript={() => liveCall && open(liveCall.id)} />
+        <PodcastPanel />
         {openId ? (
           <Transcript key={openId} callId={openId} call={calls.calls?.find((row) => row.id === openId) ?? null} agentName={prefs?.agentName ?? "Agent"} onClose={close} />
         ) : (

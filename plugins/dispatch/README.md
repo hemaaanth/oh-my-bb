@@ -264,3 +264,10 @@ npm run build
 
 MIT. See [LICENSE](LICENSE). Third-party parts are listed in
 [THIRD_PARTY.md](THIRD_PARTY.md).
+
+## Experimental Podcast mode
+
+Direct projects through distinct project speakers in the in-app console.
+Speakers share one microphone and take turns, with scoped thread controls and
+proactive updates. See [Podcast](docs/podcast.md) for setup, behavior, and
+current audio limitations.

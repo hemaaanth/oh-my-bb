@@ -96,3 +96,16 @@ only:
 - The reasoning model's tokens are billed on top and are not counted. That
   includes the call summaries.
 - Phone calls also cost Twilio minutes.
+
+## Experimental Podcast
+
+Podcast is an in-app mode opened from Dispatch → Podcast → Start podcast.
+It uses the existing OpenAI key. Project people have separate context and
+project-bound tools. Thread completion, failure, and input-needed updates wait
+for a conversational gap. “Hold the updates” defers them without stopping work.
+Phone calls continue to use regular Dispatch.
+
+Podcast reasoning and speech costs are excluded from the GPT-Live usage
+estimate above. Its `podcast.usage` trace records usage separately.
+Per-project speaker settings apply on the next call.
+Read `docs/podcast.md` in the Dispatch package for limits and transport details.

@@ -54,3 +54,7 @@ sample, for your own voice or your style, costs about 1¢ and is not counted.
 
 In-app voice needs no other BB plugin. Phone calls work only when the Webhooks
 plugin is installed separately. Dispatch never installs or enables it.
+
+Experimental Podcast mode adds project-specific people and voices, scoped
+thread controls, and queued project updates in the app.
+See [Podcast](docs/podcast.md).

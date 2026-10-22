@@ -89,6 +89,13 @@ CREATE INDEX call_summaries_day ON call_summaries(local_day);`,
 );
 CREATE INDEX voice_samples_used ON voice_samples(used_at);`,
   },
+  {
+    id: "008-podcast-updates",
+    sql: `CREATE TABLE podcast_updates (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, thread_id TEXT NOT NULL UNIQUE,
+      detail TEXT NOT NULL, created_at INTEGER NOT NULL, priority INTEGER NOT NULL
+    );`,
+  },
 ] as const;
 
 export const MIGRATION_IDS = MIGRATIONS.map((migration) => migration.id);
