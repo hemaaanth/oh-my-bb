@@ -1,6 +1,6 @@
-import { useRpc } from "@get-bb/plugin-sdk/app";
+import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import { useEffect, useState } from "react";
-import { PODCAST_VOICES, type PodcastContract, type PodcastProfile } from "../../shared/podcast.js";
+import { PODCAST_ROSTER_CHANNEL, PODCAST_VOICES, type PodcastContract, type PodcastProfile } from "../../shared/podcast.js";
 import { podcastEngine, podcastStore } from "../../voice/podcast/controller.js";
 import { useStore } from "../../voice/store.js";
 import { Button } from "../components/ui/button";
@@ -32,6 +32,7 @@ export function PodcastPanel() {
   const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
   const load = () => rpc.call("podcastProfiles", {}).then(result => setProfiles(result.profiles)).catch(error => setError(String(error)));
+  useRealtime(PODCAST_ROSTER_CHANNEL, () => { if (open) void load(); });
   useEffect(() => { if (open && profiles === null) void load(); }, [open]);
   return <section aria-label="Podcast experimental" className="space-y-3 border-t border-border pt-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -46,7 +47,7 @@ export function PodcastPanel() {
     {state.active ? <p role="status" className="text-xs text-muted-foreground">{state.connecting ? "Connecting…" : state.speaker ? `${state.speaker} is speaking` : state.busy ? "Working on your request…" : state.muted ? "Microphone muted" : "Listening"}{state.pending ? ` · ${state.pending} pending updates` : ""}{state.hold ? " · Updates on hold" : ""}</p> : null}
     {state.error || error ? <Note tone="error">{state.error || error}</Note> : null}
     {open ? <>
-      <Note>Each project speaks in its own AI voice and can direct only its own threads. Say a project name, give an instruction, or ask who needs you. Updates wait until the conversation is free. Say “hold the updates” to defer them. Uses your OpenAI API key. Podcast costs are separate from the GPT-Live usage estimate.</Note>
+      <Note>Projects with visible, non-archived threads speak in their own AI voices and can direct only its own threads. Say a project name, give an instruction, or ask who needs you. Updates wait until the conversation is free. Say “hold the updates” to defer them. Uses your OpenAI API key. Podcast costs are separate from the GPT-Live usage estimate.</Note>
       {state.active && !state.connecting ? <form className="flex gap-2" onSubmit={event => { event.preventDefault(); const request = text.trim(); if (request) { setText(""); void podcastEngine()?.turn(request); } }}>
         <Input aria-label="Podcast instruction" placeholder="Or type an instruction…" maxLength={8000} value={text} onChange={event => setText(event.target.value)} />
         <Button type="submit" size="sm" disabled={!text.trim()}>Send</Button>

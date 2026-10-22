@@ -12,7 +12,7 @@ const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); vi.unstubAllGlobals(); });
 const stubs = (threads: Record<string, unknown> = {}, plugins: Record<string, unknown> = {}) => ({
   projects: { list: async () => [projectRow(), projectRow({ id: "proj_b", name: "Compiler" })] },
-  threads: { get: async ({ threadId }: { threadId: string }) => threadRow({ id: threadId, projectId: threadId === "thr_b" ? "proj_b" : "proj_a" }), list: async () => [threadRow()], send: async () => ({}), stop: async () => ({}), output: async () => ({ output: "Tests passed. Follow-up remains." }), ...threads },
+  threads: { get: async ({ threadId }: { threadId: string }) => threadRow({ id: threadId, projectId: threadId === "thr_b" ? "proj_b" : "proj_a" }), list: async ({ projectId }: { projectId?: string } = {}) => projectId ? [threadRow({ projectId })] : [threadRow(), threadRow({ id: "thr_b", projectId: "proj_b" })], send: async () => ({}), stop: async () => ({}), output: async () => ({ output: "Tests passed. Follow-up remains." }), ...threads },
   plugins,
 }) as unknown as Stubs;
 async function context(overrides = stubs()) {
@@ -248,6 +248,38 @@ it("expires abandoned calls but keeps a browser with heartbeats alive", async ()
 it("opens a call with more than thirty participating projects", async () => {
   const overrides = stubs();
   overrides.projects = { list: async () => Array.from({ length: 42 }, (_, index) => projectRow({ id: `proj_${index}`, name: `Project ${index}` })) } as unknown as Stubs["projects"];
+  overrides.threads = { ...overrides.threads, list: async () => Array.from({ length: 42 }, (_, index) => threadRow({ id: `thr_${index}`, projectId: `proj_${index}` })) } as unknown as Stubs["threads"];
   const { session } = await service([], overrides);
   expect(session.callId).toBeTruthy();
+});
+
+
+describe("open-thread project roster", () => {
+  it("includes idle open work and excludes archived-only and hidden-only projects", async () => {
+    const { ctx } = await context(stubs({ list: async () => [
+      threadRow({ id: "idle", projectId: "proj_a", runtime: { displayStatus: "idle" }, archivedAt: null }),
+      threadRow({ id: "hidden", projectId: "proj_b", visibility: "hidden", archivedAt: null }),
+      threadRow({ id: "archived", projectId: "proj_b", archivedAt: 1 }),
+    ] }));
+    expect((await profilesFor(ctx)).map(profile => profile.projectId)).toEqual(["proj_a"]);
+  });
+  it("pages through open threads before deciding which projects participate", async () => {
+    const { ctx } = await context(stubs({ list: async ({ offset }: { offset: number }) => offset === 0
+      ? Array.from({ length: 500 }, (_, index) => threadRow({ id: `first_${index}`, projectId: "proj_a" }))
+      : [threadRow({ id: "last", projectId: "proj_b" })] }));
+    expect((await profilesFor(ctx)).map(profile => profile.projectId)).toEqual(["proj_a", "proj_b"]);
+  });
+  it("removes a project's presence when its last open thread is archived and restores it on unarchive", async () => {
+    const { harness, session, bodies } = await service([route("proj_b"), modelText("Compiler here.")]);
+    harness.sdk.stub("threads.list", async () => []);
+    await harness.behavior.emitThreadEvent("thread.archived", { thread: makeThreadResponse({ id: "thr_a", projectId: "proj_a", archivedAt: Date.now() }) });
+    const empty = await harness.behavior.callRpc("podcastTurn", turn(session, "empty"));
+    expect(JSON.stringify(empty)).toContain("no projects with open threads");
+    expect(bodies).toHaveLength(0);
+    harness.sdk.stub("threads.list", async () => [threadRow({ id: "thr_b", projectId: "proj_b" })] as never);
+    await harness.behavior.emitThreadEvent("thread.unarchived", { thread: makeThreadResponse({ id: "thr_b", projectId: "proj_b" }) });
+    const restored = await harness.behavior.callRpc("podcastTurn", turn(session, "restored"));
+    expect(JSON.stringify(restored)).toContain("Compiler here");
+    expect(String(bodies[0]?.instructions)).not.toContain('"id":"proj_a"');
+  });
 });

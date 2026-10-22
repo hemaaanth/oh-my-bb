@@ -1,6 +1,8 @@
 # Podcast (experimental)
 
-Podcast is an in-app voice control mode. Each BB project has a saved name,
+Podcast is an in-app voice control mode. Only projects with at least one visible, non-archived thread participate.
+Idle open threads count. Projects join or leave the call roster as threads
+are created, unarchived, archived, or deleted. Each participating project has a saved name,
 voice, personality, and routing topics. A project speaker can read and direct
 only that project's visible threads.
 

@@ -16,6 +16,10 @@ describe("Podcast speaking order", () => {
     expect(queue.next(true)?.id).toBe("answer"); queue.heard("answer");
     expect(queue.next(true)).toBeNull(); expect(queue.next(false)?.id).toBe("update");
   });
+  it("removes queued presence for projects that no longer have open threads", () => {
+    const queue = new PodcastQueue(); queue.add([speech("old-project", "event"), { ...speech("other"), projectId: "b" }]);
+    queue.retainProjects(new Set(["b"])); expect(queue.next()?.projectId).toBe("b"); expect(queue.length).toBe(1);
+  });
   it("deduplicates update redelivery and accepts a new answer after interruption", () => {
     const queue = new PodcastQueue(); queue.add([speech("update", "event")]); queue.interrupt();
     queue.add([speech("update", "event"), speech("new-answer")]);

@@ -16,6 +16,7 @@ export class PodcastQueue {
     }
   }
   next(hold = false) { return this.items.find(item => item.speech.updateId === null)?.speech ?? (hold ? null : this.items[0]?.speech ?? null); }
+  retainProjects(ids: Set<string>) { this.items = this.items.filter(item => item.speech.projectId === null || ids.has(item.speech.projectId)); }
   heard(id: string) { this.items = this.items.filter(item => item.speech.id !== id); }
   clear() { this.items = []; this.seen.clear(); this.generation++; }
   get length() { return this.items.length; }

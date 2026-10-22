@@ -3,7 +3,7 @@
 // call engine, and passes the realtime channels to the call controller.
 
 import { installPodcast, podcastEngine } from "./podcast/controller.js";
-import { PODCAST_SPEECH_CHANNEL, type PodcastSpeech } from "@/shared/podcast.js";
+import { PODCAST_ROSTER_CHANNEL, PODCAST_SPEECH_CHANNEL, type PodcastSpeech } from "@/shared/podcast.js";
 import type { PodcastContract } from "@/shared/podcast.js";
 import { useEffect } from "react";
 import { useBbNavigate, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
@@ -42,6 +42,7 @@ export function BindingsOverlay() {
   useRealtime(CHANNELS.threadNotice, (payload) => callEngine()?.onThreadNotice(payload as ThreadNoticePayload));
   useRealtime(CHANNELS.callControl, (payload) => { podcastEngine()?.onControl(payload as CallControlPayload); callEngine()?.onCallControl(payload as CallControlPayload); });
 
+  useRealtime(PODCAST_ROSTER_CHANNEL, payload => podcastEngine()?.onRoster(payload as { callId: string; projectIds: string[] }));
   useRealtime(PODCAST_SPEECH_CHANNEL, payload => podcastEngine()?.onSpeech(payload as { callId: string; requestId: string; speech: PodcastSpeech }));
 
   return <Toaster />;

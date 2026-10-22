@@ -2,6 +2,7 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { deviceProfileSchema } from "./contract.js";
 
+export const PODCAST_ROSTER_CHANNEL = "podcast-roster";
 export const PODCAST_SPEECH_CHANNEL = "podcast-speech";
 export const PODCAST_VOICES = ["marin", "cedar", "coral", "ash", "sage", "verse", "ballad", "echo", "alloy", "nova", "onyx", "shimmer", "fable"] as const;
 export const profileSchema = z.object({

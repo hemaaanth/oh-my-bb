@@ -35,6 +35,7 @@ export class PodcastController {
   private cancellation: Promise<unknown> = Promise.resolve();
   private lastClear = 0;
   private audio: HTMLAudioElement | null = null;
+  private speakingProject: string | null = null;
   private playbackEnd: (() => void) | null = null;
   private lastUser = 0;
   private startedAt: number | null = null;
@@ -161,6 +162,12 @@ export class PodcastController {
     if (this.work === work) this.work = null;
     if (this.live(nonce)) void this.settle();
   }
+  onRoster(payload: { callId: string; projectIds: string[] }) {
+    if (this.session?.callId !== payload.callId) return;
+    const ids = new Set(payload.projectIds);
+    if (this.speakingProject && !ids.has(this.speakingProject)) this.interrupt();
+    this.queue.retainProjects(ids);
+  }
   onSpeech(payload: { callId: string; requestId: string; speech: PodcastSpeech }) {
     const request = this.activeRequest;
     if (this.session?.callId !== payload.callId || !request || request.id !== payload.requestId) return;
@@ -204,6 +211,7 @@ export class PodcastController {
         this.playbackEnd = () => resolve(false);
         audio.onended = () => resolve(true); audio.onerror = () => reject(new Error("The spoken answer could not play."));
       });
+      this.speakingProject = speech.projectId;
       patch({ speaker: speech.speaker }); this.renderCall();
       this.addTranscript({ id: speech.id, speaker: speech.speaker, text: speech.text });
       await this.rpc.call("podcastSpeaking", { ...session, speechId: speech.id });
@@ -218,7 +226,7 @@ export class PodcastController {
     } finally {
       this.audio?.pause(); this.audio?.remove(); this.audio = null; this.playbackEnd = null;
       if (url) URL.revokeObjectURL(url);
-      this.draining = false;
+      this.draining = false; this.speakingProject = null;
       if (this.live(nonce)) { patch({ speaker: "" }); this.renderCall(); }
     }
   }
