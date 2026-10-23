@@ -36,6 +36,13 @@ export const chainEntrySchema = z
   );
 const chainSchema = z.array(chainEntrySchema).min(1);
 
+/** Exact model pins to one named compatible API key; no subscription fallback. */
+export const modelRoutesSchema = z.record(
+  z.string().min(1),
+  z.string().regex(/^(?:anthropic-compatible-key|responses-compatible-key):[A-Za-z0-9._-]+$/u),
+);
+export type ModelRoutes = z.infer<typeof modelRoutesSchema>;
+
 export const DEFAULT_CHAINS: Record<Harness, string[]> = {
   "claude-code": ["claude-oauth:*", "claude-key:*", "chatgpt-oauth:*"],
   codex: ["chatgpt-oauth:*"],
@@ -138,10 +145,12 @@ export function expandChain(
 }
 
 /** Mixed-model harnesses start with the requested subscription family. Keys keep their configured order. */
-export function modelChain(harness: Harness, entries: readonly string[], accounts: readonly Account[], model: string | null): string[] {
+export function modelChain(harness: Harness, entries: readonly string[], accounts: readonly Account[], model: string | null, modelRoutes: ModelRoutes = {}): string[] {
   const chain = [...entries];
-  if (harness !== "acp-omp" && harness !== "pi") return chain;
   const bare = model?.replace(/^gw-/u, "");
+  const pinned = modelRoutes[bare ?? ""];
+  if (pinned !== undefined) return [pinned];
+  if (harness !== "acp-omp" && harness !== "pi") return chain;
   const kind = bare?.startsWith("claude-") ? "claude-oauth" : bare?.startsWith("gpt-") ? "chatgpt-oauth" : null;
   if (kind === null) return chain;
   const kinds = expandChain(chain, accounts).map((group) => group[0] === undefined ? null : upstreamKind(group[0]));
@@ -256,13 +265,13 @@ export function mapModel(
 export const OMP_MODEL_PREFIX = "gw-";
 
 /** Model-map additions extend the current Codex catalog, rather than hiding it. */
-export function gatewayModels(modelMap: ModelMap): string[] {
-  return [...new Set([...Object.keys(GATEWAY_MODELS), ...Object.values(modelMap["chatgpt-oauth"] ?? {})])];
+export function gatewayModels(modelMap: ModelMap, modelRoutes: ModelRoutes = {}): string[] {
+  return [...new Set([...Object.keys(GATEWAY_MODELS), ...Object.values(modelMap["chatgpt-oauth"] ?? {}), ...Object.keys(modelRoutes)])];
 }
 
 /** The `gw-` ids OMP discovers cover the same models as Pi. */
-export function ompModels(modelMap: ModelMap): string[] {
-  return gatewayModels(modelMap).map(
+export function ompModels(modelMap: ModelMap, modelRoutes: ModelRoutes = {}): string[] {
+  return gatewayModels(modelMap, modelRoutes).map(
     (model) => OMP_MODEL_PREFIX + model,
   );
 }
@@ -385,6 +394,15 @@ const CHATGPT_REJECTED_FIELDS = [
   "stop",
   "user",
 ];
+
+/** Compatible Responses APIs may require the explicit message type OpenAI permits clients to omit. */
+export function fitForCompatibleResponses(body: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(body.input) || !body.input.some((item) => isRecord(item) && item.type === undefined && typeof item.role === "string")) return body;
+  return { ...body, input: body.input.map((item) =>
+    isRecord(item) && item.type === undefined && typeof item.role === "string"
+      ? { ...item, type: "message" } : item,
+  ) };
+}
 
 /**
  * A Responses body from omp, FX, nanocodex or Pi, fitted to the ChatGPT Codex

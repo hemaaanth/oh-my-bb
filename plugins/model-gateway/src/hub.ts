@@ -58,6 +58,7 @@ import {
   expandChain,
   modelChain,
   fitForChatGpt,
+  fitForCompatibleResponses,
   gatewayModel,
   harnessSchema,
   hasClientTools,
@@ -65,6 +66,7 @@ import {
   isNewUserTurn,
   isRecord,
   mapModel,
+  type ModelRoutes,
   needsApiKeyUpstream,
   ompModels,
   onAutoLadder,
@@ -144,6 +146,7 @@ export interface HubSettings {
   switchThreshold: number;
   chains: Chains;
   modelMap: ModelMap;
+  modelRoutes?: ModelRoutes;
   auto: AutoSettings;
 }
 
@@ -476,7 +479,7 @@ export class AccountPoolHub {
     )
       return Response.json({
         object: "list",
-        data: ompModels(this.options.getSettings().modelMap).map((id) => ({
+        data: ompModels(this.options.getSettings().modelMap, this.options.getSettings().modelRoutes).map((id) => ({
           id,
           object: "model",
           owned_by: "model-gateway",
@@ -553,7 +556,8 @@ export class AccountPoolHub {
     if (route === null) return null;
     const harness = harnessSchema.parse(route.harness);
     const accounts = await this.options.accounts.list();
-    const chain = modelChain(harness, this.options.getSettings().chains[harness], accounts, route.requestedModel ?? null);
+    const settings = this.options.getSettings();
+    const chain = modelChain(harness, settings.chains[harness], accounts, route.requestedModel ?? null, settings.modelRoutes);
     const entryIndex = expandChain(chain, accounts).findIndex((entry) =>
       entry.some((account) => account.id === route.upstreamId),
     );
@@ -728,7 +732,8 @@ export class AccountPoolHub {
     const route =
       identity === null ? null : this.options.routes.get(identity.threadId);
     // P5: Jev's pick replaces the client model; the chain then routes it as usual.
-    const auto = countTokens
+    const pinned = settings.modelRoutes?.[requestModel(json)?.replace(/^gw-/u, "") ?? ""];
+    const auto = countTokens || pinned !== undefined
       ? null
       : await this.autoPick(harness, json, route, entries, allAccounts, signal);
     if (
@@ -744,9 +749,10 @@ export class AccountPoolHub {
     const requestedModel = requestModel(json);
     const model = requestedModel?.replace(/^gw-/u, "") ?? null;
     const family = modelFamily(model);
-    const chain = modelChain(harness, settings.chains[harness], allAccounts, model);
-    const configured = settings.chains[harness];
-    entries = chain.map((entry) => entries[configured.indexOf(entry)] ?? []);
+    const chain = modelChain(harness, settings.chains[harness], allAccounts, model, settings.modelRoutes);
+    entries = expandChain(chain, allAccounts).map((accounts) => accounts.filter((account) =>
+      isLegalUpstream(upstreamKind(account), identity?.harness ?? null, path, settings.allowClaudeOAuthAcrossHarnesses),
+    ));
     const boundIndex =
       route === null || (route.requestedModel != null && route.requestedModel !== model)
         ? -1
@@ -822,7 +828,9 @@ export class AccountPoolHub {
           served = true;
           let translation: Translation | null = null;
           // Same protocol: thinking and reasoning go only to the upstream that minted them.
-          const replay = cross ? json : fitReplay(json, candidate.replay);
+          let replay = cross ? json : fitReplay(json, candidate.replay);
+          if (kind === "responses-compatible-key" && isRecord(replay))
+            replay = fitForCompatibleResponses(replay);
           let entryParsed = parsed;
           if (countTokens && (cross || first.baseUrl !== undefined)) {
             // Only Anthropic counts tokens; answer the other vendors locally.

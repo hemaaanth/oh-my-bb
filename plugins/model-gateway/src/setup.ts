@@ -8,7 +8,7 @@ import {
   BEGIN, ompSnippet, upsertOmpProvider, sha256, validateSetupPath, type SetupFile,
 } from "../scripts/apply-setup-files.mjs";
 export { ompSnippet, upsertOmpProvider, applySetupFiles, checkSetupFiles } from "../scripts/apply-setup-files.mjs";
-import { gatewayModels, type ModelMap } from "./chain.js";
+import { gatewayModels, type ModelMap, type ModelRoutes } from "./chain.js";
 import { gatewayModelDetails } from "./model-catalog.js";
 
 export function gatewayBaseUrl(serverUrl: string): string {
@@ -246,21 +246,22 @@ export function setupGuides(serverUrl: string): Record<
 export function hostSetupFiles(
   input: { hostId: string; serverBaseUrl: string; piAgentDirs?: string[] },
   modelMap: ModelMap,
+  modelRoutes: ModelRoutes = {},
 ): { revision: string; files: SetupFile[] } {
-  const content = ompSnippet(gatewayBaseUrl(input.serverBaseUrl), gatewayModels(modelMap).map((id) => ({ ...gatewayModelDetails(id), id: `gw-${id}` })));
+  const content = ompSnippet(gatewayBaseUrl(input.serverBaseUrl), gatewayModels(modelMap, modelRoutes).map((id) => ({ ...gatewayModelDetails(id), id: `gw-${id}` })));
   const files: SetupFile[] = [{
     path: ".omp/agent/models.yml", op: "managed-block", marker: BEGIN,
     content, sha256: sha256(content),
   }];
   for (const dir of new Set(input.piAgentDirs ?? [".pi/agent"])) {
     validateSetupPath(dir);
-    const content = piExtension(gatewayModels(modelMap));
+    const content = piExtension(gatewayModels(modelMap, modelRoutes));
     files.push({
       path: `${dir}/extensions/model-gateway.js`, op: "managed-file",
       marker: PI_MARKER, content, sha256: sha256(content),
     });
   }
-  const ompExtension = piExtension(gatewayModels(modelMap).map((id) => `gw-${id}`))
+  const ompExtension = piExtension(gatewayModels(modelMap, modelRoutes).map((id) => `gw-${id}`))
     .replace(/managed by bb gateway setup pi/gu, "managed by bb gateway setup host")
     .replace(/http:\/\/127\.0\.0\.1:9\/model-gateway-not-routed/gu, gatewayBaseUrl(input.serverBaseUrl));
   files.push({ path: ".omp/agent/extensions/model-gateway.js", op: "managed-file", marker: PI_MARKER.replace("setup pi", "setup host"), content: ompExtension, sha256: sha256(ompExtension) });

@@ -294,7 +294,7 @@ export function createRpcHandlers(
 ) {
   return {
     "host.setupFiles": (input: Parameters<typeof hostSetupFiles>[0]) =>
-      hostSetupFiles(input, config.get().modelMap),
+      hostSetupFiles(input, config.get().modelMap, config.get().modelRoutes),
     "account.add": (input: Parameters<PoolOperations["add"]>[0]) =>
       operations.add(input),
     "account.list": () => operations.list(),

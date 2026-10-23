@@ -72,6 +72,19 @@ for 30 minutes and the chain moves on. Other 429s are short holds.
 
 ## Model map
 
+Pin one exact model to a named compatible key without changing harness chains:
+
+```
+bb gateway model-route set DeepSeek-V4.1-Flash-1017 responses-compatible-key:wafer
+bb gateway model-route show
+bb gateway model-route remove DeepSeek-V4.1-Flash-1017
+```
+
+An exact model route overrides the harness chain and automatic model choice.
+It fails closed when its key is unavailable; it never falls back to another
+account. Other models keep their existing chains. Run `bb gateway setup host`
+on each execution host after adding a model route so Pi and OMP discover it.
+
 The model map picks the upstream model for a translated request. Defaults for
 `chatgpt-oauth`:
 

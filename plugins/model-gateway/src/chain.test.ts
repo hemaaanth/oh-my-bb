@@ -13,10 +13,12 @@ import {
   contextWindow,
   expandChain,
   fitForChatGpt,
+  fitForCompatibleResponses,
   gatewayModel,
   isLegalUpstream,
   isNewUserTurn,
   mapModel,
+  modelRoutesSchema,
   modelChain,
   needsApiKeyUpstream,
   orderEntries,
@@ -106,6 +108,19 @@ describe("chain config", () => {
     expect(modelChain("acp-omp", chain, [max, pro], "gw-gpt-6-sol")).toEqual(chain);
     expect(modelChain("codex", chain, [max, pro], "claude-opus-5")).toEqual(chain);
     expect(modelChain("pi", ["claude-key:*", ...chain], [account({ kind: "api-key" }), max, pro], "claude-opus-5")[0]).toBe("claude-key:*");
+  });
+
+  it("restricts exact model routes to named compatible keys", () => {
+    expect(modelRoutesSchema.parse({ deepseek: "responses-compatible-key:wafer" })).toEqual({ deepseek: "responses-compatible-key:wafer" });
+    for (const target of ["chatgpt-oauth:*", "responses-compatible-key:*", "https://other.test", "claude-oauth:owner"])
+      expect(modelRoutesSchema.safeParse({ deepseek: target }).success).toBe(false);
+  });
+
+  it("adds explicit message types for strict Responses APIs without changing tool items", () => {
+    const tool = { type: "function_call_output", call_id: "c1", output: "437" };
+    const body = { model: "DeepSeek-V4.1-Flash-1017", input: [{ role: "user", content: "hi" }, tool] };
+    expect(fitForCompatibleResponses(body)).toEqual({ ...body, input: [{ type: "message", role: "user", content: "hi" }, tool] });
+    expect(fitForCompatibleResponses({ input: "hello" })).toEqual({ input: "hello" });
   });
 
   it("maps automatic Claude fallbacks to the configured cost tiers", () => {
@@ -1781,6 +1796,34 @@ describe("chain failover in the hub", () => {
     expect(gw.upstream.attempts).toHaveLength(before);
   });
 
+  it("pins a Pi model to its key, preserves other models, and fails closed when the key is disabled", async () => {
+    const gw = await gateway({ withCodex: true });
+    const model = "DeepSeek-V4.1-Flash-1017";
+    expect((await addKey(gw, "responses-compatible-key", "wafer", "https://wafer.test/v1", "sk-wafer")).exitCode).toBe(0);
+    expect((await gw.cli("model-route", "set", model, "responses-compatible-key:wafer")).exitCode).toBe(0);
+    expect((await gw.cli("model-route", "set", "bad", "responses-compatible-key:missing")).exitCode).toBe(1);
+    expect((await gw.cli("model-route", "set", "bad", "chatgpt-oauth:owner")).exitCode).toBe(1);
+    gw.upstream.reply = () => completed("resp_pinned");
+    const token = await valueOf(gw.env("pi", "thr_pinned"), "MODEL_GATEWAY_TOKEN") as string;
+    const body = { model, input: [{ type: "message", role: "user", content: "hi" }], reasoning: { effort: "high" } };
+    expect((await gw.send(token, body, "/v1/responses")).status).toBe(200);
+    expect(gw.upstream.attempts).toEqual(["sk-wafer"]);
+    expect(gw.upstream.requests[0]?.url).toBe("https://wafer.test/v1/responses");
+    expect(JSON.parse(gw.upstream.requests[0]!.body)).toMatchObject(body);
+    expect(await gw.route("thr_pinned")).toMatchObject({ model, entryIndex: 0, chain: ["responses-compatible-key:wafer"] });
+
+    gw.upstream.attempts.length = 0;
+    expect((await gw.send(token, { ...body, model: "gpt-6-sol" }, "/v1/responses")).status).toBe(200);
+    expect(gw.upstream.attempts).toEqual(["pro-token"]);
+    const { accounts } = JSON.parse((await gw.cli("account", "list", "--json")).stdout) as { accounts: Account[] };
+    await gw.cli("account", "disable", accounts.find((a) => a.label === "wafer")!.id);
+    gw.upstream.attempts.length = 0;
+    expect((await gw.send(token, body, "/v1/responses")).status).not.toBe(200);
+    expect(gw.upstream.attempts).toEqual([]);
+    expect((await gw.cli("model-route", "remove", model)).exitCode).toBe(0);
+    expect(JSON.parse((await gw.cli("model-route", "show")).stdout)).toEqual({});
+  });
+
   it("fails Codex over from ChatGPT to a Responses-compatible key, keeping sampling fields", async () => {
     const gw = await gateway({ withCodex: true });
     await addKey(gw, "responses-compatible-key", "openrouter", OPENROUTER, "sk-or");
@@ -1795,12 +1838,12 @@ describe("chain failover in the hub", () => {
     const upstream = gw.upstream.requests.at(-1)!;
     expect(upstream.url).toBe(`${OPENROUTER}/responses`);
     expect(upstream.headers.get("chatgpt-account-id")).toBeNull();
-    expect(JSON.parse(upstream.body)).toEqual({ ...body, model: "openai/gpt-6" });
+    expect(JSON.parse(upstream.body)).toEqual({ ...body, model: "openai/gpt-6", input: [{ type: "message", role: "user", content: "hi" }] });
     expect(await gw.route("thr_or")).toMatchObject({ entryIndex: 1, model: "openai/gpt-6" });
     // omp's gw- ids reach a key with the ChatGPT-only field stripping off.
     const omp = (await valueOf(gw.env("acp-omp", "thr_omp_or"), "MODEL_GATEWAY_TOKEN")) as string;
     await gw.send(omp, { ...body, model: "gw-gpt-6-astra" }, "/v1/responses");
-    expect(JSON.parse(gw.upstream.requests.at(-1)!.body)).toEqual({ ...body, model: "openai/gpt-6" });
+    expect(JSON.parse(gw.upstream.requests.at(-1)!.body)).toEqual({ ...body, model: "openai/gpt-6", input: [{ type: "message", role: "user", content: "hi" }] });
   });
 
   it("serves Codex from an Anthropic-compatible key with Responses <-> Messages translation", async () => {

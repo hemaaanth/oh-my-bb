@@ -42,6 +42,7 @@ import {
   HARNESSES,
   upstreamKind,
   type ModelMap,
+  modelRoutesSchema,
 } from "./chain.js";
 import type { ThreadRouteStatus } from "./hub.js";
 import {
@@ -87,6 +88,9 @@ const HELP = [
   "  bb gateway chain set <harness> <entry>...   entry: <kind>:*, <kind>:<label>, or an account id",
   "      kinds: claude-oauth, claude-key, chatgpt-oauth, anthropic-compatible-key, responses-compatible-key",
   "  bb gateway model-map show [--json]",
+  "  bb gateway model-route show",
+  "  bb gateway model-route set <model> <anthropic-compatible-key:label|responses-compatible-key:label>",
+  "  bb gateway model-route remove <model>",
   "  bb gateway model-map set <kind>[:<label>] <pattern> <model>",
   "  bb gateway auto [show]",
   "  bb gateway auto <harness> [--key <label>] [--model <id>] [--off]   Jev picks the model per user turn",
@@ -477,6 +481,11 @@ export function registerPoolCli(
         usage: "bb gateway model-map show [--json]",
       },
       {
+        name: "model-route",
+        summary: "Pin an exact model to one compatible API key, show pins, or remove a pin",
+        usage: "bb gateway model-route <set MODEL KIND:LABEL|show|remove MODEL>",
+      },
+      {
         name: "model-map-set",
         summary: "Map a client model pattern to an upstream model",
         usage: "bb gateway model-map set <kind>[:<label>] <pattern> <model>",
@@ -841,6 +850,22 @@ export function registerPoolCli(
             stdout: `${formatChains(next.chains, await operations.list())}\n`,
           };
         }
+        if (argv[0] === "model-route" && argv[1] === "show") {
+          return { exitCode: 0, stdout: json(config.get().modelRoutes) };
+        }
+        if (argv[0] === "model-route" && (argv[1] === "set" || argv[1] === "remove")) {
+          const model = argv[2];
+          if (!model || argv.length !== (argv[1] === "set" ? 4 : 3))
+            throw new Error("Usage: bb gateway model-route set <model> <kind:label> | remove <model>");
+          const routes = { ...config.get().modelRoutes };
+          if (argv[1] === "remove") delete routes[model];
+          else routes[model] = argv[3]!;
+          const modelRoutes = modelRoutesSchema.parse(routes);
+          if (argv[1] === "set" && !expandChain([modelRoutes[model]!], await operations.list()).flat().length)
+            throw new Error("The model route needs an enabled compatible API key with that label.");
+          const next = await config.set({ modelRoutes });
+          return { exitCode: 0, stdout: json(next.modelRoutes) };
+        }
         if (argv[0] === "model-map" && argv[1] === "show") {
           const flags = parseFlags(argv.slice(2), ["json"], []);
           const { modelMap } = config.get();
@@ -948,7 +973,7 @@ export function registerPoolCli(
             serverBaseUrl: process.env.BB_SERVER_URL ?? bb.server.loopbackBaseUrl,
             piAgentDirs: process.env.PI_CODING_AGENT_DIR
               ? [path.relative(homedir(), process.env.PI_CODING_AGENT_DIR)] : undefined,
-          }, config.get().modelMap);
+          }, config.get().modelMap, config.get().modelRoutes);
           if (flags.booleans.has("print")) return { exitCode: 0, stdout: `${JSON.stringify(setup, null, 2)}\n` };
           const check = flags.booleans.has("check");
           const result = await (check ? checkSetupFiles : applySetupFiles)(homedir(), setup.files);
@@ -966,7 +991,7 @@ export function registerPoolCli(
           if (flags.booleans.has("standalone") && (flags.booleans.has("print") || !flags.values.get("machine")))
             throw new Error("Standalone setup writes credentials on the BB server machine. Use bb gateway setup pi --standalone --machine <id-or-name> without --print.");
           if (flags.values.has("machine") && !flags.booleans.has("standalone")) throw new Error("--machine requires --standalone.");
-          const models = gatewayModels(config.get().modelMap);
+          const models = gatewayModels(config.get().modelMap, config.get().modelRoutes);
           if (flags.booleans.has("print"))
             return {
               exitCode: 0,

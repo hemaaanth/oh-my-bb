@@ -363,6 +363,7 @@ describe("Account Pool config schema", () => {
       allowClaudeOAuthAcrossHarnesses: false,
       chains: DEFAULT_CHAINS,
       modelMap: DEFAULT_MODEL_MAP,
+      modelRoutes: {},
       auto: DEFAULT_AUTO,
     });
     expect(
@@ -431,6 +432,7 @@ describe("Account Pool plugin", () => {
       allowClaudeOAuthAcrossHarnesses: false,
       chains: DEFAULT_CHAINS,
       modelMap: DEFAULT_MODEL_MAP,
+      modelRoutes: {},
       auto: DEFAULT_AUTO,
     });
     expect(

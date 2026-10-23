@@ -8,6 +8,7 @@ import {
   DEFAULT_MODEL_MAP,
   KEY_LABEL,
   modelMapSchema,
+  modelRoutesSchema,
 } from "./chain.js";
 
 export const DEFAULT_MODEL_GATEWAY_CONFIG = {
@@ -43,6 +44,7 @@ export const accountPoolConfigSchema = z
     allowClaudeOAuthAcrossHarnesses: z.boolean().default(false),
     chains: chainsSchema.default(DEFAULT_CHAINS),
     modelMap: modelMapSchema.default(DEFAULT_MODEL_MAP),
+    modelRoutes: modelRoutesSchema.default({}),
     auto: autoSchema.default(DEFAULT_AUTO),
   })
   .strict();
@@ -57,6 +59,7 @@ export const accountPoolConfigSetInputSchema = z
     allowClaudeOAuthAcrossHarnesses: z.boolean().optional(),
     chains: chainsSchema.optional(),
     modelMap: modelMapSchema.optional(),
+    modelRoutes: modelRoutesSchema.optional(),
     auto: autoSchema.optional(),
   })
   .strict();

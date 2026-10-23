@@ -32,7 +32,11 @@ export function modelDisplayName(model: string): string {
 }
 
 export function gatewayModelDetails(id: string) {
-  const known = GATEWAY_MODELS[id.replace(/^gw-/u, "")];
+  const bare = id.replace(/^gw-/u, "");
+  // Wafer Responses is text-only; cap output conservatively within its 1M context.
+  const known = GATEWAY_MODELS[bare] ?? (bare === "DeepSeek-V4.1-Flash-1017"
+    ? { contextWindow: 1048576, maxTokens: 64000, input: ["text"] as Array<"text" | "image"> }
+    : undefined);
   return { id, name: modelDisplayName(id), reasoning: true, input: known?.input ?? ["text", "image"],
     contextWindow: known?.contextWindow ?? 200000, maxTokens: known?.maxTokens ?? 64000,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
