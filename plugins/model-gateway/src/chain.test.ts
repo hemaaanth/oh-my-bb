@@ -681,6 +681,7 @@ describe("chain failover in the hub", () => {
         stickyUntil: number | null;
         reason: string;
         fallbackCause: {
+          upstreamId: string;
           upstreamLabel: string;
           category: string;
           status: number;
@@ -1212,6 +1213,11 @@ describe("chain failover in the hub", () => {
     );
     expect(gw.upstream.attempts).toEqual(["max-token", "key-token"]);
     expect((await gw.route("thr_pinned")).entryIndex).toBe(1);
+    expect((await gw.route("thr_pinned")).fallbackCause).toMatchObject({
+      upstreamId: gw.max.id,
+      category: "rate-limit",
+      status: 429,
+    });
 
     // Short hold on a pinned account: one wait, then the same account.
     const thread = await gw.token("claude-code", "thr_short");
@@ -1226,6 +1232,39 @@ describe("chain failover in the hub", () => {
       '{"served":"max-token"}',
     );
     expect(gw.upstream.attempts).toEqual(["max-token", "max-token"]);
+  });
+
+  it("fails over after a pinned account repeats a short plain 429 and records its cause", async () => {
+    const gw = await gateway();
+    await gw.cli("chain", "set", "claude-code", gw.max.id, "claude-key:*");
+    const token = await gw.token("claude-code", "thr_repeated_short");
+    expect(await gw.send(token, captured.turn)).toEqual({
+      status: 200,
+      text: '{"served":"max-token"}',
+    });
+    gw.upstream.reply = (who) =>
+      who === "max-token"
+        ? Response.json(
+            { error: "slow down" },
+            { status: 429, headers: { "retry-after": "0.05" } },
+          )
+        : undefined;
+    gw.upstream.attempts.length = 0;
+    expect(await gw.send(token, captured.toolResult)).toEqual({
+      status: 200,
+      text: '{"served":"key-token"}',
+    });
+    expect(gw.upstream.attempts).toEqual(["max-token", "max-token", "key-token"]);
+    expect(await gw.route("thr_repeated_short")).toMatchObject({
+      entryIndex: 1,
+      fallbackCause: {
+        upstreamId: gw.max.id,
+        upstreamLabel: "max@example.com",
+        category: "rate-limit",
+        status: 429,
+        message: expect.stringContaining("slow down"),
+      },
+    });
   });
 
   it("answers 400 when the context exceeds every remaining model", async () => {

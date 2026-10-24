@@ -1140,11 +1140,19 @@ export class AccountPoolHub {
         const heldMs = (selected.quota.heldUntil ?? 0) - this.options.now();
         if (heldMs > 0) {
           if (heldMs > MAX_INLINE_HOLD_MS || waited.has(selected.account.id)) {
+            const message =
+              "The current Model Gateway account is temporarily rate limited.";
             failure = {
               status: 429,
-              message:
-                "The current Model Gateway account is temporarily rate limited.",
+              message,
               headers: { "retry-after": String(Math.ceil(heldMs / 1_000)) },
+              cause: fallbackCause(
+                selected.account,
+                "rate-limit",
+                429,
+                message,
+                this.options.now(),
+              ),
             };
             // A pinned account on a long hold moves on to the next chain entry.
             if (selected.keepAffinity) return { kind: "failed", failure };
@@ -1318,17 +1326,22 @@ export class AccountPoolHub {
               await waitForDelay(waitMs, signal);
               continue;
             }
-            // Short holds keep the single wait above. A pinned account that
-            // stays limited past it moves on to the next chain entry.
-            if (!selected.keepAffinity || waitMs > MAX_INLINE_HOLD_MS) {
-              failure = {
-                status: 429,
-                message: await this.discardUpstream(upstream, true),
-                headers: { "retry-after": String(Math.ceil(waitMs / 1_000)) },
-              };
-              if (selected.keepAffinity) return { kind: "failed", failure };
-              break;
-            }
+            // A pinned account gets one short pacing retry before chain failover.
+            const message = await this.discardUpstream(upstream, true);
+            failure = {
+              status: 429,
+              message,
+              headers: { "retry-after": String(Math.ceil(waitMs / 1_000)) },
+              cause: fallbackCause(
+                selected.account,
+                "rate-limit",
+                429,
+                message || `${selected.account.label} is rate limited.`,
+                this.options.now(),
+              ),
+            };
+            if (selected.keepAffinity) return { kind: "failed", failure };
+            break;
           }
           if (
             response.status === 401 ||

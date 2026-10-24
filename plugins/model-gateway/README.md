@@ -55,9 +55,10 @@ Automatic Claude Code failover maps Fable to `gpt-6-astra`, Opus to
   200 stream are forwarded; the harness retries the turn.
 - Exhaustion (S6): a 429 with ChatGPT `x-codex-*` over-limit headers or
   Anthropic `anthropic-ratelimit-unified-*-status: rejected`.
-- A plain 429 waits once when `retry-after` is 20 seconds or less. Longer: an
-  unpinned account moves to the next account; a pinned account moves to the
-  next chain entry.
+- A plain 429 waits once when `retry-after` is 20 seconds or less. If the
+  same account still returns 429, an unpinned account moves to the next account;
+  a pinned account moves to the next chain entry. Longer holds move on without
+  the inline retry. The fallback cause records the limited account and HTTP 429.
 - API keys: a 402, or a 400/403/429 whose body says the credit or balance is
   gone, benches the key for 30 minutes and moves on. Any other 429 is a plain
   hold as above. Keys have no quota headers.
