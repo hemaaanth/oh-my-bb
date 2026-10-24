@@ -98,6 +98,7 @@ import {
   wrapKeySse,
 } from "./translate/index.js";
 
+import { bindNativeAccount, prepareNativeClaude, remapNativeResponse, NativeClaudeError } from "./native-claude.js";
 const decompressZstd = promisify(zstdDecompress);
 const ROUTE = "/api/v1/plugins/model-gateway/http";
 /** FX cannot send a header, and core routes plugin paths exactly, so its hub token rides in the query. */
@@ -369,6 +370,7 @@ interface HubOptions {
   /** Once per thread and kind: what a translation left out. Never body content. */
   onDropped: (threadId: string, dropped: string[], upstream: UpstreamKind) => void;
   jevTimeoutMs: number;
+  nativeClaudeCommand?: string;
 }
 
 interface SelectedAccount {
@@ -1207,17 +1209,48 @@ export class AccountPoolHub {
         while (true) {
           signal.throwIfAborted();
           let upstream: UpstreamResult;
+          let nativeNames: ReadonlyMap<string, string> | null = null;
           try {
-            upstream = await this.fetchUpstream(
-              translation?.request ?? request,
-              translation?.body ?? parsed.forAccount(selected.account),
-              selected.account,
-              secret,
-              adapter,
-            );
+            if (candidate.kind === "claude-oauth" && candidate.client.provider === "codex" && translation !== null) {
+              const native = await prepareNativeClaude({
+                body: translation.body,
+                model: candidate.model!,
+                streaming: translation.request.headers.get("accept")?.includes("text/event-stream") === true,
+                signal,
+                command: this.options.nativeClaudeCommand,
+              });
+              nativeNames = native.names;
+              const fastBeta = translation.request.headers.get("anthropic-beta");
+              if (fastBeta) native.headers.set("anthropic-beta", [native.headers.get("anthropic-beta"), fastBeta].filter(Boolean).join(","));
+              const nativeRequest = new Request(translation.request, { headers: native.headers, signal });
+              upstream = await this.fetchUpstream(
+                nativeRequest,
+                adapter.parseRequest(bindNativeAccount(native.body, selected.account.accountUuid ?? null), native.headers).forAccount(selected.account),
+                selected.account,
+                secret,
+                adapter,
+              );
+            } else {
+              upstream = await this.fetchUpstream(
+                translation?.request ?? request,
+                translation?.body ?? parsed.forAccount(selected.account),
+                selected.account,
+                secret,
+                adapter,
+              );
+            }
           } catch (error) {
             signal.throwIfAborted();
-            if (!(error instanceof UpstreamConnectionError)) throw error;
+            if (!(error instanceof UpstreamConnectionError) && !(error instanceof NativeClaudeError)) throw error;
+            if (error instanceof NativeClaudeError) {
+              failure = {
+                status: 503,
+                message: error.message,
+                headers: {},
+                cause: fallbackCause(selected.account, "transport", 503, error.message, this.options.now()),
+              };
+              break;
+            }
             if (
               adapter.provider === "claude" &&
               selected.account.kind === "oauth" &&
@@ -1437,6 +1470,7 @@ export class AccountPoolHub {
             break;
           }
           if (response.ok) selected.accept();
+          if (nativeNames !== null) upstream.response = remapNativeResponse(upstream.response, nativeNames);
           const passthrough = this.clientResponse(upstream);
           return {
             kind: "response",
@@ -2058,6 +2092,7 @@ export function createHub(options: {
   onRouteChanged?: (threadId: string) => void;
   onDropped?: (threadId: string, dropped: string[], upstream: UpstreamKind) => void;
   jevTimeoutMs?: number;
+  nativeClaudeCommand?: string;
 }): AccountPoolHub {
   const adapters: ReadonlyMap<PoolProvider, ProviderAdapter> = new Map([
     [
@@ -2102,6 +2137,7 @@ export function createHub(options: {
     onRouteChanged: options.onRouteChanged ?? (() => {}),
     onDropped: options.onDropped ?? (() => {}),
     jevTimeoutMs: options.jevTimeoutMs ?? JEV_TIMEOUT_MS,
+    nativeClaudeCommand: options.nativeClaudeCommand,
   });
 }
 

@@ -75,6 +75,7 @@ export interface AccountPoolPluginOptions {
   oauthTokenUrl?: string;
   oauthProfileUrl?: string;
   codexAuthBaseUrl?: string;
+  nativeClaudeCommand?: string;
 }
 
 const DISPOSE_INSPECTION_TIMEOUT_MS = 2_000;
@@ -152,6 +153,7 @@ export function createAccountPoolPlugin(
       usageRefreshIntervalMs: options.usageRefreshIntervalMs,
       drainTimeoutMs: options.drainTimeoutMs,
       jevTimeoutMs: options.jevTimeoutMs,
+      nativeClaudeCommand: options.nativeClaudeCommand,
       onUpstreamError: (provider, error) =>
         bb.log.warn(
           `Model Gateway ${provider} transport failed: ${transportErrorCode(error)}.`,

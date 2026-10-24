@@ -155,7 +155,8 @@ sets Jev's OpenRouter model id (default `typesafe/jev-1.13`).
 ## ACP harnesses and Pi
 
 omp, FX, nanocodex, Prime Agent, and Pi speak OpenAI Responses and default to
-`chatgpt-oauth:*`. Any key kind can follow in their chains; Claude OAuth never can.
+`chatgpt-oauth:*`. Any key kind can follow in their chains. Claude OAuth is
+disabled for these harnesses unless the operator enables the opt-in below.
 
 | Harness | Env | Hub token | Setup |
 |---|---|---|---|
@@ -254,6 +255,19 @@ can accept the third-party harness risk with
 `bb gateway config set allowClaudeOAuthAcrossHarnesses true`. Both chain validation
 and request selection enforce this setting. Then add `claude-oauth:*` to the
 needed harness chains. Turning it off requires removing those chain entries first.
+
+For a selected Claude OAuth account on an opted-in Responses harness, Gateway
+starts an isolated Claude Code CLI process to construct the native Messages
+request. Install `claude` on the Gateway host. The process receives no account
+credentials and can only send one request to a private loopback capture endpoint;
+Gateway sends the captured request using the selected account. History, signed
+thinking blocks, declared tools, native CLI headers and response streaming are
+preserved. Gateway maps native MCP tool names back to the caller's tool names.
+The worker is terminated before Gateway contacts Anthropic. Concurrent workers
+are capped at four, with at most sixteen waiting. This opt-in is unavailable on
+Windows because process-group cleanup cannot be guaranteed there. If CLI
+construction fails, the normal chain fallback applies; no subscription request
+is sent from that worker.
 
 OMP and Pi start with the requested model's subscription family when the chain
 starts with subscriptions. They preserve the remaining fallback order. Explicit

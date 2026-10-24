@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { zstdCompressSync } from "node:zlib";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { Response as UndiciResponse } from "undici";
@@ -36,6 +37,7 @@ import { createClaudeAdapter } from "./upstreams/claude-adapter.js";
 import { createCodexAdapter } from "./upstreams/codex-adapter.js";
 import { EMPTY_QUOTA, HubTokenStore } from "./upstreams/store.js";
 
+const fakeClaudeCli = fileURLToPath(new URL("./fixtures/native-claude-cli.mjs", import.meta.url));
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()?.();
@@ -526,7 +528,7 @@ describe("chain failover in the hub", () => {
   }
 
   async function gateway(
-    options: { withCodex?: boolean; config?: object } = {},
+    options: { withCodex?: boolean; config?: object; nativeClaudeCommand?: string } = {},
   ) {
     let now = T;
     const upstream: Upstream = {
@@ -556,6 +558,7 @@ describe("chain failover in the hub", () => {
     await createAccountPoolPlugin({
       now: () => now,
       jevTimeoutMs: 50,
+      nativeClaudeCommand: options.nativeClaudeCommand ?? fakeClaudeCli,
       usageUrl: "data:application/json,{}",
       codexUsageUrl: "data:application/json,{}",
       fetch: async (input, init) => {
@@ -906,6 +909,9 @@ describe("chain failover in the hub", () => {
     expect((await gw.send(token, { model: "gw-claude-opus-5", input: "hi", stream: true }, "/v1/responses")).status).toBe(200);
     expect(gw.upstream.attempts.at(-1)).toBe("max-token");
     expect(JSON.parse(gw.upstream.requests.at(-1)!.body).model).toBe("claude-opus-5");
+    const nativeBody = JSON.parse(gw.upstream.requests.at(-1)!.body);
+    expect(JSON.parse(nativeBody.metadata.user_id)).toMatchObject({ account_uuid: "11111111-1111-4111-8111-111111111111", session_id: "22222222-2222-4222-8222-222222222222", device_id: "device-native" });
+    expect(nativeBody.thinking).toBeUndefined();
     expect(await gw.route("thr_optin")).toMatchObject({ entryIndex: 0 });
     gw.upstream.reply = (who) => who === "pro-token" ? new Response(fixture("chatgpt-two-tools.sse").toString(), { headers: { "content-type": "text/event-stream" } }) : undefined;
     expect((await gw.send(token, { model: "gw-gpt-6-sol", input: [{ type: "function_call_output", call_id: "helper", output: "done" }], stream: true }, "/v1/responses")).status).toBe(200);
@@ -914,6 +920,35 @@ describe("chain failover in the hub", () => {
     await gw.cli("chain", "set", "pi", "claude-oauth:*");
     expect(await gw.env("pi", "thr_claude_only")).toEqual(expect.arrayContaining([expect.objectContaining({ name: "MODEL_GATEWAY_TOKEN" })]));
     await expect(gw.host.harness.behavior.callRpc("config.set", { allowClaudeOAuthAcrossHarnesses: false })).rejects.toThrow(/claude-code/);
+  });
+
+  it("replays Responses tool results through native CLI and restores tool names", async () => {
+    const gw = await gateway({ config: { allowClaudeOAuthAcrossHarnesses: true, chains: { pi: ["claude-oauth:*"] } } });
+    const token = (await gw.env("pi", "thr_native_tool")).find(entry => entry.name === "MODEL_GATEWAY_TOKEN")!.value as string;
+    gw.upstream.reply = () => Response.json({ content: [{ type: "tool_use", id: "toolu_next", name: "mcp__gateway__tool_0", input: {} }], stop_reason: "tool_use", usage: { input_tokens: 1, output_tokens: 1 } });
+    const input = [
+      { type: "message", role: "user", content: [{ type: "input_text", text: "first" }] },
+      { type: "function_call", call_id: "toolu_prev", name: "run", arguments: "{}" },
+      { type: "function_call_output", call_id: "toolu_prev", output: "done" },
+    ];
+    const result = await gw.send(token, { model: "claude-opus-5", input, tools: [{ type: "function", name: "run", description: "run", parameters: { type: "object", properties: {} } }], stream: false }, "/v1/responses");
+    expect(result.status).toBe(200);
+    const upstream = JSON.parse(gw.upstream.requests.at(-1)!.body);
+    expect(upstream.messages.map((message: { role: string }) => message.role)).toEqual(["user", "assistant", "user", "system"]);
+    expect(upstream.messages[1].content[0].name).toBe("mcp__gateway__tool_0");
+    expect(upstream.messages[2].content[0].tool_use_id).toBe("toolu_prev");
+    expect(JSON.parse(result.text).output).toEqual(expect.arrayContaining([expect.objectContaining({ type: "function_call", name: "run" })]));
+  });
+
+  it("falls back when native Claude CLI cannot construct a request", async () => {
+    const gw = await gateway({ withCodex: true, nativeClaudeCommand: "/nonexistent/claude", config: {
+      allowClaudeOAuthAcrossHarnesses: true,
+      chains: { "acp-omp": ["claude-oauth:*", "chatgpt-oauth:*"] },
+    } });
+    const token = (await gw.env("acp-omp", "thr_no_cli")).find(entry => entry.name === "MODEL_GATEWAY_TOKEN")!.value as string;
+    expect((await gw.send(token, { model: "gw-claude-opus-5", input: "hi", stream: false }, "/v1/responses")).status).toBe(200);
+    expect(gw.upstream.attempts).toEqual(["pro-token"]);
+    expect(await gw.route("thr_no_cli")).toMatchObject({ entryIndex: 1, fallbackCause: { category: "transport", status: 503 } });
   });
 
   it("uses the Claude model family for translated subscription quota and stickiness", async () => {
@@ -2352,7 +2387,7 @@ describe("chain failover in the hub", () => {
       expect(JSON.parse(response.text)).toMatchObject({ service_tier: "priority" });
       const upstream = gw.upstream.requests.at(-1)!;
       expect(JSON.parse(upstream.body)).toMatchObject({ model, speed: "fast", max_tokens: 64 });
-      expect(upstream.headers.get("anthropic-beta")).toBe(model === "claude-opus-5" ? "fast-mode-2026-02-01" : null);
+      expect(upstream.headers.get("anthropic-beta")).toBe(model === "claude-opus-5" ? "claude-code-20250219,fast-mode-2026-02-01" : "claude-code-20250219");
     }
   });
 
