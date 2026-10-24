@@ -151,8 +151,8 @@ SOFTWARE.
 
 - Source: https://github.com/earendil-works/pi-claude-code, MIT, Armin Ronacher 2026.
 - `src/native-claude.ts` adapts request-only history replay and CLI capture from
-  `src/claude-cli.ts`, `src/transcript.ts`, and `src/turn-relay.ts`.
-  `src/inert-claude-mcp.mjs` adapts `src/inert-mcp.mjs`. Gateway replaces the
+  `src/claude-cli.ts`, `src/transcript.ts`, and `src/turn-relay.ts`, plus the
+  inert private MCP worker from `src/inert-mcp.mjs`. Gateway replaces the
   upstream relay with its selected-account transport and owns credential use.
 
 ```

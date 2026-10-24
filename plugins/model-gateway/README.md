@@ -263,8 +263,11 @@ credentials and can only send one request to a private loopback capture endpoint
 Gateway sends the captured request using the selected account. History, signed
 thinking blocks, declared tools, native CLI headers and response streaming are
 preserved. Gateway maps native MCP tool names back to the caller's tool names.
-The worker is terminated before Gateway contacts Anthropic. Concurrent workers
-are capped at four, with at most sixteen waiting. This opt-in is unavailable on
+It checks that Claude Code registered every declared tool before sending the
+request; missing tools fail over instead of silently becoming text-only turns.
+The inert MCP subprocess runs from the private request directory, including
+when BB's executable is Electron. The worker stops before Gateway contacts
+Anthropic. At most four workers run and sixteen wait. This opt-in is unavailable on
 Windows because process-group cleanup cannot be guaranteed there. If CLI
 construction fails, the normal chain fallback applies; no subscription request
 is sent from that worker.

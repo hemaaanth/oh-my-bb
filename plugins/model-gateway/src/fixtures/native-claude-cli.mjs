@@ -26,6 +26,24 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
   if (JSON.stringify(frame.message).includes("stall-native-worker")) await new Promise(() => setInterval(() => {}, 1_000));
   if (process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.BB_MODEL_GATEWAY_TOKEN)
     throw new Error("Inherited credential entered the worker");
+  if (JSON.stringify(frame.message).includes("verify-native-mcp")) {
+    const server = mcp.mcpServers.gateway;
+    if (server.env?.ELECTRON_RUN_AS_NODE !== "1") throw new Error("MCP subprocess is not configured as Node");
+    const worker = spawn(server.command, server.args, { env: { ...process.env, ...server.env }, stdio: ["pipe", "pipe", "ignore"] });
+    let timeout;
+    try {
+      const reply = new Promise((resolve, reject) => {
+        worker.once("error", reject);
+        worker.once("exit", code => reject(new Error(`MCP subprocess exited before tools/list: ${code}`)));
+        createInterface({ input: worker.stdout }).once("line", line => {
+          try { resolve(JSON.parse(line)); } catch (error) { reject(error); }
+        });
+      });
+      worker.stdin.end(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) + "\n");
+      const listed = await Promise.race([reply, new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error("MCP tools/list timed out")), 2_000); })]);
+      if (JSON.stringify(listed.result?.tools) !== JSON.stringify(tools)) throw new Error("MCP tools/list did not return the inventory");
+    } finally { clearTimeout(timeout); worker.kill(); }
+  }
   const body = {
     model: args[args.indexOf("--model") + 1], stream: true,
     metadata: { user_id: JSON.stringify({ account_uuid: "", session_id: "22222222-2222-4222-8222-222222222222", device_id: "device-native" }) },
@@ -34,7 +52,7 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
       : message), { role: "system", content: [{ type: "text", text: "Native CLI envelope" }] }],
     system: [{ type: "text", text: "Native CLI system" }],
     thinking: { type: "adaptive" }, output_config: { effort: "medium" }, tool_choice: { type: "auto" },
-    tools: tools.map(tool => ({ name: `mcp__gateway__${tool.name}`, input_schema: tool.inputSchema })),
+    tools: JSON.stringify(frame.message).includes("omit-native-tools") ? [] : tools.map(tool => ({ name: `mcp__gateway__${tool.name}`, input_schema: tool.inputSchema })),
   };
   const marker = /descendant-marker:([^"\s]+)/u.exec(JSON.stringify(frame.message))?.[1];
   if (marker) {

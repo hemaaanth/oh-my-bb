@@ -93,6 +93,24 @@ describe("native Claude Code request construction", () => {
     await expect(remapNativeResponse(Response.json({ content: [{ type: "tool_use", name: "alien" }] }), names).text()).rejects.toThrow("outside the current inventory");
   });
 
+  it("runs the isolated MCP subprocess and lists the declared tools", async () => {
+    const request = { ...body,
+      tools: [{ name: "run", description: "Run a command", input_schema: { type: "object", properties: { command: { type: "string" } } } }],
+      messages: [{ role: "user", content: [{ type: "text", text: "verify-native-mcp" }] }],
+    };
+    const native = await prepareNativeClaude({ body: encode(request), model, streaming: true, command, signal: new AbortController().signal });
+    expect(native.names.get("mcp__gateway__tool_0")).toBe("run");
+  });
+
+  it("rejects a captured CLI request when declared tools did not register", async () => {
+    const request = { ...body,
+      tools: [{ name: "run", description: "Run a command", input_schema: { type: "object", properties: { command: { type: "string" } } } }],
+      messages: [{ role: "user", content: [{ type: "text", text: "omit-native-tools" }] }],
+    };
+    await expect(prepareNativeClaude({ body: encode(request), model, streaming: true, command, signal: new AbortController().signal }))
+      .rejects.toThrow(/declared tools/u);
+  });
+
   it("fails closed when CLI is missing or history tools are not declared", async () => {
     await expect(prepareNativeClaude({ body: encode(body), model, streaming: true, command: "/nonexistent/claude", signal: new AbortController().signal })).rejects.toThrow("unavailable");
     const invalid = { ...body, messages: [{ role: "user", content: [{ type: "text", text: "first" }] }, { role: "assistant", content: [{ type: "tool_use", name: "unknown", id: "a", input: {} }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "a", content: "x" }] }] };

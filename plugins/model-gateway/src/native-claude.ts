@@ -8,7 +8,6 @@ import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
 
 const MAX_REQUEST = 8 * 1024 * 1024;
 const MAX_OUTPUT = 1024 * 1024;
@@ -17,6 +16,29 @@ const TIMEOUT_MS = 60_000;
 const MCP_PREFIX = "mcp__gateway__";
 const MAX_WORKERS = 4;
 const MAX_WAITING = 16;
+
+// Embed the worker so a BB runtime copy of the server bundle cannot resolve it
+// relative to the wrong source tree. This file is written only inside root.
+const MCP_WORKER = `import { readFile } from "node:fs/promises";
+import { createInterface } from "node:readline";
+const tools = JSON.parse(await readFile(process.argv[2], "utf8"));
+for await (const line of createInterface({ input: process.stdin, crlfDelay: Infinity })) {
+  let request;
+  try { request = JSON.parse(line); } catch { continue; }
+  let result = {};
+  if (request.method === "initialize") result = {
+    protocolVersion: "2024-11-05", capabilities: { tools: {} },
+    serverInfo: { name: "gateway-inert-tools", version: "1" },
+  };
+  else if (request.method === "tools/list") result = { tools };
+  else if (request.method === "tools/call") result = {
+    isError: true,
+    content: [{ type: "text", text: "Denied: only the requesting harness executes tools." }],
+  };
+  if (request.id !== undefined)
+    process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }) + "\\n");
+}
+`;
 let activeWorkers = 0;
 const waitingWorkers: Array<() => void> = [];
 
@@ -139,6 +161,7 @@ export async function prepareNativeClaude(input: NativeClaudeInput): Promise<Nat
   try {
     await mkdir(join(root, "config"), { mode: 0o700 });
     await writeFile(join(root, "tools.json"), JSON.stringify(manifest), { mode: 0o600 });
+    await writeFile(join(root, "inert-mcp.mjs"), MCP_WORKER, { mode: 0o600 });
     if (payload.system !== undefined && typeof payload.system !== "string")
       throw new NativeClaudeError("Claude system prompt is unsupported.");
     await writeFile(join(root, "system.md"), payload.system ?? "", { mode: 0o600 });
@@ -161,6 +184,12 @@ export async function prepareNativeClaude(input: NativeClaudeInput): Promise<Nat
           const native: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
           if (!record(native) || native.model !== input.model || !Array.isArray(native.messages))
             throw new NativeClaudeError("Claude CLI sent an invalid model or history.");
+          if (reverse.size > 0) {
+            const available = new Set(Array.isArray(native.tools) ? native.tools.filter(record).map(tool => tool.name) : []);
+            const missing = [...reverse.keys()].filter(name => !available.has(name));
+            if (missing.length > 0)
+              throw new NativeClaudeError(`Claude Code omitted ${missing.length} of ${reverse.size} declared tools.`);
+          }
           const assistants = history.filter(message => message.role === "assistant");
           const nativeAssistants = native.messages.filter((message: unknown) => record(message) && message.role === "assistant");
           if (assistants.length !== nativeAssistants.length)
@@ -210,7 +239,7 @@ export async function prepareNativeClaude(input: NativeClaudeInput): Promise<Nat
       DISABLE_AUTOUPDATER: "1", DISABLE_TELEMETRY: "1", DISABLE_ERROR_REPORTING: "1",
       DISABLE_AUTO_COMPACT: "1", ENABLE_TOOL_SEARCH: "false",
     };
-    const mcp = { mcpServers: { gateway: { command: process.execPath, args: [fileURLToPath(new URL("../src/inert-claude-mcp.mjs", import.meta.url)), join(root, "tools.json")] } } };
+    const mcp = { mcpServers: { gateway: { command: process.execPath, args: [join(root, "inert-mcp.mjs"), join(root, "tools.json")], env: { ELECTRON_RUN_AS_NODE: "1" } } } };
     child = spawn(input.command ?? "claude", ["-p", "--model", input.model, "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--tools", "", "--system-prompt-file", join(root, "system.md"), "--settings", '{"disableAllHooks":true}', "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands", "--max-turns", "1", "--permission-mode", "dontAsk", "--no-session-persistence", "--mcp-config", JSON.stringify(mcp)], { cwd: root, env, detached: true, stdio: ["pipe", "pipe", "pipe"] });
     const exited = new Promise<void>((resolve, reject) => {
       child!.once("error", () => reject(new NativeClaudeError("Claude Code CLI is unavailable. Install it on the Gateway host.")));
