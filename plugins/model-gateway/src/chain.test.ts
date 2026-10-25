@@ -1166,7 +1166,7 @@ describe("chain failover in the hub", () => {
     const gw = await gateway({ withCodex: true });
     await gw.cli("chain", "set", "claude-code", "chatgpt-oauth:*");
     const key = await gw.token("claude-code", "thr_abort");
-    const first = fixture("chatgpt-two-tools.sse").toString().split("\n\n")[0];
+    const first = fixture("chatgpt-two-tools.sse").toString().split("\n\n").slice(0, 3).join("\n\n");
     gw.upstream.reply = () =>
       sse(
         new ReadableStream({
@@ -1896,6 +1896,132 @@ describe("chain failover in the hub", () => {
     expect(gw.upstream.attempts).toEqual([]);
     expect((await gw.cli("model-route", "remove", model)).exitCode).toBe(0);
     expect(JSON.parse((await gw.cli("model-route", "show")).stdout)).toEqual({});
+  });
+
+  const capacityFrame = (code = "serverOverloaded") =>
+    `event: response.created\ndata: {"type":"response.created","response":{"id":"failed-primary","output":[]}}\n\n` +
+    `event: response.failed\ndata: ${JSON.stringify({ type: "response.failed", response: { error: { code, message: "Selected model is at capacity" } } })}\n\n`;
+
+  it.each(["serverOverloaded", "server_overloaded", "model_at_capacity"])("fails early SSE %s over with mapping/translation and probes only at a new turn", async (code) => {
+    const gw = await gateway({ withCodex: true });
+    await addKey(gw, "anthropic-compatible-key", "kimi", KIMI, "sk-kimi");
+    await gw.cli("chain", "set", "codex", "chatgpt-oauth:*", "anthropic-compatible-key:kimi");
+    await gw.cli("model-map", "set", "anthropic-compatible-key:kimi", "gpt-6-*", "kimi-k3");
+    gw.upstream.reply = (who) => who === "pro-token" ? sse(capacityFrame(code)) : anthropicTwoTools();
+    const key = await gw.token("codex", "thr_capacity");
+    const first = await gw.send(key, codexBody([codexUser]), "/v1/responses");
+    expect(first.status).toBe(200);
+    expect(first.text).not.toContain("failed-primary");
+    expect(first.text).not.toContain("response.failed");
+    expect(gw.upstream.attempts).toEqual(["pro-token", "sk-kimi"]);
+    expect(JSON.parse(gw.upstream.requests.at(-1)!.body).model).toBe("kimi-k3");
+    const route = await gw.route("thr_capacity");
+    expect(route).toMatchObject({ entryIndex: 1, fallbackCause: { category: "availability", status: 503 } });
+    const retryAt = route.stickyUntil!;
+    expect(retryAt - T).toBeGreaterThanOrEqual(30_000);
+    expect(retryAt - T).toBeLessThanOrEqual(33_000);
+    expect((await gw.cli("status")).stdout).toContain(new Date(retryAt).toISOString());
+    gw.upstream.attempts.length = 0;
+    gw.setNow(retryAt - 1);
+    await gw.send(key, codexBody([codexUser]), "/v1/responses");
+    expect(gw.upstream.attempts).toEqual(["sk-kimi"]);
+    gw.upstream.attempts.length = 0;
+    gw.setNow(retryAt + 1);
+    expect(gw.upstream.attempts).toEqual([]);
+    const output = responsesEvents(first.text).at(-1)!.response.output;
+    const continuation = codexBody([
+      codexUser, ...output,
+      { type: "function_call_output", call_id: "toolu_syn_shell", output: "README.md" },
+      { type: "custom_tool_call_output", call_id: "toolu_syn_patch", output: "Done!" },
+    ]);
+    await gw.send(key, continuation, "/v1/responses");
+    expect(gw.upstream.attempts).toEqual(["sk-kimi"]);
+    // Failure of the bound fallback cannot rotate back mid-loop.
+    gw.upstream.reply = (who) => who === "sk-kimi" ? Response.json({}, { status: 503 }) : completed("healthy-primary");
+    gw.upstream.attempts.length = 0;
+    expect((await gw.send(key, continuation, "/v1/responses")).status).toBe(503);
+    expect(gw.upstream.attempts).toEqual(["sk-kimi"]);
+    gw.upstream.attempts.length = 0;
+    gw.upstream.reply = () => completed("healthy-primary");
+    expect((await gw.send(key, codexBody([codexUser]), "/v1/responses")).text).toContain("healthy-primary");
+    expect(gw.upstream.attempts).toEqual(["pro-token"]);
+    expect(await gw.route("thr_capacity")).toMatchObject({ entryIndex: 0, stickyUntil: null, fallbackCause: null });
+    const status = statusSchema.parse(await gw.host.harness.behavior.callRpc("status.get", null));
+    expect(status.capacityCooldowns).toEqual([]);
+    expect(status.inFlight).toBe(0);
+    expect(status.accounts.every((a) => a.heldUntil === null && a.error === null)).toBe(true);
+  });
+
+  it("shares capacity across accounts of one provider while another model remains usable", async () => {
+    const gw = await gateway({ withCodex: true });
+    await addKey(gw, "responses-compatible-key", "one", OPENROUTER, "sk-one");
+    await addKey(gw, "responses-compatible-key", "two", OPENROUTER, "sk-two");
+    await gw.cli("chain", "set", "codex", "responses-compatible-key:one", "responses-compatible-key:two", "chatgpt-oauth:*");
+    gw.upstream.reply = (who) => who === "sk-one" ? sse(capacityFrame()) : completed("healthy");
+    const key = await gw.token("codex", "thr_capacity_accounts");
+    expect((await gw.send(key, codexBody([codexUser]), "/v1/responses")).status).toBe(200);
+    expect(gw.upstream.attempts).toEqual(["sk-one", "pro-token"]);
+    gw.upstream.attempts.length = 0;
+    gw.upstream.reply = () => completed("other-model");
+    await gw.send(key, { ...codexBody([codexUser]), model: "gpt-6-luna" }, "/v1/responses");
+    expect(gw.upstream.attempts).toEqual(["sk-one"]);
+  });
+
+  it("extends cooldown on overloaded probes, caps it, and returns one bounded error if all providers fail", async () => {
+    const gw = await gateway({ withCodex: true });
+    await addKey(gw, "responses-compatible-key", "openrouter", OPENROUTER, "sk-or");
+    await gw.cli("chain", "set", "codex", "chatgpt-oauth:*", "responses-compatible-key:openrouter");
+    gw.upstream.reply = () => sse(capacityFrame());
+    const key = await gw.token("codex", "thr_all_capacity");
+    let now = T;
+    for (const baseDelay of [30_000, 60_000, 120_000, 240_000, 300_000, 300_000]) {
+      gw.upstream.attempts.length = 0;
+      const response = await gw.send(key, codexBody([codexUser]), "/v1/responses");
+      expect(response.status).toBe(503);
+      expect(response.text.length).toBeLessThan(1024);
+      expect(gw.upstream.attempts).toEqual(["pro-token", "sk-or"]);
+      const status = statusSchema.parse(await gw.host.harness.behavior.callRpc("status.get", null));
+      expect(status.inFlight).toBe(0);
+      expect(status.capacityCooldowns).toHaveLength(2);
+      for (const circuit of status.capacityCooldowns!) {
+        expect(circuit.retryAt - now).toBeGreaterThanOrEqual(baseDelay);
+        expect(circuit.retryAt - now).toBeLessThanOrEqual(Math.min(300_000, baseDelay * 1.1));
+      }
+      gw.upstream.attempts.length = 0;
+      expect((await gw.send(key, codexBody([codexUser]), "/v1/responses")).status).toBe(503);
+      expect(gw.upstream.attempts).toEqual([]);
+      now = Math.max(...status.capacityCooldowns!.map((c) => c.retryAt)) + 1;
+      gw.setNow(now);
+    }
+  });
+
+  it("never retries a tool call followed by overload in the same chunk", async () => {
+    const gw = await gateway({ withCodex: true });
+    await addKey(gw, "responses-compatible-key", "openrouter", OPENROUTER, "sk-or");
+    await gw.cli("chain", "set", "codex", "chatgpt-oauth:*", "responses-compatible-key:openrouter");
+    const raw = `data: {"type":"response.output_item.added","item":{"type":"function_call","name":"shell","call_id":"one"}}\n\n` + capacityFrame();
+    gw.upstream.reply = () => sse(raw);
+    const key = await gw.token("codex", "thr_no_duplicate_tools");
+    expect((await gw.send(key, codexBody([codexUser]), "/v1/responses")).text).toBe(raw);
+    expect(gw.upstream.attempts).toEqual(["pro-token"]);
+  });
+
+  it("releases a canceled prelude even if upstream cancellation never settles", async () => {
+    const gw = await gateway({ withCodex: true });
+    const cancel = vi.fn(() => new Promise<void>(() => {}));
+    gw.upstream.reply = () => sse(new ReadableStream({ cancel }));
+    const key = await gw.token("codex", "thr_prelude_cancel");
+    const controller = new AbortController();
+    const pending = gw.host.harness.behavior.fetchHttp("POST", "/v1/responses", {
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify(codexBody([codexUser])), signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(gw.upstream.requests).toHaveLength(1));
+    controller.abort();
+    expect((await pending).status).toBe(499);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(gw.upstream.requests[0]!.signal!.aborted).toBe(true);
+    expect(statusSchema.parse(await gw.host.harness.behavior.callRpc("status.get", null)).inFlight).toBe(0);
   });
 
   it("fails Codex over from ChatGPT to a Responses-compatible key, keeping sampling fields", async () => {

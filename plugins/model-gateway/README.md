@@ -61,8 +61,28 @@ Automatic Claude Code failover maps Fable to `gpt-6-astra`, Opus to
 
 ## Failover rules
 
-- Failover happens before the first byte reaches the harness. Errors inside a
-  200 stream are forwarded; the harness retries the turn.
+- Responses SSE holds only the non-semantic prelude (`response.created`,
+  `response.in_progress`, comments). An explicit early terminal capacity error
+  such as `serverOverloaded`, `server_overloaded`, or `model_at_capacity` fails
+  over before any byte reaches the harness. The first output, reasoning, text,
+  tool/arguments, or unknown event commits immediately; nothing after commit
+  can replay. Healthy requests have one upstream call and no fixed delay.
+- Prelude inspection is bounded to 64 KiB and a 10-second stall deadline.
+  Reaching the byte bound commits; a stall/disconnect before commit tries the
+  next eligible candidate. After commit, errors go to the harness.
+- Capacity cooldowns cover the upstream provider (protocol and configured base
+  URL) and mapped model, across its accounts. They grow from 30 seconds to 60
+  seconds, 2 minutes, 4 minutes, then at most 5 minutes, with up to 10% added
+  jitter under that cap. Account auth, quota and credit holds stay separate.
+  `bb gateway status` and `status --json` expose capacity retry times
+  (`capacityCooldowns`); a fallback route's `stickyUntil` records primary timing.
+- A thread on fallback keeps that provider throughout its tool loop, even if
+  cooldown expires or the fallback fails. After cooldown, the next new user
+  turn tries entry 0 using its real request. Early overload extends cooldown;
+  semantic output clears it and restores the primary. There are no background
+  health probes. Circuits are in memory, capped at 1,024 provider/model pairs,
+  and reset on plugin restart. The separate subscription-only background
+  inference path keeps its existing deadlines and account-selection semantics.
 - Exhaustion (S6): a 429 with ChatGPT `x-codex-*` over-limit headers or
   Anthropic `anthropic-ratelimit-unified-*-status: rejected`.
 - A plain 429 waits once when `retry-after` is 20 seconds or less. If the

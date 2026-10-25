@@ -259,6 +259,9 @@ export const statusSchema = z
     route: z.string(),
     enabledAccountCount: z.number().int().nonnegative(),
     inFlight: z.number().int().nonnegative(),
+    capacityCooldowns: z.array(z.object({
+      provider: z.string(), model: z.string(), failures: z.number().int(), retryAt: z.number().int(),
+    }).strict()).optional(),
     accepting: z.boolean(),
     hosts: z.array(hubTokenSummarySchema),
     routedThreadsWithoutLocalLogin: z.array(routedThreadStatusSchema),

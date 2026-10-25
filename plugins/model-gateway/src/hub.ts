@@ -1,5 +1,7 @@
 // Ported from the core Account Pooler (account-pool), MIT, Michael Yong 2026.
 import { promisify } from "node:util";
+import { CapacityCircuits } from "./capacity.js";
+import { gateResponsesPrelude } from "./responses-prelude.js";
 import { gatewayModelDetails } from "./model-catalog.js";
 import { zstdDecompress } from "node:zlib";
 import type {
@@ -441,6 +443,7 @@ export interface BackgroundReadiness {
 export class AccountPoolHub {
   private accepting = false;
   private stopped = new AbortController();
+  private readonly capacity = new CapacityCircuits();
   private readonly inFlightByAccount = new Map<string, number>();
   private readonly activeControllers = new Set<AbortController>();
   private readonly refreshes = new Map<string, SecretFlight>();
@@ -806,6 +809,7 @@ export class AccountPoolHub {
       enabledAccountCount: accounts.filter((account) => account.enabled).length,
       inFlight: this.inFlightCount(),
       accepting: this.accepting,
+      capacityCooldowns: this.capacity.status(),
       hosts: await this.options.hubTokens.list(),
       accounts: accounts.map((account) => {
         const quota = this.options.quotas.get(account.id);
@@ -887,10 +891,14 @@ export class AccountPoolHub {
             accounts.some((account) => account.id === route.upstreamId),
           );
     const rejected = new Map<string, number | null>();
+    const modelFor = (account: Account) => this.candidateModel(account, client, fitResponses, model);
+    const loopAccount = boundIndex > 0 && !isNewUserTurn(json)
+      ? allAccounts.find((account) => account.id === route?.upstreamId)
+      : undefined;
     // A primary that reset early (hold cleared, usage refreshed) ends stickiness.
     const primaryBlocked =
       boundIndex > 0 &&
-      this.entryResetAt(entries[0] ?? [], rejected, family) !== null;
+      this.entryResetAt(entries[0] ?? [], rejected, family, modelFor) !== null;
     const { order, sticky } = orderEntries(
       entries.length,
       boundIndex,
@@ -907,12 +915,13 @@ export class AccountPoolHub {
         for (const accounts of candidateGroups(entries[index] ?? [])) {
           const first = accounts[0];
           if (first === undefined) continue;
+          // Once on fallback, tool results stay with the provider that emitted the tools.
+          if (loopAccount && this.capacityProvider(first) !== this.capacityProvider(loopAccount)) continue;
           const upstream = this.upstreamAdapter(first);
           const kind = upstreamKind(first);
           const cross = upstream.provider !== client.provider;
           const isKey = first.kind === "api-key";
           // A compatible key's `<kind>:<label>` map wins over its kind's map.
-          const mapKey = first.baseUrl === undefined ? kind : first;
           const candidate: ChainCandidate = {
             kind,
             replay: replayIdentity(first),
@@ -922,13 +931,7 @@ export class AccountPoolHub {
             }),
             client,
             upstream,
-            // Keys take the model map, else the client's model unchanged (for
-            // example nanocodex kimi-k3 on a Kimi key); ChatGPT needs a mapping.
-            model: cross
-              ? (mapModel(settings.modelMap, mapKey, model) ?? (isKey || (upstream.provider === "claude" && model?.startsWith("claude-")) ? model : null))
-              : isKey || fitResponses
-                ? gatewayModel(settings.modelMap, mapKey, model)
-                : model,
+            model: modelFor(first),
           };
           if (cross && model !== null && candidate.model === null) continue;
           // ChatGPT cannot serve these; a later key entry can.
@@ -1014,6 +1017,7 @@ export class AccountPoolHub {
               primary: entries[0] ?? [],
               rejected,
               family,
+              modelFor,
               fallbackCause: failure?.cause ?? null,
             });
           }
@@ -1068,6 +1072,7 @@ export class AccountPoolHub {
       primary: readonly Account[];
       rejected: ReadonlyMap<string, number | null>;
       family: ModelFamily;
+      modelFor: (account: Account) => string | null;
       fallbackCause: FallbackCause | null;
     },
   ): void {
@@ -1078,7 +1083,7 @@ export class AccountPoolHub {
         ? null
         : same && served.sticky
           ? route.stickyUntil
-          : this.entryResetAt(served.primary, served.rejected, served.family);
+          : this.entryResetAt(served.primary, served.rejected, served.family, served.modelFor);
     const recordedCause =
       served.index === 0
         ? null
@@ -1188,11 +1193,27 @@ export class AccountPoolHub {
     this.options.onDropped(threadId, fresh, upstream);
   }
 
+  private capacityProvider(account: Account): string {
+    const settings = this.options.getSettings();
+    return `${account.provider}:${account.baseUrl ?? (account.provider === "codex" ? settings.codexUpstreamBaseUrl : settings.anthropicUpstreamBaseUrl)}`;
+  }
+
+  private candidateModel(account: Account, client: ProviderAdapter, fitResponses: boolean, model: string | null): string | null {
+    const settings = this.options.getSettings();
+    const kind = upstreamKind(account);
+    const mapKey = account.baseUrl === undefined ? kind : account;
+    const isKey = account.kind === "api-key";
+    return account.provider !== client.provider
+      ? (mapModel(settings.modelMap, mapKey, model) ?? (isKey || (account.provider === "claude" && model?.startsWith("claude-")) ? model : null))
+      : isKey || fitResponses ? gatewayModel(settings.modelMap, mapKey, model) : model;
+  }
+
   /** Earliest time any account of the entry is usable again; null if unknown. */
   private entryResetAt(
     accounts: readonly Account[],
     rejected: ReadonlyMap<string, number | null>,
     family: ModelFamily,
+    modelFor?: (account: Account) => string | null,
   ): number | null {
     const settings = this.options.getSettings();
     const now = this.options.now();
@@ -1210,6 +1231,7 @@ export class AccountPoolHub {
       const until = Math.max(
         hold !== null && hold > now ? hold : 0,
         quota ?? 0,
+        modelFor ? (this.capacity.get(this.capacityProvider(account), modelFor(account))?.retryAt ?? 0) : 0,
       );
       if (until <= now) return null;
       earliest = Math.min(earliest ?? until, until);
@@ -1245,6 +1267,17 @@ export class AccountPoolHub {
       candidate.accounts.map((account) => account.id),
     );
     const family = modelFamily(candidate.model);
+    const first = candidate.accounts[0];
+    const provider = first === undefined ? candidate.kind : this.capacityProvider(first);
+    const blocked = background ? undefined : this.capacity.get(provider, candidate.model);
+    if (blocked && blocked.retryAt > this.options.now()) {
+      const message = `${candidate.model} is at capacity; retry after cooldown.`;
+      return { kind: "failed", failure: {
+        status: 503, message,
+        headers: { "retry-after": String(Math.ceil((blocked.retryAt - this.options.now()) / 1000)) },
+        cause: first === undefined ? undefined : fallbackCause(first, "availability", 503, message, this.options.now()),
+      } };
+    }
     const affinityKey =
       hostId === null || parsed.affinityId === null
         ? null
@@ -1597,6 +1630,37 @@ export class AccountPoolHub {
               );
             }
             break;
+          }
+          // Inspect Responses before translation or accepting affinity, and only before output.
+          if (!background && adapter.provider === "codex" && response.ok) {
+            let prelude;
+            try {
+              prelude = await gateResponsesPrelude(response, AbortSignal.any([signal, upstream.controller.signal]));
+            } catch (error) {
+              upstream.controller.abort();
+              upstream.release();
+              throw error;
+            }
+            if (prelude.kind !== "committed") {
+              upstream.controller.abort();
+              upstream.release();
+              signal.throwIfAborted();
+              const circuit = prelude.kind === "capacity" && candidate.model !== null
+                ? this.capacity.fail(provider, candidate.model, this.options.now()) : null;
+              const message = prelude.kind === "capacity"
+                ? `${candidate.model ?? "Selected model"} is at capacity.`
+                : "Upstream Responses stream stalled or disconnected before output.";
+              failure = {
+                status: 503, message,
+                headers: circuit ? { "retry-after": String(Math.ceil((circuit.retryAt - this.options.now()) / 1000)) } : {},
+                cause: fallbackCause(selected.account, "availability", 503, message, this.options.now()),
+              };
+              // Capacity affects every account of this provider+model, not its quota.
+              if (circuit) return { kind: "failed", failure };
+              break;
+            }
+            upstream.response = prelude.response;
+            if (prelude.success) this.capacity.clear(provider, candidate.model);
           }
           if (response.ok) selected.accept();
           if (nativeNames !== null) upstream.response = remapNativeResponse(upstream.response, nativeNames);

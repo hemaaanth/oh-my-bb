@@ -7,7 +7,10 @@ another thread.
 Model Gateway gives Claude Code, Codex, omp, FX, nanocodex, Prime Agent, and Pi an ordered
 chain of provider accounts and API-key fallbacks. A thread stays on its selected
 upstream during a tool loop, then can return to the primary account on a later
-turn after its limit resets.
+turn after its limit resets. Early Responses stream capacity errors also fail
+over before output reaches the harness. Capacity cooldowns back off to five
+minutes; a new user turn checks recovery with its real request. There are no
+background health probes.
 
 Settings groups routes in Configuration, subscription access in Preferences,
 and upstream accounts and keys in Credentials. Advanced holds model mappings

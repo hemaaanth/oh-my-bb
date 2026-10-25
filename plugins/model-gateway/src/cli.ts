@@ -254,6 +254,9 @@ function formatStatus(status: PoolStatus): string {
     `Enabled accounts: ${status.enabledAccountCount}`,
     `In flight: ${status.inFlight}`,
     "",
+    ...(status.capacityCooldowns ?? []).map((circuit) =>
+      `Capacity: ${circuit.provider} ${circuit.model} — retry at ${new Date(circuit.retryAt).toISOString()} (attempt ${circuit.failures}; next new user turn)`,
+    ),
     "Machine tokens:",
     ...(status.hosts.length === 0
       ? ["None minted."]

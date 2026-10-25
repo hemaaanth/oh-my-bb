@@ -861,6 +861,7 @@ describe("Account Pool plugin", () => {
       path.join(tmpdir(), "bb-model-gateway-codex-cancel-"),
     );
     let upstreamReadCanceled = false;
+    let upstreamReadStarted = false;
     const upstreamFetch = async (
       input: string | URL | Request,
       init?: RequestInit,
@@ -870,6 +871,7 @@ describe("Account Pool plugin", () => {
       if (signal === undefined || signal === null) {
         throw new Error("Expected the upstream request to carry a signal.");
       }
+      upstreamReadStarted = true;
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(
@@ -943,7 +945,9 @@ describe("Account Pool plugin", () => {
         input: [],
       }),
     );
-    await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
+    // The created frame is held until semantic output; cancel while the gate reads.
+    await vi.waitFor(() => expect(upstreamReadStarted).toBe(true));
+    expect(socket.sent).toHaveLength(0);
     await socket.close(1000, "interrupted");
     await vi.waitFor(async () => {
       expect(upstreamReadCanceled).toBe(true);
@@ -953,7 +957,7 @@ describe("Account Pool plugin", () => {
         ).inFlight,
       ).toBe(0);
     });
-    expect(socket.sent).toHaveLength(1);
+    expect(socket.sent).toHaveLength(0);
   });
 
   it("releases a Codex request when an upstream SSE event is malformed", async () => {

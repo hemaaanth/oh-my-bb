@@ -35,6 +35,15 @@ Sticky rules:
 - Inside a tool loop it never moves back.
 - It returns to entry 0 only at a new user turn, after the primary resets.
 
+Responses SSE capacity failures before semantic output can fail over even with
+HTTP 200. Text, reasoning and tool output commit immediately, so a committed
+stream never replays. Capacity cooldowns cover a provider and mapped model
+across accounts: 30s, 60s, 2m, 4m, capped at 5m, with jitter. A fallback tool
+loop stays on its provider. After cooldown, the next new user turn tries the
+primary with the real request; no background health probes run. `bb gateway
+status [--json]` exposes capacity retry times. Cooldowns reset on plugin restart.
+The separate subscription-only background inference path is unchanged.
+
 When the client and the upstream speak different protocols the gateway
 translates: Claude Code (Messages) on a ChatGPT or Responses-key entry, and
 Codex, omp, FX, nanocodex, Prime Agent or Pi (Responses) on an Anthropic or
