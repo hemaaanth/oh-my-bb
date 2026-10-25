@@ -30,6 +30,8 @@ as `fx-acp/v0.1.0`.
 
 ## Packages
 
+- [`plugins/clasi`](plugins/clasi) retains scoped context, reusable lessons, and
+  workflow feedback for BB agents. Records stay in the private BB database.
 - [`plugins/dispatch`](plugins/dispatch) lets you drive BB by voice. A named agent
   answers in the app or over a phone call, and reads, starts, and steers threads.
 - [`plugins/model-gateway`](plugins/model-gateway) routes supported BB harnesses

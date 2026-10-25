@@ -1,0 +1,26 @@
+.clasi-page {
+  container: clasi / inline-size;
+}
+
+.clasi-page label,
+.clasi-page header,
+.clasi-record {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@container clasi (min-width: 520px) {
+  .clasi-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .clasi-wide { grid-column: 1 / -1; }
+}
+
+@container clasi (max-width: 519px) {
+  .clasi-record { flex-direction: column; }
+  .clasi-record-actions { align-self: flex-end; }
+  .clasi-section-heading { align-items: flex-start; flex-direction: column; }
+}
+
+@container clasi (max-width: 359px) {
+  .clasi-toolbar button { gap: 4px; padding-inline: 6px; font-size: 12px; }
+  .clasi-toolbar > button svg { display: none; }
+}
