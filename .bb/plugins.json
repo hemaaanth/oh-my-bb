@@ -5,6 +5,7 @@
   "plugins": [
     { "name": "dispatch", "source": "./plugins/dispatch" },
     { "name": "model-gateway", "source": "./plugins/model-gateway" },
+    { "name": "journal", "source": "./plugins/journal" },
     { "name": "pages", "source": "./plugins/pages" },
     { "name": "webhooks", "source": "./plugins/webhooks" }
   ]

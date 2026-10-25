@@ -2,6 +2,7 @@
 # Add a new plugin or agent package here and nowhere else.
 plugins/dispatch
 plugins/model-gateway
+plugins/journal
 plugins/pages
 plugins/webhooks
 agents/fx-acp

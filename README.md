@@ -34,6 +34,9 @@ as `fx-acp/v0.1.0`.
   answers in the app or over a phone call, and reads, starts, and steers threads.
 - [`plugins/model-gateway`](plugins/model-gateway) routes supported BB harnesses
   through ordered provider accounts and optional API-key fallbacks.
+- [`plugins/journal`](plugins/journal) records dated work history and agent time,
+  and offers workspace catch-up and saved thread briefings. AI is optional; choose
+  subscription-only Model Gateway inference or an explicitly configured OpenRouter key.
 - [`plugins/pages`](plugins/pages) publishes versioned HTML and Markdown
   artifacts, organizes them in project folders, and optionally shares them.
 - [`plugins/webhooks`](plugins/webhooks) receives signed webhooks, including Slack
@@ -45,6 +48,10 @@ as `fx-acp/v0.1.0`.
   adapter for nanocodex.
 - [`agents/prime-agent-acp`](agents/prime-agent-acp) is an optional standalone ACP
   adapter for Prime Agent.
+
+Journal runs without another BB plugin. Its optional subscription backend requires
+Model Gateway, and its optional Dispatch call display is off by default. OpenRouter
+is an alternative paid API backend. Opening a saved thread briefing never calls a model.
 
 The agent adapters are not installed by Model Gateway. Model Gateway runs without
 any adapter, and each adapter has its own package manifest and tests.
