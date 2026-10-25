@@ -50,6 +50,11 @@ import {
 import { setupGuides, hostSetupFiles } from "./setup.js";
 import type { ClaudeOAuthLogin } from "./upstreams/oauth-login.js";
 import type { CodexDeviceLogin } from "./upstreams/codex-device-login.js";
+import {
+  inferenceCompleteInputSchema,
+  inferenceCompleteOutputSchema,
+  inferenceStatusOutputSchema,
+} from "./inference.js";
 
 const fallbackCauseRpcSchema = z
   .object({
@@ -278,6 +283,15 @@ export const accountPoolRpcContract = defineRpcContract({
       })
       .strict()
       .nullable(),
+  },
+  /** Subscription-only completion for the Journal plugin (inference.ts). */
+  "inference.complete": {
+    input: inferenceCompleteInputSchema,
+    output: inferenceCompleteOutputSchema,
+  },
+  "inference.status": {
+    input: z.null(),
+    output: inferenceStatusOutputSchema,
   },
 });
 

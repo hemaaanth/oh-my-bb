@@ -294,6 +294,38 @@ model choice through Jev. Model Gateway adds no spending approval, request-count
 limit, or approval expiry. Billing limits, prepaid balances, auto-reload settings,
 and key restrictions are enforced by the upstream provider.
 
+## Background inference for Journal
+
+Two RPC methods give the Journal plugin short completions on the ChatGPT
+subscription pool. Agent threads are not involved. Only `bb.sdk.plugins.callRpc` from plugin id
+`journal` may call them. Any other caller gets `forbidden` or `available: false`.
+
+- `inference.status` (input `null`) returns `{ available, models, usableAccounts,
+  inFlight, maxConcurrent, retryAt, reason }`. It makes no model call.
+- `inference.complete` takes `{ system (1–16,000 chars), input (1–64,000 chars),
+  model?: "gpt-6-luna" | "gpt-5.6-luna", schema?: { name, schema } (≤16 KiB JSON),
+  timeoutMs?: 1,000–60,000 (default 30,000) }`. The three text fields together
+  must fit in 128 KiB of JSON. It returns `{ ok: true, text, model, billing:
+  "subscription", usage }` or `{ ok: false, code, message, retryAt }`. The code is
+  one of `forbidden`, `unavailable`, `rate_limited`, `busy`, `timeout`,
+  `stopped`, `upstream_error` or `invalid_output`. A bad input shape is an RPC
+  `invalid_input` error. `text` is the raw model text. When you pass a `schema`,
+  the text is JSON under `text.format` `json_schema` with `strict: true`. The
+  caller still validates it.
+
+Only enabled ChatGPT OAuth accounts serve these calls. The usual account loop
+handles priority, token refresh, quota headers and 429 holds. API keys,
+compatible keys, Claude OAuth, chains, the model map, model routes, Jev and
+thread routes are never used. There is no paid fallback. A held or exhausted
+pool returns `rate_limited` with `retryAt` and does not wait. At most two calls
+run at once; a third gets `busy`. Gateway shutdown aborts calls in flight with
+`stopped`.
+
+Limits: the ChatGPT backend rejects `max_output_tokens`, so the gateway does
+not take an output-token limit. Output is capped at 64,000 characters of text
+and 4 MiB of stream instead. Only the two Luna models are accepted. Usage is
+`null` when the backend sends no token counts.
+
 ## Managed execution
 
 Use `bb gateway setup host` for a complete host migration. It reconciles the OMP

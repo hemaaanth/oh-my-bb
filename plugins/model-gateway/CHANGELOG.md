@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add `inference.complete` and `inference.status` RPC methods. The Journal plugin uses them for subscription-only background completions on the ChatGPT OAuth pool. They never use API keys, chains, model routes or Jev, and they create no thread routes. The models are Luna only, and input, output and concurrency are capped.
 - Use one canonical routing SVG for settings, navigation, setup, and the usage footer.
 - Group routes, preferences, and upstream credentials. Shorten help and move machine setup to a dedicated page linked from More.
 - Match standard settings with outlined, recessed groups, 12px padding, and quiet row dividers.

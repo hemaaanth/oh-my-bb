@@ -418,6 +418,24 @@ interface FailureSummary {
 
 class UpstreamConnectionError extends Error {}
 
+/** What one thread-free subscription call came to (inference.ts maps it). */
+export type BackgroundResult =
+  | { kind: "response"; response: Response }
+  | { kind: "failed"; status: number; retryAfter: string | null }
+  | { kind: "none" }
+  | { kind: "stopped" }
+  | { kind: "aborted" };
+
+export interface BackgroundReadiness {
+  accepting: boolean;
+  /** Enabled ChatGPT OAuth accounts. */
+  configured: number;
+  /** Of those, the ones that may serve now: no error, hold or exhausted window. */
+  ready: Account[];
+  /** Earliest time a configured account frees up, when none is ready. */
+  retryAt: number | null;
+}
+
 export class AccountPoolHub {
   private accepting = false;
   private stopped = new AbortController();
@@ -665,6 +683,111 @@ export class AccountPoolHub {
           "Model Gateway stopped before the upstream response completed.",
         ),
       );
+    }
+  }
+
+  get acceptingRequests(): boolean {
+    return this.accepting;
+  }
+
+  /** Aborts when the hub stops; background readers stop with it. */
+  get stoppedSignal(): AbortSignal {
+    return this.stopped.signal;
+  }
+
+  /**
+   * Subscription-only accounts for background inference: enabled ChatGPT
+   * OAuth only. Never API keys, compatible keys, Claude OAuth or the chains.
+   */
+  async backgroundReadiness(): Promise<BackgroundReadiness> {
+    const now = this.options.now();
+    const threshold = this.options.getSettings().switchThreshold;
+    const configured = (await this.options.accounts.list())
+      .filter(
+        (account) =>
+          account.enabled &&
+          upstreamKind(account) === "chatgpt-oauth" &&
+          account.codexAccountId !== undefined,
+      )
+      .sort((left, right) => left.priority - right.priority);
+    const ready: Account[] = [];
+    let retryAt: number | null = null;
+    for (const account of configured) {
+      const quota = this.options.quotas.get(account.id);
+      if (quota.error !== null) continue;
+      const until = Math.max(
+        this.options.routes.holdUntil(account.id) ?? 0,
+        quota.heldUntil ?? 0,
+        isSharedQuotaExhausted(quota, threshold, now) ||
+          isQuotaExhausted(quota, "other", threshold, now)
+          ? (exhaustedUntil(quota, "other", threshold, now)?.resetAt ?? Infinity)
+          : 0,
+      );
+      if (until <= now) ready.push(account);
+      else if (Number.isFinite(until)) retryAt = Math.min(retryAt ?? until, until);
+    }
+    return {
+      accepting: this.accepting,
+      configured: configured.length,
+      ready,
+      retryAt: ready.length > 0 ? null : retryAt,
+    };
+  }
+
+  /**
+   * One thread-free Responses call on the ready ChatGPT accounts. It reuses
+   * the account loop (priority, refresh, quota headers, 429 holds) but no
+   * chain, model map, model route, auto pick, affinity or thread route.
+   */
+  async backgroundResponses(
+    model: string,
+    body: Uint8Array,
+    signal: AbortSignal,
+  ): Promise<BackgroundResult> {
+    if (!this.accepting) return { kind: "stopped" };
+    const { ready } = await this.backgroundReadiness();
+    const first = ready[0];
+    if (first === undefined) return { kind: "none" };
+    const run = AbortSignal.any([signal, this.stopped.signal]);
+    const request = new Request(`http://model-gateway.invalid${ROUTE}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "text/event-stream",
+        originator: "bb",
+      },
+      signal: run,
+    });
+    const adapter = this.adapter("codex");
+    try {
+      const result = await this.forwardEntry(
+        request,
+        adapter.parseRequest(body, request.headers),
+        {
+          kind: "chatgpt-oauth",
+          replay: replayIdentity(first),
+          accounts: ready,
+          client: adapter,
+          upstream: adapter,
+          model,
+        },
+        null,
+        null,
+        new Map(),
+        run,
+        0,
+      );
+      if (result.kind === "response") return { kind: "response", response: result.response };
+      return result.failure === null
+        ? { kind: "none" }
+        : {
+            kind: "failed",
+            status: result.failure.status,
+            retryAfter: result.failure.headers["retry-after"] ?? null,
+          };
+    } catch (error) {
+      if (!run.aborted) throw error;
+      return signal.aborted ? { kind: "aborted" } : { kind: "stopped" };
     }
   }
 
@@ -1100,6 +1223,8 @@ export class AccountPoolHub {
     identity: ThreadIdentity | null,
     rejected: Map<string, number | null>,
     signal: AbortSignal,
+    /** Longest hold to wait out inline; background calls pass 0 and never wait. */
+    maxInlineHoldMs = MAX_INLINE_HOLD_MS,
   ): Promise<EntryResult> {
     const hostId = identity?.hostId ?? null;
     const adapter = candidate.upstream;
@@ -1141,7 +1266,7 @@ export class AccountPoolHub {
         if (selected === null) break;
         const heldMs = (selected.quota.heldUntil ?? 0) - this.options.now();
         if (heldMs > 0) {
-          if (heldMs > MAX_INLINE_HOLD_MS || waited.has(selected.account.id)) {
+          if (heldMs > maxInlineHoldMs || waited.has(selected.account.id)) {
             const message =
               "The current Model Gateway account is temporarily rate limited.";
             failure = {
@@ -1353,7 +1478,7 @@ export class AccountPoolHub {
               ...observed,
               heldUntil: this.options.now() + waitMs,
             });
-            if (!paced && waitMs <= MAX_INLINE_HOLD_MS) {
+            if (!paced && waitMs <= maxInlineHoldMs) {
               paced = true;
               await this.discardUpstream(upstream, false);
               await waitForDelay(waitMs, signal);

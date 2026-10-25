@@ -177,6 +177,17 @@ model choice through Jev. Model Gateway adds no spending approval, request-count
 limit, or approval expiry. Billing limits, prepaid balances, auto-reload settings,
 and key restrictions are enforced by the upstream provider.
 
+## Background inference (Journal only)
+
+`inference.complete` and `inference.status` are RPC methods for the Journal
+plugin, called through `bb.sdk.plugins.callRpc`. Every other caller is refused.
+They use only enabled ChatGPT OAuth accounts. API keys, chains, model routes,
+Jev and Claude OAuth are never used, so there is no paid fallback. The models
+are `gpt-6-luna` (the default) or `gpt-5.6-luna`. No thread or thread route is
+created. If no account is ready, the call returns `rate_limited` with `retryAt`
+and does not wait. At most two calls run at once. The README has the full
+contract and its limits.
+
 ## Managed execution
 
 Use `bb gateway setup host` for a complete host migration. It reconciles the OMP

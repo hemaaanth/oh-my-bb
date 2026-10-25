@@ -29,6 +29,7 @@ import { createCodexWebSocketHandlers } from "./upstreams/codex-websocket.js";
 import { createHub, TOKEN_QUERY } from "./hub.js";
 import { PoolOperations } from "./operations.js";
 import { accountPoolRpcContract, createRpcHandlers } from "./rpc.js";
+import { createInferenceHandlers } from "./inference.js";
 import { ClaudeOAuthLogin } from "./upstreams/oauth-login.js";
 import { CodexDeviceLogin } from "./upstreams/codex-device-login.js";
 import {
@@ -211,13 +212,13 @@ export function createAccountPoolPlugin(
     if ((await accounts.list()).every((account) => !account.enabled)) {
       bb.status.needsConfiguration(NEEDS_ACCOUNT_MESSAGE);
     }
-    bb.rpc.register(
-      accountPoolRpcContract,
-      createRpcHandlers(operations, login, codexLogin, config, {
+    bb.rpc.register(accountPoolRpcContract, {
+      ...createRpcHandlers(operations, login, codexLogin, config, {
         accountPoolRouting: () => isAccountPoolRouting(bb),
         serverUrl: () => bb.server.loopbackBaseUrl,
       }),
-    );
+      ...createInferenceHandlers(hub, now),
+    });
     registerPoolCli(
       bb,
       operations,
