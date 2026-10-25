@@ -9,9 +9,11 @@ chain of provider accounts and API-key fallbacks. A thread stays on its selected
 upstream during a tool loop, then can return to the primary account on a later
 turn after its limit resets.
 
-The Settings page shows accounts, routes, model mappings, holds, and active
-fallbacks. The Sandboxes plugin's machine icon in the thread header shows the
-upstream and model serving the current conversation. The same controls are available through `bb gateway` commands.
+Settings groups routes in Configuration, subscription access in Preferences,
+and upstream accounts and keys in Credentials. Advanced holds model mappings
+and limits. More opens the setup guide. The footer shows subscription account usage.
+The optional Sandboxes plugin shows the current upstream and model in its
+machine popover. The same gateway controls are available through `bb gateway`.
 
 ## Protocol translation
 
@@ -37,7 +39,7 @@ user message and candidate model names to OpenRouter for each eligible turn.
 ## Requirements and costs
 
 You provide the Claude, ChatGPT, or API-key accounts you choose to route. Claude
-Max OAuth accounts may serve only Claude Code. API-key fallbacks bill per token,
+Max OAuth accounts may serve only Claude Code unless you opt in under Preferences. API-key fallbacks bill per token,
 and Jev requires an OpenRouter API key. Model Gateway stores credentials in BB's
 plugin data directory and never returns secret values through its CLI or UI.
 

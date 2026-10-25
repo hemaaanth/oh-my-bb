@@ -1,0 +1,42 @@
+.gateway-settings,
+.gateway-editor {
+  container-type: inline-size;
+}
+
+.gateway-config-field > :last-child {
+  min-width: 0;
+}
+
+@container (max-width: 480px) {
+  .gateway-route-copy {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gateway-config-field {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .gateway-config-field > :last-child {
+    width: 100%;
+    max-width: none;
+  }
+
+  .gateway-model-map {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr) 28px;
+  }
+
+  .gateway-model-map > :first-child {
+    grid-column: 1 / -1;
+    justify-self: start;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gateway-map-inputs > :not(button:last-child) {
+    width: 100%;
+  }
+}

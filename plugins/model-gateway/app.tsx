@@ -34,6 +34,8 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { modelDisplayName } from "./src/model-catalog.js";
 import { FxIcon, GatewayChatGPTIcon, GatewayClaudeIcon, NanocodexIcon } from "./provider-icons";
+import "./app.css";
+import { GatewaySetup, GATEWAY_ICON, SETUP_PATH } from "./gateway-setup.js";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -50,7 +52,7 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { ResourceRowDetailChevron } from "@/components/ui/resource-list";
-import { ResponsiveDrawerShell } from "@/components/ui/responsive-overlay";
+import { GatewayDialog, GatewayDialogTitle } from "@/components/ui/gateway-dialog";
 import {
   Select,
   SelectContent,
@@ -124,6 +126,15 @@ const HARNESS_TITLES: Record<Harness, string> = {
   pi: "Pi",
 };
 
+function keyDisplayName(label: string): string {
+  const name = label.replace(/[-_]+/gu, " ").replace(/\bapi\b/giu, "API");
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+function accountDisplayName(account: AccountSummary): string {
+  return account.kind === "api-key" ? keyDisplayName(account.label) : account.label;
+}
+
 /** Plain name of the upstream that served a route: a compatible key goes by its label. */
 function upstreamName(
   kind: UpstreamKind | null,
@@ -131,7 +142,7 @@ function upstreamName(
 ): string {
   if (kind === null) return label ?? "Gateway";
   return kind.endsWith("-compatible-key")
-    ? (label ?? UPSTREAM_TITLES[kind])
+    ? (label === null ? UPSTREAM_TITLES[kind] : keyDisplayName(label))
     : UPSTREAM_TITLES[kind];
 }
 
@@ -150,6 +161,7 @@ interface ChainOption {
   entry: string;
   label: string;
   blocked: string | null;
+  description?: string;
 }
 interface LiveState {
   threads: Array<{
@@ -188,7 +200,6 @@ type DrawerState =
   | { kind: "account" | "priority" | "remove"; accountId: string }
   | { kind: "claude-login" | "codex-login" | "api-key" | "live" }
   | { kind: "route"; harness: Harness }
-  | { kind: "setup"; target: SetupTarget }
   | null;
 
 type ConfigField =
@@ -247,10 +258,15 @@ const ROUTING_TARGETS: Array<{ target: RoutingTarget; harness: Harness }> = [
   { target: "acp-prime-agent", harness: "acp-prime-agent" },
   { target: "pi", harness: "pi" },
 ];
+const UPSTREAM_SCOPES: Record<UpstreamKind, string> = {
+  "claude-oauth": "Enabled Claude accounts",
+  "chatgpt-oauth": "Enabled ChatGPT accounts",
+  "claude-key": "Enabled Anthropic API keys",
+  "anthropic-compatible-key": "Enabled Messages API keys",
+  "responses-compatible-key": "Enabled Responses API keys",
+};
 const CLAUDE_ONLY =
   "Claude subscription logins serve Claude Code only. Other routes cannot use them.";
-const JEV_NOT_LIVE =
-  "It cannot run live yet: OpenRouter lists only typesafe/jev-router, which routes and runs the request, not a model that returns a choice.";
 const FAMILY_LABELS: Record<ModelFamily, string> = {
   fable: "Fable 7 day",
   sonnet: "Sonnet 7 day",
@@ -481,13 +497,12 @@ function GatewayAccountPanel({ account }: { account: AccountSummary }) {
   return (
     <div className="px-3 py-2">
       <div className="flex min-w-0 items-center gap-2">
-        {account.kind === "api-key" ? <Icon name="Lock" className="size-4 shrink-0 text-muted-foreground" /> :
-          account.provider === "claude" ? <GatewayClaudeIcon className="size-4 shrink-0" /> :
+        {account.provider === "claude" ? <GatewayClaudeIcon className="size-4 shrink-0" /> :
             <GatewayChatGPTIcon className="size-4 shrink-0" />}
         <span className="min-w-0 truncate text-xs font-medium text-foreground" title={account.email ?? account.label}>{account.email ?? account.label}</span>
       </div>
       {windows.length === 0 ? <p className="mt-2 text-xs text-muted-foreground">
-        {account.kind === "api-key" ? "Provider limit unavailable" : "Usage unavailable"}
+        Usage unavailable
       </p> : <div className="mt-1.5 space-y-1">
         {windows.map((window) => <FooterUsageBar key={window.label} {...window} account={account.label} />)}
       </div>}
@@ -521,7 +536,7 @@ function cacheFooterUsage(snapshot: FooterUsageSnapshot): void {
 function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
   const rpc = useRpc<typeof accountPoolRpcContract>();
   const [snapshot, setSnapshot] = useState<FooterUsageSnapshot | null>(cachedFooterUsage);
-  const accounts = snapshot?.accounts ?? null;
+  const accounts = snapshot?.accounts.filter((account) => account.kind === "oauth") ?? null;
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
@@ -541,8 +556,7 @@ function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
     if (refreshing || accounts === null) return;
     setRefreshing(true);
     try {
-      await Promise.all(accounts.filter((account) => account.kind === "oauth")
-        .map((account) => rpc.call("account.refreshUsage", { accountId: account.id })));
+      await Promise.all(accounts.map((account) => rpc.call("account.refreshUsage", { accountId: account.id })));
       await load();
     } catch (cause) {
       setError(errorText(cause));
@@ -555,7 +569,7 @@ function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
       <div className="flex items-center justify-between border-b border-border px-3 py-1">
         <h2 className="text-xs font-semibold">Gateway usage</h2>
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" onClick={() => void refresh()} disabled={refreshing || accounts === null} aria-label="Refresh Gateway usage">
+          <Button size="sm" variant="ghost" onClick={() => void refresh()} disabled={refreshing || accounts === null || accounts.length === 0} aria-label="Refresh Gateway usage">
             <Icon name="RotateCcw" className={cn("size-4", refreshing && "animate-spin")} />
           </Button>
           <Button size="sm" variant="ghost" onClick={dismiss} aria-label="Close Gateway usage">
@@ -565,7 +579,7 @@ function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
       </div>
       {error === null ? null : <p role="alert" className="px-4 py-2 text-xs text-destructive-text">{error}</p>}
       {accounts === null ? <p className="px-4 py-5 text-xs text-muted-foreground">Loading accounts…</p> :
-        accounts.length === 0 ? <p className="px-4 py-5 text-xs text-muted-foreground">No Gateway accounts connected.</p> :
+        accounts.length === 0 ? <p className="px-4 py-5 text-xs text-muted-foreground">No subscription accounts connected.</p> :
         <div className="divide-y divide-border">
           {distinctAccounts(accounts).map((account) => <GatewayAccountPanel key={accountIdentity(account)} account={account} />)}
         </div>}
@@ -588,34 +602,26 @@ const MESSAGES_KINDS = new Set<string>([
   "claude-key",
   "anthropic-compatible-key",
 ]);
-/**
- * Model rewrites on a harness's chain, one line per step that has any:
- * "On ChatGPT: Opus, Fable → gpt-6-astra · Sonnet → gpt-6-sol". Only steps
- * that change the protocol, or a compatible vendor with its own model names.
- */
-function mappedModelLines(
+/** Protocol rewrites are reference detail, not route subtitles. */
+function mappedModelRows(
   harness: Harness,
   entries: string[],
+  accounts: AccountSummary[],
   labels: (entry: string) => string,
   modelMap: AccountPoolConfig["modelMap"],
-): string[] {
+): Array<{ entry: string; upstream: string; rows: Array<{ source: string; target: string }> }> {
   return entries.flatMap((entry) => {
-    const kind = entry.slice(0, entry.indexOf(":"));
-    if (
-      MESSAGES_KINDS.has(kind) === (harness === "claude-code") &&
-      !kind.endsWith("-compatible-key")
-    )
-      return [];
-    const rows = { ...modelMap[kind], ...modelMap[entry] };
+    const account = accounts.find((candidate) => candidate.id === entry);
+    const kind = account === undefined ? entry.slice(0, entry.indexOf(":")) : upstreamKind(account);
+    if (MESSAGES_KINDS.has(kind) === (harness === "claude-code") && !kind.endsWith("-compatible-key")) return [];
+    const mapKey = account === undefined ? entry : `${kind}:${account.label}`;
     const byTarget = new Map<string, string[]>();
-    for (const [pattern, model] of Object.entries(rows))
+    for (const [pattern, model] of Object.entries({ ...modelMap[kind], ...modelMap[mapKey] }))
       byTarget.set(model, [...(byTarget.get(model) ?? []), modelName(pattern)]);
-    if (byTarget.size === 0) return [];
-    return [
-      `On ${labels(entry)}: ${[...byTarget]
-        .map(([model, patterns]) => `${patterns.join(", ")} → ${modelDisplayName(model)}`)
-        .join(" · ")}`,
-    ];
+    return byTarget.size === 0 ? [] : [{
+      entry, upstream: labels(entry),
+      rows: [...byTarget].map(([target, sources]) => ({ source: sources.join(", "), target: modelDisplayName(target) })),
+    }];
   });
 }
 
@@ -638,29 +644,36 @@ function SettingsBadge({
 
 function SettingsSection({
   title,
+  id,
   description,
   action,
+  insetHeading = false,
   children,
 }: {
   title: string;
-  description: string;
+  id?: string;
+  description?: string;
   action?: ReactNode;
+  insetHeading?: boolean;
   children: ReactNode;
 }) {
-  return (
-    <section className="space-y-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-            {description}
-          </p>
-        </div>
-        {action === undefined ? null : (
-          <div className="shrink-0 self-start">{action}</div>
-        )}
+  const heading = (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        {insetHeading ? <h3 className="text-sm font-medium text-foreground">{title}</h3> : <h2 className="text-sm font-medium text-foreground">{title}</h2>}
+        {insetHeading && description ? <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{description}</p> : null}
       </div>
-      <div className="border-t border-border">{children}</div>
+      {action === undefined ? null : <div className="shrink-0 self-start">{action}</div>}
+    </div>
+  );
+  return (
+    <section id={id} className="space-y-4">
+      {insetHeading ? null : heading}
+      {!insetHeading && description ? <p className="text-xs leading-relaxed text-muted-foreground">{description}</p> : null}
+      <div className="min-w-0 rounded-md border border-border bg-surface-recessed/70 px-3">
+        {insetHeading ? <div className="border-b border-border/60 py-3">{heading}</div> : null}
+        {children}
+      </div>
     </section>
   );
 }
@@ -720,28 +733,29 @@ function UpstreamRow({
 }: {
   account: AccountSummary;
   pending: boolean;
-  onAction: (action: AccountAction) => void;
+  onAction: (action: AccountAction, trigger: HTMLButtonElement | null) => void;
   onOpen: () => void;
 }) {
   const status = statusPresentation(account);
   const quota = quotaSummary(account);
+  const actionsTrigger = useRef<HTMLButtonElement>(null);
   return (
     <div
       className={cn(
-        "group -mx-2 flex min-w-0 items-center gap-2 rounded-md px-2 py-2.5 transition-colors hover:bg-state-hover focus-within:bg-state-hover",
+        "group -mx-2 flex min-w-0 items-center gap-2 rounded-md px-2 py-3 transition-colors hover:bg-state-hover focus-within:bg-state-hover",
         !account.enabled && "opacity-55",
       )}
     >
       <button
         type="button"
         className="flex min-w-0 flex-1 items-center rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`Open ${account.label}`}
+        aria-label={`Open ${accountDisplayName(account)}`}
         onClick={onOpen}
       >
         <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <span className="truncate text-sm font-medium text-foreground">
-              {account.label}
+              {accountDisplayName(account)}
             </span>
             <SettingsBadge
               title={
@@ -768,10 +782,11 @@ function UpstreamRow({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
+            ref={actionsTrigger}
             variant="ghost"
             size="icon"
             className="h-7 w-7 shrink-0 data-[state=open]:bg-state-active"
-            aria-label={`${account.label} actions`}
+            aria-label={`${accountDisplayName(account)} actions`}
           >
             <Icon name="MoreHorizontal" className="size-4" />
           </Button>
@@ -779,14 +794,14 @@ function UpstreamRow({
         <DropdownMenuContent align="end" className="w-52">
           <DropdownMenuItem
             disabled={pending}
-            onSelect={() => onAction("toggle")}
+            onSelect={() => onAction("toggle", actionsTrigger.current)}
           >
             <Icon name={account.enabled ? "Circle" : "CircleCheck"} />
             {account.enabled ? "Disable" : "Enable"}
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={pending}
-            onSelect={() => onAction("priority")}
+            onSelect={() => onAction("priority", actionsTrigger.current)}
           >
             <Icon name="ListView" />
             Set priority…
@@ -794,7 +809,7 @@ function UpstreamRow({
           {account.kind === "oauth" ? (
             <DropdownMenuItem
               disabled={pending}
-              onSelect={() => onAction("refresh")}
+              onSelect={() => onAction("refresh", actionsTrigger.current)}
             >
               <Icon name="RotateCcw" />
               Refresh usage
@@ -804,7 +819,7 @@ function UpstreamRow({
           <DropdownMenuItem
             variant="destructive"
             disabled={pending}
-            onSelect={() => onAction("remove")}
+            onSelect={() => onAction("remove", actionsTrigger.current)}
           >
             <Icon name="Trash2" />
             Remove
@@ -813,7 +828,7 @@ function UpstreamRow({
       </DropdownMenu>
       <button
         type="button"
-        aria-label={`Open ${account.label} details`}
+        aria-label={`Open ${accountDisplayName(account)} details`}
         onClick={onOpen}
       >
         <ResourceRowDetailChevron />
@@ -867,10 +882,10 @@ function ChainRow({
               <SettingsBadge>Blocked</SettingsBadge>
             )}
           </div>
-          {option.blocked === null ? null : (
-            <div className="truncate text-xs text-destructive-text">
-              {option.blocked}
-            </div>
+          {option.blocked === null ? (
+            <p className="text-xs text-muted-foreground">{option.description}</p>
+          ) : (
+            <div className="text-xs text-destructive-text">{option.blocked}</div>
           )}
         </div>
         <Button
@@ -898,8 +913,9 @@ type AddChoice =
 function AddUpstreamMenu({
   onChoose,
 }: {
-  onChoose: (choice: AddChoice) => void;
+  onChoose: (choice: AddChoice, trigger: HTMLButtonElement | null) => void;
 }) {
+  const trigger = useRef<HTMLButtonElement>(null);
   const items: Array<{
     choice: AddChoice;
     icon: "UserRound" | "Download" | "Plus";
@@ -910,37 +926,37 @@ function AddUpstreamMenu({
       choice: "claude-login",
       icon: "UserRound",
       title: "Sign in to Claude",
-      hint: "Opens claude.ai, paste the code back",
+      hint: "Authorize in your browser",
     },
     {
       choice: "codex-login",
       icon: "UserRound",
       title: "Sign in to ChatGPT",
-      hint: "Opens ChatGPT with a device code",
+      hint: "Authorize with a device code",
     },
     {
       choice: "claude-import",
       icon: "Download",
-      title: "Import this machine's Claude login",
-      hint: "Copies the server host's ~/.claude login",
+      title: "Import Claude login",
+      hint: "From this BB server",
     },
     {
       choice: "codex-import",
       icon: "Download",
-      title: "Import this machine's ChatGPT login",
-      hint: "Copies the server host's Codex login",
+      title: "Import ChatGPT login",
+      hint: "From this BB server",
     },
     {
       choice: "api-key",
       icon: "Plus",
       title: "Add API key",
-      hint: "Anthropic, Messages or Responses vendor",
+      hint: "Anthropic, Messages or Responses",
     },
   ];
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button size="sm" variant="outline">
+        <Button ref={trigger} size="sm" variant="outline">
           <Icon name="Plus" className="size-3.5" />
           Add
         </Button>
@@ -950,7 +966,7 @@ function AddUpstreamMenu({
           <DropdownMenuItem
             key={item.choice}
             className="items-start py-2"
-            onSelect={() => onChoose(item.choice)}
+            onSelect={() => onChoose(item.choice, trigger.current)}
           >
             <Icon name={item.icon} className="mt-0.5" />
             <span>
@@ -1034,8 +1050,8 @@ function DrawerFrame({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between border-b border-border px-5 pb-4">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+      <div className="flex items-center justify-between border-b border-border px-5 py-4">
+        <GatewayDialogTitle className="text-base font-semibold text-foreground">{title}</GatewayDialogTitle>
         <Button
           variant="ghost"
           size="icon"
@@ -1069,7 +1085,7 @@ function ConfigFieldRow({
   children: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-2.5">
+    <div className="gateway-config-field flex items-start justify-between gap-4 py-3">
       <div className="min-w-0">
         <div className="text-sm text-foreground">{label}</div>
         <div className="mt-0.5 text-xs text-muted-foreground">
@@ -1094,27 +1110,21 @@ function RouteRow({
   enabled,
   disabled,
   chain,
-  mapped,
-  autoText,
-  hasSetup,
+  automatic,
   onToggle,
-  onSetup,
   onEdit,
 }: {
   harness: Harness;
   enabled: boolean;
   disabled: boolean;
   chain: ChainOption[];
-  mapped: string[];
-  autoText: string | null;
-  hasSetup: boolean;
+  automatic: boolean;
   onToggle: (enabled: boolean) => void;
-  onSetup: () => void;
   onEdit: () => void;
 }) {
   const title = HARNESS_TITLES[harness];
   return (
-    <div className="flex items-start gap-3 py-2.5">
+    <div className="gateway-route flex items-start gap-3 py-3">
       <Switch
         className="mt-0.5"
         checked={enabled}
@@ -1122,50 +1132,29 @@ function RouteRow({
         aria-label={`Route ${title} threads`}
         onCheckedChange={onToggle}
       />
-      <div className="grid min-w-0 flex-1 grid-cols-[6.5rem_1fr] gap-x-3 gap-y-0.5">
-        <span className="text-sm font-medium text-foreground">{title}</span>
+      <div className="gateway-route-copy grid min-w-0 flex-1 grid-cols-[6.5rem_1fr] gap-x-3 gap-y-0.5">
+        <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
+          {title}{automatic ? <SettingsBadge>Auto</SettingsBadge> : null}
+        </span>
         <span
           className={cn(
-            "min-w-0 text-sm",
+            "flex min-w-0 flex-wrap items-baseline gap-x-1 text-sm",
             enabled ? "text-foreground" : "text-subtle-foreground",
           )}
         >
           {chain.length === 0
             ? "—"
             : chain.map((option, index) => (
-                <span key={option.entry}>
-                  {index === 0 ? "" : " → "}
+                <span key={option.entry} className="inline-flex min-w-0 items-baseline gap-1">
+                  {index === 0 ? null : <span aria-hidden>→</span>}
                   <span
-                    className={cn(
-                      option.blocked !== null &&
-                        "text-destructive-text line-through",
-                    )}
-                    title={option.blocked ?? undefined}
-                  >
-                    {option.label}
-                  </span>
+                    className={cn("break-words", option.blocked !== null && "text-destructive-text line-through")}
+                    title={option.blocked ?? option.description}
+                  >{option.label}</span>
                 </span>
               ))}
         </span>
-        {[...mapped, ...(autoText === null ? [] : [autoText])].map((line) => (
-          <p
-            key={line}
-            className="col-start-2 text-xs leading-snug text-subtle-foreground/75"
-          >
-            {line}
-          </p>
-        ))}
       </div>
-      {hasSetup ? (
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label={`${title} setup`}
-          onClick={onSetup}
-        >
-          Setup
-        </Button>
-      ) : null}
       <Button
         size="sm"
         variant="outline"
@@ -1222,6 +1211,10 @@ function ModelGatewaySettings() {
   const [priority, setPriority] = useState("100");
   const [countdown, setCountdown] = useState(0);
   const mounted = useRef(true);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const advancedTrigger = useRef<HTMLButtonElement>(null);
+  const afterEditorClose = useRef<(() => void) | null>(null);
+  const editorTrigger = useRef<HTMLElement | null>(null);
   const threshold = config?.switchThreshold ?? 0.98;
   const applyConfig = useCallback((next: AccountPoolConfig) => {
     setConfig(next);
@@ -1530,37 +1523,24 @@ function ModelGatewaySettings() {
       : (config?.chains[harness] ?? []);
   }
   function chainOption(harness: Harness, entry: string): ChainOption {
-    return (
-      chainOptions?.[harness].find((candidate) => candidate.entry === entry) ?? {
-        entry,
-        label: entry,
-        blocked: null,
-      }
-    );
-  }
-  function mappedLines(harness: Harness): string[] {
-    return config === null
-      ? []
-      : mappedModelLines(
-          harness,
-          chainEntries(harness),
-          (entry) => chainOption(harness, entry).label,
-          config.modelMap,
-        );
-  }
-  /** Plain words for a harness's Jev auto mode, or null when it is off. */
-  function autoText(harness: Harness): string | null {
-    if (config === null || !config.auto.harnesses.includes(harness))
-      return null;
-    const ladder = (routing?.ladders[harness] ?? []).map(modelName);
-    return `Auto (Jev): Jev picks ${ladder.length === 0 ? "the model" : orList(ladder)} on each new user turn.`;
+    const option = chainOptions?.[harness].find((candidate) => candidate.entry === entry) ?? { entry, label: entry, blocked: null };
+    const account = accounts.find((candidate) => candidate.id === entry || `${upstreamKind(candidate)}:${candidate.label}` === entry);
+    const kind = account === undefined ? entry.slice(0, entry.indexOf(":")) as UpstreamKind : upstreamKind(account);
+    if (account === undefined) return { ...option, description: UPSTREAM_SCOPES[kind] ?? "Saved upstream" };
+    let label = accountDisplayName(account);
+    if (account.kind === "api-key") {
+      const duplicate = keys.find((other) => other.id !== account.id && accountDisplayName(other) === label);
+      if (duplicate !== undefined)
+        label += kindLabel(duplicate) === kindLabel(account) ? ` (${account.label})` : ` · ${kindLabel(account)}`;
+    }
+    return { ...option, label, description: kindLabel(account) };
   }
   /** Why the Jev switch cannot turn on, or null. The key comes from Advanced, or the only key there is. */
   function autoBlock(): string | null {
     if (jevKeys.length === 0)
-      return "Add a responses-compatible API key (for example OpenRouter) first. Jev runs on it.";
+      return "Add a Responses-compatible key in Credentials.";
     if (config?.auto.key === null && jevKeys.length > 1)
-      return "Choose the Jev key under Advanced first.";
+      return "Choose a Jev key in Advanced.";
     return null;
   }
   function closeDrawer(): void {
@@ -1573,16 +1553,32 @@ function ModelGatewaySettings() {
     setKeyDraft(EMPTY_KEY_DRAFT);
     setError(null);
   }
+  function openAdvanced(): void {
+    afterEditorClose.current = () => {
+      advancedTrigger.current?.focus({ preventScroll: true });
+      advancedTrigger.current?.scrollIntoView({ block: "start" });
+    };
+    setAdvancedOpen(true);
+    closeDrawer();
+  }
+  function openCredentials(): void {
+    afterEditorClose.current = () => {
+      const section = document.getElementById("gateway-credentials");
+      section?.querySelector("button")?.focus({ preventScroll: true });
+      section?.scrollIntoView({ block: "start" });
+    };
+    closeDrawer();
+  }
   const hubHosts =
     status?.hosts.map((host) => host.hostName ?? host.hostId).join(", ") ||
     "no machines";
   const routeHarness = drawer?.kind === "route" ? drawer.harness : null;
   return (
-    <div className="w-full space-y-6">
-      <div className="space-y-1.5">
-        <p className="text-xs text-subtle-foreground/75">
+    <div className="gateway-settings w-full space-y-6">
+      <div className="space-y-3 rounded-md border border-border bg-surface-recessed/70 px-3 py-3">
+        <p className="text-xs text-subtle-foreground/75" title={hubHosts}>
           Hub {status?.accepting ? "accepting" : "not accepting"} ·{" "}
-          {status?.inFlight ?? 0} in flight · used by {hubHosts}
+          {status?.inFlight ?? 0} in flight · {status?.hosts.length ?? 0} machines
         </p>
         {liveParts.length === 0 ? null : (
           <div
@@ -1601,7 +1597,7 @@ function ModelGatewaySettings() {
           </div>
         )}
       </div>
-      {error === null ? null : (
+      {error === null || drawer !== null ? null : (
         <div
           role="alert"
           className="rounded-md border border-destructive/40 bg-surface-destructive px-3 py-2 text-sm text-destructive-text"
@@ -1610,36 +1606,9 @@ function ModelGatewaySettings() {
         </div>
       )}
       <SettingsSection
-        title="Upstreams"
-        description="Accounts and API keys the gateway can send model traffic to. A key is write-only: the gateway never shows it again."
-        action={<AddUpstreamMenu onChoose={(choice) => void chooseAdd(choice)} />}
-      >
-        {status === null ? (
-          <p className="py-2.5 text-sm text-muted-foreground">Loading…</p>
-        ) : accounts.length === 0 ? (
-          <EmptyRow>
-            No upstreams yet. Threads use their machine&apos;s own login until
-            you add one.
-          </EmptyRow>
-        ) : (
-          <div className="divide-y divide-border">
-            {accounts.map((account) => (
-              <UpstreamRow
-                key={account.id}
-                account={account}
-                pending={pending !== null}
-                onAction={(action) => void accountAction(account, action)}
-                onOpen={() =>
-                  setDrawer({ kind: "account", accountId: account.id })
-                }
-              />
-            ))}
-          </div>
-        )}
-      </SettingsSection>
-      <SettingsSection
         title="Routes"
-        description="Which harnesses use the gateway, and the order of upstreams each one tries. Off means the harness uses its own login."
+        description="Choose each harness's upstream order. Turn off to use its own login."
+        insetHeading
       >
         {routing?.blockedBy === null || routing === null ? null : (
           <div
@@ -1649,7 +1618,7 @@ function ModelGatewaySettings() {
             {routing.blockedBy}
           </div>
         )}
-        <div className="divide-y divide-border">
+        <div className="divide-y divide-border/60">
           {ROUTING_TARGETS.map(({ target, harness }) => (
             <RouteRow
               key={target}
@@ -1659,37 +1628,76 @@ function ModelGatewaySettings() {
               chain={chainEntries(harness).map((entry) =>
                 chainOption(harness, entry),
               )}
-              mapped={mappedLines(harness)}
-              autoText={autoText(harness)}
-              hasSetup={target !== "claude" && target !== "codex"}
+              automatic={config?.auto.harnesses.includes(harness) ?? false}
               onToggle={(enabled) =>
                 void run(`routing-${target}`, async () => {
                   await rpc.call("routing.set", { provider: target, enabled });
                 })
-              }
-              onSetup={() =>
-                setDrawer({ kind: "setup", target: target as SetupTarget })
               }
               onEdit={() => setDrawer({ kind: "route", harness })}
             />
           ))}
         </div>
       </SettingsSection>
-      <Collapsible className="rounded-lg border border-border px-4">
-        <CollapsibleTrigger className="flex w-full items-center gap-2 py-2.5 text-sm font-medium text-foreground">
+      <SettingsSection title="Preferences">
+        <div className="flex items-center justify-between gap-4 py-3">
+          <div className="min-w-0">
+            <div className="text-sm">Claude OAuth across harnesses</div>
+            <p className="mt-0.5 text-xs text-muted-foreground">May conflict with Anthropic's terms. Off limits OAuth to Claude Code.</p>
+          </div>
+          <Switch aria-label="Allow Claude OAuth across harnesses" checked={config?.allowClaudeOAuthAcrossHarnesses ?? false} disabled={config === null || pending !== null}
+            onCheckedChange={(checked) => void saveConfig("claude-oauth-opt-in", () => rpc.call("config.set", { allowClaudeOAuthAcrossHarnesses: checked }))} />
+        </div>
+      </SettingsSection>
+      <SettingsSection
+        title="Credentials"
+        id="gateway-credentials"
+        description="Upstream accounts and API keys. Saved keys stay hidden."
+        action={<AddUpstreamMenu onChoose={(choice, trigger) => {
+          if (choice === "api-key" || choice === "claude-login" || choice === "codex-login") editorTrigger.current = trigger;
+          void chooseAdd(choice);
+        }} />}
+      >
+        {status === null ? (
+          <p className="py-2.5 text-sm text-muted-foreground">Loading…</p>
+        ) : accounts.length === 0 ? (
+          <EmptyRow>
+            No upstreams yet. Add an account or API key before routing threads.
+          </EmptyRow>
+        ) : (
+          <div className="divide-y divide-border/60">
+            {accounts.map((account) => (
+              <UpstreamRow
+                key={account.id}
+                account={account}
+                pending={pending !== null}
+                onAction={(action, trigger) => {
+                  if (action === "priority" || action === "remove") editorTrigger.current = trigger;
+                  void accountAction(account, action);
+                }}
+                onOpen={() =>
+                  setDrawer({ kind: "account", accountId: account.id })
+                }
+              />
+            ))}
+          </div>
+        )}
+      </SettingsSection>
+      <section className="space-y-4">
+      <h2 className="text-sm font-medium text-foreground">Advanced</h2>
+      <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} className="min-w-0 rounded-md border border-border bg-surface-recessed/70 px-3">
+        <CollapsibleTrigger ref={advancedTrigger} aria-label="Advanced" className="flex w-full items-center gap-2 py-3 text-sm font-medium text-foreground">
           <Icon
             name="ChevronRight"
             className="size-4 transition-transform [[data-state=open]>&]:rotate-90"
           />
-          Advanced
+          Model map and limits
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="border-t border-border pb-2">
+          <div className="border-t border-border/60 pb-3">
             <SubHeading>Model map</SubHeading>
             <p className="pb-1 text-xs leading-snug text-muted-foreground">
-              Rewrites the requested model for an upstream kind. Patterns use *
-              as a wildcard. A &lt;kind&gt;:&lt;label&gt; key wins over its
-              kind.
+              Rewrite models with * patterns. A kind:label mapping overrides its kind.
             </p>
             {config === null ? null : (
               <>
@@ -1700,7 +1708,7 @@ function ModelGatewaySettings() {
                     {Object.entries(config.modelMap).flatMap(([key, rows]) =>
                       Object.entries(rows).map(([pattern, model]) => (
                         <div key={`${key} ${pattern}`} className="flex min-w-0">
-                          <div className="group -mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-state-hover">
+                          <div className="gateway-model-map group -mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-state-hover">
                             <SettingsBadge>{key}</SettingsBadge>
                             <span className="truncate font-mono text-xs text-foreground">
                               {pattern}
@@ -1737,12 +1745,13 @@ function ModelGatewaySettings() {
                     )}
                   </div>
                 )}
-                <div className="flex flex-wrap items-center gap-2 border-t border-border py-2.5">
+                <div className="gateway-map-inputs flex flex-wrap items-center gap-2 border-t border-border py-2.5">
                   <Select
                     value={mapDraft.key}
-                    onValueChange={(key) =>
-                      setMapDraft((current) => ({ ...current, key }))
-                    }
+                    onValueChange={(key) => {
+                      if (modelMapKeys.includes(key))
+                        setMapDraft((current) => ({ ...current, key }));
+                    }}
                   >
                     <SelectTrigger
                       className="h-8 w-56"
@@ -1812,39 +1821,39 @@ function ModelGatewaySettings() {
                 </div>
               </>
             )}
-            <SubHeading>Jev auto mode</SubHeading>
-            <p className="pb-1 text-xs leading-snug text-muted-foreground">
-              Turn it on per route with Edit. {JEV_NOT_LIVE}
-            </p>
+            <SubHeading>Auto (Jev)</SubHeading>
+            <p className="pb-1 text-xs leading-snug text-muted-foreground">Configure the key and model here. Enable Auto in a route's editor.</p>
             {config === null ? null : (
               <div className="divide-y divide-border">
                 <ConfigFieldRow
                   label="Jev key"
-                  description="The responses-compatible key that holds the OpenRouter key."
+                  description="Responses-compatible key for OpenRouter."
                   error={null}
                 >
                   <Select
                     value={config.auto.key ?? ""}
                     disabled={pending !== null || jevKeys.length === 0}
-                    onValueChange={(key) =>
-                      void saveConfig("auto-key", () =>
-                        rpc.call("auto.set", { key }),
-                      )
-                    }
+                    onValueChange={(key) => {
+                      if (jevKeys.some((account) => account.label === key))
+                        void saveConfig("auto-key", () => rpc.call("auto.set", { key }));
+                    }}
                   >
                     <SelectTrigger aria-label="Jev key">
                       <SelectValue
                         placeholder={
                           jevKeys.length === 0
-                            ? "Add a responses-compatible key first"
+                            ? "No Responses keys"
                             : "Choose a key"
                         }
                       />
                     </SelectTrigger>
                     <SelectContent>
+                      {config.auto.key && !jevKeys.some((account) => account.label === config.auto.key) ? (
+                        <SelectItem value={config.auto.key} disabled>{keyDisplayName(config.auto.key)} (unavailable)</SelectItem>
+                      ) : null}
                       {jevKeys.map((account) => (
                         <SelectItem key={account.id} value={account.label}>
-                          {account.label}
+                          {accountDisplayName(account)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1852,7 +1861,7 @@ function ModelGatewaySettings() {
                 </ConfigFieldRow>
                 <ConfigFieldRow
                   label="Jev model"
-                  description="OpenRouter model id of Jev."
+                  description="Model that returns the routing choice."
                   error={null}
                 >
                   <Input
@@ -1957,25 +1966,18 @@ function ModelGatewaySettings() {
                   }}
                 />
               </ConfigFieldRow>
-              <div className="flex items-center justify-between gap-4 py-2.5">
-                <div><div className="text-sm">Claude subscription OAuth in other harnesses</div>
-                  <p className="mt-0.5 text-xs text-muted-foreground">Opt in at your own risk. This use may conflict with Anthropic's subscription terms.</p></div>
-                <Switch aria-label="Allow Claude OAuth across harnesses" checked={config?.allowClaudeOAuthAcrossHarnesses ?? false} disabled={config === null || pending !== null}
-                  onCheckedChange={(checked) => void saveConfig("claude-oauth-opt-in", () => rpc.call("config.set", { allowClaudeOAuthAcrossHarnesses: checked }))} />
-              </div>
-              <div className="flex items-start justify-between gap-4">
-                <div className="py-2.5">
+              <div className="flex flex-col gap-2">
+                <div className="pt-2.5">
                   <div className="text-sm text-foreground">Machine tokens</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
-                    {hubHosts}
-                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">Rotate a machine's gateway credentials.</div>
                 </div>
-                <div className="flex flex-wrap justify-end gap-2 py-2.5">
+                <div className="flex flex-wrap gap-2 pb-2.5">
                   {status?.hosts.map((host) => (
                     <Button
                       key={host.hostId}
                       size="sm"
                       variant="outline"
+                      className="max-w-full"
                       onClick={() =>
                         void run(`rotate-${host.hostId}`, async () => {
                           await rpc.call("token.rotate", {
@@ -1984,7 +1986,7 @@ function ModelGatewaySettings() {
                         })
                       }
                     >
-                      Rotate {host.hostName ?? host.hostId}
+                      <span className="truncate">Rotate {host.hostName ?? host.hostId}</span>
                     </Button>
                   ))}
                 </div>
@@ -1993,34 +1995,48 @@ function ModelGatewaySettings() {
           </div>
         </CollapsibleContent>
       </Collapsible>
-      <ResponsiveDrawerShell
+      </section>
+      <SettingsSection title="More">
+        <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+          <div className="min-w-0">
+            <p className="text-sm">Setup guide</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Connect accounts and prepare each harness.</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => navigate.toPluginPanel(SETUP_PATH)}>Open setup guide</Button>
+        </div>
+      </SettingsSection>
+      <GatewayDialog
         open={drawer !== null}
         onOpenChange={(open) => {
           if (!open) closeDrawer();
         }}
-        srLabel="Model Gateway details"
-        contentClassName="mx-auto w-full max-w-2xl"
+        onAfterCloseAutoFocus={() => {
+          const action = afterEditorClose.current;
+          afterEditorClose.current = null;
+          const trigger = editorTrigger.current;
+          editorTrigger.current = null;
+          if (action) action();
+          else trigger?.focus({ preventScroll: true });
+        }}
       >
         {routeHarness === null || config === null
           ? null
           : (() => {
               const title = HARNESS_TITLES[routeHarness];
               const entries = chainEntries(routeHarness);
-              const addable = (chainOptions?.[routeHarness] ?? []).filter(
-                (candidate) => !entries.includes(candidate.entry),
-              );
+              const addable = (chainOptions?.[routeHarness] ?? [])
+                .filter((candidate) => !entries.includes(candidate.entry))
+                .map((candidate) => chainOption(routeHarness, candidate.entry));
               const autoOn = config.auto.harnesses.includes(routeHarness);
               const block = autoOn ? null : autoBlock();
               const ladder = (routing?.ladders[routeHarness] ?? []).map(
                 modelName,
               );
+              const mappings = mappedModelRows(routeHarness, entries, accounts, (entry) => chainOption(routeHarness, entry).label, config.modelMap);
               return (
-                <DrawerFrame title={`${title} route`} onClose={closeDrawer}>
-                  <p className="text-sm text-muted-foreground">
-                    The gateway sends each {title} request to the first
-                    upstream with room, and moves down the list when one runs
-                    out. Drag to reorder.
-                  </p>
+                <DrawerFrame title={`${title} route`} onClose={closeDrawer}
+                  footer={<><span className="flex-1" /><Button size="sm" onClick={closeDrawer}>Done</Button></>}>
+                  <p className="text-xs text-muted-foreground">Upstreams run in order. Drag to reorder.</p>
                   {error === null ? null : (
                     <p className="text-sm text-destructive-text" role="alert">
                       {error}
@@ -2066,12 +2082,13 @@ function ModelGatewaySettings() {
                     <Select
                       value=""
                       disabled={pending !== null || addable.length === 0}
-                      onValueChange={(entry) =>
-                        void saveChain(routeHarness, [...entries, entry])
-                      }
+                      onValueChange={(entry) => {
+                        if (addable.some((option) => option.entry === entry && option.blocked === null))
+                          void saveChain(routeHarness, [...entries, entry]);
+                      }}
                     >
                       <SelectTrigger
-                        className="mt-3 h-8 w-64"
+                        className="mt-3 h-8 w-64 max-w-full"
                         aria-label={`Add to the ${title} route`}
                       >
                         <SelectValue placeholder="Add upstream…" />
@@ -2083,36 +2100,36 @@ function ModelGatewaySettings() {
                             value={candidate.entry}
                             disabled={candidate.blocked !== null}
                           >
-                            <span className="block">{candidate.label}</span>
-                            {candidate.blocked === null ? null : (
-                              <span className="block text-xs text-muted-foreground">
-                                Blocked: {candidate.blocked}
-                              </span>
-                            )}
+                            <span className="flex flex-col gap-0.5">
+                              <span>{candidate.label}</span>
+                              <span className="text-xs text-muted-foreground">{candidate.blocked ?? candidate.description}</span>
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {mappedLines(routeHarness).map((line) => (
-                      <p
-                        key={line}
-                        className="mt-2 text-xs text-muted-foreground"
-                      >
-                        {line}
-                      </p>
-                    ))}
                   </div>
+                  {mappings.length === 0 ? null : <Collapsible className="border-t border-border pt-3">
+                    <CollapsibleTrigger className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                      <Icon name="ChevronRight" className="size-3.5 transition-transform motion-reduce:transition-none [[data-state=open]>&]:rotate-90" />Model mapping
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="space-y-3 pt-3">
+                      {mappings.map((mapping) => <div key={mapping.entry} className="space-y-2">
+                        <h3 className="text-xs font-medium">{mapping.upstream}</h3>
+                        {mapping.rows.map((row) => <div key={row.target} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 text-xs">
+                          <span className="break-words text-muted-foreground">{row.source}</span><span aria-hidden>→</span><span className="break-words">{row.target}</span>
+                        </div>)}
+                      </div>)}
+                      <Button size="sm" variant="link" className="h-auto p-0 text-xs" onClick={openAdvanced}>Manage model mapping</Button>
+                    </CollapsibleContent>
+                  </Collapsible>}
                   <div className="space-y-2 border-t border-border pt-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <div className="text-sm text-foreground">
                           Auto (Jev)
                         </div>
-                        <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-                          Jev picks{" "}
-                          {ladder.length === 0 ? "the model" : orList(ladder)}{" "}
-                          on each new user turn. Later turns keep the pick.
-                        </p>
+                        <p className="mt-0.5 text-xs leading-snug text-muted-foreground">Chooses a model at each new user turn.</p>
                       </div>
                       <Switch
                         checked={autoOn}
@@ -2132,29 +2149,20 @@ function ModelGatewaySettings() {
                       />
                     </div>
                     {block === null ? null : (
-                      <p className="text-xs text-warning-text">{block}</p>
+                      <Button variant="link" size="sm" className="h-auto justify-start whitespace-normal p-0 text-left text-xs text-muted-foreground" onClick={jevKeys.length === 0 ? openCredentials : openAdvanced}>{block}</Button>
                     )}
-                    <p className="text-xs leading-snug text-muted-foreground">
-                      {JEV_NOT_LIVE}
-                    </p>
+                    <Collapsible>
+                      <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground"><Icon name="ChevronRight" className="size-3.5 transition-transform motion-reduce:transition-none [[data-state=open]>&]:rotate-90" />About Auto</CollapsibleTrigger>
+                      <CollapsibleContent className="space-y-2 pt-2 text-xs text-muted-foreground">
+                        <p>{ladder.length === 0 ? "Uses the route's model choices." : `Model choices: ${orList(ladder)}.`} Tool calls keep the selected model.</p>
+                        <p>OpenRouter receives the last user message and model choices. API usage is billed by the provider.</p>
+                        <Button size="sm" variant="link" className="h-auto p-0 text-xs" onClick={openAdvanced}>Configure Jev in Advanced</Button>
+                      </CollapsibleContent>
+                    </Collapsible>
                   </div>
                 </DrawerFrame>
               );
             })()}
-        {drawer?.kind === "setup" ? (
-          <DrawerFrame
-            title={`${HARNESS_TITLES[drawer.target]} setup`}
-            onClose={closeDrawer}
-          >
-            <p className="text-sm text-muted-foreground">
-              One-time setup on each machine. The gateway shows it and never
-              runs it.
-            </p>
-            <pre className="overflow-x-auto whitespace-pre-wrap rounded-md border border-border bg-surface-recessed px-3 py-2 font-mono text-xs text-foreground">
-              {routing?.setup[drawer.target] ?? "Loading…"}
-            </pre>
-          </DrawerFrame>
-        ) : null}
         {drawer?.kind === "live" ? (
           <DrawerFrame title="Live state" onClose={closeDrawer}>
             <div>
@@ -2212,7 +2220,7 @@ function ModelGatewaySettings() {
                       className="flex min-w-0 items-center gap-2 py-2 text-sm"
                     >
                       <span className="truncate font-medium text-foreground">
-                        {hold.label}
+                        {hold.upstreamKind?.endsWith("-key") ? keyDisplayName(hold.label) : hold.label}
                       </span>
                       <SettingsBadge>
                         {upstreamName(hold.upstreamKind, hold.label)}
@@ -2342,12 +2350,10 @@ function ModelGatewaySettings() {
             <div className="space-y-3">
               <Select
                 value={keyDraft.kind}
-                onValueChange={(kind) =>
-                  setKeyDraft((current) => ({
-                    ...current,
-                    kind: kind as KeyKind,
-                  }))
-                }
+                onValueChange={(kind) => {
+                  if (KEY_KINDS.some((option) => option.kind === kind))
+                    setKeyDraft((current) => ({ ...current, kind: kind as KeyKind }));
+                }}
               >
                 <SelectTrigger aria-label="Key kind">
                   <SelectValue />
@@ -2410,7 +2416,7 @@ function ModelGatewaySettings() {
         ) : null}
         {drawer?.kind === "remove" && selectedAccount !== null ? (
           <DrawerFrame
-            title={`Remove ${selectedAccount.label}?`}
+            title={`Remove ${accountDisplayName(selectedAccount)}?`}
             onClose={closeDrawer}
             footer={
               <>
@@ -2488,7 +2494,7 @@ function ModelGatewaySettings() {
             retry={() => void startCodex()}
           />
         ) : null}
-      </ResponsiveDrawerShell>
+      </GatewayDialog>
     </div>
   );
 }
@@ -2521,16 +2527,14 @@ function AccountDrawer({
       : account.codexAccountId;
   return (
     <DrawerFrame
-      title={account.label}
+      title={accountDisplayName(account)}
       onClose={close}
       footer={
         <>
           <Button size="sm" variant="outline" onClick={() => act("toggle")}>
             {account.enabled ? "Disable" : "Enable"}
           </Button>
-          <Button size="sm" variant="outline" onClick={() => act("refresh")}>
-            Refresh usage
-          </Button>
+          {account.kind === "oauth" ? <Button size="sm" variant="outline" onClick={() => act("refresh")}>Refresh usage</Button> : null}
           <span className="flex-1" />
           <Button
             size="sm"
@@ -2553,7 +2557,7 @@ function AccountDrawer({
         </SettingsBadge>
         <SettingsBadge>{statusPresentation(account).label}</SettingsBadge>
       </div>
-      <div className="space-y-4">
+      {account.kind === "oauth" ? <div className="space-y-4">
         {account.provider === "codex" ? (
           account.limitWindows.length === 0 ? (
             <div className="text-sm text-muted-foreground">
@@ -2603,7 +2607,7 @@ function AccountDrawer({
             )}
           </>
         )}
-      </div>
+      </div> : null}
       <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 border-t border-border pt-4 text-sm">
         <dt className="text-muted-foreground">Kind</dt>
         <dd>
@@ -2611,8 +2615,10 @@ function AccountDrawer({
             ? `OAuth · ${account.provider === "claude" ? "claude.ai" : "ChatGPT"}`
             : "API key"}
         </dd>
-        <dt className="text-muted-foreground">Upstream</dt>
-        <dd className="font-mono text-xs">{upstreamKind(account)}</dd>
+        {account.kind === "oauth" ? <>
+          <dt className="text-muted-foreground">Upstream</dt>
+          <dd className="font-mono text-xs">{upstreamKind(account)}</dd>
+        </> : null}
         {account.baseUrl === undefined ? null : (
           <>
             <dt className="text-muted-foreground">Base URL</dt>
@@ -2627,10 +2633,10 @@ function AccountDrawer({
             ? "Never"
             : `${relative(account.lastUsedAt)}${account.lastUsedHostName === null ? "" : ` · ${account.lastUsedHostName}`}`}
         </dd>
-        <dt className="text-muted-foreground">Usage refreshed</dt>
-        <dd>
-          {account.observedAt === null ? "Never" : relative(account.observedAt)}
-        </dd>
+        {account.kind === "oauth" ? <>
+          <dt className="text-muted-foreground">Usage refreshed</dt>
+          <dd>{account.observedAt === null ? "Never" : relative(account.observedAt)}</dd>
+        </> : null}
         {providerId === null || providerId === undefined ? null : (
           <>
             <dt className="text-muted-foreground">Account id</dt>
@@ -2638,6 +2644,16 @@ function AccountDrawer({
           </>
         )}
       </dl>
+      {account.kind === "api-key" ? <Collapsible className="border-t border-border pt-3">
+        <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground"><Icon name="ChevronRight" className="size-3.5 transition-transform motion-reduce:transition-none [[data-state=open]>&]:rotate-90" />Technical details</CollapsibleTrigger>
+        <CollapsibleContent>
+          <dl className="mt-3 grid grid-cols-[5rem_minmax(0,1fr)] gap-2 text-xs">
+            <dt className="text-muted-foreground">Key label</dt><dd className="break-all font-mono">{account.label}</dd>
+            <dt className="text-muted-foreground">Account ID</dt><dd className="break-all font-mono">{account.id}</dd>
+            <dt className="text-muted-foreground">Upstream</dt><dd className="break-all font-mono">{upstreamKind(account)}</dd>
+          </dl>
+        </CollapsibleContent>
+      </Collapsible> : null}
     </DrawerFrame>
   );
 }
@@ -2837,12 +2853,19 @@ export default definePluginApp((app) => {
     kind: "disclosure",
     id: "gateway-usage",
     label: "Model usage",
-    icon: "ChartColumn",
+    icon: GATEWAY_ICON,
     component: GatewayUsageFooter,
   });
   app.slots.settingsSection({
     id: "gateway",
     component: ModelGatewaySettings,
+  });
+  app.slots.navPanel({
+    id: "setup",
+    title: "Model Gateway",
+    icon: GATEWAY_ICON,
+    path: SETUP_PATH,
+    component: GatewaySetup,
   });
   app.slots.experimental_providerIcon({
     providerKind: "agent",

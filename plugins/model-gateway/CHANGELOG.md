@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Use one canonical routing SVG for settings, navigation, setup, and the usage footer.
+- Group routes, preferences, and upstream credentials. Shorten help and move machine setup to a dedicated page linked from More.
+- Match standard settings with outlined, recessed groups, 12px padding, and quiet row dividers.
+- Keep advanced controls aligned in narrow panes and preserve saved Jev keys while accounts load or are unavailable.
+- Use centered desktop editors and mobile drawers. Keep model mappings and Auto details behind closed disclosures, and give every upstream choice a consistent subtitle.
+- Show friendly API-key names without changing stored labels or route IDs. Keep API keys out of subscription usage, and omit unsupported quota controls from their details.
+- Restore focus to the owning menu trigger after an editor closes.
+
 - Remove gateway API spending approvals, request-count limits and expiry. Configured API accounts and Jev now run under upstream billing and key protections.
 
 - Keep Pi and other Responses clients' function tools non-strict on ChatGPT

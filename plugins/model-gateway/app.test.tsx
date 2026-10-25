@@ -197,7 +197,7 @@ describe("Model Gateway settings", () => {
     });
     expect(blocked.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(blocked);
-    fireEvent.click(await slot.findByRole("option", { name: "openrouter" }));
+    fireEvent.click(await slot.findByRole("option", { name: /openrouter/i }));
     await waitFor(() =>
       expect(
         slot.rpcCalls.filter((call) => call.method === "chain.set"),
@@ -224,30 +224,6 @@ describe("Model Gateway settings", () => {
     await slot.findByRole("button", { name: "Remove Claude Max from Codex" });
     expect(slot.getAllByText(CLAUDE_BLOCK).length).toBeGreaterThan(0);
     expect(slot.getAllByText("Blocked").length).toBeGreaterThan(0);
-  });
-
-  it("shows each route in plain names with its mapped models", async () => {
-    const slot = render({
-      "config.get": () => ({
-        ...CONFIG,
-        chains: {
-          ...CONFIG.chains,
-          "claude-code": ["claude-oauth:*", "chatgpt-oauth:*"],
-        },
-        modelMap: {
-          "chatgpt-oauth": {
-            "claude-opus-*": "gpt-6-astra",
-            "claude-fable-*": "gpt-6-astra",
-            "claude-sonnet-*": "gpt-6-sol",
-          },
-        },
-      }),
-    });
-    await slot.findByText(
-      "On ChatGPT: Opus, Fable → 6-Astra · Sonnet → 6-Sol",
-    );
-    expect(document.body.textContent).toContain("Claude Max → ChatGPT");
-    expect(document.body.textContent).not.toContain("claude-oauth:*");
   });
 
   it("sends a new API key to key.add and never renders its value", async () => {
@@ -282,6 +258,17 @@ describe("Model Gateway settings", () => {
     expect(document.body.innerHTML).not.toContain(secret);
   });
 
+  it("returns focus to Add after canceling a menu-opened key form", async () => {
+    const slot = render();
+    const add = await slot.findByRole("button", { name: "Add" });
+    add.focus();
+    fireEvent.keyDown(add, { key: "Enter" });
+    fireEvent.click(await slot.findByRole("menuitem", { name: /Add API key/ }));
+    await slot.findByRole("dialog", { name: "Add an API key" });
+    fireEvent.click(slot.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(document.activeElement).toBe(add));
+  });
+
   it("routes a harness through routing.set", async () => {
     const slot = render({ "routing.set": () => ({ ok: true }) });
     const toggle = await slot.findByRole("switch", {
@@ -296,6 +283,42 @@ describe("Model Gateway settings", () => {
       }),
     );
   });
+  it("uses friendly API-key names without changing route identifiers", async () => {
+    const entry = "responses-compatible-key:monthly-api-credits";
+    const key = account({
+      id: "22222222-2222-4222-8222-222222222222", provider: "codex", kind: "api-key",
+      label: "monthly-api-credits", email: null,
+    });
+    const slot = render({
+      "status.get": () => status([account(), key]),
+      "chain.options": () => ({
+        ...chainOptions(),
+        pi: [
+          { entry: "chatgpt-oauth:*", label: "ChatGPT", blocked: null },
+          { entry, label: key.label, blocked: null },
+        ],
+      }),
+      "config.get": () => ({ ...CONFIG, chains: { ...CONFIG.chains, pi: ["chatgpt-oauth:*", entry] } }),
+      "chain.set": () => CONFIG,
+    });
+    await openRoute(slot, "Pi");
+    fireEvent.click(await slot.findByRole("button", { name: "Remove Monthly API credits from Pi" }));
+    await waitFor(() => expect(slot.rpcCalls).toContainEqual({
+      method: "chain.set", input: { harness: "pi", entries: ["chatgpt-oauth:*"] },
+    }));
+  });
+
+  it("keeps API-key details factual instead of rendering subscription quota controls", async () => {
+    const key = account({ kind: "api-key", label: "monthly-api-credits", email: null, observedAt: 10 });
+    const slot = render({ "status.get": () => status([key]) });
+    fireEvent.click(await slot.findByRole("button", { name: "Open Monthly API credits" }));
+    await slot.findByRole("dialog", { name: "Monthly API credits" });
+    expect(slot.queryByRole("button", { name: "Refresh usage" })).toBeNull();
+    fireEvent.click(slot.getByRole("button", { name: "Technical details" }));
+    expect(slot.getByText(key.label)).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Disable" })).toBeTruthy();
+  });
+
 
   it("turns Jev auto on for one harness from its Edit drawer", async () => {
     const withKey = { ...CONFIG, auto: { ...CONFIG.auto, key: "openrouter" } };
@@ -310,8 +333,6 @@ describe("Model Gateway settings", () => {
     const toggle = await slot.findByRole("switch", {
       name: "Auto (Jev) for Claude Code",
     });
-    expect(slot.getAllByText(/Jev picks Sonnet 5 or Opus 5.5/).length).toBeGreaterThan(0);
-    expect(slot.getAllByText(/OpenRouter lists only typesafe\/jev-router/).length).toBeGreaterThan(0);
     await waitFor(() => expect(toggle.hasAttribute("disabled")).toBe(false));
     fireEvent.click(toggle);
     await waitFor(() =>
@@ -320,16 +341,32 @@ describe("Model Gateway settings", () => {
         input: { harness: "claude-code", off: false },
       }),
     );
-    await slot.findByText(
-      "Auto (Jev): Jev picks Sonnet 5 or Opus 5.5 on each new user turn.",
-    );
+    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("true"));
+  });
+
+  it("keeps the saved Jev key when discovery has not returned that account", async () => {
+    let discovered = false;
+    const slot = render({
+      "config.get": () => ({ ...CONFIG, auto: { ...CONFIG.auto, key: "saved-router" } }),
+      "status.get": () => status(discovered ? [account({
+        provider: "codex", kind: "api-key", label: "saved-router",
+      })] : []),
+    });
+    fireEvent.click(await slot.findByRole("button", { name: "Advanced" }));
+    const picker = await slot.findByRole("combobox", { name: "Jev key" });
+    expect(picker.hasAttribute("disabled")).toBe(true);
+    discovered = true;
+    await slot.emitRealtime("model-gateway.accounts-changed", {});
+    await waitFor(() => expect(picker.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(picker);
+    expect(slot.getByRole("option", { name: "Saved router" }).getAttribute("data-state")).toBe("checked");
+    expect(slot.rpcCalls.filter((call) => call.method === "auto.set")).toEqual([]);
   });
 
   it("disables Jev auto with the reason when no responses-compatible key exists", async () => {
     const slot = render({ "status.get": () => status([account()]) });
     await openRoute(slot, "Pi");
     const toggle = await slot.findByRole("switch", { name: "Auto (Jev) for Pi" });
-    await slot.findByText(/Add a responses-compatible API key/);
     expect(toggle.hasAttribute("disabled")).toBe(true);
   });
 });
@@ -374,6 +411,23 @@ describe("Gateway composer fallback", () => {
 });
 
 describe("Model usage footer", () => {
+  it("keeps API-key accounts out of subscription usage, including cached accounts", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    const key = account({
+      id: "22222222-2222-4222-8222-222222222222",
+      kind: "api-key", label: "monthly-api-credits", email: null,
+    });
+    const rpc = { "account.list": () => [account(), key] } as never;
+    const first = renderSlot(footer, { dismiss: () => {} }, { rpc });
+    await first.findByRole("progressbar", { name: "max 5h usage" });
+    expect(first.queryByText(key.label)).toBeNull();
+    first.unmount();
+    const cached = renderSlot(footer, { dismiss: () => {} }, { rpc });
+    expect(cached.getByRole("progressbar", { name: "max 5h usage" }).getAttribute("aria-valuenow")).toBe("21");
+    expect(cached.queryByText(key.label)).toBeNull();
+  });
+
   it("shows one row per provider account across duplicate logins", async () => {
     const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
     expect(footer?.kind).toBe("disclosure");

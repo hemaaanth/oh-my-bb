@@ -34,18 +34,28 @@ Automatic Claude Code failover maps Fable to `gpt-6-astra`, Opus to
 - No thread header item of its own. The Sandboxes machine icon shows the
   route (model, upstream, chain, fallback cause) in its popover and marks a
   fallback with an amber dot.
-- Settings section `gateway` (`app.tsx`): a status line, one Upstreams list,
-  one Routes row per harness (switch, chain in plain names, mapped models,
-  Edit drawer with the chain and the per-route Auto (Jev) switch), and
-  Advanced (model map, Jev key and model, base URLs, limits, machine tokens).
+- Settings section `gateway` (`app.tsx`): Configuration shows the hub status and
+  Routes (switch, upstream chain, and Edit dialog with Auto (Jev)).
+  Preferences holds the Claude OAuth cross-harness opt-in. Credentials manages
+  upstream accounts and write-only API keys. Advanced contains the model map,
+  Jev key and model, base URLs, limits, and machine tokens. More links to a
+  dedicated setup page. It shares Settings' 760px frame and 728px content width.
+  Settings groups use the standard outlined, recessed cards with 12px padding.
+  Editors use a centered dialog on desktop and a drawer on mobile. Model mapping
+  and Auto reference details stay in closed disclosures. API-key display names
+  do not change stored labels, option values, or route identifiers.
   The chain "Add" list offers upstream kinds only; per-account entries come
   from `bb gateway chain set`. It calls the same functions as the CLI. Key
   values are write-only; no RPC returns a key, token or OAuth credential.
   RPC: `routing.get`, `key.add`, `chain.options`, `chain.set`,
   `modelMap.set`, `auto.set`, `live.get` (threads on a fallback or a Jev
   pick, and holds), `hold.clear`, plus the ported
-  account methods. `chain.set` rejects Claude OAuth outside `claude-code`.
-- The sidebar footer shows usage limits for each authenticated Gateway account.
+  account methods. Claude OAuth outside `claude-code` requires the Preferences opt-in.
+- The sidebar footer shows usage limits for authenticated subscription accounts.
+  API-key accounts remain in Credentials and routes, without fabricated usage or balance data.
+  The footer disclosure, settings, setup page, and navigation use one canonical
+  SVG. Opening the disclosure reads cached account state; only Refresh fetches
+  current provider usage. The host owns Hide and Customize footer actions.
   It opens from a short-lived cache and refreshes limits on demand. Codex
   accounts also show how many one-off reset credits they have.
 

@@ -200,12 +200,15 @@ Sandboxes use the same setup manifest during create, heal and resume. Custom
   a fallback with an amber dot. It reads RPC `thread.route`.
 - The composer shows a soft yellow pill with the vendor logo and model name only while a fallback
   route is active. Its hover text has the full model ID and account. The model selector keeps the user's configured choice.
-- Settings > Model Gateway shows a status line, the Upstreams list, one Routes
-  row per harness (Edit opens the chain and the Auto (Jev) switch), and
-  Advanced (model map, Jev key and model, base URLs, limits). It edits the
-  same state as the CLI. It never shows a key value. Per-account chain
-  entries are set with `bb gateway chain set`.
-- The sidebar footer shows usage limits per authenticated account. Refresh it
+- Settings > Model Gateway groups routes under Configuration, the Claude OAuth
+  opt-in under Preferences, and upstream accounts and keys under Credentials.
+  Route Edit opens a centered desktop dialog or a mobile drawer. It contains
+  the chain, Auto (Jev), and closed mapping/details disclosures. Advanced holds the model
+  map, Jev key and model, base URLs, limits, and machine tokens. More opens the
+  dedicated setup guide. These controls edit the same state as the CLI and never
+  show key values. Per-account chain entries use `bb gateway chain set`.
+- The sidebar footer shows usage limits per subscription account. API keys remain
+  in Credentials and routes, not the usage-only footer. Refresh the footer
   to fetch current limits from the providers. Codex accounts also show their
   one-off reset credits ("3 resets available"); `bb gateway account list`
   has the same count in its `Resets` column. Claude does not report these.

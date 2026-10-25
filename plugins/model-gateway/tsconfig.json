@@ -13,5 +13,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "app.tsx", "components", "lib"]
+  "include": ["src/**/*.ts", "app.tsx", "gateway-setup.tsx", "components", "lib"]
 }

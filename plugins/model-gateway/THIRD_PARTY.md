@@ -37,8 +37,8 @@ MIT, Mayank Bansal 2026.
   reorder, Advanced). The gateway adds the API keys, Routing, Chains, Model map
   and Live state sections.
 - BB shared UI (`packages/shared-ui/src/components/ui/`, served as
-  `packages/plugin-registry/r/*.json`), same license, copied verbatim with only
-  import paths changed:
+  `packages/plugin-registry/r/*.json`), same license, vendored with local
+  import, layout, and sizing adaptations:
   - `components/ui/button.tsx`, `input.tsx`, `switch.tsx`, `select.tsx`,
     `dropdown-menu.tsx`, `responsive-overlay.tsx`, `collapsible.tsx`,
     `motion.ts`, `coarse-pointer-sizing.ts`, `overlay-trigger.ts`,
@@ -47,6 +47,8 @@ MIT, Mayank Bansal 2026.
   - `components/ui/resource-list.tsx` holds only `ResourceRowDetailChevron`
     from `resource/row.tsx`.
   - `components/ui/icon.tsx` re-exports the host's `experimental_Icon`.
+  - `components/ui/gateway-dialog.tsx` composes the host-shimmed Radix Dialog
+    with the existing responsive drawer and plugin portal scope.
 
 ```
 MIT License
