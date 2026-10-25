@@ -71,27 +71,4 @@ describe("thread header briefing", () => {
     expect(rendered.inspection.rpcCalls.slice(before).map((call) => call.method)).toEqual(["journal_thread_brief"]);
     rendered.lifecycle.unmount();
   });
-
-  it("drops a slow status answer that a newer settings read already replaced", async () => {
-    const section = app.settingsSections.find(({ id }) => id === "preferences")!;
-    const slow = Promise.withResolvers<unknown>();
-    let reads = 0;
-    const base = { enabled: true, workTimeZone: "America/New_York", enriched: 0, total: 0, automaticBriefs: false, reason: null,
-      usage: { calls: 0, promptTokens: 0, completionTokens: 0, costUsd: 0, unpricedCalls: 0, unmeasuredCalls: 0 } };
-    const rendered = renderSlot(section, {}, { rpc: {
-      journal_preferences: () => ({ migrationPending: false, values: { aiBackend: "openrouter", gatewayModel: "gpt-6-luna", openRouterModel: "google/gemini-3.1-flash-lite-preview",
-        intelligenceEnabled: true, automaticDailyBudgetUsd: 0.50, workTimeZone: "America/New_York", showDispatchCalls: false } }),
-      journal_intelligence_status: () => ++reads === 1 ? slow.promise as never
-        : { ...base, configured: true, backend: "openrouter", model: "google/gemini-3.1-flash-lite-preview" },
-      journal_ai_test: () => ({ ok: true, backend: "openrouter", model: "google/gemini-3.1-flash-lite-preview", message: "ok" }),
-    } as never });
-    await screen.findByRole("button", { name: "Test" });
-    await rendered.behavior.emitRealtime("journal-preferences-changed", {});
-    await act(async () => { slow.resolve({ ...base, enabled: false, configured: false, backend: "subscription", model: "subscription:gpt-6-luna", reason: "gateway slow" }); });
-    expect(screen.queryByText(/gateway slow/)).toBeNull();
-    expect((screen.getByRole("button", { name: "Test" }) as HTMLButtonElement).disabled).toBe(false);
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Test" })); });
-    expect(rendered.inspection.rpcCalls.filter((call) => call.method === "journal_ai_test")).toHaveLength(1);
-    rendered.lifecycle.unmount();
-  });
 });

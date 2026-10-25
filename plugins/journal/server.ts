@@ -194,7 +194,7 @@ export const rpcContract = defineRpcContract({
   }) },
   /** Saved briefing for the thread header. Reads stored rows only: never a model call or transcript read. */
   journal_thread_brief: { input: z.object({ threadId: z.string().min(1) }).strict(), output: threadBriefSchema },
-  /** Settings "Test": one tiny request to the configured backend, on explicit user action only. */
+  /** Explicit connection test for RPC callers; never runs automatically. */
   journal_ai_test: { input: z.null(), output: z.object({ ok: z.boolean(), backend: z.enum(AI_BACKENDS), model: z.string(), message: z.string() }) },
   journal_activity_sync: {
     input: z.object({ threadId: z.string().nullable().default(null), limit: z.number().int().min(1).max(25).default(5), force: z.boolean().default(false) }),
@@ -476,7 +476,7 @@ export default async function plugin(bb: BbPluginApi) {
 
     openRouterApiKey: {
       type: "string", label: "OpenRouter API key", secret: true,
-      description: "Used only with the OpenRouter backend. Stored as a host-local secret. Closed-day transcript excerpts are sent to OpenRouter when summaries are enabled; explicit catch-up and enrichment commands also use it.",
+      description: "For OpenRouter summaries.",
     },
   });
   const preferences = await loadPreferences(bb, (next, previous) => {

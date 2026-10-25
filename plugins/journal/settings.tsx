@@ -8,7 +8,6 @@ import { Icon } from "./components/ui/icon";
 import { Input } from "./components/ui/input";
 import { Switch } from "./components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
-import { AiSettingsSection } from "./ai-settings";
 
 function useJournalPreferences() {
   const rpc = useRpc<typeof rpcContract>();
@@ -63,28 +62,27 @@ export function PreferencesSettings() {
       void save({ ...rest, ...(automaticDailyBudgetUsd === undefined ? {} : { automaticDailyBudgetUsd: Number(automaticDailyBudgetUsd) }) }).then((saved) => { if (saved) setDraft({}); });
     }}>
       <div className="divide-y divide-border/60 rounded-md border border-border bg-surface-recessed/70 px-3">
-        <SettingsRow id="journal-intelligence" compact label="Intelligent summaries" help="Use the selected backend for closed-day summaries. Today's work stays provisional.">
+        <SettingsRow id="journal-intelligence" compact label="Intelligent summaries" help="Summarize completed days.">
           <Switch id="journal-intelligence" aria-describedby="journal-intelligence-help" checked={draft.intelligenceEnabled ?? data.values.intelligenceEnabled} disabled={saving} onCheckedChange={(intelligenceEnabled) => setDraft((next) => ({ ...next, intelligenceEnabled }))} />
         </SettingsRow>
-        <SettingsRow id="journal-model" label="OpenRouter model" help="Use a model with structured outputs. Leave empty for the default model.">
+        <SettingsRow id="journal-model" label="OpenRouter model" help="Default when empty.">
           <Input id="journal-model" aria-describedby="journal-model-help" value={draft.openRouterModel ?? data.values.openRouterModel} disabled={saving} onChange={(event) => setDraft((next) => ({ ...next, openRouterModel: event.target.value }))} />
         </SettingsRow>
-        <SettingsRow id="journal-subscription-model" label="Subscription model" help="Used only with the Model Gateway subscription backend. No paid-key fallback.">
+        <SettingsRow id="journal-subscription-model" label="Subscription model" help="For Model Gateway.">
           <Select value={draft.gatewayModel ?? data.values.gatewayModel} onValueChange={(value) => { if (GATEWAY_MODELS.includes(value as JournalPreferences["gatewayModel"])) setDraft((next) => ({ ...next, gatewayModel: value as JournalPreferences["gatewayModel"] })); }} disabled={saving}>
             <SelectTrigger id="journal-subscription-model" aria-describedby="journal-subscription-model-help"><SelectValue /></SelectTrigger>
             <SelectContent align="end">{GATEWAY_MODELS.map((model) => <SelectItem key={model} value={model}>{model}</SelectItem>)}</SelectContent>
           </Select>
         </SettingsRow>
-        <SettingsRow id="journal-budget" label="Automatic AI budget (USD/day)" help="Limits automatic OpenRouter work. Subscription calls cost $0 here; the daily call backstop still applies. Manual refresh and backfill are outside this budget.">
+        <SettingsRow id="journal-budget" label="Automatic AI budget (USD/day)" help="Daily OpenRouter limit.">
           <Input id="journal-budget" aria-describedby="journal-budget-help" type="number" min="0" max="100" step="any" required value={draft.automaticDailyBudgetUsd ?? data.values.automaticDailyBudgetUsd} disabled={saving} onChange={(event) => setDraft((next) => ({ ...next, automaticDailyBudgetUsd: event.target.value }))} />
         </SettingsRow>
-        <SettingsRow id="journal-timezone" label="Work day timezone" help="IANA timezone for new work days. Existing recorded dates stay unchanged.">
+        <SettingsRow id="journal-timezone" label="Work day timezone" help="Used for new work days.">
           <Input id="journal-timezone" aria-describedby="journal-timezone-help" required value={draft.workTimeZone ?? data.values.workTimeZone} disabled={saving} onChange={(event) => setDraft((next) => ({ ...next, workTimeZone: event.target.value }))} />
         </SettingsRow>
       </div>
       <div className="flex justify-end"><Button size="sm" variant="outline" type="submit" disabled={saving || Object.keys(draft).length === 0}>{saving ? "Saving…" : "Save changes"}</Button></div>
       {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
-      <AiSettingsSection disabled={saving || Object.keys(draft).length > 0} />
     </form>}
   </section>;
 }
@@ -96,13 +94,13 @@ export function IntegrationSettings() {
     <h2 className="text-sm font-medium text-foreground">Oh My BB</h2>
     {!data ? <PreferencesLoading error={error} retry={load} /> : <>
       <div className="divide-y divide-border/60 rounded-md border border-border bg-surface-recessed/70 px-3">
-        <SettingsRow id="journal-ai-backend" label="AI backend" help="Model Gateway uses your ChatGPT subscription accounts. Selecting it opts Journal into that plugin. It never falls back to paid API keys.">
+        <SettingsRow id="journal-ai-backend" label="AI backend" help="Choose your AI service.">
           <Select value={data.values.aiBackend} onValueChange={(value) => { if (AI_BACKENDS.includes(value as JournalPreferences["aiBackend"])) void save({ aiBackend: value as JournalPreferences["aiBackend"] }); }} disabled={saving}>
             <SelectTrigger id="journal-ai-backend" aria-describedby="journal-ai-backend-help"><SelectValue /></SelectTrigger>
             <SelectContent align="end"><SelectItem value="openrouter">OpenRouter API key</SelectItem><SelectItem value="subscription">Model Gateway subscription</SelectItem></SelectContent>
           </Select>
         </SettingsRow>
-        <SettingsRow id="journal-dispatch-calls" compact label="Show Dispatch calls" help="Read optional Dispatch calls on demand for Calendar and Traces. Journal stores no calls.">
+        <SettingsRow id="journal-dispatch-calls" compact label="Show Dispatch calls" help="Show calls in the calendar.">
           <Switch id="journal-dispatch-calls" aria-describedby="journal-dispatch-calls-help" checked={data.values.showDispatchCalls} disabled={saving} onCheckedChange={(showDispatchCalls) => { void save({ showDispatchCalls }); }} />
         </SettingsRow>
       </div>
@@ -116,7 +114,7 @@ export function MoreSettings() {
   return <section className="space-y-4">
     <h2 className="text-sm font-medium text-foreground">More</h2>
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-surface-recessed/70 p-3">
-      <div className="min-w-0"><p className="text-sm">Setup guide</p><p className="mt-0.5 text-xs text-muted-foreground">History, optional summaries, and Dispatch calls.</p></div>
+      <div className="min-w-0"><p className="text-sm">Setup guide</p><p className="mt-0.5 text-xs text-muted-foreground">Setup and usage.</p></div>
       <Button size="sm" variant="outline" onClick={() => navigate.toPluginPanel("journal", { subPath: "setup" })}>Open setup guide</Button>
     </div>
   </section>;
@@ -134,9 +132,9 @@ export function JournalSetup() {
       <p className="text-muted-foreground">Choose the work day timezone before indexing older work. The existing America/New_York default is retained for date compatibility. Changing it does not delete or rewrite recorded days.</p>
     </section>
     <section className="space-y-2 text-sm leading-relaxed"><h2 className="font-medium">Optional AI summaries</h2>
-      <p>Choose OpenRouter or Model Gateway under Oh My BB. OpenRouter needs an API key in Configuration. The key stays in BB's host-local secret storage. Model Gateway uses your ChatGPT subscription accounts and never falls back to a paid API key.</p>
+      <p>Choose OpenRouter or Model Gateway under Oh My BB. OpenRouter needs an API key in Configuration. The key stays in BB's host-local secret storage. Model Gateway uses your ChatGPT subscription accounts and never falls back to a paid API key. With intelligence enabled, Journal sends transcript excerpts to the selected backend.</p>
       <p className="text-muted-foreground">The automatic budget defaults to $0.50 per work day. Manual catch-up Refresh, enrichment, and explicit backfill are outside this budget and can cost extra. Use bb journal cost to inspect recorded usage.</p>
-      <p className="text-muted-foreground">Choose models, intelligent summaries, the automatic budget, and work day timezone under Preferences. Automatic thread briefings run only on the subscription backend. The Test button makes one explicit request; OpenRouter tests can incur a small charge.</p>
+      <p className="text-muted-foreground">Choose models, intelligent summaries, the automatic budget, and work day timezone under Preferences. Automatic thread briefings run only on the subscription backend. Use bb journal ai-status to check backend readiness without a model request.</p>
       <p className="text-muted-foreground">Use bb journal backfill --dry-run for an estimate before explicit historical indexing. Do not run backfill just to validate installation.</p>
       <Button size="sm" variant="outline" asChild><UrlLink href="/settings/plugins/journal">Open Configuration</UrlLink></Button>
     </section>
