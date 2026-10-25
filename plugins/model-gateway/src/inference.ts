@@ -241,9 +241,13 @@ export async function parseResponsesStream(body: ReadableStream<Uint8Array>, sig
 }
 
 /** At most 2 KiB of an error body; the upstream `error.message` only, never raw text. */
-async function errorDetail(response: Response): Promise<string> {
+async function errorDetail(response: Response, signal: AbortSignal): Promise<string> {
   const reader = response.body?.getReader();
   if (reader === undefined) return "";
+  // Cancelling ends a pending read even when the body ignores its own abort.
+  const cancel = () => void reader.cancel().catch(() => undefined);
+  if (signal.aborted) cancel();
+  else signal.addEventListener("abort", cancel, { once: true });
   const decoder = new TextDecoder();
   let text = "";
   try {
@@ -255,6 +259,7 @@ async function errorDetail(response: Response): Promise<string> {
   } catch {
     return "";
   } finally {
+    signal.removeEventListener("abort", cancel);
     await reader.cancel().catch(() => undefined);
   }
   try {
@@ -303,12 +308,15 @@ export function createInferenceHandlers(hub: AccountPoolHub, now: () => number) 
         return failure("upstream_error", `ChatGPT request failed (HTTP ${result.status}).`, retryAt);
       }
       const { response } = result;
+      const reading = AbortSignal.any([timeout, hub.stoppedSignal]);
       if (!response.ok) {
-        const detail = await errorDetail(response);
+        const detail = await errorDetail(response, reading);
+        if (timeout.aborted) return failure("timeout", "Background inference timed out.");
+        if (!hub.acceptingRequests) return failure("stopped", "Model Gateway stopped.", now() + STOPPED_RETRY_MS);
         return failure("upstream_error", `ChatGPT returned HTTP ${response.status}.${detail}`);
       }
       if (response.body === null) return failure("upstream_error", "ChatGPT returned an empty response.");
-      const parsed = await parseResponsesStream(response.body, AbortSignal.any([timeout, hub.stoppedSignal]));
+      const parsed = await parseResponsesStream(response.body, reading);
       if (timeout.aborted) return failure("timeout", "Background inference timed out.");
       if (!hub.acceptingRequests && parsed.kind === "error")
         return failure("stopped", "Model Gateway stopped.", now() + STOPPED_RETRY_MS);

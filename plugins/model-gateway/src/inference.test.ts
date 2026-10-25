@@ -44,8 +44,9 @@ const hang = (signal: AbortSignal | null) =>
     signal?.addEventListener("abort", () => reject(signal.reason), { once: true }),
   );
 
-async function gateway(options: { codex?: boolean; keys?: boolean } = {}) {
+async function gateway(options: { codex?: boolean; keys?: boolean; twoCodex?: boolean } = {}) {
   const sent: Sent[] = [];
+  let codexImports = 0;
   let reply: (signal: AbortSignal | null, url: string) => Response | Promise<Response> = () => completed('{"ok":true}');
   const dataDir = await mkdtemp(path.join(tmpdir(), "mgw-inference-"));
   const host = createFakePluginHost({
@@ -86,25 +87,30 @@ async function gateway(options: { codex?: boolean; keys?: boolean } = {}) {
       email: "max@example.com",
       accountUuid: "11111111-1111-4111-8111-111111111111",
     }),
-    importCodexCredentials: async () => ({
-      accessToken: "pro-token",
-      refreshToken: "pro-refresh",
-      idToken: null,
-      accountId: "chatgpt-account",
-      email: "pro@example.com",
-      expiresAt: T + 86_400_000,
-    }),
+    importCodexCredentials: async () => {
+      const suffix = codexImports++ === 0 ? "" : "-b";
+      return {
+        accessToken: `pro-token${suffix}`,
+        refreshToken: `pro-refresh${suffix}`,
+        idToken: null,
+        accountId: `chatgpt-account${suffix}`,
+        email: `pro${suffix}@example.com`,
+        expiresAt: T + 86_400_000,
+      };
+    },
   })(host.bb);
   const rpc = host.harness.behavior.callRpc;
   const cli = (...argv: string[]) => host.harness.behavior.runCli(argv);
-  const add = (provider: string, source: object) =>
-    rpc("account.add", { provider, source, label: null, priority: 100 });
+  const add = (provider: string, source: object, priority = 100) =>
+    rpc("account.add", { provider, source, label: null, priority }) as Promise<{ id: string }>;
   await add("claude", { kind: "import" });
   if (options.keys) {
     await add("claude", { kind: "api-key", apiKey: "anthropic-key" });
     await cli("key", "add", "responses-compatible-key", "--label", "openrouter", "--base-url", OPENROUTER, "--key", "sk-or");
   }
-  if (options.codex !== false) await add("codex", { kind: "import" });
+  const codexIds: string[] = [];
+  if (options.codex !== false) codexIds.push((await add("codex", { kind: "import" })).id);
+  if (options.twoCodex) codexIds.push((await add("codex", { kind: "import" }, 200)).id);
   const service = host.harness.behavior.runService("hub");
   let stopped = false;
   const stop = async () => {
@@ -122,11 +128,25 @@ async function gateway(options: { codex?: boolean; keys?: boolean } = {}) {
     const result = await cli("status", "--json");
     expect(statusSchema.parse(JSON.parse(result.stdout)).accepting).toBe(true);
   });
+  // An ordinary Codex thread request through the hub, for shared-state checks.
+  const ordinary = async (threadId: string) => {
+    const entries = await host.harness.behavior.resolveProviderEnv("codex", { threadId, projectId: "project-one", hostId: "host-one" });
+    const token = entries.find((entry) => entry.name === "CODEX_POOL_AUTH_TOKEN")?.value;
+    if (typeof token !== "string") throw new Error("No token.");
+    const response = await host.harness.behavior.fetchHttp("POST", "/v1/responses", {
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-6-sol", input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }], stream: true, store: false }),
+    });
+    await response.text();
+    return response.status;
+  };
   return {
     sent,
     cli,
     rpc,
     stop,
+    codexIds,
+    ordinary,
     setReply: (next: typeof reply) => {
       reply = next;
     },
@@ -268,6 +288,56 @@ describe("inference.complete", () => {
     await vi.waitFor(() => expect(gw.sent).toHaveLength(2));
     await gw.stop();
     expect(await pending).toMatchObject({ ok: false, code: "stopped" });
+  });
+
+  it("does not move or follow the shared active ChatGPT account", async () => {
+    const gw = await gateway({ twoCodex: true });
+    const [a] = gw.codexIds;
+    let limitA = false;
+    const served = () => gw.sent.at(-1)!.who;
+    // A answers 429 while limited; the last sent request is the one being answered.
+    gw.setReply(() =>
+      limitA && served() === "pro-token" ? Response.json({}, { status: 429, headers: { "retry-after": "60" } }) : completed("{}"),
+    );
+
+    // A is active for ordinary traffic. Background fails over from A to B.
+    expect(await gw.ordinary("thr_one")).toBe(200);
+    expect(served()).toBe("pro-token");
+    limitA = true;
+    expect(await gw.complete({})).toMatchObject({ ok: true });
+    expect(gw.sent.slice(-2).map(({ who }) => who)).toEqual(["pro-token", "pro-token-b"]);
+    limitA = false;
+    await gw.rpc("hold.clear", { accountId: a });
+    // Ordinary traffic still prefers A, not the background's B.
+    expect(await gw.ordinary("thr_two")).toBe(200);
+    expect(served()).toBe("pro-token");
+
+    // Ordinary traffic moves the active account to B; background still starts at priority A.
+    limitA = true;
+    expect(await gw.ordinary("thr_three")).toBe(200);
+    expect(served()).toBe("pro-token-b");
+    limitA = false;
+    await gw.rpc("hold.clear", { accountId: a });
+    expect(await gw.complete({})).toMatchObject({ ok: true });
+    expect(served()).toBe("pro-token");
+    expect(await gw.ordinary("thr_four")).toBe(200);
+    expect(served()).toBe("pro-token-b");
+  });
+
+  it("stops reading a stalled error body on timeout and on shutdown, freeing the slot", async () => {
+    const gw = await gateway();
+    const stalledError = () =>
+      new Response(new ReadableStream<Uint8Array>({ pull: () => new Promise(() => {}) }), { status: 400 });
+    gw.setReply(stalledError);
+    const started = Date.now();
+    expect(await gw.complete({ timeoutMs: 1_000 })).toMatchObject({ ok: false, code: "timeout" });
+    expect(Date.now() - started).toBeLessThan(1_500);
+    const pending = gw.complete({});
+    await vi.waitFor(() => expect(gw.sent).toHaveLength(2));
+    expect(await gw.status()).toMatchObject({ inFlight: 1 });
+    await gw.stop();
+    expect(await pending).toMatchObject({ ok: false, code: "stopped" });
+    expect(await gw.status()).toMatchObject({ inFlight: 0 });
   });
 
   it("times out, limits concurrency and stops in-flight calls on shutdown", async () => {

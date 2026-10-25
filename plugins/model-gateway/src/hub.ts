@@ -388,6 +388,8 @@ interface RoutingAttempt {
   binding: AccountBinding | null;
   active: ActiveAccount | null;
   pinnedAccountId: string | null;
+  /** Background calls go in priority order and never read or move the shared active account. */
+  background: boolean;
 }
 interface UpstreamResult {
   response: Response;
@@ -775,7 +777,7 @@ export class AccountPoolHub {
         null,
         new Map(),
         run,
-        0,
+        true,
       );
       if (result.kind === "response") return { kind: "response", response: result.response };
       return result.failure === null
@@ -1223,9 +1225,10 @@ export class AccountPoolHub {
     identity: ThreadIdentity | null,
     rejected: Map<string, number | null>,
     signal: AbortSignal,
-    /** Longest hold to wait out inline; background calls pass 0 and never wait. */
-    maxInlineHoldMs = MAX_INLINE_HOLD_MS,
+    /** Background: no inline hold waits and no shared active-account state. */
+    background = false,
   ): Promise<EntryResult> {
+    const maxInlineHoldMs = background ? 0 : MAX_INLINE_HOLD_MS;
     const hostId = identity?.hostId ?? null;
     const adapter = candidate.upstream;
     const attempted = new Set<string>();
@@ -1234,6 +1237,7 @@ export class AccountPoolHub {
       binding: null,
       active: null,
       pinnedAccountId: null,
+      background,
     };
     let previousAccountId: string | null = null;
     let failure: FailureSummary | null = null;
@@ -1764,7 +1768,7 @@ export class AccountPoolHub {
         );
       }
     }
-    let active = this.activeAccounts.get(provider);
+    let active = routing.background ? undefined : this.activeAccounts.get(provider);
     const activeAccount = eligible.find(
       ({ account }) => account.id === active?.accountId,
     );
@@ -1813,12 +1817,13 @@ export class AccountPoolHub {
         this.options.affinity.removeBinding(oldest.value);
       }
     }
-    if (active === undefined) {
+    if (active === undefined && !routing.background) {
       active = { accountId: selected.account.id };
       this.activeAccounts.set(provider, active);
     }
+    const shared = active;
     routing.binding ??= binding ?? null;
-    routing.active ??= active;
+    routing.active ??= shared ?? null;
     const familyDetour = (accountId: string | null) =>
       available.some(({ account }) => account.id === accountId) &&
       !eligible.some(({ account }) => account.id === accountId);
@@ -1829,10 +1834,11 @@ export class AccountPoolHub {
         bound.account.id === selected.account.id ||
         (binding === routing.binding && attempted.has(bound.account.id)));
     const advance =
-      !familyDetour(active.accountId) &&
+      shared !== undefined &&
+      !familyDetour(shared.accountId) &&
       (activeAccount === undefined ||
-        active.accountId === selected.account.id ||
-        (active === routing.active && attempted.has(active.accountId)));
+        shared.accountId === selected.account.id ||
+        (shared === routing.active && attempted.has(shared.accountId)));
     return {
       ...selected,
       keepAffinity: selected.account.id === routing.pinnedAccountId,
@@ -1846,7 +1852,7 @@ export class AccountPoolHub {
           this.affinityBindings.delete(affinityKey);
           this.affinityBindings.set(affinityKey, accepted);
         }
-        if (advance && this.activeAccounts.get(provider) === active) {
+        if (advance && this.activeAccounts.get(provider) === shared) {
           this.options.affinity.putActiveAccount(provider, selected.account.id);
           this.activeAccounts.set(provider, { accountId: selected.account.id });
         }
