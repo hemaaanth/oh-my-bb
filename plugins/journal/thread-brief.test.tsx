@@ -1,0 +1,97 @@
+// @vitest-environment jsdom
+import { act, fireEvent, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { rpcContract, type ThreadBrief } from "./server";
+
+const app = await loadPluginApp(() => import("./app.js"));
+const action = app.threadHeaderActions.find(({ id }) => id === "thread-brief")!;
+
+const brief = {
+  goal: "Ship subscription briefings", done: ["Adapter written"], remaining: ["Frontend tests"],
+  current: "Waiting for review", decisions: ["Default stays OpenRouter"], openDecisions: [],
+};
+const saved = (overrides: Partial<ThreadBrief> = {}): ThreadBrief => ({
+  threadId: "thr_a", rootThreadId: "thr_a", visible: true, title: "Journal work", brief, generatedAt: Date.now() - 5 * 60_000,
+  model: "subscription:gpt-6-luna", stale: false, lastActivityAt: null, running: false, error: null, retryAt: null, pending: false, automatic: true,
+  coverage: { fromSeq: 1, toSeq: 9, historyClipped: false, excerptClipped: false, startRead: true, passes: 1, workDays: 1, workDaysTotal: 1, children: 0, childrenTotal: 0 },
+  ...overrides,
+});
+const open = async () => { await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Catch up on this thread" })); }); };
+
+describe("thread header briefing", () => {
+  it("reads only the saved briefing for this thread and renders six sections", async () => {
+    const rendered = renderSlot(action, { threadId: "thr_a", projectId: "proj", isCompactViewport: false },
+      { rpc: { journal_thread_brief: (input) => saved(rpcContract.journal_thread_brief.input.parse(input)) } });
+    // Mounting the header button makes no request at all.
+    expect(rendered.inspection.rpcCalls).toEqual([]);
+    await open();
+    expect(await screen.findByText("Ship subscription briefings")).toBeTruthy();
+    for (const title of ["Original goal", "Done so far", "Remaining work", "Where it stopped", "Decisions made", "Open decisions"])
+      expect(screen.getByRole("region", { name: title })).toBeTruthy();
+    expect(screen.getByText("None open.")).toBeTruthy();
+    expect(screen.getByText(/Covers the latest activity/)).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Reload saved briefing" })); });
+    expect(rendered.inspection.rpcCalls.map((call) => call.method)).toEqual(["journal_thread_brief", "journal_thread_brief"]);
+    expect(rendered.inspection.rpcCalls.every((call) => JSON.stringify(call.input) === JSON.stringify({ threadId: "thr_a" }))).toBe(true);
+    rendered.lifecycle.unmount();
+  });
+
+  it("keeps pending reads visible and surfaces a failed read", async () => {
+    const pending = Promise.withResolvers<ThreadBrief>();
+    const rendered = renderSlot(action, { threadId: "thr_a", projectId: "proj", isCompactViewport: false },
+      { rpc: { journal_thread_brief: () => pending.promise } });
+    await open();
+    expect(screen.getByTestId("brief-loading")).toBeTruthy();
+    await act(async () => { pending.resolve(saved({ brief: null, generatedAt: null, coverage: null, automatic: false })); });
+    rendered.lifecycle.unmount();
+
+    const failing = renderSlot(action, { threadId: "thr_a", projectId: "proj", isCompactViewport: false },
+      { rpc: { journal_thread_brief: () => { throw new Error("database busy"); } } });
+    await open();
+    expect((await screen.findByRole("alert")).textContent).toContain("database busy");
+    failing.lifecycle.unmount();
+
+  });
+
+  it("drops a late answer for the previous thread and re-reads stored rows on turn signals", async () => {
+    const first = Promise.withResolvers<ThreadBrief>();
+    const rendered = renderSlot(action, { threadId: "thr_a", projectId: "proj", isCompactViewport: false }, { rpc: {
+      journal_thread_brief: (input) => rpcContract.journal_thread_brief.input.parse(input).threadId === "thr_a" ? first.promise
+        : saved({ threadId: "thr_b", rootThreadId: "thr_b", title: "Thread B", running: true }),
+    } });
+    await open();
+    await act(async () => { rendered.lifecycle.rerender(<action.component threadId="thr_b" projectId="proj" isCompactViewport={false} />); });
+    expect(await screen.findByText("Thread B")).toBeTruthy();
+    await act(async () => { first.resolve(saved({ title: "Thread A" })); });
+    expect(screen.queryByText("Thread A")).toBeNull();
+    // A turn signal re-reads stored rows only.
+    const before = rendered.inspection.rpcCalls.length;
+    await rendered.behavior.emitRealtime("journal-calendar", { at: Date.now() });
+    expect(rendered.inspection.rpcCalls.slice(before).map((call) => call.method)).toEqual(["journal_thread_brief"]);
+    rendered.lifecycle.unmount();
+  });
+
+  it("drops a slow status answer that a newer settings read already replaced", async () => {
+    const section = app.settingsSections.find(({ id }) => id === "preferences")!;
+    const slow = Promise.withResolvers<unknown>();
+    let reads = 0;
+    const base = { enabled: true, workTimeZone: "America/New_York", enriched: 0, total: 0, automaticBriefs: false, reason: null,
+      usage: { calls: 0, promptTokens: 0, completionTokens: 0, costUsd: 0, unpricedCalls: 0, unmeasuredCalls: 0 } };
+    const rendered = renderSlot(section, {}, { rpc: {
+      journal_preferences: () => ({ migrationPending: false, values: { aiBackend: "openrouter", gatewayModel: "gpt-6-luna", openRouterModel: "google/gemini-3.1-flash-lite-preview",
+        intelligenceEnabled: true, automaticDailyBudgetUsd: 0.50, workTimeZone: "America/New_York", showDispatchCalls: false } }),
+      journal_intelligence_status: () => ++reads === 1 ? slow.promise as never
+        : { ...base, configured: true, backend: "openrouter", model: "google/gemini-3.1-flash-lite-preview" },
+      journal_ai_test: () => ({ ok: true, backend: "openrouter", model: "google/gemini-3.1-flash-lite-preview", message: "ok" }),
+    } as never });
+    await screen.findByRole("button", { name: "Test" });
+    await rendered.behavior.emitRealtime("journal-preferences-changed", {});
+    await act(async () => { slow.resolve({ ...base, enabled: false, configured: false, backend: "subscription", model: "subscription:gpt-6-luna", reason: "gateway slow" }); });
+    expect(screen.queryByText(/gateway slow/)).toBeNull();
+    expect((screen.getByRole("button", { name: "Test" }) as HTMLButtonElement).disabled).toBe(false);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Test" })); });
+    expect(rendered.inspection.rpcCalls.filter((call) => call.method === "journal_ai_test")).toHaveLength(1);
+    rendered.lifecycle.unmount();
+  });
+});
