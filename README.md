@@ -45,6 +45,8 @@ as `fx-acp/v0.1.0`.
   events and slash commands, on configured endpoints and turns approved fields into a
   thread message, a new thread, an Automations run, or a call to a plugin that accepts
   deliveries.
+- [`plugins/workspace-scripts`](plugins/workspace-scripts) runs `bb.json` commands
+  and tracks workspace services through BB's native thread-actions menu.
 - [`agents/fx-acp`](agents/fx-acp) is an optional standalone ACP adapter for FX.
 - [`agents/nanocodex-acp`](agents/nanocodex-acp) is an optional standalone ACP
   adapter for nanocodex.
@@ -70,6 +72,12 @@ Webhooks runs without another BB plugin. Its automation action works only when
 the Automations plugin is installed separately, and it runs the saved prompt
 without the webhook payload. Senders need a public HTTPS route to one deliver
 path; see [`plugins/webhooks/docs/ingress.md`](plugins/webhooks/docs/ingress.md).
+
+Scripts runs without another BB plugin. Its optional Agents startup preparation
+uses explicit saved approvals; ordinary commands and manual preparation remain
+independent. See [`plugins/workspace-scripts`](plugins/workspace-scripts) for the
+schema and [migration design lessons](docs/migrations/scripts.md) for accepted
+ownership rules and the deliberately deferred setup-guide reconciliation.
 
 ## Validate the repository
 

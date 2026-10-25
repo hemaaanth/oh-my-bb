@@ -6,6 +6,7 @@ plugins/model-gateway
 plugins/journal
 plugins/pages
 plugins/webhooks
+plugins/workspace-scripts
 agents/fx-acp
 agents/nanocodex-acp
 agents/prime-agent-acp

@@ -1,0 +1,14 @@
+{
+  "scripts": {
+    "prepare-tools": {
+      "command": "python3 \"${BB_SETUP_DIR:-.}/setup.py\""
+    }
+  },
+  "agentSetup": {
+    "script": "prepare-tools",
+    "env": {
+      "PATH": "${BB_SETUP_DIR}/bin:${PATH}",
+      "BB_SECURITY_TEMPLATES": "${BB_SETUP_DIR}/templates"
+    }
+  }
+}

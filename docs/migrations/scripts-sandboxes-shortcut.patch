@@ -1,0 +1,77 @@
+diff --git a/plugins/sandboxes/PLUGIN_OVERVIEW.md b/plugins/sandboxes/PLUGIN_OVERVIEW.md
+index 64f4eca..74d75c8 100644
+--- a/plugins/sandboxes/PLUGIN_OVERVIEW.md
++++ b/plugins/sandboxes/PLUGIN_OVERVIEW.md
+@@ -30,2 +30,2 @@ and Agents can add credential profiles, approved skills and agent selections.
+-They are optional; missing integrations leave those choices empty. Scripts adds
+-its own item to BB's shared machine menu and does not depend on Sandboxes.
++They are optional; missing integrations leave those choices empty. Scripts uses
++BB's native thread-actions menu and does not depend on Sandboxes.
+diff --git a/plugins/sandboxes/README.md b/plugins/sandboxes/README.md
+index 6a97153..4dd9f1e 100644
+--- a/plugins/sandboxes/README.md
++++ b/plugins/sandboxes/README.md
+@@ -342,4 +342,3 @@ not render inline.
+-The machine menu includes a **Scripts** action when Workspace Scripts is enabled.
+-It reads that plugin's shared thread-action registration and opens its Scripts
+-panel. No separate header icon or startup dependency is required. Local machines
+-keep this menu available even when Model Gateway has no observed route.
++Workspace commands live in BB's native thread-actions menu under **Scripts**.
++The Machine menu retains Sandboxes controls and optional Model Gateway routes.
++Local machines keep this menu available even when Model Gateway has no observed route.
+diff --git a/plugins/sandboxes/app.tsx b/plugins/sandboxes/app.tsx
+index 9ce5f2c..bfc3c46 100644
+--- a/plugins/sandboxes/app.tsx
++++ b/plugins/sandboxes/app.tsx
+@@ -14,4 +13,0 @@ import {
+-  experimental_useSidebarThreads,
+-  experimental_Icon as AppIcon,
+-  experimental_useThreadActions,
+-  type PluginThreadActionTarget,
+@@ -2126,18 +2121,0 @@ const HEADER_BUTTON_CLASS =
+-function MachineActionItems({ thread, onRun }: { thread: PluginThreadActionTarget; onRun(): void }) {
+-  const actions = experimental_useThreadActions(thread, { keys: ["workspace-scripts/scripts"] });
+-  if (actions.length === 0) return null;
+-  return <div className="border-t border-border pt-2">
+-    {actions.map(({ key, action }) => <Button key={key} variant="ghost" size="sm" className="w-full justify-start gap-2" disabled={action.disabled}
+-      onClick={() => { onRun(); void action.run(); }}>
+-      <AppIcon name={action.icon} className="size-3.5" />
+-      {action.label}
+-    </Button>)}
+-  </div>;
+-}
+-
+-function MachineThreadActions({ threadId, onRun }: { threadId: string; onRun(): void }) {
+-  const { threads } = experimental_useSidebarThreads();
+-  const thread = threads.find((entry) => entry.id === threadId);
+-  if (!thread) return null;
+-  return <MachineActionItems thread={{ ...thread, environment: thread.environment?.id ? { id: thread.environment.id, path: thread.environment.path } : null }} onRun={onRun} />;
+-}
+@@ -2213 +2190,0 @@ function SandboxResourceIndicator({
+-        <MachineThreadActions threadId={threadId} onRun={() => setOpen(false)} />
+@@ -2339 +2315,0 @@ function SandboxResourceIndicator({
+-        <MachineThreadActions threadId={threadId} onRun={() => setOpen(false)} />
+diff --git a/plugins/sandboxes/test/app.test.tsx b/plugins/sandboxes/test/app.test.tsx
+index 5d724b7..44133dc 100644
+--- a/plugins/sandboxes/test/app.test.tsx
++++ b/plugins/sandboxes/test/app.test.tsx
+@@ -3 +3 @@ import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+-import { afterEach, describe, expect, it, vi } from "vitest";
++import { afterEach, describe, expect, it } from "vitest";
+@@ -65,16 +64,0 @@ describe("sandbox thread header", () => {
+-  it("runs the optional Scripts action from the machine menu and closes it", async () => {
+-    const run = vi.fn(async () => {});
+-    const slot = renderSlot(
+-      app.threadHeaderActions.find((entry) => entry.id === "sandbox-resources")!,
+-      { threadId: "thr_1", projectId: "p_1", isCompactViewport: false },
+-      {
+-        rpc: { threadResources: () => ({ managed: false }), threadModelRoute: () => null } as never,
+-        sidebarThreads: { threads: [{ id: "thr_1", projectId: "p_1", environment: null }] as never },
+-        threadActions: () => [{ key: "workspace-scripts/scripts", pluginId: "workspace-scripts", group: "machine", action: { label: "Scripts", icon: "Terminal", run } }],
+-      },
+-    );
+-    fireEvent.click(await slot.findByRole("button", { name: "Local machine" }));
+-    fireEvent.click(await slot.findByRole("button", { name: "Scripts" }));
+-    expect(run).toHaveBeenCalledOnce();
+-    await waitFor(() => expect(slot.queryByRole("button", { name: "Scripts" })).toBeNull());
+-  });

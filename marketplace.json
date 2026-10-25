@@ -156,6 +156,21 @@
           "tagPrefix": "webhooks/"
         }
       }
+    },
+    {
+      "id": "workspace-scripts",
+      "displayName": "Scripts",
+      "description": "Run bb.json commands and track services from thread actions.",
+      "icon": { "url": "plugins/workspace-scripts/icons/scripts.svg" },
+      "tags": ["scripts", "terminals", "development"],
+      "author": { "name": "Hemanth Soni", "github": "hemaaanth", "url": "https://github.com/hemaaanth" },
+      "source": {
+        "git": {
+          "url": "https://github.com/hemaaanth/oh-my-bb.git",
+          "subdir": "plugins/workspace-scripts",
+          "ref": "main"
+        }
+      }
     }
   ]
 }

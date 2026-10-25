@@ -1,0 +1,32 @@
+/* The owned refresh glyph scopes both native desktop and compact menu rows. */
+body[data-workspace-scripts-ui] [role="menu"]:has(
+    > [role="menuitem"] > [data-icon="workspace-scripts/refresh"]
+  ) {
+  inline-size: min(
+    24rem,
+    calc(100vw - 1rem),
+    var(--radix-dropdown-menu-content-available-width, 24rem)
+  );
+}
+
+body[data-workspace-scripts-ui]
+  :is([role="menu"], [role="dialog"] > div):has(
+    > [role="menuitem"] > [data-icon="workspace-scripts/refresh"]
+  )
+  > [role="menuitem"]
+  > span:not([data-icon-root]) {
+  min-inline-size: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+body[data-workspace-scripts-ui]
+  [role="menuitem"]:has(> [data-icon="workspace-scripts/refresh"])
+  + :is([role="separator"], hr)
+  + div:last-child {
+  max-inline-size: none;
+  padding: 0.3125rem 0.5rem;
+  line-height: 1.5;
+}
