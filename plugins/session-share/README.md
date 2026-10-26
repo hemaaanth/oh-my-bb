@@ -30,11 +30,11 @@ Use BB's native Session Share Configuration form. Existing setting IDs are uncha
 
 Install cloudflared yourself on the BB server machine. Session Share does not download it, install it, or change Cloudflare ingress. In Custom mode, route the configured hostname only to the isolated viewer port. Never route it to BB's server port. A configured named tunnel stays running across share revocations, matching the existing lifecycle. A fresh install with no settings or stored shares starts no tunnel.
 
-**More** contains collapsed **Shared sessions** management and the **Setup guide**. Section headings have no subtitles. The thread-header action opens a desktop dialog or compact drawer. Revoke confirmation identifies the session and focuses Cancel first.
+**More** contains collapsed **Shared sessions** management and the **Setup guide**. Section headings have no subtitles. Session Share opens from the native thread **⋯ menu**, with no standalone header button. Revoke confirmation identifies the session and focuses Cancel first.
 
 ## Sharing and lifecycle
 
-Choose View in the thread-header action to share the conversation. Choose a duration and Quick or Custom mode. The panel defaults to three hours; the CLI retains its one-hour default. Send the URL and access code privately. Anyone with both can unlock the viewer.
+Open **Session Share** in a thread's **⋯ menu**, then choose View to share the conversation. Choose a duration and Quick or Custom mode. The panel defaults to three hours; the CLI retains its one-hour default. Send the URL and access code privately. Anyone with both can unlock the viewer.
 
 Quick URLs can change after restart or tunnel recovery. Custom URLs and share paths remain stable. Stored shares restore automatically until expiry or revocation. Plugin disposal closes only its viewer and tunnel subprocesses. It does not stop unrelated tunnels. Tunnel tokens are passed in the child environment, not command arguments, and are redacted from logs and errors.
 
@@ -48,7 +48,7 @@ View mode has no Pinpoint dependency or startup probe. Selecting Review explicit
 
 Review requires Pinpoint's versioned guest-preview isolation contract. Resource access is GET-only and bound to the selected app origin, share and guest-session expiry. The resource capability is not feedback authority. Every prepared response must carry the sandbox CSP and other safety headers. Incompatible legacy output fails closed. BB and guest cookies, Authorization headers and plugin tokens are never sent to reviewed apps. Cross-origin redirects, embedded URL credentials, known BB origins and the BB server port are rejected. Responses are bounded to 32 MiB and 15 seconds.
 
-Guest Review supports captures, replies and deletion of the participant's own still-held captures. Captures and replies stay held for owner review. They cannot dispatch agent messages, run integrations or enter agent tool output until the owner explicitly selects **Send to agent** in Pinpoint. Guests cannot approve, dismiss, redispatch, reopen, send or submit learning. Owner-adopted captures cannot be deleted by guests.
+Guest Review supports captures, replies and deletion of the participant's own still-held captures. Captures and replies stay held for owner review. They cannot dispatch agent messages, run integrations or enter agent tool output until the owner explicitly releases them in Pinpoint. Guests cannot approve, dismiss, redispatch, reopen, send or submit learning. Owner-adopted captures cannot be deleted by guests.
 
 Review and participant identifiers are separate server-owned pseudonyms, not access codes or URL tokens. Guest rows exclude private routing, actor and learning fields. Screenshot receipts stay server-side, bind one capture, participant and page, expire within 60 seconds and allow each screenshot kind once. Expired receipts and resource capabilities are invalidated when observed; a clock change or later heartbeat cannot revive them.
 

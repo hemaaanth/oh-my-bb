@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 import {
   definePluginApp,
-  experimental_Icon as BbIcon,
   experimental_copyToClipboard,
   experimental_usePluginId,
   UrlLink,
+  useBbContext,
   useBbNavigate,
   useRealtime,
   useRealtimeConnectionState,
@@ -29,9 +29,15 @@ import type {
 // labels and host settings current, and a faster fallback covers a share that
 // is still preparing in case its ready signal raced the start response.
 const SHARE_SIGNAL_CHANNEL = "session-share";
+const OPEN_SHARE = "session-share:open";
 export const PANEL_REFRESH_MS = 30_000;
 export const SETTINGS_REFRESH_MS = 60_000;
 export const PREPARING_REFRESH_MS = 15_000;
+
+interface OpenShareRequest {
+  threadId: string;
+  returnFocusTo: HTMLElement | null;
+}
 
 /**
  * Calls `onChange` when the server signals a share change (optionally only for
@@ -663,67 +669,45 @@ function SessionShareSettings() {
 }
 
 
-function SessionShareHeaderAction({ threadId, isCompactViewport }: { threadId: string; isCompactViewport: boolean }) {
-  const rpc = useRpc<typeof rpcContract>();
+function SessionShareOverlay() {
   const pluginId = experimental_usePluginId();
+  const context = useBbContext();
+  const opener = useRef<HTMLElement | null>(null);
+  const [threadId, setThreadId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
-  const [share, setShare] = useState<ShareStatus | null>(null);
+  const [viewport] = useState(() => window.matchMedia("(max-width: 767px), (pointer: coarse)"));
+  const [isCompactViewport, setIsCompactViewport] = useState(viewport.matches);
 
-  // The indicator only needs this thread's share: read it on mount and when
-  // the dialog closes, then follow realtime signals. While the dialog is open
-  // its panel owns refreshing.
-  const refresh = useCallback(
-    () =>
-      void rpc
-        .call("share", { threadId })
-        .then((result) => setShare(result.share))
-        .catch(() => undefined),
-    [rpc, threadId],
-  );
   useEffect(() => {
-    if (!open) refresh();
-  }, [open, refresh]);
-  useShareSignals(() => {
-    if (!open) refresh();
-  }, threadId);
-  const preparing = share !== null && !share.ready;
+    const update = () => setIsCompactViewport(viewport.matches);
+    viewport.addEventListener("change", update);
+    return () => viewport.removeEventListener("change", update);
+  }, [viewport]);
   useEffect(() => {
-    if (open || !preparing) return;
-    const timer = window.setInterval(refresh, PREPARING_REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [open, preparing, refresh]);
+    const handler = (event: Event) => {
+      const request = (event as CustomEvent<OpenShareRequest>).detail;
+      if (typeof request?.threadId !== "string" || !request.threadId) return;
+      opener.current = request.returnFocusTo instanceof HTMLElement ? request.returnFocusTo : null;
+      setThreadId(request.threadId);
+      setOpen(true);
+    };
+    window.addEventListener(OPEN_SHARE, handler);
+    return () => window.removeEventListener(OPEN_SHARE, handler);
+  }, []);
+  useEffect(() => { setOpen(false); }, [context.threadId]);
 
-  const liveMode = share?.ready ? share.mode : null;
+  if (!threadId) return null;
   return (
     <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
-      <DialogPrimitive.Trigger asChild>
-      <Button
-        aria-label={
-          liveMode === "review"
-            ? "Session Share: live review link"
-            : liveMode === "view"
-              ? "Session Share: live view-only link"
-              : "Session Share"
-        }
-        className="relative h-7 w-7 text-muted-foreground"
-        size="icon"
-        variant="ghost"
-      >
-        <BbIcon name="session-share/share" />
-        {liveMode && (
-          <span
-            aria-hidden="true"
-            className={cn(
-              "absolute right-0.5 top-0.5 size-1.5 rounded-full ring-2 ring-background",
-              liveMode === "review" ? "bg-warning" : "bg-success",
-            )}
-          />
-        )}
-      </Button>
-      </DialogPrimitive.Trigger>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay data-bb-plugin={pluginId} data-bb-plugin-root="" data-bb-portaled-overlay="" className="fixed inset-0 z-50 bg-black/40" />
         <DialogPrimitive.Content data-bb-plugin={pluginId} data-bb-plugin-root="" data-bb-portaled-overlay=""
+          onCloseAutoFocus={(event) => {
+            if (opener.current?.isConnected) {
+              event.preventDefault();
+              opener.current.focus();
+            }
+          }}
           className={cn("fixed z-[51] flex max-h-[90dvh] flex-col border border-border bg-background text-foreground shadow-lg",
             isCompactViewport ? "bottom-0 left-0 w-full rounded-t-md" : "left-1/2 top-1/2 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-md")}>
           <div className="border-b border-border px-4 py-3">
@@ -748,7 +732,7 @@ function SetupGuide() {
     <div className="mt-3 space-y-3 border-t border-border pt-3 text-sm text-muted-foreground">
       <p>Install cloudflared on the BB server machine. Session Share never downloads or installs it. Set its path in Configuration if it is not on PATH.</p>
       <p>Quick mode creates a temporary Cloudflare hostname. Custom mode uses your existing named tunnel. Configure its token and a subdomain such as share.example.com. Route only the isolated viewer port, not BB.</p>
-      <p>Open Session Share in a thread header. Choose View, a tunnel and a duration. Send the link and access code privately. Revoke a stored share to end access. Stored links restore after restart; Quick hostnames may change.</p>
+      <p>Open Session Share from a thread's ⋯ menu. Choose View, a tunnel and a duration. Send the link and access code privately. Revoke a stored share to end access. Stored links restore after restart; Quick hostnames may change.</p>
       <p>Review is optional and runs only when selected or when restoring an existing Review share. It requires a compatible Pinpoint installation and a site already open in that thread. <UrlLink href="/settings/plugins/pinpoint" className="underline">Pinpoint settings</UrlLink></p>
       <p>Access codes remain in the local plugin database so owners can copy them again. Guest cookies expire after four hours or at the share expiry, whichever comes first. Until revoked links have no automatic share expiry.</p>
     </div>
@@ -767,9 +751,24 @@ function MoreSettings() {
 
 export default definePluginApp((app) => {
   app.slots.settingsSection({ id: "more", component: MoreSettings });
-  app.slots.experimental_threadHeaderAction({
+  app.slots.experimental_appOverlay({ id: "session-share", component: SessionShareOverlay });
+  app.slots.experimental_threadAction({
     id: "session-share",
     title: "Session Share",
-    component: SessionShareHeaderAction,
+    icon: "session-share/share",
+    group: "sharing",
+    item: ({ thread }) => ({
+      label: "Session Share",
+      icon: "session-share/share",
+      run: () => {
+        const active = document.activeElement;
+        const triggerId = active?.closest('[role="menu"]')?.getAttribute("aria-labelledby");
+        const returnFocusTo = (triggerId ? document.getElementById(triggerId) : null)
+          ?? (active instanceof HTMLElement ? active : null);
+        const detail: OpenShareRequest = { threadId: thread.id, returnFocusTo };
+        // Remember the trigger before the menu unmounts; open after it closes.
+        setTimeout(() => window.dispatchEvent(new CustomEvent(OPEN_SHARE, { detail })), 0);
+      },
+    }),
   });
 });

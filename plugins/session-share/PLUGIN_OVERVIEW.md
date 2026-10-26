@@ -2,11 +2,11 @@ Give another person a temporary, password-protected view of a BB session without
 
 ## Share a conversation
 
-View mode renders the conversation in a separate guest viewer. Choose an expiry or revoke access yourself. Send the URL and access code privately. Anyone with both can unlock the viewer. Guest sessions expire within four hours or at share expiry, whichever comes first.
+Open Session Share from a thread's **⋯ menu**. View mode renders the conversation in a separate guest viewer. Choose an expiry or revoke access yourself. Send the URL and access code privately. Anyone with both can unlock the viewer. Guest sessions expire within four hours or at share expiry, whichever comes first.
 
 ## Review an app
 
-Optional Review mode requires a separately installed Pinpoint with guest-preview isolation contract v1. Guests can capture feedback, reply and delete their own still-held captures. Captures and replies stay held until the owner selects **Send to agent** in Pinpoint. Guests cannot approve, dispatch or submit learning.
+Optional Review mode requires a separately installed Pinpoint with guest-preview isolation contract v1. Guests can capture feedback, reply and delete their own still-held captures. Captures and replies stay held until the owner explicitly releases them in Pinpoint. Guests cannot approve, dispatch or submit learning.
 
 Reviewed apps run in opaque sandboxed previews. BB and guest cookies, Authorization headers and plugin tokens are not forwarded. Incompatible older Pinpoint output fails closed. View works without Pinpoint. Session Share never installs or enables another plugin.
 

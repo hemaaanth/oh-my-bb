@@ -1,12 +1,26 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { createElement } from "react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import type { CapturedPluginApp } from "@get-bb/plugin-sdk/testing/app";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShareStatus } from "./contract";
+import { rpcContract } from "./contract";
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+});
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 function makeShare(overrides: Partial<ShareStatus> = {}): ShareStatus {
@@ -34,11 +48,14 @@ async function advance(ms: number): Promise<void> {
   });
 }
 
-const headerProps = {
-  threadId: "thread-1",
-  projectId: "project-1",
-  isCompactViewport: false,
-};
+async function openSharing(app: CapturedPluginApp, threadId = "thread-1") {
+  const action = app.threadActions.find(({ id }) => id === "session-share")!;
+  const item = action.item({ thread: { id: threadId } } as Parameters<typeof action.item>[0])!;
+  await act(async () => {
+    await item.run({ requestRename: () => {} });
+    await vi.advanceTimersByTimeAsync(0);
+  });
+}
 
 describe("Session Share frontend registration", () => {
 
@@ -51,13 +68,11 @@ describe("Session Share frontend registration", () => {
       cloudflaredAvailable: boolean;
       pinpointTargetUrl: null;
     }>();
-    const slot = renderSlot(
-      app.threadHeaderActions[0]!,
-      { threadId: "thread-1", projectId: "project-1", isCompactViewport: false },
-      { rpc: { status: () => promise } },
-    );
+    const slot = renderSlot(app.appOverlays[0]!, {}, {
+      rpc: { status: () => promise },
+    });
 
-    fireEvent.click(slot.getByRole("button", { name: "Session Share" }));
+    await openSharing(app);
     expect(
       slot.queryByRole("button", { name: "Quick Temporary URL" }),
     ).toBeNull();
@@ -73,14 +88,13 @@ describe("Session Share frontend registration", () => {
       pinpointTargetUrl: null,
     });
 
-    const custom = await slot.findByRole("button", {
-      name: "Custom share.example.test",
-    });
-    expect(custom.getAttribute("aria-pressed")).toBe("true");
+    await vi.waitFor(() =>
+      expect(slot.getByRole("button", { name: "Custom share.example.test" }).getAttribute("aria-pressed")).toBe("true"),
+    );
     expect(slot.queryByRole("status")).toBeNull();
   });
 
-  it("opens viewers through BB's configured URL handler", async () => {
+  it("opens the selected thread's viewer through BB's configured URL handler", async () => {
     const app = await loadPluginApp(() => import("./app"));
     const publicUrl = "https://share.example.test/session";
     const status = {
@@ -103,14 +117,20 @@ describe("Session Share frontend registration", () => {
       cloudflaredAvailable: true,
       pinpointTargetUrl: null,
     };
-    const slot = renderSlot(
-      app.threadHeaderActions[0]!,
-      { threadId: "thread-1", projectId: "project-1", isCompactViewport: false },
-      { rpc: { status: () => status }, openUrl: (url) => url === publicUrl },
-    );
+    const slot = renderSlot(app.appOverlays[0]!, {}, {
+      context: { threadId: "another-thread", projectId: "project-1" },
+      rpc: {
+        status: (input) => rpcContract.status.input.parse(input).threadId === "thread-1"
+          ? status : { ...status, share: null },
+      },
+      openUrl: (url) => url === publicUrl,
+    });
 
-    fireEvent.click(slot.getByRole("button", { name: /Session Share/u }));
-    fireEvent.click(await slot.findByRole("button", { name: "Open viewer" }));
+    await openSharing(app);
+    await vi.waitFor(() =>
+      expect(slot.getByRole("button", { name: "Open viewer" }).hasAttribute("disabled")).toBe(false),
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Open viewer" }));
 
     expect(slot.inspection.navigateCalls).toContainEqual({
       method: "openUrl",
@@ -118,70 +138,69 @@ describe("Session Share frontend registration", () => {
     });
   });
 
-  it("follows share signals instead of polling while the dialog is closed", async () => {
-    vi.useFakeTimers();
+  it("returns focus after the native menu unmounts before the dialog opens", async () => {
     const app = await loadPluginApp(() => import("./app"));
-    let current: ShareStatus | null = null;
-    const slot = renderSlot(app.threadHeaderActions[0]!, headerProps, {
-      rpc: { share: () => ({ share: current }) },
+    const action = app.threadActions.find(({ id }) => id === "session-share")!;
+    const item = action.item({ thread: { id: "thread-1" } } as Parameters<typeof action.item>[0])!;
+    const slot = renderSlot(app.appOverlays[0]!, {}, {
+      rpc: { status: () => ({
+        share: null, customHostname: "", customConfigured: false,
+        cloudflaredAvailable: true, pinpointTargetUrl: null,
+      }) },
     });
-    const shareCalls = () =>
-      slot.inspection.rpcCalls.filter((call) => call.method === "share").length;
-
-    await vi.waitFor(() => expect(shareCalls()).toBe(1));
-    await advance(5 * 60_000);
-    expect(shareCalls()).toBe(1);
-    expect(slot.inspection.rpcCalls.map((call) => call.method)).not.toContain(
-      "status",
-    );
-
-    await slot.behavior.emitRealtime("session-share", {
-      shareId: "share-other",
-      threadId: "thread-2",
-      state: "active",
-    });
-    expect(shareCalls()).toBe(1);
-
-    current = makeShare();
-    await slot.behavior.emitRealtime("session-share", {
-      shareId: "share-1",
-      threadId: "thread-1",
-      state: "ready",
-    });
-    expect(shareCalls()).toBe(2);
-
-    await slot.behavior.setRealtimeConnectionState("reconnecting");
-    await slot.behavior.setRealtimeConnectionState("connected");
-    await vi.waitFor(() => expect(shareCalls()).toBe(3));
+    const nativeMenu = render(createElement(DropdownMenu.Root, null,
+      createElement(DropdownMenu.Trigger, null, "Thread menu"),
+      createElement(DropdownMenu.Portal, null,
+        createElement(DropdownMenu.Content, null,
+          createElement(DropdownMenu.Item, {
+            onSelect: () => { void item.run({ requestRename: () => {} }); },
+          }, "Session Share"),
+        ),
+      ),
+    ));
+    const trigger = nativeMenu.getByRole("button", { name: "Thread menu" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    await advance(0);
+    fireEvent.click(nativeMenu.getByRole("menuitem", { name: "Session Share" }));
+    await advance(0);
+    expect(nativeMenu.queryByRole("menuitem")).toBeNull();
+    fireEvent.click(slot.getByRole("button", { name: "Done" }));
+    await advance(0);
+    expect(document.activeElement).toBe(trigger);
   });
 
-  it("re-checks a preparing share until it is live", async () => {
-    vi.useFakeTimers();
+  it("does not read share data while the menu dialog is closed", async () => {
     const app = await loadPluginApp(() => import("./app"));
-    let current: ShareStatus | null = makeShare({ ready: false });
-    const slot = renderSlot(app.threadHeaderActions[0]!, headerProps, {
-      rpc: { share: () => ({ share: current }) },
-    });
-    const shareCalls = () =>
-      slot.inspection.rpcCalls.filter((call) => call.method === "share").length;
+    const slot = renderSlot(app.appOverlays[0]!, {}, {});
+    await advance(5 * 60_000);
+    expect(slot.inspection.rpcCalls).toEqual([]);
+    expect(slot.queryByRole("dialog")).toBeNull();
+  });
 
-    await vi.waitFor(() => expect(shareCalls()).toBe(1));
-    // Let the preparing response land so the fallback timer is armed.
-    await advance(1);
+  it("enables the viewer when a preparing share becomes live", async () => {
+    const app = await loadPluginApp(() => import("./app"));
+    let current = makeShare({ ready: false });
+    const slot = renderSlot(app.appOverlays[0]!, {}, {
+      rpc: {
+        status: () => ({
+          share: current, customHostname: "", customConfigured: false,
+          cloudflaredAvailable: true, pinpointTargetUrl: null,
+        }),
+      },
+    });
+    await openSharing(app);
+    expect(slot.getByRole("button", { name: "Open viewer" }).hasAttribute("disabled")).toBe(true);
     current = makeShare({ ready: true });
     await advance(15_000);
-    expect(shareCalls()).toBe(2);
-    await advance(5 * 60_000);
-    expect(shareCalls()).toBe(2);
+    expect(slot.getByRole("button", { name: "Open viewer" }).hasAttribute("disabled")).toBe(false);
   });
 
   it("refreshes the open panel on signals and only slowly otherwise", async () => {
-    vi.useFakeTimers();
     const app = await loadPluginApp(() => import("./app"));
     let current: ShareStatus | null = null;
-    const slot = renderSlot(app.threadHeaderActions[0]!, headerProps, {
+    const slot = renderSlot(app.appOverlays[0]!, {}, {
       rpc: {
-        share: () => ({ share: current }),
         status: () => ({
           share: current,
           customHostname: "bb.example.test",
@@ -195,7 +214,7 @@ describe("Session Share frontend registration", () => {
       slot.inspection.rpcCalls.filter((call) => call.method === "status")
         .length;
 
-    fireEvent.click(slot.getByRole("button", { name: "Session Share" }));
+    await openSharing(app);
     await vi.waitFor(() => expect(statusCalls()).toBe(1));
     await advance(29_000);
     expect(statusCalls()).toBe(1);
@@ -215,7 +234,6 @@ describe("Session Share frontend registration", () => {
   });
 
   it("refreshes stored shares on any share signal", async () => {
-    vi.useFakeTimers();
     const app = await loadPluginApp(() => import("./app"));
     let shares: ShareStatus[] = [];
     const slot = renderSlot(app.settingsSections.find(({ id }) => id === "more")!, {}, {

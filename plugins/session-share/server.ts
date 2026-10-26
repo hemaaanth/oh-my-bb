@@ -1091,8 +1091,7 @@ export default async function plugin(bb: BbPluginApi) {
       });
       return { url: target.url };
     },
-    // Share-only lookup for the always-mounted header indicator: no settings
-    // read, executable probe, or Pinpoint round trip.
+    // Lightweight per-thread lookup: no settings, executable probe or Pinpoint call.
     share({ threadId }) {
       return { share: currentThreadShare(threadId) };
     },

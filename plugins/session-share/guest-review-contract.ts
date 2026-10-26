@@ -11,10 +11,12 @@ export const guestRowSchema = z.object({
     pinpoint: z.object({
       selector: z.string().nullable(), pathname: z.string().nullable(), title: z.string().nullable(),
       xIsPercentage: z.boolean(), authorRole: z.enum(["human", "agent"]).optional(),
+      ownerEdited: z.boolean().optional(),
       anchorOffset: z.object({ x: z.number(), y: z.number() }).strip().optional(),
     }).strip(),
     thread: z.array(z.object({
       role: z.enum(["human", "agent"]), content: z.string(), guest: z.boolean().optional(),
+      ownerEdited: z.boolean().optional(),
     }).strip()),
   }).strip(),
   workflowState: z.enum(["open", "dispatched", "waiting-input", "ready", "approved", "dismissed"]),
