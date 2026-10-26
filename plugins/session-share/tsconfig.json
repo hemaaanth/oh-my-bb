@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "lib": ["ES2024", "DOM"],
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "types": ["node"],
+    "noEmit": true,
+    "skipLibCheck": false
+  },
+  "include": ["server.ts", "app.tsx", "contract.ts", "guest-server.ts", "tunnel.ts", "host.ts", "host-contract.ts", "*.test.ts"]
+}
