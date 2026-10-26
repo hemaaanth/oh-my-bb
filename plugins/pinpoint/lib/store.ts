@@ -114,17 +114,10 @@ export const migrations = [
 
 // ---------------------------------------------------------------------------
 // Screenshots: one element crop + one viewport crop per annotation, captured
-// fire-and-forget by the picker after a pick. Write-once per (annotation,
-// kind) — the unauthenticated /screenshot route may only fill an empty slot
-// for an existing row; replacement would need an authenticated panel path.
-//
-// Upload authorization (server-side ONLY — never trust the poster): hostile
-// JS in another proxied page shares the proxy origin, so an upload must prove
-// it belongs to the capture. Accepted only when (a) the annotation is a
-// picker-anchored capture (the capture RPC adopted the client id — the only
-// flow that ever produces screenshots), (b) the post arrives inside the
-// short expects-screenshot window after the capture, and (c) the posting
-// page's target url matches the capture's stored url/pathname.
+// after trusted confirmation. Each image kind is write-once. Owner uploads use
+// authenticated thread/page-scoped RPC; guest uploads require a short-lived,
+// capture-bound receipt. The reviewed document gets neither owner credentials
+// nor a general HTTP mutation route.
 // ---------------------------------------------------------------------------
 export const screenshotKinds = ["element", "viewport"] as const;
 export type ScreenshotKind = (typeof screenshotKinds)[number];
