@@ -30,11 +30,11 @@ Use BB's native Session Share Configuration form. Existing setting IDs are uncha
 
 Install cloudflared yourself on the BB server machine. Session Share does not download it, install it, or change Cloudflare ingress. In Custom mode, route the configured hostname only to the isolated viewer port. Never route it to BB's server port. A configured named tunnel stays running across share revocations, matching the existing lifecycle. A fresh install with no settings or stored shares starts no tunnel.
 
-**More** contains collapsed **Shared sessions** management and the **Setup guide**. Section headings have no subtitles. Session Share opens from the native thread **⋯ menu**, with no standalone header button. Revoke confirmation identifies the session and focuses Cancel first.
+**More** contains collapsed **Shared sessions** management and the **Setup guide**. Section headings have no subtitles. Session Share is a native hover submenu in the same thread-menu group as Scripts, with no standalone header button or routine sharing modal. Revoke confirmation identifies the session and focuses Cancel first.
 
 ## Sharing and lifecycle
 
-Open **Session Share** in a thread's **⋯ menu**, then choose View to share the conversation. Choose a duration and Quick or Custom mode. The panel defaults to three hours; the CLI retains its one-hour default. Send the URL and access code privately. Anyone with both can unlock the viewer. Done and Escape close the dialog and return focus, including compact menus without a trigger link.
+Open **Session Share** in a thread's **⋯ menu**. Choose Access, Tunnel and Duration, then select **Start sharing**. Choices remain selected when the menu reopens. The menu defaults to three hours; the CLI retains its one-hour default. Active shares offer Open viewer, Copy link, Copy access code and Revoke. Only Revoke opens a confirmation dialog. Send the URL and access code privately. Anyone with both can unlock the viewer.
 
 Quick URLs can change after restart or tunnel recovery. Custom URLs and share paths remain stable. Stored shares restore automatically until expiry or revocation. Plugin disposal closes only its viewer and tunnel subprocesses. It does not stop unrelated tunnels. Tunnel tokens are passed in the child environment, not command arguments, and are redacted from logs and errors.
 

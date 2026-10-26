@@ -2,7 +2,7 @@ Give another person a temporary, password-protected view of a BB session without
 
 ## Share a conversation
 
-Open Session Share from a thread's **⋯ menu**. View mode renders the conversation in a separate guest viewer. Choose an expiry or revoke access yourself. Send the URL and access code privately. Anyone with both can unlock the viewer. Guest sessions expire within four hours or at share expiry, whichever comes first.
+Open the Session Share hover submenu beside Scripts in a thread's **⋯ menu**. Choose access, tunnel and duration, then Start sharing without a configuration modal. View mode renders the conversation in a separate guest viewer. Choose an expiry or revoke access yourself. Send the URL and access code privately. Anyone with both can unlock the viewer. Guest sessions expire within four hours or at share expiry, whichever comes first.
 
 ## Review an app
 

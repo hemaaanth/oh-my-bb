@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import * as SelectPrimitive from "@radix-ui/react-select";
-import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 import {
   definePluginApp,
@@ -9,151 +7,15 @@ import {
   UrlLink,
   useBbContext,
   useBbNavigate,
-  useRealtime,
-  useRealtimeConnectionState,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
-import type {
-  rpcContract,
-  ShareMode,
-  ShareStatus,
-  TunnelMode,
-} from "./contract";
+import type { rpcContract, ShareStatus } from "./contract";
+import { REVOKE_SHARE, sessionShareAction, useShareSignals, type RevokeRequest } from "./share-menu";
 
-// Share state changes arrive as `session-share` realtime signals (see
-// server.ts), so surfaces refresh on those instead of polling. The timers
-// below only run while their surface is mounted: a slow refresh keeps expiry
-// labels and host settings current, and a faster fallback covers a share that
-// is still preparing in case its ready signal raced the start response.
-const SHARE_SIGNAL_CHANNEL = "session-share";
-const OPEN_SHARE = "session-share:open";
-export const PANEL_REFRESH_MS = 30_000;
 export const SETTINGS_REFRESH_MS = 60_000;
-export const PREPARING_REFRESH_MS = 15_000;
-
-interface OpenShareRequest {
-  threadId: string;
-  returnFocusTo: HTMLElement | null;
-}
-
-/**
- * Calls `onChange` when the server signals a share change (optionally only for
- * one thread) and after the realtime connection recovers, since signals sent
- * while disconnected are lost.
- */
-function useShareSignals(onChange: () => void, threadId?: string) {
-  const latest = useRef(onChange);
-  latest.current = onChange;
-  useRealtime(SHARE_SIGNAL_CHANNEL, (payload) => {
-    if (
-      threadId !== undefined &&
-      (!payload ||
-        typeof payload !== "object" ||
-        !("threadId" in payload) ||
-        payload.threadId !== threadId)
-    ) {
-      return;
-    }
-    latest.current();
-  });
-  const connection = useRealtimeConnectionState();
-  const previousConnection = useRef(connection);
-  useEffect(() => {
-    const previous = previousConnection.current;
-    previousConnection.current = connection;
-    if (connection === "connected" && previous === "reconnecting") {
-      latest.current();
-    }
-  }, [connection]);
-}
-
-interface ConfigurationState {
-  customHostname: string;
-  cloudflaredAvailable: boolean;
-  customConfigured: boolean;
-  pinpointTargetUrl: string | null;
-}
-
-
-function ChoiceButton({
-  active,
-  description,
-  disabled = false,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  description: string;
-  disabled?: boolean;
-  label: string;
-  onClick(): void;
-}) {
-  return (
-    <Button
-      aria-pressed={active}
-      className={cn(
-        "h-auto min-w-0 justify-start rounded-md px-3 py-2 text-left shadow-none",
-        active
-          ? "bg-background text-foreground shadow-sm hover:bg-background"
-          : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-      )}
-      disabled={disabled}
-      onClick={onClick}
-      type="button"
-      variant="ghost"
-    >
-      <span className="min-w-0">
-        <span className="block truncate text-sm font-medium">{label}</span>
-        <span className="block truncate text-[11px] font-normal text-muted-foreground">
-          {description}
-        </span>
-      </span>
-    </Button>
-  );
-}
-
-function CopyField({
-  label,
-  value,
-  onCopied,
-  onCopyFailed,
-}: {
-  label: string;
-  value: string;
-  onCopied(): void;
-  onCopyFailed(): void;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      <div className="flex items-center gap-1 border-b border-border pb-2">
-        <code className="min-w-0 flex-1 truncate text-xs">{value}</code>
-        <Button
-          aria-label={`Copy ${label.toLowerCase()}`}
-          className="size-7"
-          onClick={() => void experimental_copyToClipboard({ text: value }).then((copied) => copied ? onCopied() : onCopyFailed())}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <Icon name="Copy" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-const DURATION_OPTIONS = [
-  ["60", "1 hour"],
-  ["180", "3 hours"],
-  ["360", "6 hours"],
-  ["480", "8 hours"],
-  ["10080", "7 days"],
-  ["0", "Until revoked"],
-] as const;
 
 function expiryLabel(expiresAt: number | null): string {
   if (expiresAt === null) return "Until revoked";
@@ -169,65 +31,27 @@ function expiryLabel(expiresAt: number | null): string {
     : `${remainingMinutes}m`;
 }
 
-function DurationSelect({
-  value,
-  onValueChange,
-}: {
-  value: string;
-  onValueChange(value: string): void;
-}) {
-  return (
-    <SelectPrimitive.Root value={value} onValueChange={(next) => {
-      if (DURATION_OPTIONS.some(([option]) => option === next)) onValueChange(next);
-    }}>
-      <SelectPrimitive.Trigger
-        aria-label="Duration"
-        className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring"
-      >
-        <SelectPrimitive.Value />
-        <SelectPrimitive.Icon asChild>
-          <Icon name="ChevronDown" className="size-4 opacity-60" />
-        </SelectPrimitive.Icon>
-      </SelectPrimitive.Trigger>
-      <SelectPrimitive.Content
-        className="z-[60] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md"
-        position="popper"
-        sideOffset={4}
-      >
-        <SelectPrimitive.Viewport className="p-1">
-          {DURATION_OPTIONS.map(([optionValue, label]) => (
-            <SelectPrimitive.Item
-              className="relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-state-active focus:text-foreground"
-              key={optionValue}
-              value={optionValue}
-            >
-              <SelectPrimitive.ItemIndicator className="absolute left-2 flex size-4 items-center justify-center">
-                <Icon name="Check" className="size-4" />
-              </SelectPrimitive.ItemIndicator>
-              <SelectPrimitive.ItemText>{label}</SelectPrimitive.ItemText>
-            </SelectPrimitive.Item>
-          ))}
-        </SelectPrimitive.Viewport>
-      </SelectPrimitive.Content>
-    </SelectPrimitive.Root>
-  );
-}
 
-function RevokeConfirmation({ title, onConfirm, children }: {
+function RevokeConfirmation({ title, onConfirm, children, open: controlledOpen, onOpenChange, onCloseAutoFocus }: {
   title: string;
   onConfirm(): Promise<void>;
-  children: React.ReactNode;
+  children?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?(open: boolean): void;
+  onCloseAutoFocus?(event: Event): void;
 }) {
   const pluginId = experimental_usePluginId();
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const setOpen = onOpenChange ?? setLocalOpen;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const scope = { "data-bb-plugin": pluginId, "data-bb-plugin-root": "", "data-bb-portaled-overlay": "" };
   return <AlertDialogPrimitive.Root open={open} onOpenChange={setOpen}>
-    <AlertDialogPrimitive.Trigger asChild>{children}</AlertDialogPrimitive.Trigger>
+    {children && <AlertDialogPrimitive.Trigger asChild>{children}</AlertDialogPrimitive.Trigger>}
     <AlertDialogPrimitive.Portal>
       <AlertDialogPrimitive.Overlay {...scope} className="fixed inset-0 z-[70] bg-black/40" />
-      <AlertDialogPrimitive.Content {...scope} className="fixed bottom-0 left-0 z-[71] w-full rounded-t-md border border-border bg-background p-4 text-foreground shadow-lg sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-[calc(100%-2rem)] sm:max-w-sm sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md">
+      <AlertDialogPrimitive.Content {...scope} onCloseAutoFocus={onCloseAutoFocus} className="fixed bottom-0 left-0 z-[71] w-full rounded-t-md border border-border bg-background p-4 text-foreground shadow-lg sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-[calc(100%-2rem)] sm:max-w-sm sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md">
         <AlertDialogPrimitive.Title className="text-sm font-semibold">Revoke share?</AlertDialogPrimitive.Title>
         <AlertDialogPrimitive.Description className="mt-2 break-words text-sm text-muted-foreground">
           Guests will lose access to “{title}”. This cannot be undone.
@@ -246,292 +70,6 @@ function RevokeConfirmation({ title, onConfirm, children }: {
   </AlertDialogPrimitive.Root>;
 }
 
-function SessionSharePanel({ threadId }: { threadId: string }) {
-  const rpc = useRpc<typeof rpcContract>();
-  const { openUrl } = useBbNavigate();
-  const [share, setShare] = useState<ShareStatus | null>(null);
-  const [configuration, setConfiguration] =
-    useState<ConfigurationState | null>(null);
-  const [mode, setMode] = useState<ShareMode>("view");
-  const [tunnelMode, setTunnelMode] = useState<TunnelMode | null>(null);
-  const [durationMinutes, setDurationMinutes] = useState("180");
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const [messageIsError, setMessageIsError] = useState(false);
-
-  async function refresh() {
-    const result = await rpc.call("status", { threadId });
-    setShare(result.share);
-    setConfiguration((current) => ({
-      customHostname: result.customHostname,
-      cloudflaredAvailable: result.cloudflaredAvailable,
-      customConfigured: result.customConfigured,
-      pinpointTargetUrl: current?.pinpointTargetUrl ?? result.pinpointTargetUrl,
-    }));
-    setTunnelMode((current) =>
-      current ?? (result.customConfigured ? "custom" : "quick"),
-    );
-  }
-
-  useEffect(() => {
-    void refresh().catch(() => undefined);
-  }, [threadId]);
-  useShareSignals(() => void refresh().catch(() => undefined), threadId);
-  const preparing = share !== null && !share.ready;
-  useEffect(() => {
-    const timer = window.setInterval(
-      () => void refresh().catch(() => undefined),
-      preparing ? PREPARING_REFRESH_MS : PANEL_REFRESH_MS,
-    );
-    return () => window.clearInterval(timer);
-  }, [threadId, preparing]);
-
-  async function selectReview() {
-    setBusy(true);
-    try {
-      const target = await rpc.call("reviewTarget", { threadId });
-      if (!target.url) throw new Error("Open a site in this thread's Pinpoint panel first.");
-      setConfiguration((current) => current ? { ...current, pinpointTargetUrl: target.url } : current);
-      setMode("review");
-      announce("");
-    } catch (error) {
-      announce(error instanceof Error ? error.message : "Pinpoint is unavailable.", true);
-    } finally {
-      setBusy(false);
-    }
-  }
-  function announce(text: string, isError = false) {
-    setMessage(text);
-    setMessageIsError(isError);
-  }
-
-  async function start() {
-    if (!tunnelMode) return;
-    setBusy(true);
-    announce("");
-    try {
-      const result = await rpc.call("start", {
-        threadId,
-        durationMinutes: Number(durationMinutes),
-        mode,
-        tunnelMode,
-      });
-      setShare(result.share);
-      announce(
-        result.share.ready ? "Public viewer is ready." : "Publishing DNS…",
-      );
-    } catch (error) {
-      announce(error instanceof Error ? error.message : String(error), true);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function stop() {
-    setBusy(true);
-    announce("");
-    try {
-      await rpc.call("stop", { threadId });
-      setShare(null);
-      announce("Sharing stopped. The public link is no longer active.");
-    } catch (error) {
-      announce(error instanceof Error ? error.message : String(error), true);
-      throw error;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const statusMessage = message ? (
-    <p
-      aria-live="polite"
-      className={cn(
-        "text-xs",
-        messageIsError ? "text-destructive" : "text-muted-foreground",
-      )}
-      role="status"
-    >
-      {message}
-    </p>
-  ) : null;
-
-  if (share) {
-    const remainingLabel = expiryLabel(share.expiresAt);
-    return (
-      <div className="space-y-5">
-        <div className="flex items-center gap-2 text-xs">
-          <span
-            className={cn(
-              "size-2 rounded-full",
-              share.ready
-                ? "bg-success shadow-[0_0_0_4px_color-mix(in_srgb,var(--success)_12%,transparent)]"
-                : "bg-muted-foreground/50",
-            )}
-          />
-          <span className="font-medium text-foreground">
-            {share.ready ? "Live" : "Preparing"}
-          </span>
-          <span className="ml-auto whitespace-nowrap text-muted-foreground">
-            {share.mode === "review" ? "Review" : "View"}
-            {" · "}
-            {remainingLabel}
-          </span>
-        </div>
-
-        <div className="space-y-5">
-          <CopyField
-            label="Public link"
-            onCopied={() => announce("Link copied.")}
-            onCopyFailed={() => announce("Could not copy the link.", true)}
-            value={share.publicUrl}
-          />
-          <CopyField
-            label="Access code"
-            onCopied={() => announce("Access code copied.")}
-            onCopyFailed={() => announce("Could not copy the access code.", true)}
-            value={share.accessCode}
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            className="flex-1"
-            disabled={!share.ready}
-            onClick={() => openUrl(share.publicUrl)}
-            type="button"
-          >
-            Open viewer
-            <Icon name="ExternalLink" />
-          </Button>
-          <RevokeConfirmation title={share.title} onConfirm={stop}>
-            <Button aria-label="Revoke" className="text-destructive hover:text-destructive" disabled={busy} size="icon" type="button" variant="ghost">
-              <Icon name={busy ? "Loading" : "CircleX"} className={busy ? "animate-spin" : undefined} />
-            </Button>
-          </RevokeConfirmation>
-        </div>
-        {statusMessage}
-      </div>
-    );
-  }
-
-  if (!configuration || !tunnelMode) {
-    return (
-      <div
-        className="flex min-h-64 items-center justify-center text-muted-foreground"
-        role="status"
-      >
-        <Icon name="Loading" className="size-4 animate-spin" />
-        <span className="sr-only">Loading share settings</span>
-      </div>
-    );
-  }
-
-  const missingCustomConfiguration =
-    tunnelMode === "custom" && !configuration.customConfigured;
-  const missingPinpointTarget =
-    mode === "review" && !configuration.pinpointTargetUrl;
-  const sharingUnavailable =
-    !configuration.cloudflaredAvailable ||
-    missingCustomConfiguration ||
-    missingPinpointTarget;
-
-  return (
-    <form
-      className="space-y-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void start();
-      }}
-    >
-
-      <div className="space-y-2">
-        <span className="text-xs font-medium text-muted-foreground">Access</span>
-        <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-muted/20 p-1">
-          <ChoiceButton
-            active={mode === "view"}
-            description="Watch the session"
-            label="View"
-            onClick={() => setMode("view")}
-          />
-          <ChoiceButton
-            active={mode === "review"}
-            description={
-              configuration.pinpointTargetUrl
-                ? new URL(configuration.pinpointTargetUrl).host
-                : "Use Pinpoint"
-            }
-            disabled={busy}
-            label="Review"
-            onClick={() => void selectReview()}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <span className="text-xs font-medium text-muted-foreground">Tunnel</span>
-        <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-muted/20 p-1">
-          <ChoiceButton
-            active={tunnelMode === "custom"}
-            description={configuration.customHostname || "Stable hostname"}
-            label="Custom"
-            onClick={() => setTunnelMode("custom")}
-          />
-          <ChoiceButton
-            active={tunnelMode === "quick"}
-            description="Changes on restart"
-            label="Quick"
-            onClick={() => setTunnelMode("quick")}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <span className="text-xs font-medium text-muted-foreground">
-          Duration
-        </span>
-        <DurationSelect
-          onValueChange={setDurationMinutes}
-          value={durationMinutes}
-        />
-      </div>
-
-      {!configuration.cloudflaredAvailable && (
-        <div className="flex gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning-text">
-          <Icon name="Info" className="mt-0.5 size-3.5 shrink-0" />
-          <p>
-            Install <code className="font-mono">cloudflared</code> on this machine,
-            then reopen this panel.
-          </p>
-        </div>
-      )}
-      {missingCustomConfiguration && (
-        <div className="flex gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning-text">
-          <Icon name="Info" className="mt-0.5 size-3.5 shrink-0" />
-          <p>
-            Set the custom hostname and named tunnel token under Extensions →
-            Session Share.
-          </p>
-        </div>
-      )}
-      {missingPinpointTarget && (
-        <div className="flex gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning-text">
-          <Icon name="Info" className="mt-0.5 size-3.5 shrink-0" />
-          <p>
-            Open the site in this thread&apos;s Pinpoint panel before creating
-            a Review link.
-          </p>
-        </div>
-      )}
-
-      <div className="flex justify-end">
-        <Button disabled={busy || sharingUnavailable} type="submit">
-          {busy ? "Starting tunnel…" : "Start sharing"}
-        </Button>
-      </div>
-      {statusMessage}
-    </form>
-  );
-}
 
 function SessionShareSettings() {
   const rpc = useRpc<typeof rpcContract>();
@@ -669,27 +207,19 @@ function SessionShareSettings() {
 }
 
 
-function SessionShareOverlay() {
-  const pluginId = experimental_usePluginId();
+function SessionShareRevokeOverlay() {
+  const rpc = useRpc<typeof rpcContract>();
   const context = useBbContext();
   const opener = useRef<HTMLElement | null>(null);
   const outsideFocus = useRef<HTMLElement | null>(null);
-  const [threadId, setThreadId] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-  const [viewport] = useState(() => window.matchMedia("(max-width: 767px), (pointer: coarse)"));
-  const [isCompactViewport, setIsCompactViewport] = useState(viewport.matches);
+  const [request, setRequest] = useState<RevokeRequest | null>(null);
 
-  useEffect(() => {
-    const update = () => setIsCompactViewport(viewport.matches);
-    viewport.addEventListener("change", update);
-    return () => viewport.removeEventListener("change", update);
-  }, [viewport]);
   useEffect(() => {
     const remember = (event: Event) => {
       const target = event.target instanceof Element
         ? event.target.closest("button, a[href], input, select, textarea, [tabindex]") : null;
       if (target instanceof HTMLElement && target !== document.body
-        && !target.closest('[role="menu"], [role="dialog"]')) {
+        && !target.closest('[role="menu"], [role="dialog"], [role="alertdialog"]')) {
         outsideFocus.current = target;
       }
     };
@@ -702,46 +232,29 @@ function SessionShareOverlay() {
   }, []);
   useEffect(() => {
     const handler = (event: Event) => {
-      const request = (event as CustomEvent<OpenShareRequest>).detail;
-      if (typeof request?.threadId !== "string" || !request.threadId) return;
-      const target = request.returnFocusTo;
-      // Compact menus may not link their trigger with aria-labelledby.
+      const next = (event as CustomEvent<RevokeRequest>).detail;
+      if (typeof next?.shareId !== "string" || !next.shareId) return;
+      const target = next.returnFocusTo;
       opener.current = target instanceof HTMLElement && target !== document.body
         && !target.closest('[role="menu"], [role="dialog"]') ? target : outsideFocus.current;
-      setThreadId(request.threadId);
-      setOpen(true);
+      setRequest(next);
     };
-    window.addEventListener(OPEN_SHARE, handler);
-    return () => window.removeEventListener(OPEN_SHARE, handler);
+    window.addEventListener(REVOKE_SHARE, handler);
+    return () => window.removeEventListener(REVOKE_SHARE, handler);
   }, []);
-  useEffect(() => { setOpen(false); }, [context.threadId]);
+  useEffect(() => { setRequest(null); }, [context.threadId]);
 
-  if (!threadId) return null;
-  return (
-    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay data-bb-plugin={pluginId} data-bb-plugin-root="" data-bb-portaled-overlay="" className="fixed inset-0 z-50 bg-black/40" />
-        <DialogPrimitive.Content data-bb-plugin={pluginId} data-bb-plugin-root="" data-bb-portaled-overlay=""
-          onCloseAutoFocus={(event) => {
-            if (opener.current?.isConnected) {
-              event.preventDefault();
-              opener.current.focus();
-            }
-          }}
-          className={cn("fixed z-[51] flex max-h-[90dvh] flex-col border border-border bg-background text-foreground shadow-lg",
-            isCompactViewport ? "bottom-0 left-0 w-full rounded-t-md" : "left-1/2 top-1/2 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-md")}>
-          <div className="border-b border-border px-4 py-3">
-            <DialogPrimitive.Title className="text-sm font-semibold">Session Share</DialogPrimitive.Title>
-            <DialogPrimitive.Description className="mt-1 text-xs text-muted-foreground">Share a temporary viewer or Pinpoint review.</DialogPrimitive.Description>
-          </div>
-          <div className="min-h-0 overflow-y-auto p-4"><SessionSharePanel key={threadId} threadId={threadId} /></div>
-          <div className="flex shrink-0 justify-end border-t border-border p-3">
-            <DialogPrimitive.Close asChild><Button variant="outline">Done</Button></DialogPrimitive.Close>
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
-  );
+  if (!request) return null;
+  return <RevokeConfirmation
+    title={request.title}
+    open
+    onOpenChange={(open) => { if (!open) setRequest(null); }}
+    onConfirm={async () => { await rpc.call("revoke", { shareId: request.shareId }); }}
+    onCloseAutoFocus={(event) => {
+      const target = opener.current?.isConnected ? opener.current : outsideFocus.current;
+      if (target?.isConnected) { event.preventDefault(); target.focus(); }
+    }}
+  />;
 }
 
 function SetupGuide() {
@@ -752,7 +265,7 @@ function SetupGuide() {
     <div className="mt-3 space-y-3 border-t border-border pt-3 text-sm text-muted-foreground">
       <p>Install cloudflared on the BB server machine. Session Share never downloads or installs it. Set its path in Configuration if it is not on PATH.</p>
       <p>Quick mode creates a temporary Cloudflare hostname. Custom mode uses your existing named tunnel. Configure its token and a subdomain such as share.example.com. Route only the isolated viewer port, not BB.</p>
-      <p>Open Session Share from a thread's ⋯ menu. Choose View, a tunnel and a duration. Send the link and access code privately. Revoke a stored share to end access. Stored links restore after restart; Quick hostnames may change.</p>
+      <p>Open the Session Share submenu beside Scripts in a thread&apos;s ⋯ menu. Choose access, tunnel and duration, then Start sharing. Copy the link and access code from the submenu and send them privately. Revoke a stored share to end access. Stored links restore after restart; Quick hostnames may change.</p>
       <p>Review is optional and runs only when selected or when restoring an existing Review share. It requires a compatible Pinpoint installation and a site already open in that thread. <UrlLink href="/settings/plugins/pinpoint" className="underline">Pinpoint settings</UrlLink></p>
       <p>Access codes remain in the local plugin database so owners can copy them again. Guest cookies expire after four hours or at the share expiry, whichever comes first. Until revoked links have no automatic share expiry.</p>
     </div>
@@ -771,24 +284,6 @@ function MoreSettings() {
 
 export default definePluginApp((app) => {
   app.slots.settingsSection({ id: "more", component: MoreSettings });
-  app.slots.experimental_appOverlay({ id: "session-share", component: SessionShareOverlay });
-  app.slots.experimental_threadAction({
-    id: "session-share",
-    title: "Session Share",
-    icon: "session-share/share",
-    group: "sharing",
-    item: ({ thread }) => ({
-      label: "Session Share",
-      icon: "session-share/share",
-      run: () => {
-        const active = document.activeElement;
-        const triggerId = active?.closest('[role="menu"]')?.getAttribute("aria-labelledby");
-        const returnFocusTo = (triggerId ? document.getElementById(triggerId) : null)
-          ?? (active instanceof HTMLElement ? active : null);
-        const detail: OpenShareRequest = { threadId: thread.id, returnFocusTo };
-        // Remember the trigger before the menu unmounts; open after it closes.
-        setTimeout(() => window.dispatchEvent(new CustomEvent(OPEN_SHARE, { detail })), 0);
-      },
-    }),
-  });
+  app.slots.experimental_appOverlay({ id: "session-share", component: SessionShareRevokeOverlay });
+  app.slots.experimental_threadAction(sessionShareAction);
 });
