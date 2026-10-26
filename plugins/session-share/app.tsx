@@ -378,18 +378,19 @@ function SessionSharePanel({ threadId }: { threadId: string }) {
     }
   }
 
-  const statusMessage = message ? (
+  const statusMessage = (
     <p
       aria-live="polite"
       className={cn(
-        "text-xs",
+        "h-8 overflow-y-auto break-words text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring",
         messageIsError ? "text-destructive" : "text-muted-foreground",
       )}
       role="status"
+      tabIndex={message ? 0 : undefined}
     >
       {message}
     </p>
-  ) : null;
+  );
 
   if (share) {
     const remainingLabel = expiryLabel(share.expiresAt);

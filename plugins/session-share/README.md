@@ -36,6 +36,8 @@ Install cloudflared yourself on the BB server machine. Session Share does not do
 
 Open **Session Share** in a thread's **⋯ menu**. Choose Conversation or Pinpoint review and a duration, then **Start sharing**. The dialog defaults to three hours; the CLI retains its one-hour default. The dialog uses your custom hostname automatically when one is configured. An incomplete named-tunnel setup blocks creation instead of falling back to a temporary URL. Without a custom hostname, it uses a temporary URL. Active shares offer Open viewer, Copy link, Copy access code and Revoke. Send the URL and access code privately. Anyone with both can unlock the viewer.
 
+Errors and copy notices use a fixed-height message area, so controls do not move when feedback appears. Longer messages remain scrollable without being truncated.
+
 Quick URLs can change after restart or tunnel recovery. Custom URLs and share paths remain stable. Stored shares restore automatically until expiry or revocation. Plugin disposal closes only its viewer and tunnel subprocesses. It does not stop unrelated tunnels. Tunnel tokens are passed in the child environment, not command arguments, and are redacted from logs and errors.
 
 Guest access codes are scrypt-hashed for unlock checks. The original code is also stored in the local plugin database so the owner can copy it again. Protect that database and its backups as credentials. Guest cookies are HttpOnly, Secure and SameSite=Lax. Sessions expire after four hours or at share expiry, whichever comes first. Revocation removes guest sessions and preview capabilities. A link set to Until revoked has no automatic share expiry.
