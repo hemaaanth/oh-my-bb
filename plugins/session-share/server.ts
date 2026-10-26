@@ -230,27 +230,25 @@ export default async function plugin(bb: BbPluginApi) {
     tunnelToken: {
       type: "string",
       label: "Cloudflare tunnel token",
-      description: "Required only for a named tunnel. Stored as a native secret.",
+      description: "For named tunnels only.",
       secret: true,
     },
     customHostname: {
       type: "string",
       label: "Custom tunnel hostname",
-      description: "Exact subdomain routed to the named tunnel, for example share.example.com.",
+      description: "Public hostname for your named tunnel.",
       default: "",
     },
     cloudflaredPath: {
       type: "string",
       label: "cloudflared executable",
-      description:
-        "Leave this as cloudflared unless the executable is installed at a custom path.",
+      description: "Executable name or full path.",
       default: "cloudflared",
     },
     viewerPort: {
       type: "string",
       label: "Viewer port",
-      description:
-        "Loopback-only port for the isolated viewer. It does not expose the BB server.",
+      description: "Local-only port for shared viewers.",
       default: "43127",
     },
   });

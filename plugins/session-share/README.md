@@ -30,7 +30,7 @@ Use BB's native Session Share Configuration form. Existing setting IDs are uncha
 
 Install cloudflared yourself on the BB server machine. Session Share does not download it, install it, or change Cloudflare ingress. In Custom mode, route the configured hostname only to the isolated viewer port. Never route it to BB's server port. A configured named tunnel stays running across share revocations, matching the existing lifecycle. A fresh install with no settings or stored shares starts no tunnel.
 
-Configuration is followed by stored Shares and **More → Setup guide**. The guide starts collapsed. The thread-header action opens a desktop dialog or compact drawer. Revoke confirmation identifies the session and focuses Cancel first.
+Per-share links and access codes are grouped under **Credentials**. **More → Setup guide** starts collapsed. Section headings have no subtitles. The thread-header action opens a desktop dialog or compact drawer. Revoke confirmation identifies the session and focuses Cancel first.
 
 ## Sharing and lifecycle
 

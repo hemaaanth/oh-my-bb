@@ -559,23 +559,12 @@ function SessionShareSettings() {
     );
   }
 
-  const quickCount = shares.filter(
-    (share) => share.tunnelMode === "quick",
-  ).length;
-  const customCount = shares.length - quickCount;
-
   return (
-    <div className="space-y-4">
-      <div className="overflow-hidden rounded-md border border-border bg-muted/20">
-        <div className="flex items-start justify-between gap-4 border-b border-border p-3">
-          <div>
-            <h3 className="text-sm font-semibold">Stored shares</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Links and access codes are stored locally and restore
-              automatically. Custom-hostname URLs stay stable; Quick URLs
-              change after a restart.
-            </p>
-          </div>
+    <section className="space-y-4">
+      <h2 className="text-sm font-medium">Credentials</h2>
+      <div className="overflow-hidden rounded-md border border-border bg-surface-recessed/70">
+        <div className="flex items-center justify-between gap-4 border-b border-border p-3">
+          <p className="text-sm font-medium">Shared sessions</p>
           <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
             {shares.length}
           </span>
@@ -583,7 +572,7 @@ function SessionShareSettings() {
 
         {shares.length === 0 ? (
           <p className="p-3 text-sm text-muted-foreground">
-            No sessions are being shared.
+            No active shares.
           </p>
         ) : (
           <div className="divide-y divide-border">
@@ -661,19 +650,11 @@ function SessionShareSettings() {
             })}
           </div>
         )}
-
-        {(quickCount > 0 || customCount > 0) && (
-          <div className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
-            {quickCount > 0 && `${quickCount} Quick`}
-            {quickCount > 0 && customCount > 0 && " · "}
-            {customCount > 0 && `${customCount} Custom`}
-          </div>
-        )}
       </div>
-      <p aria-live="polite" className="min-h-5 text-xs text-muted-foreground">
+      <p aria-live="polite" className={cn("text-xs text-muted-foreground", !message && "sr-only")}>
         {message}
       </p>
-    </div>
+    </section>
   );
 }
 
@@ -756,7 +737,7 @@ function SessionShareHeaderAction({ threadId, isCompactViewport }: { threadId: s
 }
 
 function SetupGuide() {
-  return <details className="group rounded-md border border-border bg-muted/20 p-3">
+  return <details className="group rounded-md border border-border bg-surface-recessed/70 p-3">
     <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm [&::-webkit-details-marker]:hidden">
       Setup guide<Icon name="ChevronDown" className="size-4 shrink-0 transition-transform group-open:rotate-180" />
     </summary>
@@ -770,14 +751,18 @@ function SetupGuide() {
   </details>;
 }
 
+function MoreSettings() {
+  return (
+    <section className="space-y-4">
+      <h2 className="text-sm font-medium">More</h2>
+      <SetupGuide />
+    </section>
+  );
+}
+
 export default definePluginApp((app) => {
-  app.slots.settingsSection({
-    id: "active-shares",
-    title: "Shares",
-    description: "Live public viewers and review links.",
-    component: SessionShareSettings,
-  });
-  app.slots.settingsSection({ id: "more", title: "More", component: SetupGuide });
+  app.slots.settingsSection({ id: "credentials", component: SessionShareSettings });
+  app.slots.settingsSection({ id: "more", component: MoreSettings });
   app.slots.experimental_threadHeaderAction({
     id: "session-share",
     title: "Session Share",
