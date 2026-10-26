@@ -50,6 +50,8 @@ as `fx-acp/v0.1.0`.
 - [`plugins/status-sidebar`](plugins/status-sidebar) groups BB threads by working
   status with nested thread summaries and saved ordering. Agents, Projects, and
   Tasks are optional explicit integrations; the base sidebar runs alone.
+- [`plugins/task-workspaces`](plugins/task-workspaces) syncs and manages Akiflow,
+  Linear, and GitHub tasks with stable identifiers, linked sources, and attached BB chats.
 - [`agents/fx-acp`](agents/fx-acp) is an optional standalone ACP adapter for FX.
 - [`agents/nanocodex-acp`](agents/nanocodex-acp) is an optional standalone ACP
   adapter for nanocodex.
@@ -81,6 +83,11 @@ uses explicit saved approvals; ordinary commands and manual preparation remain
 independent. See [`plugins/workspace-scripts`](plugins/workspace-scripts) for the
 schema and [migration design lessons](docs/migrations/scripts.md) for accepted
 ownership rules and the deliberately deferred setup-guide reconciliation.
+
+Tasks runs without another BB plugin and uses native BB threads for task chats.
+Status Sidebar owns its separate Tasks attachment opt-in. Keys stay in native
+Configuration. Preferences contains connections, source selections, and project
+mappings. Setup help stays collapsed inline under More → Setup guide.
 
 ## Validate the repository
 

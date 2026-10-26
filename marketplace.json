@@ -187,6 +187,28 @@
           "ref": "main"
         }
       }
+    },
+    {
+      "id": "task-workspaces",
+      "displayName": "Tasks",
+      "description": "Sync and manage Akiflow, Linear, and GitHub tasks.",
+      "icon": {
+        "url": "plugins/task-workspaces/icons/tasks.svg"
+      },
+      "overview": "# Tasks\n\nSync and manage Akiflow, Linear, and GitHub tasks.\n\n## Plan work\n\n- Put urgent tasks in Now and high-priority work in Later.\n- Open project cards for other tasks. Drag to arrange or move work between projects.\n- Keep stable provider identifiers, linked references, ownership, and source destinations.\n- Attach existing BB chats or explicitly start new work. Chat state updates without Status Sidebar.\n- Use native task mentions, agent tools, or `bb worktasks`.\n\n## Configure\n\nEnter keys in native Configuration. In Preferences, enable each app and choose Akiflow projects or Inbox, GitHub repositories, and Linear teams or projects to sync. Map selected sources to BB projects. The inline **More \u2192 Setup guide** covers setup, write permissions, printing, and saved state.\n\nProvider changes and agent changes have separate controls. Agent changes start off. Akiflow uses a private web API that can change without notice. Provider selections, credentials, and existing task data remain private to the installation.\n\nAkiflow's client identifier stays in private installation storage. An existing installation must preserve that identity during cutover; new installations generate their own. The package does not ship a shared device identifier.\n\n## Optional integrations\n\nTasks runs without any suite plugins. Task chats use native BB threads. Status Sidebar owns its own Attach to task opt-in. Tasks uses native BB projects and never installs, enables, or probes another plugin at startup.\n\nAn optional receipt printer uses your configured HTTPS endpoint and existing print API key. Printing sends urgent task titles only after you press Print Now. No server is supplied.\n\n## Requirements\n\nBB 0.46.1 or later and Plugin SDK 0.6.49 or later. Each provider needs its own account and credential. Install and build from this package directory. No repository-root runtime dependencies are required.\n",
+      "tags": ["tasks", "akiflow", "linear", "github", "workflow"],
+      "author": {
+        "name": "Hemanth Soni",
+        "github": "hemaaanth",
+        "url": "https://github.com/hemaaanth"
+      },
+      "source": {
+        "git": {
+          "url": "https://github.com/hemaaanth/oh-my-bb.git",
+          "subdir": "plugins/task-workspaces",
+          "ref": "main"
+        }
+      }
     }
   ]
 }
