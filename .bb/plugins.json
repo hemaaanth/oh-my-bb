@@ -3,6 +3,7 @@
   "schemaVersion": 1,
   "name": "oh-my-bb",
   "plugins": [
+    { "name": "browser", "source": "./plugins/browser" },
     { "name": "clasi", "source": "./plugins/clasi" },
     { "name": "dispatch", "source": "./plugins/dispatch" },
     { "name": "model-gateway", "source": "./plugins/model-gateway" },

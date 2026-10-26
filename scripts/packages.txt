@@ -1,5 +1,6 @@
 # Every package that check.sh and CI validate, one directory per line.
 # Add a new plugin or agent package here and nowhere else.
+plugins/browser
 plugins/clasi
 plugins/dispatch
 plugins/model-gateway

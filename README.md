@@ -30,6 +30,8 @@ as `fx-acp/v0.1.0`.
 
 ## Packages
 
+- [`plugins/browser`](plugins/browser) automates Brave with isolated logins, live
+  viewing and manual handoff.
 - [`plugins/clasi`](plugins/clasi) retains scoped context, reusable lessons, and
   workflow feedback for BB agents. Records stay in the private BB database.
 - [`plugins/dispatch`](plugins/dispatch) lets you drive BB by voice. A named agent
@@ -97,6 +99,11 @@ mappings. Setup help stays collapsed inline under More → Setup guide.
 Pinpoint runs without a suite plugin. Optional Agents profiles, Provider Usage
 checks and Clasi learning start off. Guest feedback waits for owner approval;
 learning needs both the global opt-in and approval of the exact proposed text.
+
+Browser runs without another plugin for local native and paired-profile relay use.
+Managed sandbox viewing and routing require the separately installed Sandboxes
+plugin and explicit opt-in. Home routing, login sharing and fast-model tasks are
+off on fresh installations.
 
 ## Validate the repository
 
