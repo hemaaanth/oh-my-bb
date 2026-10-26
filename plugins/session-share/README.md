@@ -30,11 +30,11 @@ Use BB's native Session Share Configuration form. Existing setting IDs are uncha
 
 Install cloudflared yourself on the BB server machine. Session Share does not download it, install it, or change Cloudflare ingress. In Custom mode, route the configured hostname only to the isolated viewer port. Never route it to BB's server port. A configured named tunnel stays running across share revocations, matching the existing lifecycle. A fresh install with no settings or stored shares starts no tunnel.
 
-**More** contains collapsed **Shared sessions** management and the **Setup guide**. Section headings have no subtitles. Session Share is a native hover submenu in the same thread-menu group as Scripts, with no standalone header button or routine sharing modal. Revoke confirmation identifies the session and focuses Cancel first.
+**More** contains collapsed **Shared sessions** management and the **Setup guide**. Section headings have no subtitles. Session Share is a single action in the same thread-menu group as Scripts, with no standalone header button or divider. It opens a compact sharing dialog. Revoke confirmation identifies the session and focuses Cancel first.
 
 ## Sharing and lifecycle
 
-Open **Session Share** in a thread's **⋯ menu**. Choose Access, Tunnel and Duration, then select **Start sharing**. Choices remain selected when the menu reopens. The menu defaults to three hours; the CLI retains its one-hour default. Active shares offer Open viewer, Copy link, Copy access code and Revoke. Only Revoke opens a confirmation dialog. Send the URL and access code privately. Anyone with both can unlock the viewer.
+Open **Session Share** in a thread's **⋯ menu**. Choose Conversation or Pinpoint review and a duration, then **Start sharing**. The dialog defaults to three hours; the CLI retains its one-hour default. The dialog uses your custom hostname automatically when one is configured. An incomplete named-tunnel setup blocks creation instead of falling back to a temporary URL. Without a custom hostname, it uses a temporary URL. Active shares offer Open viewer, Copy link, Copy access code and Revoke. Send the URL and access code privately. Anyone with both can unlock the viewer.
 
 Quick URLs can change after restart or tunnel recovery. Custom URLs and share paths remain stable. Stored shares restore automatically until expiry or revocation. Plugin disposal closes only its viewer and tunnel subprocesses. It does not stop unrelated tunnels. Tunnel tokens are passed in the child environment, not command arguments, and are redacted from logs and errors.
 
@@ -44,7 +44,7 @@ Guest write APIs require JSON, a valid guest session, matching share scope and a
 
 ## Optional Pinpoint review
 
-View mode has no Pinpoint dependency or startup probe. Selecting Review explicitly checks Pinpoint for this thread. Restoring a previously selected Review share is also an authorized integration use. Session Share never installs or enables Pinpoint.
+Opening the sharing dialog checks for an active Pinpoint preview in that thread and selects Pinpoint review when one is available. A manual Conversation selection is not overwritten by a late response. Missing or inactive Pinpoint defaults to Conversation. Pinpoint is not probed at plugin startup or while the dialog is closed. Restoring a previously selected Review share is also an authorized integration use. Session Share never installs or enables Pinpoint.
 
 Review requires Pinpoint's versioned guest-preview isolation contract. Resource access is GET-only and bound to the selected app origin, share and guest-session expiry. The resource capability is not feedback authority. Every prepared response must carry the sandbox CSP and other safety headers. Incompatible legacy output fails closed. BB and guest cookies, Authorization headers and plugin tokens are never sent to reviewed apps. Cross-origin redirects, embedded URL credentials, known BB origins and the BB server port are rejected. Responses are bounded to 32 MiB and 15 seconds.
 
