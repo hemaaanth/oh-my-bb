@@ -11,6 +11,7 @@
     { "name": "webhooks", "source": "./plugins/webhooks" },
     { "name": "workspace-scripts", "source": "./plugins/workspace-scripts" },
     { "name": "task-workspaces", "source": "./plugins/task-workspaces" },
-    { "name": "status-sidebar", "source": "./plugins/status-sidebar" }
+    { "name": "status-sidebar", "source": "./plugins/status-sidebar" },
+    { "name": "session-share", "source": "./plugins/session-share" }
   ]
 }

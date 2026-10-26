@@ -52,6 +52,9 @@ as `fx-acp/v0.1.0`.
   Tasks are optional explicit integrations; the base sidebar runs alone.
 - [`plugins/task-workspaces`](plugins/task-workspaces) syncs and manages Akiflow,
   Linear, and GitHub tasks with stable identifiers, linked sources, and attached BB chats.
+- [`plugins/session-share`](plugins/session-share) shares temporary password-protected
+  session viewers through Cloudflare Tunnel. View runs alone; optional Pinpoint
+  Review holds guest feedback for owner release.
 - [`agents/fx-acp`](agents/fx-acp) is an optional standalone ACP adapter for FX.
 - [`agents/nanocodex-acp`](agents/nanocodex-acp) is an optional standalone ACP
   adapter for nanocodex.

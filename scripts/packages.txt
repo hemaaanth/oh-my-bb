@@ -9,6 +9,7 @@ plugins/webhooks
 plugins/workspace-scripts
 plugins/status-sidebar
 plugins/task-workspaces
+plugins/session-share
 agents/fx-acp
 agents/nanocodex-acp
 agents/prime-agent-acp
