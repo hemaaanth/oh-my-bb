@@ -1,0 +1,5 @@
+dist/
+node_modules/
+# This runtime asset is committed for BB Git installs, which skip lifecycle scripts.
+# Keep the pattern for Tailwind's source scanner; Git still tracks file updates.
+lib/public-review-client.generated.ts
