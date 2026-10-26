@@ -2,7 +2,7 @@
 // and every delivery, so views refetch instead of polling.
 import { useCallback, useEffect, useState } from "react";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
-import type { DeliveryView, EndpointView, RpcContract } from "../contract.js";
+import type { DeliveryView, EndpointView, IntegrationView, RpcContract } from "../contract.js";
 import { messageOf } from "./ui.js";
 
 /** Must match CHANGED_CHANNEL in contract.ts. The app does not bundle the contract module. */
@@ -12,6 +12,12 @@ export const PANEL_PATH = "webhooks";
 export type Overview = { endpoints: EndpointView[]; deliverPath: string; publicBaseUrl: string | null };
 
 export const useWebhooksRpc = () => useRpc<RpcContract>();
+
+export type Targets = {
+  projects: { id: string; name: string }[];
+  automations: { available: boolean; items: { id: string; name: string }[]; message: string | null };
+  receivers: { pluginId: string; name: string; description: string | null }[];
+};
 
 function useLoaded<T>(load: () => Promise<T>) {
   const [data, setData] = useState<T | null>(null);
@@ -40,6 +46,17 @@ export function useEndpoint(endpointId: string) {
   return useLoaded<{ endpoint: EndpointView; deliveries: DeliveryView[] }>(
     useCallback(() => rpc.call("webhooks_get", { endpointId }), [rpc, endpointId]),
   );
+}
+
+export function useIntegrations() {
+  const rpc = useWebhooksRpc();
+  return useLoaded<IntegrationView[]>(useCallback(() => rpc.call("webhooks_integrations", null), [rpc]));
+}
+
+export function useTargets(projectId: string) {
+  const rpc = useWebhooksRpc();
+  const id = projectId.trim();
+  return useLoaded<Targets>(useCallback(() => rpc.call("webhooks_targets", id ? { projectId: id } : {}), [rpc, id])).data;
 }
 
 export const deliveryUrl = (publicBaseUrl: string | null, endpoint: EndpointView) =>

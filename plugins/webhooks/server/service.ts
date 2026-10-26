@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { DELIVER_PATH, endpointConfigSchema, type AuthMode, type DeliveryView, type EndpointConfig, type EndpointView } from "../contract.js";
-import { AUTOMATIONS_PLUGIN_ID, TargetError, automationSummary, checkTargets, listReceivers } from "./actions.js";
+import { AUTOMATIONS_PLUGIN_ID, TargetError, automationSummary, checkTargets } from "./actions.js";
 import {
   SecretInputError,
   checkBearerToken,
@@ -19,6 +19,7 @@ import {
   signStandardWebhook,
 } from "./auth.js";
 import type { Deliverer } from "./deliver.js";
+import type { Integrations } from "./integrations.js";
 import { newEndpointId, type EndpointRecord, type Store } from "./store.js";
 
 /** A problem the caller can fix. Its message is safe to show. */
@@ -58,6 +59,7 @@ export function createService(deps: {
   bb: BbPluginApi;
   store: Store;
   deliverer: Deliverer;
+  integrations: Integrations;
   /** Read per request: the setting can change while the plugin runs. */
   publicBaseUrl: () => string | null;
   /** The path senders use. The webhook listener's `/webhook/<id>` when it runs, else the BB route. */
@@ -98,6 +100,7 @@ export function createService(deps: {
 
   const targets = async (config: EndpointConfig) => {
     try {
+      deps.integrations.check(config.action);
       await checkTargets(bb, config.action);
     } catch (error) {
       if (error instanceof TargetError) throw new InputError(error.message);
@@ -205,8 +208,11 @@ export function createService(deps: {
     /** Projects, automations in one project when the Automations plugin answers, and receiver plugins. */
     async targets(input: { projectId?: string }) {
       const projects = (await bb.sdk.projects.list()).map((project) => ({ id: project.id, name: project.name }));
-      const receivers = await listReceivers(bb);
-      if (!input.projectId) return { projects, automations: { available: false, items: [], message: null }, receivers };
+      const integrations = await deps.integrations.list();
+      const receivers = integrations.filter((entry) => entry.kind === "receiver" && entry.enabled)
+        .map(({ pluginId, name, description }) => ({ pluginId, name, description }));
+      const available = integrations.some((entry) => entry.kind === "automation" && entry.enabled);
+      if (!available || !input.projectId) return { projects, automations: { available, items: [], message: null }, receivers };
       try {
         const items = await bb.sdk.plugins.callRpc({
           pluginId: AUTOMATIONS_PLUGIN_ID,

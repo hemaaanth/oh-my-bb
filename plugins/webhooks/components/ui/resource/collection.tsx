@@ -32,7 +32,7 @@ export function ResourceCollectionPage<Mode extends string>({
   bandClassName,
 }: {
   id: string;
-  description: ReactNode;
+  description?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
   bandClassName?: string;
@@ -44,20 +44,19 @@ export function ResourceCollectionPage<Mode extends string>({
   const activePanelId = hasModes ? `${id}-${activeMode}-panel` : undefined;
   return (
     <div className="flex h-full min-h-0 flex-col gap-5">
-      {}
-      <div className="md:pr-3">
+      {description ? (
         <div className={bandClassName}>
           <ResourceTabDescription>{description}</ResourceTabDescription>
         </div>
-      </div>
+      ) : null}
       {hasModes || actions !== undefined ? (
-        <div className="md:pr-3">
           <div
             className={cn(
               "flex flex-wrap items-center justify-between gap-2",
               bandClassName,
             )}
           >
+            {hasModes ? (
             <div
               className="flex items-center gap-1"
               role={hasModes ? "tablist" : undefined}
@@ -115,13 +114,13 @@ export function ResourceCollectionPage<Mode extends string>({
                 );
               })}
             </div>
+            ) : null}
             {actions ? (
-              <div className="flex shrink-0 items-center gap-1.5">
+              <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
                 {actions}
               </div>
             ) : null}
           </div>
-        </div>
       ) : null}
       <div
         id={activePanelId}

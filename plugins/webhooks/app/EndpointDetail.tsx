@@ -26,8 +26,8 @@ import { SecretReveal } from "./SecretReveal.js";
 import { DeliveryStatusIcon, Field, Notice, WEBHOOK_ICON, deliveryStatusVisuals, messageOf, relativeTime } from "./ui.js";
 
 export const authLabels: Record<EndpointView["authMode"], string> = {
-  "standard-webhooks": "Standard Webhooks",
-  slack: "Slack",
+  "standard-webhooks": "Standard Webhooks signature",
+  slack: "Slack request signature",
   bearer: "Bearer token",
 };
 
@@ -67,7 +67,7 @@ export function EndpointDetail({ endpointId, publicBaseUrl, onEdit, onDeleted }:
 
   return (
     <ResourceDetailPage
-      leading={<Icon name={WEBHOOK_ICON} aria-hidden className="size-4 shrink-0 text-muted-foreground" />}
+      leading={<Icon name={WEBHOOK_ICON} aria-hidden className="size-full shrink-0 text-foreground" />}
       title={endpoint.name}
       metadata={
         <ResourceMeta
@@ -227,7 +227,7 @@ function DeliveryUrlSection({ url, placeholderOrigin }: { url: string; placehold
       actions={<ResourceActionButton label="Copy URL" tooltipLabel={copied ? "Copied" : "Copy URL"} icon={copied ? "Check" : "Copy"} onClick={() => void copyToClipboard({ text: url }).then(setCopied)} />}
     >
       <ResourceDetailPanel surface="recessed">
-        <code className="block select-all break-all px-3 py-2 font-mono text-xs leading-5 text-foreground">{url}</code>
+        <code className="block select-all truncate px-3 py-2 font-mono text-xs leading-5 text-foreground" title={url}>{url}</code>
       </ResourceDetailPanel>
       {placeholderOrigin ? (
         <Notice tone="warning">Set a public base URL in the plugin settings to get the real origin.</Notice>
@@ -323,29 +323,25 @@ function DeliveryRow({ delivery }: { delivery: DeliveryView }) {
   const details = [
     delivery.attempts > 1 ? `${delivery.attempts} attempts` : null,
     delivery.duplicates > 0 ? `${delivery.duplicates} duplicates dropped` : null,
-    delivery.automationRunId ? `run ${delivery.automationRunStatus}` : null,
   ].filter(Boolean);
   // The same line as an Automations run row: status glyph, time, then muted detail.
   return (
     <div className="flex min-w-0 flex-col gap-0.5 px-2 py-1.5">
       <div className="flex min-h-7 min-w-0 items-center gap-2.5">
-        <DeliveryStatusIcon status={delivery.status} />
+        <DeliveryStatusIcon status={delivery.status} tooltip={delivery.error ?? (delivery.automationRunStatus ? `Automation run: ${delivery.automationRunStatus}` : null)} />
         <span className="shrink-0 text-sm text-foreground" title={delivery.receivedAt}>
           {relativeTime(delivery.receivedAt)}
         </span>
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-xs text-subtle-foreground">
-          <span>{deliveryStatusVisuals[delivery.status].label}</span>
-          {details.length > 0 ? <span className="truncate">· {details.join(" · ")}</span> : null}
+        <span className="flex min-w-max flex-1 items-center gap-1.5 text-xs text-subtle-foreground">
+          <span className="shrink-0">{deliveryStatusVisuals[delivery.status].label}</span>
+          {details.length > 0 ? <span className="shrink-0 whitespace-nowrap">· {details.join(" · ")}</span> : null}
         </span>
-        <span className="hidden shrink-0 font-mono text-2xs text-subtle-foreground sm:inline">{delivery.id}</span>
-        {delivery.threadId ? (
-          <Button variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" onClick={() => navigate.toThread(delivery.threadId!)}>
-            Open thread
-            <Icon name="ArrowUpRight" aria-hidden className="size-3.5" />
-          </Button>
-        ) : null}
+        <span className="hidden min-w-0 truncate font-mono text-2xs text-subtle-foreground sm:inline">{delivery.id}</span>
+        <Button variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" disabled={!delivery.threadId} onClick={() => delivery.threadId && navigate.toThread(delivery.threadId)}>
+          Open thread
+          <Icon name="ArrowUpRight" aria-hidden className="size-3.5" />
+        </Button>
       </div>
-      {delivery.error ? <p className="break-words pl-6 text-xs text-destructive">{delivery.error}</p> : null}
     </div>
   );
 }

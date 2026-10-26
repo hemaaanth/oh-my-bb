@@ -10,7 +10,7 @@ export const THREAD = "thr_target";
 
 type RpcCall = { pluginId: string; method: string; input: Record<string, unknown> };
 
-export async function webhooksHost(options: { settings?: Record<string, string>; appUrl?: string | null } = {}) {
+export async function webhooksHost(options: { settings?: Record<string, string>; appUrl?: string | null; enabledIntegrations?: string[] } = {}) {
   const sent: Array<{ threadId: string; mode: string; text: string }> = [];
   const spawned: Array<Record<string, unknown>> = [];
   const rpcCalls: RpcCall[] = [];
@@ -23,6 +23,12 @@ export async function webhooksHost(options: { settings?: Record<string, string>;
   };
   /** Plugins that publish webhooks_receive. A receiver answers with `{ threadId }`. */
   const receivers: { plugins: Array<{ pluginId: string; displayName: string }> } = { plugins: [{ pluginId: "receiver", displayName: "Receiver" }] };
+  const installed = {
+    plugins: [
+      { id: "receiver", name: "Receiver", description: "Takes test deliveries.", enabled: true, status: "running" },
+      { id: "automations", name: "Automations", description: "Run saved prompts.", enabled: true, status: "running" },
+    ],
+  };
   let runs = 0;
 
   const { bb, harness } = createFakePluginHost({
@@ -55,9 +61,11 @@ export async function webhooksHost(options: { settings?: Record<string, string>;
         list: async () => [{ id: PROJECT, name: "Test Project" }] as never,
       },
       plugins: {
+        list: async () => ({ plugins: installed.plugins.filter((entry) => entry.id !== "automations" || automations.items !== null) }) as never,
         experimental_discoverRpc: async ({ pluginId, method } = {}) =>
           receivers.plugins
             .filter((plugin) => (pluginId === undefined || plugin.pluginId === pluginId) && (method === undefined || method === "webhooks_receive"))
+            .filter((plugin) => installed.plugins.some((entry) => entry.id === plugin.pluginId && entry.enabled))
             .map((plugin) => ({ ...plugin, method: "webhooks_receive", methodDescription: null, registrationDescription: "Takes test deliveries.", inputSchema: {}, outputSchema: {} })),
         callRpc: async ({ pluginId, method, input }) => {
           rpcCalls.push({ pluginId, method, input: input as Record<string, unknown> });
@@ -84,6 +92,7 @@ export async function webhooksHost(options: { settings?: Record<string, string>;
       },
     },
   });
+  if (options.enabledIntegrations) await bb.storage.kv.set("enabled-integrations", options.enabledIntegrations);
   await plugin(bb);
 
   // service.test() posts to bb.server.loopbackBaseUrl; route that into the fake host.
@@ -94,7 +103,7 @@ export async function webhooksHost(options: { settings?: Record<string, string>;
     return harness.behavior.fetchHttp(init?.method ?? "GET", href.slice(prefix.length), init);
   });
 
-  return { bb, harness, sent, spawned, rpcCalls, archived, failure, automations, receivers };
+  return { bb, harness, sent, spawned, rpcCalls, archived, failure, automations, receivers, installed };
 }
 
 export type Host = Awaited<ReturnType<typeof webhooksHost>>;

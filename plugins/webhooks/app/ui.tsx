@@ -2,6 +2,7 @@
 import { useId, type ReactNode } from "react";
 import { Icon } from "@/components/ui/icon";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { DeliveryView } from "../contract.js";
 
@@ -54,7 +55,10 @@ export function Choice({
   ...control
 }: { value: string; options: readonly ChoiceOption[]; placeholder?: string; onChange: (value: string) => void; className?: string } & Partial<ControlProps> & { "aria-label"?: string }) {
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value} onValueChange={(next) => {
+      // Native select updates can emit an empty value while async options change.
+      if (options.some((option) => option.value === next && !option.disabled)) onChange(next);
+    }}>
       <SelectTrigger {...control} className={cn("w-full", className)}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
@@ -86,12 +90,20 @@ export const deliveryStatusVisuals: Record<DeliveryView["status"], { label: stri
   rejected: { label: "Rejected", icon: "CircleX", className: "text-destructive" },
 };
 
-export function DeliveryStatusIcon({ status, className }: { status: string; className?: string }) {
+export function DeliveryStatusIcon({ status, className, tooltip }: { status: string; className?: string; tooltip?: string | null }) {
   const visual = deliveryStatusVisuals[status as DeliveryView["status"]];
   if (!visual) return <Icon name={WEBHOOK_ICON} aria-hidden className={cn("size-3.5 text-muted-foreground", className)} />;
-  return (
-    <span role="img" aria-label={visual.label} title={visual.label} className="inline-flex shrink-0">
+  const icon = (
+    <span role="img" aria-label={visual.label} tabIndex={tooltip ? 0 : undefined} className="inline-flex shrink-0 outline-none focus-visible:ring-1 focus-visible:ring-ring">
       <Icon name={visual.icon} aria-hidden className={cn("size-3.5", visual.className, className)} />
     </span>
   );
+  return tooltip ? (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>{icon}</TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  ) : icon;
 }

@@ -14,6 +14,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { CHANGED_CHANNEL, DELIVER_ROUTE, ENDPOINT_ID, LIMITS } from "../contract.js";
 import { runAction } from "./actions.js";
 import { decodeSigningSecret, verifyBearer, verifySlack, verifyStandardWebhook, type AuthFailure, type AuthResult } from "./auth.js";
+import type { Integrations } from "./integrations.js";
 import { extractFields, parseFormPayload, parsePayload, type FieldValues, type ParseResult } from "./shape.js";
 import type { EndpointRecord, Store } from "./store.js";
 
@@ -36,7 +37,7 @@ const SLACK_SSL_CHECK = /(?:^|&)ssl_check=1(?:&|$)/;
 /** In-memory, per endpoint. Reset when the plugin reloads. */
 export type RejectionStats = { count: number; lastReason: AuthFailure | "too-large" | null; lastWarnAt: number };
 
-export function createDeliverer(bb: BbPluginApi, store: Store) {
+export function createDeliverer(bb: BbPluginApi, store: Store, integrations: Integrations) {
   const rejections = new Map<string, RejectionStats>();
   const windows = new Map<string, number[]>();
 
@@ -163,6 +164,7 @@ export function createDeliverer(bb: BbPluginApi, store: Store) {
   /** Runs the action and records the result. True when it succeeded. */
   async function execute(endpoint: EndpointRecord, claim: { deliveryId: string; attempts: number }, dedupeHash: string, values: FieldValues, receivedAt: string): Promise<boolean> {
     try {
+      integrations.check(endpoint.config.action);
       const result = await runAction(bb, {
         endpointId: endpoint.id,
         action: endpoint.config.action,

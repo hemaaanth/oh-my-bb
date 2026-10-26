@@ -6,6 +6,7 @@ import { z } from "zod";
 import { CHANGED_CHANNEL, rpcContract, type EndpointView } from "./contract.js";
 import { registerCli } from "./server/cli.js";
 import { createDeliverer } from "./server/deliver.js";
+import { createIntegrations } from "./server/integrations.js";
 import { LISTENER_PATH_PREFIX, keepListening, parseListenerPort } from "./server/listener.js";
 import { MIGRATIONS } from "./server/migrations.js";
 import { createService, deliveryPathOf } from "./server/service.js";
@@ -31,11 +32,11 @@ export function normalizeBaseUrl(value: string | null | undefined): string | nul
  * Shown in `bb plugin list` and the plugin page. BB has no way to clear the banner while the plugin
  * runs, so it stays until the next load even after the setting is fixed. Saved settings apply at once.
  */
-export function needsBaseUrlMessage(configured: string): string {
+function needsBaseUrlMessage(configured: string): string {
   const problem = configured.trim()
-    ? "The Public base URL setting (publicBaseUrl) is not an https:// origin without credentials, query, or fragment, and BB has no https app URL to fall back on."
-    : "No public base URL is set (publicBaseUrl), and BB has no https app URL to fall back on, so senders have no URL to call.";
-  return `${problem} Run \`bb plugin config webhooks set publicBaseUrl https://hooks.example.com\` with your public origin, or set Listener port if you run your own tunnel. The plugin uses a saved setting at once; this banner clears when the plugin next loads (\`bb plugin reload webhooks\`).`;
+    ? "Public base URL is invalid and BB has no public HTTPS URL."
+    : "Set a public HTTPS base URL for webhook deliveries.";
+  return `${problem} Open Settings → Webhooks, then More → Setup guide. Route HTTPS through a tunnel or proxy to the listener or BB delivery route; a listener port alone is not public ingress. Set publicBaseUrl to that origin. Changes apply when saved; reload Webhooks to clear this warning (\`bb plugin reload webhooks\`).`;
 }
 
 const baseUrlSchema = z.string().refine((value) => !value.trim() || normalizeBaseUrl(value) !== null, "Use an https:// origin without credentials, query, or fragment, like https://hooks.example.com.");
@@ -46,14 +47,14 @@ export default async function plugin(bb: BbPluginApi) {
     publicBaseUrl: {
       type: "string",
       label: "Public base URL",
-      description: "The HTTPS origin senders use, like https://hooks.example.com. Applies when saved.",
+      description: "HTTPS origin for delivery URLs. Leave empty to use BB's public URL.",
       default: "",
       experimental_schema: baseUrlSchema,
     },
     listenerPort: {
       type: "string",
       label: "Listener port",
-      description: "Local port that serves /webhook/<id>. Point your tunnel here. Leave empty to turn it off. Applies when saved.",
+      description: "Local tunnel port for /webhook/<id>. Leave empty to disable.",
       default: "",
       experimental_schema: portSchema,
     },
@@ -67,23 +68,23 @@ export default async function plugin(bb: BbPluginApi) {
   };
   let publicBaseUrl = resolveBaseUrl(values.publicBaseUrl);
   let flagged = false;
-  // A tunnel pointed at the listener port is a public route of its own, so the plugin works without publicBaseUrl.
-  const checkConfiguration = (configured: string, port: string) => {
-    if (publicBaseUrl !== null || typeof parseListenerPort(port) === "number" || flagged) return;
+  const checkConfiguration = (configured: string) => {
+    if (publicBaseUrl !== null || flagged) return;
     flagged = true;
     bb.status.needsConfiguration(needsBaseUrlMessage(configured));
   };
-  checkConfiguration(values.publicBaseUrl, values.listenerPort);
+  checkConfiguration(values.publicBaseUrl);
 
   const db = bb.storage.database();
   bb.storage.migrate(db, [...MIGRATIONS]);
   const store = createStore(db);
 
   const changed = (endpointId?: string) => bb.realtime.publish(CHANGED_CHANNEL, endpointId ? { endpointId } : {});
-  const deliverer = createDeliverer(bb, store);
+  const integrations = await createIntegrations(bb, store, () => changed());
+  const deliverer = createDeliverer(bb, store, integrations);
   let listener = openListener(bb, values.listenerPort, deliverer.handle);
   const publicPathOf = (endpointId: string) => (listener ? `${LISTENER_PATH_PREFIX}${endpointId}` : deliveryPathOf(endpointId));
-  const service = createService({ bb, store, deliverer, publicBaseUrl: () => publicBaseUrl, publicPathOf, changed });
+  const service = createService({ bb, store, deliverer, integrations, publicBaseUrl: () => publicBaseUrl, publicPathOf, changed });
   const urlOf = (endpoint: EndpointView) => `${publicBaseUrl ?? "https://<your-public-origin>"}${endpoint.deliveryPath}`;
 
   // Settings apply live: a new origin changes the URLs shown, and a new port reopens the listener.
@@ -99,7 +100,7 @@ export default async function plugin(bb: BbPluginApi) {
           await listener?.close();
           listener = openListener(bb, next.listenerPort, deliverer.handle);
         }
-        checkConfiguration(next.publicBaseUrl, next.listenerPort);
+        checkConfiguration(next.publicBaseUrl);
         changed();
       })
       .catch((error) => bb.log.error(`could not apply settings: ${error instanceof Error ? error.message : String(error)}`));
@@ -125,6 +126,11 @@ export default async function plugin(bb: BbPluginApi) {
     webhooks_deliveries: ({ endpointId, limit }) => service.deliveries(endpointId, limit),
     webhooks_test: (input) => service.test(input),
     webhooks_targets: (input) => service.targets(input),
+    webhooks_integrations: () => integrations.list(),
+    webhooks_set_integration: async ({ pluginId, enabled }) => {
+      await integrations.setEnabled(pluginId, enabled);
+      return null;
+    },
   });
 
   registerCli(bb, service, urlOf);

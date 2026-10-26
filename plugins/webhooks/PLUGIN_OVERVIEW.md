@@ -1,45 +1,52 @@
-Receive webhooks from PostHog, Slack, and other services, and turn them into
-thread messages, new threads, automation runs, or plugin calls. Each endpoint checks who
-sent the request, accepts only the JSON fields you declare, and drops
-duplicates before it acts.
+Connect an authenticated webhook sender to a fixed action in BB.
+Choose what each endpoint accepts and what it is allowed to start.
 
-## What you get
+## Key features
 
-Create an endpoint in the Webhooks panel or with `bb webhooks create`. Each
-endpoint has its own secret, field shape, body limit, rate limit, dedupe rule,
-and one fixed action:
+- **Four actions:** message an existing thread, start a thread in a project,
+  run a saved automation, or deliver declared fields to a receiver plugin.
+- **Sender authentication:** Standard Webhooks signatures, Slack request
+  signatures, or bearer tokens. Signing secrets and tokens stay per endpoint.
+- **Bounded input:** declare field names, paths, types, and limits. The payload
+  cannot choose the target, permissions, or action.
+- **Duplicate protection:** identify repeated events by webhook ID, a declared
+  field, or body hash. Set a body limit and request rate for each endpoint.
+- **Slack support:** Events API, slash commands, and interactivity, including
+  URL verification and prompt acknowledgement. Socket Mode is not supported.
+- **Delivery controls:** enable or pause endpoints, rotate secrets, inspect
+  delivery results, and send a signed test that runs the real action.
+- **UI and CLI:** manage endpoints in the Webhooks page or with `bb webhooks`.
+  Delivery records omit payload values. Bearer tokens are stored as hashes.
 
-- **Send** a message to an existing thread.
-- **Spawn** a new thread in a project and environment you choose.
-- **Run** a saved automation from the Automations plugin. A retried event
-  cannot start a second run.
-- **Hand** the declared fields to a plugin that publishes a
-  `webhooks_receive` method. The plugin decides what to do.
+## First-time setup
 
-The payload never chooses the thread, project, automation, plugin, or permissions.
-Only declared fields reach the message, quoted and marked as external data.
+1. Keep BB running on the machine that will receive requests. Configure an
+   agent and a thread or project for thread actions.
+2. Provide a public HTTPS hostname through a tunnel or reverse proxy. The
+   recommended route exposes only the optional loopback listener, not BB.
+3. In Settings → Webhooks, set **Listener port** and **Public base URL**.
+4. Open **Webhooks → Setup guide**, then create an endpoint. Declare its
+   fields, choose one action, and copy its delivery URL and one-time secret
+   into the sender. Slack uses the app's own signing secret.
+5. Send an event from the sender and inspect the delivery result.
 
-## Signed by default
+Cloudflare is optional. A Cloudflare named tunnel needs a Cloudflare account,
+`cloudflared`, and a domain managed by Cloudflare. Caddy or another HTTPS proxy
+works instead. You install and operate ingress separately; Webhooks does not
+install software, configure DNS, or open your router. BB Connect cannot receive
+provider callbacks because it requires an owner session.
 
-Endpoints verify Standard Webhooks signatures, the scheme PostHog's HTTP
-Webhook destination uses, or Slack request signatures. Slack endpoints answer
-Slack's URL check, reply within its 3-second limit, and drop its retries. A
-bearer-token mode covers senders that cannot sign.
-Secrets are shown once. Logs and delivery records never hold payload values.
+## Optional integrations and limits
 
-## Limits
+- **Automations:** install and enable Automations, then opt in under
+  Settings → Webhooks → **Oh My BB**. It runs the saved prompt without webhook fields.
+- **Receiver plugins:** install and enable a plugin publishing `webhooks_receive`,
+  then enable its integration under **Oh My BB**. The receiver owns its behavior
+  and description. Direct thread actions need no other plugin.
+- **Opt-in:** fresh installs start with integrations off. Upgrades preserve
+  integrations used by existing hooks. Disabling one stops its actions, not its
+  saved configuration or secrets.
+- **Slack failures:** Slack requests are acknowledged before the action runs.
+  Failed actions are recorded but are not retried automatically.
 
-- The automation action runs the automation's saved prompt. Payload fields are
-  not forwarded to it. Use send or spawn when the agent needs the event data.
-- Slack endpoints acknowledge first and act after, so a failed action is
-  recorded but not retried. Socket Mode is not supported.
-- Senders need a public HTTPS route to this machine, such as Caddy or a
-  Cloudflare Tunnel. An optional loopback listener serves only
-  `/webhook/<id>`, so the tunnel never reaches the BB server. bb Connect
-  cannot receive provider callbacks. The plugin docs show a narrow setup.
-
-## Standalone by default
-
-Webhooks does not require another BB plugin. The automation action works only
-when the Automations plugin is installed separately. The plugin action works
-only with a plugin that opts in by publishing `webhooks_receive`.
+[Full setup and ingress examples](https://github.com/hemaaanth/oh-my-bb/blob/main/plugins/webhooks/docs/ingress.md)

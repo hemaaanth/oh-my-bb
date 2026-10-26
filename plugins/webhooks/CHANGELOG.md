@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.1.2
+
+- Match the native settings card layout, shorten Configuration help, and add
+  a Credentials shortcut to endpoint authentication. Settings and navigation
+  keep the canonical webhook icon.
+- Shorten the plugin subtitle to fit the settings header.
+- Align overview, detail, new, edit, and setup pages to BB settings' rendered
+  760px outer frame, with 16px padding inside each side. Use overlay scrollbars
+  to prevent layout shifts and the native 36px header icon.
+- Add an in-app setup guide with fresh-machine requirements, HTTPS ingress
+  options, optional integrations, and sender-side verification.
+- Require a public HTTPS origin for configuration status even when a local
+  listener is enabled. Point the warning to the setup guide.
+- Expand the Webhooks overview with feature bullets and setup requirements.
+  Use marketplace schema v2 to include the long-form listing.
+- Remove the overview sentence and breadcrumbs. Keep the endpoint title unchanged
+  in edit mode with an Edit configuration subtitle, use protocol-based authentication
+  labels, and keep a disabled Open thread action when a delivery has no thread.
+- Keep setup guidance generic, without the current installation's hostname.
+- Put delivery errors on the status icon's hover/focus tooltip, not inline.
+  Keep attempt counts visible and success tooltips limited to recorded metadata.
+- Add Oh My BB integration opt-ins for available Automations and receiver plugins.
+  Gate both configuration and dispatch. Preserve integrations used by existing
+  hooks on upgrade, along with their configuration and secrets.
+- Keep receiver-owned descriptions full-width and single-line. Ignore native
+  select no-choice events while asynchronous options load, preserving saved actions.
+- Compact narrow-screen endpoint rows, allow two-line names, move delivery time
+  below the name, and make overview actions share the available width.
+- Use page-width container queries for responsive forms. Stack string-limit
+  labels above aligned inputs on mobile, without wrapping Allowed values.
+- Keep delivery URLs on one clipped line while preserving the complete value
+  for copying.
+
 ## 0.1.1
 
 - Loads on stable bb 0.46.1. 0.1.0 required plugin SDK 0.6.54, which only

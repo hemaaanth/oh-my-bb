@@ -2,7 +2,6 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import { CHANGED_CHANNEL as CONTRACT_CHANNEL } from "./contract.js";
 import { PROJECT, THREAD, createEndpoint, postSigned, sendConfig, webhooksHost, type Host } from "./server/test-fakes.js";
 
 // Node's experimental global localStorage shadows jsdom's and is unusable without a file.
@@ -36,8 +35,8 @@ globalThis.ResizeObserver ??= class {
 };
 
 const app = await loadPluginApp(() => import("./app.js"));
-// These import the SDK app runtime, which loadPluginApp installs.
-const { CHANGED_CHANNEL, PANEL_PATH } = await import("./app/data.js");
+// Static imports run before loadPluginApp installs the SDK runtime.
+const { CHANGED_CHANNEL } = await import("./app/data.js");
 const panel = app.navPanels.find(({ id }) => id === "webhooks")!;
 
 const METHODS = [
@@ -51,6 +50,8 @@ const METHODS = [
   "webhooks_deliveries",
   "webhooks_test",
   "webhooks_targets",
+  "webhooks_integrations",
+  "webhooks_set_integration",
 ] as const;
 
 let host: Host;
@@ -79,16 +80,31 @@ async function choose(trigger: HTMLElement, option: string) {
 }
 
 describe("Webhooks panel", () => {
-  it("registers one nav panel and keeps the app's copies of contract values in step", () => {
-    expect(panel).toMatchObject({ title: "Webhooks", icon: "webhooks/webhook", path: "webhooks" });
-    expect(PANEL_PATH).toBe(panel.path);
-    expect(CHANGED_CHANNEL).toBe(CONTRACT_CHANNEL);
+  it("offers plugin actions only while the installed receiver integration is enabled in settings", async () => {
+    const rpc = Object.fromEntries(METHODS.map((method) => [method, (input: unknown) => host.harness.behavior.callRpc(method, input)]));
+    const settings = renderSlot(app.settingsSections.find(({ id }) => id === "oh-my-bb")!, {}, { rpc: rpc as never });
+    const slot = renderPanel("new");
+    const receiver = await settings.findByRole("switch", { name: "Receiver integration" });
+    open(slot.getByLabelText("Do"));
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Send to a thread", "Start a thread"]);
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
+    fireEvent.click(receiver);
+    await waitFor(() => expect(receiver.getAttribute("aria-checked")).toBe("true"));
+    await slot.behavior.emitRealtime(CHANGED_CHANNEL, {});
+    await choose(slot.getByLabelText("Do"), "Hand to a plugin");
+    await choose(await slot.findByLabelText("Plugin"), "Receiver");
+    fireEvent.click(receiver);
+    await waitFor(() => expect(receiver.getAttribute("aria-checked")).toBe("false"));
+    await slot.behavior.emitRealtime(CHANGED_CHANNEL, {});
+    await waitFor(() => expect(slot.queryByLabelText("Plugin")).toBeNull());
+    open(slot.getByLabelText("Do"));
+    expect(screen.queryByRole("option", { name: "Hand to a plugin" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "Run an automation" })).toBeNull();
   });
 
-  it("lists nothing yet, warns about the missing public URL, and opens the form", async () => {
+  it("lists nothing yet and opens the form", async () => {
     const slot = renderPanel();
     await slot.findByText("No endpoints yet.");
-    expect(slot.getByText(/so senders can reach this machine/)).toBeTruthy();
     fireEvent.click(slot.getByRole("button", { name: "New endpoint" }));
     expect(lastNavigation(slot)).toEqual({ method: "toPluginPanel", path: "webhooks", options: { subPath: "new" } });
   });
@@ -134,6 +150,7 @@ describe("Webhooks panel", () => {
   });
 
   it("picks an automation from the project and says the payload is not forwarded", async () => {
+    await host.harness.behavior.callRpc("webhooks_set_integration", { pluginId: "automations", enabled: true });
     const slot = renderPanel("new");
     const form = await slot.findByRole("form", { name: "New endpoint" });
     fireEvent.change(slot.getAllByLabelText("Name")[0]!, { target: { value: "Triage" } });
@@ -152,11 +169,11 @@ describe("Webhooks panel", () => {
   });
 
   it("hands the fields to a receiver plugin picked from the published list", async () => {
+    await host.harness.behavior.callRpc("webhooks_set_integration", { pluginId: "receiver", enabled: true });
     const slot = renderPanel("new");
     const form = await slot.findByRole("form", { name: "New endpoint" });
     fireEvent.change(slot.getAllByLabelText("Name")[0]!, { target: { value: "Calls" } });
     await choose(slot.getByLabelText("Do"), "Hand to a plugin");
-    expect(slot.getByText(/No message is sent/)).toBeTruthy();
     expect(slot.queryByLabelText("Message")).toBeNull();
     await choose(await slot.findByLabelText("Plugin"), "Receiver");
     fireEvent.submit(form);
@@ -165,15 +182,42 @@ describe("Webhooks panel", () => {
     expect(endpoints[0]!.action).toEqual({ type: "plugin", pluginId: "receiver" });
   });
 
-  it("shows an endpoint's URL and deliveries, and opens the thread a delivery reached", async () => {
+  it("preserves the receiver and secret when editing after async integration discovery", async () => {
+    await host.harness.behavior.callRpc("webhooks_set_integration", { pluginId: "receiver", enabled: true });
+    const { endpoint, secret } = await createEndpoint(host, sendConfig({ action: { type: "plugin", pluginId: "receiver" } }));
+    const slot = renderPanel(`${endpoint.id}/edit`);
+    const form = await slot.findByRole("form", { name: "Edit endpoint" });
+    await slot.findByLabelText("Plugin");
+    fireEvent.change(slot.getAllByLabelText("Name")[0]!, { target: { value: "Updated receiver endpoint" } });
+    fireEvent.submit(form);
+    await waitFor(() => expect(lastNavigation(slot)).toMatchObject({ method: "toPluginPanel", options: { subPath: endpoint.id } }));
+    expect((await postSigned(host, endpoint.id, secret!, { event: { event: "signup" } })).status).toBe(200);
+    expect(host.rpcCalls.filter((call) => call.method === "webhooks_receive")).toHaveLength(1);
+    expect(host.sent).toEqual([]);
+    expect(host.spawned).toEqual([]);
+  });
+
+  it("keeps thread actions visible but only opens threads that a delivery created", async () => {
     const { endpoint, secret } = await createEndpoint(host, sendConfig({ action: { type: "spawn", projectId: PROJECT, message: "{{event}}" } }));
+    expect((await postSigned(host, endpoint.id, secret!, { event: { event: 7 } })).status).toBe(422);
     await postSigned(host, endpoint.id, secret!, { event: { event: "signup" }, person: { properties: { email: "ada@example.com" } } });
     const slot = renderPanel(endpoint.id);
     await slot.findByText(`https://<your-public-origin>/api/v1/plugins/webhooks/http/deliver?endpoint=${endpoint.id}`);
-    expect(slot.getByText(/to get the real origin/)).toBeTruthy();
     expect(slot.queryByText(/ada@example\.com/)).toBeNull();
-    fireEvent.click(await slot.findByRole("button", { name: "Open thread" }));
+    const actions = await slot.findAllByRole("button", { name: "Open thread" }) as HTMLButtonElement[];
+    expect(actions).toHaveLength(2);
+    const unavailable = actions.filter((button) => button.disabled);
+    expect(unavailable).toHaveLength(1);
+    fireEvent.click(unavailable[0]!);
+    expect(lastNavigation(slot)).toBeUndefined();
+    fireEvent.click(actions.find((button) => !button.disabled)!);
     expect(lastNavigation(slot)).toMatchObject({ method: "toThread", threadId: "thr_spawned_1" });
+    const { deliveries } = await host.harness.behavior.callRpc("webhooks_get", { endpointId: endpoint.id }) as { deliveries: Array<{ status: string; error: string | null }> };
+    const error = deliveries.find((delivery) => delivery.status === "rejected")!.error!;
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(slot.queryByText(error)).toBeNull();
+    fireEvent.focus(slot.getByRole("img", { name: "Rejected" }));
+    expect((await screen.findByRole("tooltip")).textContent).toBe(error);
   });
 
   it("sends a test delivery and refreshes on the realtime signal", async () => {

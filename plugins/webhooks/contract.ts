@@ -231,6 +231,15 @@ const endpointIdInput = z.object({ endpointId: z.string().regex(ENDPOINT_ID, "Un
 const importedSecret = z.string().min(1).max(512).optional();
 const jsonValue: z.ZodType<unknown> = z.json();
 
+const integrationViewSchema = z.object({
+  pluginId: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  kind: z.enum(["receiver", "automation"]),
+  enabled: z.boolean(),
+});
+export type IntegrationView = z.infer<typeof integrationViewSchema>;
+
 export const rpcContract = defineRpcContract({
   webhooks_overview: {
     input: z.null(),
@@ -291,6 +300,14 @@ export const rpcContract = defineRpcContract({
       /** Plugins that publish a discoverable `webhooks_receive` method. */
       receivers: z.array(z.object({ pluginId: z.string(), name: z.string(), description: z.string().nullable() })),
     }),
+  },
+  webhooks_integrations: {
+    input: z.null(),
+    output: z.array(integrationViewSchema),
+  },
+  webhooks_set_integration: {
+    input: z.object({ pluginId: z.string().min(1).max(128), enabled: z.boolean() }).strict(),
+    output: z.null(),
   },
 });
 

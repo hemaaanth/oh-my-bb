@@ -14,6 +14,107 @@ tunnel or a reverse proxy in front of one of two local targets:
   `POST /api/v1/plugins/webhooks/http/deliver?endpoint=wh_…` to the BB server.
   The rules below apply.
 
+## Fresh-machine checklist
+
+- Install Webhooks in BB 0.46.1 or later. Keep BB running on the receiving
+  machine. Thread actions need a working agent and an existing thread or project.
+- Choose **one** ingress option. Cloudflare is optional. A Cloudflare named
+  tunnel needs a Cloudflare account, a domain managed by Cloudflare, and the
+  `cloudflared` binary on the receiving machine. Caddy needs its binary, DNS
+  pointing at the server, and reachable ports for HTTPS and certificate issuance.
+  Another HTTPS proxy can meet the same requirements.
+- No other BB plugin is needed for thread actions. For automation actions or a
+  receiver publishing `webhooks_receive`, install and enable the plugin, then
+  opt in under **Settings → Webhooks → Oh My BB**.
+- Set the public URL, create an endpoint, and configure the sender with its URL,
+  authentication, and event subscriptions. Slack's signing secret comes from
+  the Slack app; generated secrets and bearer tokens are shown once.
+
+Open **Webhooks → Setup guide**, or **Settings → Webhooks → More → Open setup
+guide**, for the in-app checklist. Webhooks does not install ingress software,
+sign in to Cloudflare, change DNS, open router ports, or manage tunnel services.
+The status warning checks URL configuration, not public reachability.
+
+## Start a dedicated listener
+
+Choose an unused local port. These example settings apply immediately:
+
+```sh
+bb plugin config webhooks set listenerPort 43128
+bb plugin config webhooks set publicBaseUrl https://hooks.example.com
+```
+
+Run the tunnel or proxy on the BB machine so `127.0.0.1:43128` reaches the
+listener. Expose only `/webhook/`, not the BB app or API. Use one of the next
+two examples, then create an endpoint and run the checks at the end of this
+guide.
+
+### New Cloudflare named tunnel
+
+Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/).
+Sign in and create a dedicated tunnel and hostname:
+
+```sh
+cloudflared tunnel login
+cloudflared tunnel create bb-webhooks
+cloudflared tunnel route dns bb-webhooks hooks.example.com
+```
+
+Use the tunnel ID and credentials file path printed by `create`. Save a
+configuration file such as `webhooks-tunnel.yml`:
+
+```yaml
+tunnel: <tunnel-id>
+credentials-file: /path/to/<tunnel-id>.json
+ingress:
+  - hostname: hooks.example.com
+    path: ^/webhook/
+    service: http://127.0.0.1:43128
+  - service: http_status:404
+```
+
+Validate and run it:
+
+```sh
+cloudflared tunnel --config webhooks-tunnel.yml ingress validate
+cloudflared tunnel --config webhooks-tunnel.yml run bb-webhooks
+```
+
+Keep the process running. For unattended use, configure a
+[system service](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/as-a-service/).
+Do not put a browser-login Access policy in front of the webhook route:
+provider callbacks cannot complete that login. Endpoint authentication still
+checks every delivery.
+
+### Caddy with the listener
+
+Point `hooks.example.com` at the server and install
+[Caddy](https://caddyserver.com/docs/install). Configure the hostname:
+
+```caddyfile
+hooks.example.com {
+	@webhook {
+		method POST
+		path /webhook/*
+	}
+	handle @webhook {
+		request_body {
+			max_size 1MB
+		}
+		reverse_proxy 127.0.0.1:43128 {
+			header_up -Cookie
+		}
+	}
+	handle {
+		respond 404
+	}
+}
+```
+
+Caddy manages HTTPS certificates. Keep Caddy and BB running. See the
+[Caddy quick start](https://caddyserver.com/docs/quick-starts/reverse-proxy)
+for running it as a service.
+
 ## Share an existing Cloudflare named tunnel
 
 If another plugin already runs a Cloudflare named tunnel on this machine, such
@@ -160,8 +261,10 @@ Set the plugin's **Public base URL** setting to the public origin, for example
   and strips it before forwarding.
 - If the setting is empty, the plugin uses `BB_APP_URL`. If neither is set, the
   URLs show `https://<your-public-origin>` as a placeholder, and BB shows
-  "Needs configuration" for the plugin unless a listener port is set. Saving the
-  setting fixes the URLs at once. The banner clears on the next plugin load.
+  "Needs configuration" for the plugin, even if a listener port is set. A
+  listener is local; it does not provide an HTTPS hostname. Saving the URL
+  fixes displayed delivery URLs at once. Reload Webhooks to clear a stale
+  configuration warning.
 
 ## Check it end to end
 

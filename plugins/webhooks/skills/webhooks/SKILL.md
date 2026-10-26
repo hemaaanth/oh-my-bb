@@ -159,15 +159,17 @@ for 30 days.
   idempotency key `webhooks:<endpoint>:<hash>`. A sender retry cannot start a
   second run. **The automation runs its saved prompt. No payload field reaches
   it.** Automations has no input for event data. Use `send` or `spawn` when the
-  agent needs the values. This action needs the Automations plugin. It is
-  refused at save if the plugin is missing or the automation cannot run.
+  agent needs the values. Install and enable Automations and opt in under
+  **Settings → Webhooks → Oh My BB**. Saving is refused if the integration is
+  disabled, the plugin is missing, or the automation cannot run.
 - `plugin`: `{ "type": "plugin", "pluginId": "…" }`. Calls that plugin's
   `webhooks_receive` with `{ endpointId, endpointName, deliveryId, receivedAt,
   idempotencyKey, fields }`. `fields` holds only the declared values. No
   message template. The plugin decides what happens, so read its docs first.
-  It is refused at save if the plugin does not publish `webhooks_receive`.
-  `bb webhooks` has no list command for receivers; the panel's plugin picker
-  lists them.
+  Install and enable the receiver and opt in under **Settings → Webhooks →
+  Oh My BB**. Saving is refused when the integration is disabled or the receiver
+  does not publish `webhooks_receive`. The receiver owns its handler and published
+  description. The panel lists only enabled, available integrations.
 
 ### Templates
 
@@ -247,6 +249,11 @@ Socket Mode and Slack's mutual TLS are not supported. Anyone in the workspace
 who can use the app can trigger the action.
 
 ## Public URL
+
+On a fresh machine, open **Webhooks → Setup guide** or read `docs/ingress.md`.
+Cloudflare is optional; using its named tunnels needs an account, a domain,
+and `cloudflared`. Webhooks never installs or starts ingress. Direct thread
+actions need no other plugin. A local test does not verify public HTTPS.
 
 Senders reach one of two local targets through an HTTPS tunnel or proxy:
 

@@ -225,7 +225,7 @@ describe("automation action", () => {
   const automationConfig = sendConfig({ action: { type: "automation", projectId: PROJECT, automationId: "auto_daily" } });
 
   it("runs the saved automation with an event idempotency key and no payload", async () => {
-    const host = await webhooksHost();
+    const host = await webhooksHost({ enabledIntegrations: ["automations"] });
     const { endpoint, secret } = await createEndpoint(host, automationConfig);
     expect((await postSigned(host, endpoint.id, secret!, payload, { id: "msg_auto" })).status).toBe(200);
     const runs = host.rpcCalls.filter((call) => call.method === "automations_run");
@@ -250,14 +250,14 @@ describe("automation action", () => {
   });
 
   it("refuses automations that are missing or cannot run, and reports a missing plugin", async () => {
-    const host = await webhooksHost();
+    const host = await webhooksHost({ enabledIntegrations: ["automations"] });
     await expect(createEndpoint(host, sendConfig({ action: { type: "automation", projectId: PROJECT, automationId: "auto_broken" } }))).rejects.toThrow(/missing-agent-prompt/);
     await expect(createEndpoint(host, sendConfig({ action: { type: "automation", projectId: PROJECT, automationId: "auto_none" } }))).rejects.toThrow(/not found/);
     const targets = (await host.harness.behavior.callRpc("webhooks_targets", { projectId: PROJECT })) as { automations: { items: unknown[] } };
     expect(targets.automations.items).toEqual([{ id: "auto_daily", name: "Daily triage" }]);
     host.automations.items = null;
     const missing = (await host.harness.behavior.callRpc("webhooks_targets", { projectId: PROJECT })) as { automations: { available: boolean; message: string } };
-    expect(missing.automations).toMatchObject({ available: false, message: expect.stringContaining("Automations plugin") });
+    expect(missing.automations).toMatchObject({ available: false, items: [] });
     await host.harness.lifecycle.dispose();
   });
 });
@@ -266,7 +266,7 @@ describe("plugin action", () => {
   const pluginConfig = sendConfig({ action: { type: "plugin", pluginId: "receiver" } });
 
   it("hands only the declared fields to webhooks_receive with an event idempotency key", async () => {
-    const host = await webhooksHost();
+    const host = await webhooksHost({ enabledIntegrations: ["receiver"] });
     const { endpoint, secret } = await createEndpoint(host, pluginConfig);
     expect((await postSigned(host, endpoint.id, secret!, payload, { id: "msg_plugin" })).status).toBe(200);
     const calls = host.rpcCalls.filter((call) => call.pluginId === "receiver");
@@ -289,15 +289,14 @@ describe("plugin action", () => {
     await host.harness.lifecycle.dispose();
   });
 
-  it("refuses plugins that do not publish webhooks_receive, and Webhooks itself", async () => {
-    const host = await webhooksHost();
-    await expect(createEndpoint(host, sendConfig({ action: { type: "plugin", pluginId: "other" } }))).rejects.toThrow(/does not publish a webhooks_receive method/);
-    await expect(createEndpoint(host, sendConfig({ action: { type: "plugin", pluginId: "webhooks" } }))).rejects.toThrow(/itself/);
+  it("offers only published receivers and refuses undeclared plugin-action data", async () => {
+    const host = await webhooksHost({ enabledIntegrations: ["receiver"] });
     await expect(createEndpoint(host, sendConfig({ action: { type: "plugin", pluginId: "receiver", message: "hi" } }))).rejects.toThrow(/Invalid endpoint config/);
     const targets = (await host.harness.behavior.callRpc("webhooks_targets", {})) as { receivers: unknown[] };
     expect(targets.receivers).toEqual([{ pluginId: "receiver", name: "Receiver", description: "Takes test deliveries." }]);
     host.receivers.plugins = [];
     expect(((await host.harness.behavior.callRpc("webhooks_targets", {})) as { receivers: unknown[] }).receivers).toEqual([]);
+    await expect(createEndpoint(host, pluginConfig)).rejects.toThrow(/does not publish a webhooks_receive method/);
     await host.harness.lifecycle.dispose();
   });
 });

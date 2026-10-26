@@ -1,44 +1,22 @@
 // Create or edit one endpoint. The server validates the whole config again,
 // so this form only shapes input and shows the server's message on failure.
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
-import { ResourceActionButton, ResourceDetailConfigurationSection, ResourceDetailPage, ResourceDetailStack } from "@/components/ui/resource-list";
+import { ResourceActionButton, ResourceDetailConfigurationSection, ResourceDetailPage, ResourceDetailStack, ResourceMeta } from "@/components/ui/resource-list";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { EndpointView, FieldSpec } from "../contract.js";
-import { useWebhooksRpc } from "./data.js";
+import { useTargets, useWebhooksRpc, type Targets } from "./data.js";
 import { SLACK_PRESETS, configFromDraft, draftFromEndpoint, emptyField, newDraft, withSlackPreset, type Draft, type FieldDraft } from "./draft.js";
 import { SecretReveal } from "./SecretReveal.js";
 import { Choice, Field, Notice, WEBHOOK_ICON, messageOf, type ChoiceOption } from "./ui.js";
 
-type Targets = {
-  projects: { id: string; name: string }[];
-  automations: { available: boolean; items: { id: string; name: string }[]; message: string | null };
-  receivers: { pluginId: string; name: string; description: string | null }[];
-};
 const fieldTypes: ChoiceOption[] = (["string", "integer", "number", "boolean"] satisfies FieldSpec["type"][]).map((type) => ({ value: type, label: type }));
 // Name, JSON path, type, required, remove. The header row and every field row share it.
-const fieldGrid = "sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_7rem_5.5rem_1.5rem]";
-
-function useTargets(projectId: string) {
-  const rpc = useWebhooksRpc();
-  const [targets, setTargets] = useState<Targets | null>(null);
-  useEffect(() => {
-    let live = true;
-    const id = projectId.trim();
-    rpc.call("webhooks_targets", id ? { projectId: id } : {}).then(
-      (value) => live && setTargets(value),
-      () => live && setTargets(null),
-    );
-    return () => {
-      live = false;
-    };
-  }, [rpc, projectId]);
-  return targets;
-}
+const fieldGrid = "@min-[32rem]/webhooks:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_7rem_5.5rem_1.5rem]";
 
 export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: EndpointView; onSaved: (endpointId: string) => void; onCancel: () => void }) {
   const rpc = useWebhooksRpc();
@@ -54,7 +32,7 @@ export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: Endpo
 
   if (issued) {
     return (
-      <div className="mx-auto w-full max-w-3xl">
+      <div className="w-full">
         <SecretReveal secret={issued.secret} authMode={draft.authMode} onDone={() => onSaved(issued.endpointId)} />
       </div>
     );
@@ -84,17 +62,20 @@ export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: Endpo
   const showSecretInput = endpoint === undefined || authChanged;
   const placeholders = ["fields", "endpoint_name", "delivery_id", "received_at", ...draft.fields.map((field) => field.name).filter(Boolean)];
   const fieldNames = draft.fields.map((field) => field.name.trim()).filter(Boolean);
+  const pluginAvailable = (targets?.receivers.length ?? 0) > 0;
+  const automationAvailable = targets?.automations.available ?? false;
+  const actionAvailable = draft.actionType === "plugin" ? pluginAvailable : draft.actionType === "automation" ? automationAvailable : true;
 
   return (
     <ResourceDetailPage
-      leading={<Icon name={WEBHOOK_ICON} aria-hidden className="size-4 shrink-0 text-muted-foreground" />}
-      title={endpoint ? "Edit endpoint" : "New endpoint"}
-      metadata={endpoint?.name}
+      leading={<Icon name={WEBHOOK_ICON} aria-hidden className="size-full shrink-0 text-foreground" />}
+      title={endpoint?.name ?? "New endpoint"}
+      metadata={endpoint ? <ResourceMeta items={["Edit configuration"]} /> : undefined}
     >
       <form onSubmit={submit} aria-label={endpoint ? "Edit endpoint" : "New endpoint"} className="flex flex-col gap-6">
         <ResourceDetailStack>
           <ResourceDetailConfigurationSection label="Endpoint">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 @min-[32rem]/webhooks:grid-cols-2">
               <Field label="Name">{(control) => <Input {...control} value={draft.name} onChange={(event) => set("name", event.target.value)} maxLength={80} required />}</Field>
               <Field
                 label="Authentication"
@@ -106,28 +87,28 @@ export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: Endpo
                     value={draft.authMode}
                     onChange={(value) => setDraft((current) => withAuthMode(current, value as Draft["authMode"]))}
                     options={[
-                      { value: "standard-webhooks", label: "Standard Webhooks (PostHog)" },
-                      { value: "slack", label: "Slack" },
+                      { value: "standard-webhooks", label: "Standard Webhooks signature" },
+                      { value: "slack", label: "Slack request signature" },
                       { value: "bearer", label: "Bearer token" },
                     ]}
                   />
                 )}
               </Field>
               {!showSecretInput ? null : slack ? (
-                <Field label="Slack signing secret" hint="Basic Information → App Credentials. Not the bot token." className="sm:col-span-2">
+                <Field label="Slack signing secret" hint="Basic Information → App Credentials. Not the bot token." className="@min-[32rem]/webhooks:col-span-2">
                   {(control) => <Input {...control} type="password" autoComplete="off" value={importedSecret} onChange={(event) => setImportedSecret(event.target.value)} required />}
                 </Field>
               ) : (
                 <Field
                   label="Existing secret (optional)"
                   hint="Leave empty to generate one."
-                  className="sm:col-span-2"
+                  className="@min-[32rem]/webhooks:col-span-2"
                 >
                   {(control) => <Input {...control} type="password" autoComplete="off" value={importedSecret} onChange={(event) => setImportedSecret(event.target.value)} />}
                 </Field>
               )}
               {slack ? (
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:col-span-2">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground @min-[32rem]/webhooks:col-span-2">
                   <span>Presets:</span>
                   {(Object.keys(SLACK_PRESETS) as (keyof typeof SLACK_PRESETS)[]).map((kind) => (
                     <Button key={kind} type="button" variant="outline" size="sm" onClick={() => setDraft((current) => withSlackPreset(current, kind))}>
@@ -142,7 +123,7 @@ export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: Endpo
               <Field label="Deliveries per minute" hint="1 to 600.">
                 {(control) => <Input {...control} inputMode="numeric" value={draft.rateLimitPerMinute} onChange={(event) => set("rateLimitPerMinute", event.target.value)} />}
               </Field>
-              <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-foreground sm:col-span-2">
+              <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-foreground @min-[32rem]/webhooks:col-span-2">
                 <Switch checked={draft.enabled} onCheckedChange={(enabled) => set("enabled", enabled)} />
                 Enabled
               </label>
@@ -163,7 +144,7 @@ export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: Endpo
               <p className="text-sm text-muted-foreground">No fields.</p>
             ) : (
               <div className="flex flex-col">
-                <div aria-hidden className={`hidden gap-2 pb-1.5 text-xs font-medium text-muted-foreground sm:grid ${fieldGrid}`}>
+                <div aria-hidden className={`hidden gap-2 pb-1.5 text-xs font-medium text-muted-foreground @min-[32rem]/webhooks:grid ${fieldGrid}`}>
                   <span>Name</span>
                   <span>JSON path</span>
                   <span>Type</span>
@@ -185,7 +166,7 @@ export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: Endpo
 
           <ResourceDetailConfigurationSection label="Duplicates">
             <SectionHint>Repeats are accepted and skipped.</SectionHint>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 @min-[32rem]/webhooks:grid-cols-2">
               <Field label="Duplicate key">
                 {(control) => (
                   <Choice
@@ -218,23 +199,26 @@ export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: Endpo
 
           <ResourceDetailConfigurationSection label="Action">
             <SectionHint>Payload values can fill the message, never the target.</SectionHint>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Do" className="sm:col-span-2">
+            <div className="grid gap-4 @min-[32rem]/webhooks:grid-cols-2">
+              <Field label="Do" className="@min-[32rem]/webhooks:col-span-2">
                 {(control) => (
                   <Choice
                     {...control}
-                    value={draft.actionType}
+                    value={actionAvailable ? draft.actionType : ""}
+                    placeholder="Configured integration unavailable"
                     onChange={(value) => set("actionType", value as Draft["actionType"])}
                     options={[
                       { value: "send", label: "Send to a thread" },
                       { value: "spawn", label: "Start a thread" },
-                      { value: "automation", label: "Run an automation" },
-                      { value: "plugin", label: "Hand to a plugin" },
+                      ...(automationAvailable ? [{ value: "automation", label: "Run an automation" }] : []),
+                      ...(pluginAvailable ? [{ value: "plugin", label: "Hand to a plugin" }] : []),
                     ]}
                   />
                 )}
               </Field>
-              {draft.actionType === "send" ? (
+              {!actionAvailable ? (
+                <Notice tone="warning" className="@min-[32rem]/webhooks:col-span-2">Enable the configured integration in Webhooks settings → Oh My BB, or choose another action.</Notice>
+              ) : draft.actionType === "send" ? (
                 <Field
                   label="Thread id"
                 >
@@ -245,7 +229,7 @@ export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: Endpo
               ) : (
                 <ProjectPicker value={draft.projectId} targets={targets} onChange={(value) => set("projectId", value)} />
               )}
-              {draft.actionType === "automation" ? <AutomationPicker value={draft.automationId} targets={targets} onChange={(value) => set("automationId", value)} /> : null}
+              {draft.actionType === "automation" && actionAvailable ? <AutomationPicker value={draft.automationId} targets={targets} onChange={(value) => set("automationId", value)} /> : null}
               {draft.actionType === "spawn" ? (
                 <Field label="Thread title (optional)">
                   {(control) => <Input {...control} value={draft.title} maxLength={200} onChange={(event) => set("title", event.target.value)} />}
@@ -253,15 +237,13 @@ export function EndpointForm({ endpoint, onSaved, onCancel }: { endpoint?: Endpo
               ) : null}
               {draft.actionType === "spawn" ? <EnvironmentFields draft={draft} set={set} /> : null}
               {draft.actionType === "automation" ? (
-                <Notice tone="warning" className="sm:col-span-2">
+                <Notice tone="warning" className="@min-[32rem]/webhooks:col-span-2">
                   Runs the saved prompt. Payload fields are not passed in.
                 </Notice>
-              ) : draft.actionType === "plugin" ? (
-                <p className="text-xs leading-snug text-muted-foreground sm:col-span-2">The plugin gets the declared field values and decides what to do. No message is sent.</p>
-              ) : (
+              ) : draft.actionType === "plugin" ? null : (
                 <Field
                   label="Message"
-                  className="sm:col-span-2"
+                  className="@min-[32rem]/webhooks:col-span-2"
                   hint={
                     <>
                       Placeholders: <span className="font-mono">{placeholders.map((name) => `{{${name}}}`).join(" ")}</span>
@@ -314,12 +296,12 @@ function FieldRow({ index, field, onChange, onRemove }: { index: number; field: 
   const n = index + 1;
   return (
     <div className={`grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 py-2.5 first:pt-0 last:pb-0 ${fieldGrid}`}>
-      <Input aria-label={`Field ${n} name`} value={field.name} placeholder="event" className="col-span-3 sm:col-span-1" onChange={(event) => onChange({ name: event.target.value })} />
+      <Input aria-label={`Field ${n} name`} value={field.name} placeholder="event" className="col-span-3 @min-[32rem]/webhooks:col-span-1" onChange={(event) => onChange({ name: event.target.value })} />
       <Input
         aria-label={`Field ${n} path`}
         value={field.path}
         placeholder="event.name"
-        className="col-span-3 font-mono text-xs sm:col-span-1"
+        className="col-span-3 font-mono text-xs @min-[32rem]/webhooks:col-span-1"
         onChange={(event) => onChange({ path: event.target.value })}
       />
       <Choice aria-label={`Field ${n} type`} value={field.type} options={fieldTypes} onChange={(value) => onChange({ type: value as FieldSpec["type"] })} />
@@ -329,24 +311,24 @@ function FieldRow({ index, field, onChange, onRemove }: { index: number; field: 
       </label>
       <ResourceActionButton label={`Remove field ${n}`} icon="Trash2" className="justify-self-end" onClick={onRemove} />
       {field.type === "string" ? (
-        <div className="col-span-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground sm:col-span-5">
-          <label className="flex items-center gap-2">
-            <span className="w-24 shrink-0 sm:w-auto">Max length</span>
+        <div className="col-span-3 grid grid-cols-[6rem_minmax(0,1fr)] items-start gap-4 text-xs text-muted-foreground @min-[32rem]/webhooks:col-span-5 @min-[32rem]/webhooks:grid-cols-[auto_minmax(0,1fr)]">
+          <label className="flex min-w-0 flex-col gap-1.5 @min-[32rem]/webhooks:flex-row @min-[32rem]/webhooks:items-center @min-[32rem]/webhooks:gap-2">
+            <span className="shrink-0 whitespace-nowrap">Max length</span>
             <Input
               aria-label={`Field ${n} max length`}
               inputMode="numeric"
               placeholder="500"
-              className="h-8 w-20"
+              className="h-8 w-full @min-[32rem]/webhooks:w-20"
               value={field.maxLength}
               onChange={(event) => onChange({ maxLength: event.target.value })}
             />
           </label>
-          <label className="flex min-w-48 flex-1 items-center gap-2">
-            <span className="w-24 shrink-0 sm:w-auto">Allowed values</span>
+          <label className="flex min-w-0 flex-col gap-1.5 @min-[32rem]/webhooks:flex-row @min-[32rem]/webhooks:items-center @min-[32rem]/webhooks:gap-2">
+            <span className="shrink-0 whitespace-nowrap">Allowed values</span>
             <Input
               aria-label={`Field ${n} allowed values`}
               placeholder="Any. Comma separated."
-              className="h-8 flex-1"
+              className="h-8 min-w-0 @min-[32rem]/webhooks:flex-1"
               value={field.allowed}
               onChange={(event) => onChange({ allowed: event.target.value })}
             />
@@ -397,23 +379,17 @@ function AutomationPicker({ value, targets, onChange }: { value: string; targets
 
 function ReceiverPicker({ value, targets, onChange }: { value: string; targets: Targets | null; onChange: (value: string) => void }) {
   const receivers = targets?.receivers ?? [];
-  if (receivers.length === 0) {
-    return (
-      <Field label="Plugin id" hint="No installed plugin accepts webhook deliveries.">
-        {(control) => <Input {...control} value={value} onChange={(event) => onChange(event.target.value)} />}
-      </Field>
-    );
-  }
+  if (receivers.length === 0) return null;
   const chosen = receivers.find((receiver) => receiver.pluginId === value);
   return (
-    <Field label="Plugin" hint={chosen?.description ?? undefined}>
+    <Field label="Plugin" className="@min-[32rem]/webhooks:col-span-2" hint={chosen?.description ? <span className="block truncate" title={chosen.description}>{chosen.description}</span> : value ? "The saved receiver is unavailable. Enable it in Webhooks settings → Oh My BB, or choose another receiver." : undefined}>
       {(control) => (
         <Choice
           {...control}
-          value={value}
+          value={chosen ? value : ""}
           placeholder="Choose a plugin"
           onChange={onChange}
-          options={withCurrent(value, receivers.map((receiver) => ({ value: receiver.pluginId, label: receiver.name })))}
+          options={receivers.map((receiver) => ({ value: receiver.pluginId, label: receiver.name }))}
         />
       )}
     </Field>
@@ -454,7 +430,7 @@ function EnvironmentFields({ draft, set }: { draft: Draft; set: <K extends keyof
           <Field label="Environment provider id">
             {(control) => <Input {...control} value={draft.environmentProviderId} onChange={(event) => set("environmentProviderId", event.target.value)} />}
           </Field>
-          <Field label="Provider inputs (JSON)" hint="Fixed values." className="sm:col-span-2">
+          <Field label="Provider inputs (JSON)" hint="Fixed values." className="@min-[32rem]/webhooks:col-span-2">
             {(control) => <Textarea {...control} rows={3} className="font-mono text-xs" value={draft.providerInputs} onChange={(event) => set("providerInputs", event.target.value)} />}
           </Field>
         </>

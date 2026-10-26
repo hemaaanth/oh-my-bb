@@ -49,6 +49,10 @@ send or spawn action when the agent needs the values.
 
 ## Receiver plugins
 
+Install and enable the receiver in BB, then enable it under **Settings →
+Webhooks → Oh My BB**. Webhooks owns discovery, authentication, and delivery.
+The receiving plugin owns its handler and published name and description.
+
 Another plugin can take deliveries without any change to Webhooks. It
 registers one RPC method named `webhooks_receive`, marked discoverable:
 
@@ -96,6 +100,25 @@ bb plugin install git:https://github.com/hemaaanth/oh-my-bb.git@^0.1.0 \
   --tag-prefix webhooks/
 ```
 
+## First-time requirements
+
+- BB 0.46.1 or later, kept running on the receiving machine.
+- A configured agent and a thread or project for thread actions.
+- A stable public HTTPS hostname, routed through a tunnel or reverse proxy.
+  Cloudflare is optional. Its named tunnels need a Cloudflare account, a
+  domain, and `cloudflared`; Caddy or another HTTPS proxy works instead.
+- Sender access to configure its webhook URL, signing secret or bearer token,
+  and event subscriptions.
+
+Webhooks does not install or run a tunnel. No other BB plugin is required
+unless you choose an automation or receiver-plugin action. BB Connect cannot
+receive provider callbacks because it requires an owner session.
+
+Start with **Webhooks → Setup guide**, also available from **Settings →
+Webhooks → More**. The [ingress guide](docs/ingress.md) includes fresh-machine
+Cloudflare and Caddy examples. A local **Send test** runs the real action but
+does not check the public route; finish with an event from the sender.
+
 ## Set up an endpoint
 
 1. Open **Webhooks** in the BB sidebar and choose **New endpoint**. Or run
@@ -111,6 +134,31 @@ bb plugin install git:https://github.com/hemaaanth/oh-my-bb.git@^0.1.0 \
 6. Set **Public base URL** in the plugin settings. Both settings apply when you
    save them. No reload is needed.
 7. Paste the URL and secret into the sender.
+
+Settings keeps **Configuration** for the public URL and listener port.
+**Credentials → Manage endpoints** opens endpoint authentication and secret
+rotation. Secrets remain per endpoint; there is no shared API key.
+
+**Oh My BB** controls optional Automations and receiver integrations. The action
+picker only offers enabled, available integrations. Fresh installations start
+with integrations off. Upgrades keep integrations used by saved endpoints enabled.
+Disabling an integration blocks its saves and delivery actions; it does not delete
+endpoints or secrets. Re-enable it to resume those hooks.
+
+Delivery errors appear only in the status icon's hover/focus tooltip. Attempts
+and duplicate counts stay inline. Success icons have a tooltip only when recorded
+result metadata is available; delivery history does not infer HTTP status codes.
+
+Overview, detail, new, edit, and setup pages match BB settings' outer page shell:
+a centered 760px frame with 16px padding inside each side (728px content at full
+width). Overlay scrollbars keep short and long pages aligned. Detail and setup
+headers use the native 36px icon and title style.
+
+Narrow views use compact endpoint rows: names can wrap, with the action and last
+delivery below them. Full authentication and target details remain on the endpoint
+page. Responsive layouts follow the page's available width, including narrow panes.
+String-field limit labels sit above their inputs on mobile. Delivery URLs stay on
+one clipped line; the copy action still uses the complete URL.
 
 ### PostHog
 

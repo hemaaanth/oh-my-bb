@@ -235,7 +235,7 @@ export function ResourceRow({
       )}
     >
       <span className="flex min-w-0 items-baseline gap-2">
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+        <span className="line-clamp-2 min-w-0 break-words text-sm font-medium text-foreground @min-[40rem]/resource-row:line-clamp-1">
           {title}
         </span>
         {titleMeta ? (
@@ -251,7 +251,7 @@ export function ResourceRow({
     <div
       data-resource-row
       className={cn(
-        "group grid min-w-0 cursor-pointer items-center gap-3 bg-transparent py-3 text-left focus-visible:outline-none",
+        "group @container/resource-row grid min-w-0 cursor-pointer items-center gap-3 bg-transparent py-3 text-left focus-visible:outline-none",
         hasLeading
           ? "grid-cols-[1.5rem_minmax(0,1fr)_auto]"
           : "grid-cols-[minmax(0,1fr)_auto]",
@@ -360,7 +360,7 @@ export function ResourceListState({
   onRetry,
   loadingRows = 4,
   layout = "list",
-  maxWidthClassName = "max-w-3xl",
+  maxWidthClassName = "max-w-none",
 }: {
   state: "loading" | "empty" | "error";
   message: string;

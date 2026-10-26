@@ -72,7 +72,7 @@ export function ResourceDetailPage({
   actions,
   metadata,
   metadataLeading,
-  maxWidthClassName = "max-w-3xl",
+  maxWidthClassName = "max-w-none",
   children,
 }: {
   title: ReactNode;
@@ -90,7 +90,7 @@ export function ResourceDetailPage({
   const leadingNode = leading ? (
     <span
       className={cn(
-        "flex h-6 w-4 shrink-0 items-center justify-center",
+        "flex size-9 shrink-0 items-center justify-center",
         leadingClassName,
       )}
     >
@@ -99,7 +99,7 @@ export function ResourceDetailPage({
   ) : null;
   const titleRow = (
     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-      <h1 className="min-w-0 truncate text-base font-semibold">{title}</h1>
+      <h1 className="min-w-0 truncate text-lg font-semibold text-foreground">{title}</h1>
       {titleMeta ? (
         <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">
           {titleMeta}
@@ -112,7 +112,7 @@ export function ResourceDetailPage({
   ) : null;
   return (
     <div className={cn("mx-auto w-full space-y-6", maxWidthClassName)}>
-      <div className="flex min-w-0 items-start justify-between gap-4">
+      <header className="flex min-w-0 items-center justify-between gap-4">
         {leadingNode && metadataLeading && metadataNode ? (
           <div className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2">
             <span className="flex justify-center">{leadingNode}</span>
@@ -121,9 +121,9 @@ export function ResourceDetailPage({
             {metadataNode}
           </div>
         ) : (
-          <div className="flex min-w-0 flex-1 items-start gap-x-2">
+          <div className="flex min-w-0 flex-1 items-center gap-x-3">
             {leadingNode}
-            <div className="min-w-0 flex-1 space-y-2">
+            <div className="min-w-0 flex-1">
               {titleRow}
               {metadataNode}
             </div>
@@ -136,7 +136,7 @@ export function ResourceDetailPage({
             {overflowMenu}
           </div>
         ) : null}
-      </div>
+      </header>
       {children}
     </div>
   );
