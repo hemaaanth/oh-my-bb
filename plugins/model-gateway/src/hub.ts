@@ -911,10 +911,17 @@ export class AccountPoolHub {
       now,
     );
     let estimate: number | null = null;
-    // The first translated fallback that could not fit, and whether a skipped route
-    // was only waiting (held): then its retry, not compaction, is the honest answer.
+    // The first translated fallback that could not fit, and whether a route was
+    // skipped only because it is waiting (route hold, cached quota or rate-limit
+    // hold): then its retry, not compaction, is the honest answer.
     let blocked: { model: string; tokens: number; window: number } | null = null;
-    let held = false;
+    let unavailable = false;
+    let waitUntil: number | null = null;
+    const waiting = (accounts: readonly Account[], entryModel: string | null) => {
+      unavailable = true;
+      const until = this.entryResetAt(accounts, rejected, modelFamily(entryModel), modelFor, true);
+      if (until !== null) waitUntil = Math.min(waitUntil ?? until, until);
+    };
     let served = false;
     let failure: FailureSummary | null = null;
     try {
@@ -951,7 +958,7 @@ export class AccountPoolHub {
             continue;
           }
           if (candidate.accounts.length === 0) {
-            held = true;
+            waiting(accounts, candidate.model);
             continue;
           }
           served = true;
@@ -1012,6 +1019,8 @@ export class AccountPoolHub {
           );
           if (result.kind === "failed") {
             failure = result.failure ?? failure;
+            // No attempt made: every account was filtered as exhausted or held.
+            if (result.failure === null) waiting(accounts, candidate.model);
             continue;
           }
           // Catalog and other auxiliary calls must not replace the inference route.
@@ -1043,10 +1052,14 @@ export class AccountPoolHub {
       signal.throwIfAborted();
       // A fallback that could not fit is the reason only when nothing else failed or
       // waited; otherwise the primary's failure and its retry-after stand.
-      if (blocked !== null && failure === null && !held)
+      if (blocked !== null && failure === null && !unavailable)
         return contextExceededResponse(client.provider, blocked.model, blocked.tokens, blocked.window);
       if (apiKeyOnly !== null && !served)
         return client.errorResponse(400, apiKeyUpstreamMessage(apiKeyOnly));
+      if (failure === null && waitUntil !== null)
+        return client.errorResponse(429, "No Model Gateway account is currently eligible.", {
+          "retry-after": String(Math.max(1, Math.ceil((waitUntil - this.options.now()) / 1_000))),
+        });
       return failure === null
         ? this.noEligibleResponse(entries.flat(), family, client)
         : client.errorResponse(
@@ -1226,6 +1239,8 @@ export class AccountPoolHub {
     rejected: ReadonlyMap<string, number | null>,
     family: ModelFamily,
     modelFor?: (account: Account) => string | null,
+    /** Also count the hub's own plain rate-limit holds. */
+    quotaHolds = false,
   ): number | null {
     const settings = this.options.getSettings();
     const now = this.options.now();
@@ -1243,6 +1258,7 @@ export class AccountPoolHub {
       const until = Math.max(
         hold !== null && hold > now ? hold : 0,
         quota ?? 0,
+        quotaHolds ? (this.options.quotas.get(account.id).heldUntil ?? 0) : 0,
         modelFor ? (this.capacity.get(this.capacityProvider(account), modelFor(account))?.retryAt ?? 0) : 0,
       );
       if (until <= now) return null;

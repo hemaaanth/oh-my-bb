@@ -2044,17 +2044,29 @@ describe("chain failover in the hub", () => {
       const { gw, key } = await codexToClaudeKey();
       gw.upstream.reply = (who) => (who === "pro-token" ? limited429() : anthropicTwoTools());
       const limited = await post(key, codexBody(hugeText));
-      expect(limited).toMatchObject({ status: 429, json: { error: { code: "rate_limit_exceeded" } } });
-      expect(Number(limited.retryAfter)).toBeGreaterThan(0);
+      expect(limited).toMatchObject({ status: 429, retryAfter: "3600", json: { error: { code: "rate_limit_exceeded" } } });
       expect(gw.upstream.attempts).toEqual(["pro-token"]);
+      // The retry finds the cached exhaustion: still the 429, with the remaining time.
+      gw.setNow(T + 600_000);
+      expect(await post(key, codexBody(hugeText))).toMatchObject({ status: 429, retryAfter: "3000" });
+      expect(gw.upstream.attempts).toEqual(["pro-token"]);
+
+      const paced = await gateway({ withCodex: true });
+      await paced.cli("chain", "set", "codex", "chatgpt-oauth:*", "claude-key:*");
+      paced.upstream.reply = () => new Response("{}", { status: 429, headers: { "retry-after": "120" } });
+      gw0 = paced;
+      const pacedKey = await paced.token("codex", "thr_paced");
+      expect(await post(pacedKey, codexBody(hugeText))).toMatchObject({ status: 429, retryAfter: "120" });
+      paced.setNow(T + 20_000);
+      expect(await post(pacedKey, codexBody(hugeText))).toMatchObject({ status: 429, retryAfter: "100" });
+      expect(paced.upstream.attempts).toEqual(["pro-token"]);
 
       const held = await gateway({ withCodex: true });
       await held.cli("chain", "set", "codex", "chatgpt-oauth:*", "claude-key:*");
       await held.cli("account", "hold", held.pro!.id, "--until", new Date(RESET).toISOString());
       gw0 = held;
       const waiting = await post(await held.token("codex", "thr_held"), codexBody(hugeText));
-      expect(waiting.status).toBe(429);
-      expect(Number(waiting.retryAfter)).toBeGreaterThan(0);
+      expect(waiting).toMatchObject({ status: 429, retryAfter: String((RESET - T) / 1_000) });
       expect(held.upstream.attempts).toEqual([]);
 
       const busy = await gateway({ withCodex: true });
