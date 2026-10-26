@@ -55,6 +55,8 @@ as `fx-acp/v0.1.0`.
 - [`plugins/session-share`](plugins/session-share) shares temporary password-protected
   session viewers through Cloudflare Tunnel. View runs alone; optional Pinpoint
   Review holds guest feedback for owner release.
+- [`plugins/pinpoint`](plugins/pinpoint) turns live-page selections into reviewable
+  agent feedback, with screenshots, text edits, and explicit approvals.
 - [`agents/fx-acp`](agents/fx-acp) is an optional standalone ACP adapter for FX.
 - [`agents/nanocodex-acp`](agents/nanocodex-acp) is an optional standalone ACP
   adapter for nanocodex.
@@ -91,6 +93,10 @@ Tasks runs without another BB plugin and uses native BB threads for task chats.
 Status Sidebar owns its separate Tasks attachment opt-in. Keys stay in native
 Configuration. Preferences contains connections, source selections, and project
 mappings. Setup help stays collapsed inline under More → Setup guide.
+
+Pinpoint runs without a suite plugin. Optional Agents profiles, Provider Usage
+checks and Clasi learning start off. Guest feedback waits for owner approval;
+learning needs both the global opt-in and approval of the exact proposed text.
 
 ## Validate the repository
 
