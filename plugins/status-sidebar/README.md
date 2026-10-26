@@ -6,7 +6,7 @@ Group BB threads by working status with nested thread summaries and saved orderi
 
 Status Sidebar is an alternative thread list. Its distinctive features are attention-based status groups, a parent's neediest-child summary, and a private Later marker. BB already owns thread navigation, projects, native sections, split panes, thread actions, the navigation rail, and the footer. This plugin uses those host contracts instead of recreating their menus or changing BB core.
 
-The list is intentionally narrow. Only its setup page uses the standard 760px outer frame with 16px sides and 728px content. The setup page is available from **More → Open guide** in plugin settings and **Setup guide** in the sidebar.
+The list is intentionally narrow. Expand **More → Setup guide** in Status Sidebar's plugin settings for setup and usage. The guide starts collapsed and adds no navigation rail page.
 
 Choose the list under **Settings → Appearance → Sidebar**. This per-client provider choice is not rewritten by the package. Saved grouping, subgrouping, sort, collapse keys, Later markers, and order IDs keep their existing names.
 

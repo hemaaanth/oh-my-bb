@@ -6,7 +6,7 @@ Group BB threads by working status with nested thread summaries and saved orderi
 
 Group threads by status, workspace, or project. Combine a subgroup with recent, status, or manual ordering. Needs input, active work, drafting, unread, idle, and Later have distinct meanings. Parent summaries include the neediest child. Expand children without leaving the thread list.
 
-BB keeps its navigation rail, footer, split navigation, keyboard targets, and native thread action menus. Status Sidebar adds a private Later marker. It does not replace BB's project or thread lifecycle controls. The sidebar stays narrow; the dedicated setup guide uses the standard app-page frame.
+BB keeps its navigation rail, footer, split navigation, keyboard targets, and native thread action menus. Status Sidebar adds a private Later marker. It does not replace BB's project or thread lifecycle controls. The sidebar stays narrow; its collapsible setup guide lives in plugin settings, not a separate rail page.
 
 ## Works alone
 
@@ -18,4 +18,4 @@ Explicit Oh My BB switches in plugin settings enable Agents, Projects, or Tasks.
 
 ## Requirements
 
-BB 0.46.1 or later. Choose Status Sidebar under Settings → Appearance → Sidebar. Open Setup guide from the sidebar or More in plugin settings. Native Thread list preferences are not rewritten.
+BB 0.46.1 or later. Choose Status Sidebar under Settings → Appearance → Sidebar. Expand More → Setup guide in Status Sidebar's plugin settings. Native Thread list preferences are not rewritten.

@@ -11,6 +11,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import {
+  UrlLink,
   useBbNavigate,
   useSdk,
   useRpc,
@@ -854,7 +855,7 @@ export function StatusSidebar({
           </button>
         ))}
       </div> : null}
-      {workspaceState.error ? <p role="alert" className="px-2 py-2 text-xs text-destructive-text">{workspaceState.error} <button type="button" className="underline" onClick={() => navigate.toPluginPanel("status-sidebar", { subPath: "setup" })}>Open guide</button></p> : null}
+      {workspaceState.error ? <p role="alert" className="px-2 py-2 text-xs text-destructive-text">{workspaceState.error} <UrlLink href="/settings/plugins/status-sidebar" className="underline" onClick={onNavigate}>Open settings</UrlLink></p> : null}
       <div role={botsEnabled ? "tabpanel" : undefined} id="sidebar-code-panel" aria-labelledby={botsEnabled ? "sidebar-code-tab" : undefined} hidden={visibleTab !== "code"}>
         {tree.map((node) => renderNode(node, 0))}
         {countTreeThreads(tree) === 0 ? (
@@ -896,7 +897,6 @@ export function StatusSidebar({
           </p>
         ) : null}
       </div> : null}
-      <button type="button" onClick={() => { navigate.toPluginPanel("status-sidebar", { subPath: "setup" }); onNavigate(); }} className="mt-2 px-2 py-1 text-xs text-muted-foreground underline-offset-2 hover:underline">Setup guide</button>
       {deletingWorkspace ? <DeleteSectionDialog workspace={deletingWorkspace} onDismiss={() => setDeletingWorkspace(null)} onRemove={workspaceState.remove} /> : null}
     </div>
     </ThreadRowActionsContext.Provider>

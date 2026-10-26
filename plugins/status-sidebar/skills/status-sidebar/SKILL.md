@@ -9,7 +9,7 @@ Status Sidebar replaces only BB's thread-list slot. BB owns the rail, footer, ne
 
 ## Layout
 
-Select the provider in Settings → Appearance → Sidebar. Right-click or long-press a section heading for Group by, Subgroup by, and Sort by. Manual sort enables drag ordering. The sidebar is intentionally narrow. Setup guide is available from its working list and More in plugin settings.
+Select the provider in Settings → Appearance → Sidebar. Right-click or long-press a section heading for Group by, Subgroup by, and Sort by. Manual sort enables drag ordering. The sidebar is intentionally narrow. Expand More → Setup guide in Status Sidebar's plugin settings. The guide starts collapsed and has no rail page.
 
 Never change the user's selected provider, grouping, collapse state, ordering, or BB Thread list preferences merely to validate the plugin. Use disposable fixture state. Never archive, move, delete, or create real threads or projects for validation.
 

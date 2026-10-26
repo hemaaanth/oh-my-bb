@@ -1,6 +1,6 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import { StatusSidebar } from "./components/StatusSidebar";
-import { MoreSettings, SetupPage } from "./components/Setup";
+import { MoreSettings } from "./components/Setup";
 import { IntegrationSettings } from "./components/IntegrationSettings";
 
 export default definePluginApp((app) => {
@@ -13,11 +13,4 @@ export default definePluginApp((app) => {
   });
   app.slots.settingsSection({ id: "more", component: MoreSettings });
   app.slots.settingsSection({ id: "oh-my-bb", component: IntegrationSettings });
-  app.slots.navPanel({
-    id: "status-sidebar",
-    title: "Status Sidebar",
-    path: "status-sidebar",
-    icon: "status-sidebar/sidebar",
-    component: SetupPage,
-  });
 });
