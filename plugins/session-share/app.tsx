@@ -560,15 +560,19 @@ function SessionShareSettings() {
   }
 
   return (
-    <section className="space-y-4">
-      <h2 className="text-sm font-medium">Credentials</h2>
-      <div className="overflow-hidden rounded-md border border-border bg-surface-recessed/70">
-        <div className="flex items-center justify-between gap-4 border-b border-border p-3">
-          <p className="text-sm font-medium">Shared sessions</p>
-          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-            {shares.length}
+    <div className="space-y-4">
+      <details className="group overflow-hidden rounded-md border border-border bg-surface-recessed/70">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 border-border p-3 text-sm group-open:border-b [&::-webkit-details-marker]:hidden">
+          <span>Shared sessions</span>
+          <span className="flex shrink-0 items-center gap-2">
+            {shares.length > 0 && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                {shares.length}
+              </span>
+            )}
+            <Icon name="ChevronDown" className="size-4 transition-transform group-open:rotate-180" />
           </span>
-        </div>
+        </summary>
 
         {shares.length === 0 ? (
           <p className="p-3 text-sm text-muted-foreground">
@@ -650,11 +654,11 @@ function SessionShareSettings() {
             })}
           </div>
         )}
-      </div>
+      </details>
       <p aria-live="polite" className={cn("text-xs text-muted-foreground", !message && "sr-only")}>
         {message}
       </p>
-    </section>
+    </div>
   );
 }
 
@@ -755,13 +759,13 @@ function MoreSettings() {
   return (
     <section className="space-y-4">
       <h2 className="text-sm font-medium">More</h2>
+      <SessionShareSettings />
       <SetupGuide />
     </section>
   );
 }
 
 export default definePluginApp((app) => {
-  app.slots.settingsSection({ id: "credentials", component: SessionShareSettings });
   app.slots.settingsSection({ id: "more", component: MoreSettings });
   app.slots.experimental_threadHeaderAction({
     id: "session-share",

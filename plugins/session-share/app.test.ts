@@ -218,9 +218,10 @@ describe("Session Share frontend registration", () => {
     vi.useFakeTimers();
     const app = await loadPluginApp(() => import("./app"));
     let shares: ShareStatus[] = [];
-    const slot = renderSlot(app.settingsSections.find(({ id }) => id === "credentials")!, {}, {
+    const slot = renderSlot(app.settingsSections.find(({ id }) => id === "more")!, {}, {
       rpc: { list: () => ({ shares }) },
     });
+    fireEvent.click(slot.getByText("Shared sessions").closest("summary")!);
     const listCalls = () =>
       slot.inspection.rpcCalls.filter((call) => call.method === "list").length;
 
