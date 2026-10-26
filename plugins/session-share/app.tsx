@@ -673,6 +673,7 @@ function SessionShareOverlay() {
   const pluginId = experimental_usePluginId();
   const context = useBbContext();
   const opener = useRef<HTMLElement | null>(null);
+  const outsideFocus = useRef<HTMLElement | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [viewport] = useState(() => window.matchMedia("(max-width: 767px), (pointer: coarse)"));
@@ -684,10 +685,29 @@ function SessionShareOverlay() {
     return () => viewport.removeEventListener("change", update);
   }, [viewport]);
   useEffect(() => {
+    const remember = (event: Event) => {
+      const target = event.target instanceof Element
+        ? event.target.closest("button, a[href], input, select, textarea, [tabindex]") : null;
+      if (target instanceof HTMLElement && target !== document.body
+        && !target.closest('[role="menu"], [role="dialog"]')) {
+        outsideFocus.current = target;
+      }
+    };
+    document.addEventListener("focusin", remember);
+    document.addEventListener("pointerdown", remember, true);
+    return () => {
+      document.removeEventListener("focusin", remember);
+      document.removeEventListener("pointerdown", remember, true);
+    };
+  }, []);
+  useEffect(() => {
     const handler = (event: Event) => {
       const request = (event as CustomEvent<OpenShareRequest>).detail;
       if (typeof request?.threadId !== "string" || !request.threadId) return;
-      opener.current = request.returnFocusTo instanceof HTMLElement ? request.returnFocusTo : null;
+      const target = request.returnFocusTo;
+      // Compact menus may not link their trigger with aria-labelledby.
+      opener.current = target instanceof HTMLElement && target !== document.body
+        && !target.closest('[role="menu"], [role="dialog"]') ? target : outsideFocus.current;
       setThreadId(request.threadId);
       setOpen(true);
     };

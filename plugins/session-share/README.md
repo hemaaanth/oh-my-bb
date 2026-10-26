@@ -34,7 +34,7 @@ Install cloudflared yourself on the BB server machine. Session Share does not do
 
 ## Sharing and lifecycle
 
-Open **Session Share** in a thread's **⋯ menu**, then choose View to share the conversation. Choose a duration and Quick or Custom mode. The panel defaults to three hours; the CLI retains its one-hour default. Send the URL and access code privately. Anyone with both can unlock the viewer.
+Open **Session Share** in a thread's **⋯ menu**, then choose View to share the conversation. Choose a duration and Quick or Custom mode. The panel defaults to three hours; the CLI retains its one-hour default. Send the URL and access code privately. Anyone with both can unlock the viewer. Done and Escape close the dialog and return focus, including compact menus without a trigger link.
 
 Quick URLs can change after restart or tunnel recovery. Custom URLs and share paths remain stable. Stored shares restore automatically until expiry or revocation. Plugin disposal closes only its viewer and tunnel subprocesses. It does not stop unrelated tunnels. Tunnel tokens are passed in the child environment, not command arguments, and are redacted from logs and errors.
 

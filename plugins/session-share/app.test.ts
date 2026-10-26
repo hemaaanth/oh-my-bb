@@ -138,7 +138,7 @@ describe("Session Share frontend registration", () => {
     });
   });
 
-  it("returns focus after the native menu unmounts before the dialog opens", async () => {
+  it.each([true, false])("returns focus after the native menu unmounts (linked trigger: %s)", async (linkedTrigger) => {
     const app = await loadPluginApp(() => import("./app"));
     const action = app.threadActions.find(({ id }) => id === "session-share")!;
     const item = action.item({ thread: { id: "thread-1" } } as Parameters<typeof action.item>[0])!;
@@ -149,7 +149,7 @@ describe("Session Share frontend registration", () => {
       }) },
     });
     const nativeMenu = render(createElement(DropdownMenu.Root, null,
-      createElement(DropdownMenu.Trigger, null, "Thread menu"),
+      createElement(DropdownMenu.Trigger, linkedTrigger ? null : { id: "" }, "Thread menu"),
       createElement(DropdownMenu.Portal, null,
         createElement(DropdownMenu.Content, null,
           createElement(DropdownMenu.Item, {
@@ -159,8 +159,12 @@ describe("Session Share frontend registration", () => {
       ),
     ));
     const trigger = nativeMenu.getByRole("button", { name: "Thread menu" });
-    trigger.focus();
-    fireEvent.keyDown(trigger, { key: "Enter" });
+    if (linkedTrigger) {
+      trigger.focus();
+      fireEvent.keyDown(trigger, { key: "Enter" });
+    } else {
+      fireEvent(trigger, new MouseEvent("pointerdown", { bubbles: true, button: 0, ctrlKey: false }));
+    }
     await advance(0);
     fireEvent.click(nativeMenu.getByRole("menuitem", { name: "Session Share" }));
     await advance(0);
