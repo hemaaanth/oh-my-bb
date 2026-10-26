@@ -723,7 +723,7 @@ export async function createGuestServer(
         ...registration,
         accessCodeSalt: credentials.salt,
         accessCodeHash: credentials.hash,
-        openGraphImage: renderOpenGraphImage(registration.projectName),
+        openGraphImage: await renderOpenGraphImage(registration.projectName),
       });
       return credentials;
     },

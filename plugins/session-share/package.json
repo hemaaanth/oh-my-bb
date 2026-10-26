@@ -40,7 +40,9 @@
     "server": "./server.ts",
     "app": "./app.tsx",
     "host": "./host.ts",
-    "skills": ["skills"]
+    "skills": [
+      "skills"
+    ]
   },
   "dependencies": {
     "@resvg/resvg-wasm": "^2.6.2",
@@ -71,6 +73,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cron-parser": "^5.10.1",
+    "esbuild": "0.28.2",
     "hono": "^4.13.4",
     "jsdom": "^26.1.0",
     "react": "^19.0.0",

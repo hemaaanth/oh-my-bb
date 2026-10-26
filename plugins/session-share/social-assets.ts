@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { initWasm, Resvg } from "@resvg/resvg-wasm";
 
 const runtimeRequire = createRequire(import.meta.url);
-await initWasm(readFileSync(runtimeRequire.resolve("@resvg/resvg-wasm/index_bg.wasm")));
+let wasmReady: Promise<void> | undefined;
 
 function pluginAssetUrl(filename: string): URL {
   const directory = new URL(".", import.meta.url);
@@ -42,7 +42,8 @@ export function renderOpenGraphSvg(projectName: string): string {
 </svg>`;
 }
 
-export function renderOpenGraphImage(projectName: string): Buffer {
+export async function renderOpenGraphImage(projectName: string): Promise<Buffer> {
+  await (wasmReady ??= initWasm(readFileSync(runtimeRequire.resolve("@resvg/resvg-wasm/index_bg.wasm"))));
   const renderer = new Resvg(renderOpenGraphSvg(projectName), {
     font: {
       defaultFontFamily: "Inter",

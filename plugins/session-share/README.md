@@ -15,6 +15,8 @@ npm run build
 
 This is not an npm workspace. No sibling plugin is needed to install, build, test, or share a View session. Dependencies stay in the installed package directory. Open Graph PNGs use the package-local WebAssembly renderer and bundled Inter font. They do not need native renderer binaries or an install script.
 
+The renderer initializes on the first image request, not during plugin import. This keeps startup compatible with BB's CommonJS loader. Concurrent image requests share the same initialization.
+
 ## Configuration
 
 Use BB's native Session Share Configuration form. Existing setting IDs are unchanged.
