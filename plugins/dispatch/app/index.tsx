@@ -8,14 +8,13 @@ import { deviceProfile } from "@/voice/device-profile.js";
 import { callMyPhone, toggleCall, toggleMute } from "@/voice/engine.js";
 import { matchesKeydown } from "@/voice/hotkeys.js";
 import { prefsStore } from "@/voice/preferences.js";
-import { rememberSettingsOpener } from "@/voice/settings-opener.js";
 import "./app.css";
 import { ComposerHook } from "./composer-hook.js";
 import { ConsolePanel, ConsoleSidebarAccessory } from "./console/index.js";
 import { ConsoleStatusOverlay } from "./console/presence.js";
 import { ViewsDrawer } from "./drawer/views-drawer.js";
 import { COMMANDS, COMPOSER, CONTENT_SCRIPTS, ICON, NAV_PANEL, OVERLAYS, SIDEBAR_FOOTER_PET, VIEWS_PANEL_ACTION, VIEWS_TAB } from "./ids.js";
-import { PET_ICON, PetIcon, petMenuJustOpened } from "./pet/pet.js";
+import { PET_ICON, PetIcon, FooterControls } from "./pet/pet.js";
 import { PointerGhostOverlay } from "./pointer-ghost/overlay.js";
 import { registerSettingsSections } from "./settings/index.js";
 
@@ -37,19 +36,14 @@ function onHotkey(event: KeyboardEvent) {
 }
 
 export default definePluginApp((app) => {
-  // Footer pet (SPEC §7). The icon is the live pet; the button toggles the call.
+  // BB owns click disclosure and the native footer context menu.
   app.experimental_icons.register({ name: PET_ICON, component: PetIcon });
   app.experimental_sidebarFooter.register({
     id: SIDEBAR_FOOTER_PET,
-    kind: "action",
+    kind: "disclosure",
     label: "Dispatch",
     icon: PET_ICON,
-    onActivate(context) {
-      rememberSettingsOpener(context.openPluginDetails);
-      // The release that ends a long press is not a tap.
-      if (petMenuJustOpened()) return;
-      void toggleCall();
-    },
+    component: FooterControls,
   });
 
   // Pointer ghost (SPEC §8) and the invisible fallback bindings (SPEC §6.3).

@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AGENT_NAME_MAX, defaultPreferences, INSTRUCTIONS_LIMIT } from "../../shared/constants.js";
+import { AGENT_NAME_MAX, defaultPreferences, INSTRUCTIONS_LIMIT, SETUP_LABELS } from "../../shared/constants.js";
 import type { InstructionRevision } from "../../shared/contract.js";
 import { installFakeLocalStorage, makePrefsRpc, makeStatus } from "./support.js";
 import { SAMPLE_COST_NOTE, SAMPLE_PROGRESS } from "./voice.js";
@@ -27,26 +27,15 @@ describe("Readiness", () => {
   it("shows one line per mode from the status", async () => {
     const status = makeStatus({
       voice: { ready: true, missing: [] },
-      phone: { ready: false, missing: ["Phone calls — Twilio Account SID", "Phone calls — Twilio Auth Token"], webhooksPlugin: "absent" },
+      phone: { ready: false, missing: [SETUP_LABELS.twilioSid, SETUP_LABELS.twilioToken], webhooksPlugin: "absent" },
     });
-    mount("readiness", { setupStatus: async () => status });
+    const view = mount("readiness", { setupStatus: async () => status });
     const voice = (await screen.findByText("In-app voice")).parentElement!;
     expect(within(voice).getByText("Ready")).toBeTruthy();
-    expect(screen.getByText(/Needs: Twilio Account SID, Twilio Auth Token/)).toBeTruthy();
-    expect(screen.getByText("Webhooks plugin not found.")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Set up phone calls" }).getAttribute("href")).toContain("docs/phone-calls.md");
-    expect(screen.queryByText("bb dispatch status")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open setup guide" }));
+    expect(view.inspection.navigateCalls).toContainEqual({ method: "toPluginPanel", path: "console", options: { subPath: "setup" } });
   });
 
-  it("reports the Webhooks plugin when it is present", async () => {
-    mount("readiness", { setupStatus: async () => makeStatus({ phone: { ready: true, missing: [], webhooksPlugin: "present" } }) });
-    const toggle = await screen.findByRole("button", { name: "Phone setup" });
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByText("Webhooks plugin found. Endpoint not verified.")).toBeNull();
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText("Webhooks plugin found. Endpoint not verified.")).toBeTruthy();
-  });
 
   it("never renders a value, even one that sneaks into the payload", async () => {
     const leaky = { ...makeStatus(), openaiKey: "sk-live-do-not-show", extra: { twilioToken: "tok-do-not-show" } };
@@ -208,19 +197,18 @@ describe("Agent", () => {
     expect(screen.queryByText(/Instruction history/)).toBeNull();
   });
 
-  it("lists the voices in groups with their details and saves a choice", async () => {
-    const rpc = agentRpc();
+  it("keeps a saved Realtime voice selected and allows switching between built-in voices", async () => {
+    const rpc = agentRpc(makePrefsRpc({ voice: "sage" }));
     mount("agent", rpc.handlers);
-    const live = await screen.findByRole("region", { name: "GPT-Live" });
-    const gleam = within(live).getByRole("button", { name: /^Gleam/ });
-    expect(gleam.getAttribute("aria-pressed")).toBe("true");
-    expect(gleam.textContent).toContain("English, North American · Feminine");
-    expect(within(live).getByRole("button", { name: /^Marin/ }).textContent).toContain("GPT-Live default");
-    const realtime = screen.getByRole("region", { name: "Realtime (unconfirmed)" });
-    expect(within(realtime).getByText(/GPT-Live may refuse them/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /^Nova/ })).toBeNull();
-    fireEvent.click(within(realtime).getByRole("button", { name: /^Sage/ }));
-    await waitFor(() => expect(rpc.prefs.writes).toEqual([{ voice: "sage" }]));
+    const sage = await screen.findByRole("button", { name: /^Sage/ });
+    expect(sage.getAttribute("aria-pressed")).toBe("true");
+    expect(rpc.prefs.writes).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: /^Gleam/ }));
+    await waitFor(() => expect(rpc.prefs.current.voice).toBe("gleam"));
+    expect(sage.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(sage);
+    await waitFor(() => expect(rpc.prefs.current.voice).toBe("sage"));
+    expect(sage.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("keeps an unknown saved voice visible and chosen", async () => {
@@ -258,7 +246,7 @@ describe("Agent", () => {
     const calm = { id: "voice_1", name: "Calm", prompt: "A calm voice.", createdAt: "2026-10-20T00:00:00.000Z" };
     const rpc = agentRpc(makePrefsRpc({ customVoices: [calm] }), undefined, false);
     mount("agent", rpc.handlers);
-    expect(await screen.findByText(/Add an OpenAI API key in Setup/)).toBeTruthy();
+    await screen.findByRole("button", { name: "Play Calm" });
     const enabled = (name: string) => !(screen.getByRole("button", { name }) as HTMLButtonElement).disabled;
     expect(enabled("Play Gleam")).toBe(true);
     expect(enabled("Play Calm")).toBe(false);

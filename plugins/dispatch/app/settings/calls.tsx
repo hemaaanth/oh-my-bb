@@ -28,18 +28,18 @@ function MicrophoneRow() {
   const grant = async () => setMessage(await devices.grant());
 
   return (
-    <Row label="Microphone" htmlFor="dispatch-mic" help={devices.namesVisible ? undefined : "Your browser hides microphone names until you allow access."}>
-      <div className="flex w-full items-center gap-2 @md:w-auto">
-        <SettingSelect
-          id="dispatch-mic"
-          label="Microphone"
-          value={selected}
-          options={[{ value: SYSTEM_DEFAULT, label: "System default" }, ...devices.inputs.map((device) => ({ value: device.id, label: device.label }))]}
-          onValueChange={(value) => {
-            setPick(value);
-            setSaved(false);
-          }}
-        />
+    <Row label="Microphone" htmlFor="dispatch-mic" help={devices.namesVisible ? undefined : "Allow access to see microphone names."}>
+      <SettingSelect
+        id="dispatch-mic"
+        label="Microphone"
+        value={selected}
+        options={[{ value: SYSTEM_DEFAULT, label: "System default" }, ...devices.inputs.map((device) => ({ value: device.id, label: device.label }))]}
+        onValueChange={(value) => {
+          setPick(value);
+          setSaved(false);
+        }}
+      />
+      <div className="flex w-full flex-wrap gap-1.5 @md:w-72 @md:justify-end">
         <Button
           size="sm"
           className="shrink-0"
@@ -52,8 +52,6 @@ function MicrophoneRow() {
         >
           Save
         </Button>
-      </div>
-      <div className="-ml-2 flex flex-wrap gap-1.5 @md:ml-0 @md:-mr-2 @md:justify-end">
         {devices.namesVisible ? null : (
           <Button variant="outline" size="sm" className="px-2" onClick={() => void grant()}>
             Grant access
@@ -89,7 +87,7 @@ function SpeakerRow() {
   const supported = canPickSpeaker() && devices.outputs.length > 0;
   const selected = devices.outputs.find((device) => supported && device.id === choice.outputDeviceId)?.id ?? SYSTEM_DEFAULT;
   return (
-    <Row label="Speaker" htmlFor="dispatch-speaker" help={supported ? undefined : "This browser plays sound through the system default speaker."}>
+    <Row label="Speaker" htmlFor="dispatch-speaker" help={supported ? undefined : "Uses your system's default speaker."}>
       <SettingSelect
         id="dispatch-speaker"
         label="Speaker"
@@ -104,7 +102,7 @@ function SpeakerRow() {
 
 function AnnouncementsRow({ prefs, save }: { prefs: Preferences; save: (patch: Partial<Preferences>) => Promise<boolean> }) {
   return (
-    <Row label="Announcements" placement="trailing" help="The agent speaks a short notice when a thread finishes or fails.">
+    <Row label="Announcements" placement="trailing" help="Speak when a thread finishes or fails.">
       <Switch aria-label="Announcements" checked={prefs.announcements} onCheckedChange={(announcements) => void save({ announcements })} />
     </Row>
   );
@@ -112,7 +110,7 @@ function AnnouncementsRow({ prefs, save }: { prefs: Preferences; save: (patch: P
 
 function DrawerRow({ prefs, save }: { prefs: Preferences; save: (patch: Partial<Preferences>) => Promise<boolean> }) {
   return (
-    <Row label="Mobile drawer behaviour" htmlFor="dispatch-drawer" help="Reuse a view or add one per thread on mobile. Desktop always navigates.">
+    <Row label="Mobile drawer behaviour" htmlFor="dispatch-drawer" help="Choose how mobile views open.">
       <SettingSelect id="dispatch-drawer" label="Mobile drawer behaviour" value={prefs.mobileDrawerBehavior} options={[{ value: "reuse", label: "Reuse the current view" }, { value: "new", label: "Open a new view" }]} onValueChange={(value) => void save({ mobileDrawerBehavior: value as Preferences["mobileDrawerBehavior"] })} />
     </Row>
   );
@@ -150,11 +148,11 @@ function MemoryRows({ prefs, save }: { prefs: Preferences; save: (patch: Partial
       <Row
         label="Call memory"
         placement="trailing"
-        help="After a call, your reasoning model writes a short summary with your OpenAI key. The agent sees recent summaries and can look up older ones."
+        help="Summarize calls with your OpenAI key."
       >
         <Switch aria-label="Call memory" checked={prefs.callMemory} onCheckedChange={(callMemory) => void save({ callMemory })} />
       </Row>
-      <Row label="Remember calls for" htmlFor="dispatch-memory-retention" help="Older summaries and transcripts are deleted. Call times and costs stay.">
+      <Row label="Remember calls for" htmlFor="dispatch-memory-retention" help="Deletes old text, not call totals.">
         <SettingSelect
           id="dispatch-memory-retention"
           label="Remember calls for"
@@ -163,7 +161,7 @@ function MemoryRows({ prefs, save }: { prefs: Preferences; save: (patch: Partial
           onValueChange={(value) => void save({ memoryRetentionDays: Number(value) })}
         />
       </Row>
-      <Row label="Home time zone" htmlFor="dispatch-home-zone" help="Used for phone calls. The app sends its own zone.">
+      <Row label="Home time zone" htmlFor="dispatch-home-zone" help="Time zone for phone calls.">
         <SettingSelect
           id="dispatch-home-zone"
           label="Home time zone"
@@ -182,7 +180,7 @@ export function CallsSection() {
   const defaults = defaultPreferences().hotkeys;
   const saveHotkey = (action: "toggle" | "mute") => (combo: string) => save({ hotkeys: { ...prefs.hotkeys, [action]: combo } });
   return (
-    <Group>
+    <Group title="Calls">
       <MicrophoneRow />
       <SpeakerRow />
       <ShortcutRow

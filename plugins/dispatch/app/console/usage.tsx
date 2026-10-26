@@ -41,9 +41,9 @@ export function UsageSummary({ reloadKey }: { reloadKey: unknown }) {
   return (
     <section aria-label="Usage" className="min-h-32 space-y-2">
       <dl className="grid grid-cols-3 divide-x divide-border overflow-hidden rounded-md border border-border bg-surface-raised">
-        {usageTotals(report).map((total) => <div key={total.label} className="min-w-0 px-3 py-3 sm:px-4">
+        {usageTotals(report).map((total) => <div key={total.label} className="min-w-0 px-3 py-3 @min-[40rem]/dispatch:px-4">
           <dt className="text-xs text-muted-foreground">{total.label}</dt>
-          <dd className="mt-1 text-base font-medium tabular-nums text-foreground sm:text-lg">{formatMinutes(total.seconds)}</dd>
+          <dd className="mt-1 text-base font-medium tabular-nums text-foreground @min-[40rem]/dispatch:text-lg">{formatMinutes(total.seconds)}</dd>
           <dd className="mt-0.5 text-xs tabular-nums text-muted-foreground">{formatUsd(total.usd)}</dd>
         </div>)}
       </dl>

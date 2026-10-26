@@ -75,7 +75,7 @@ export function ToolsSection() {
   const { prefs, error, save } = usePreferences();
   if (!prefs) return <Loading error={error} />;
   return (
-    <Group>
+    <Group title="Plugin access">
       <PluginAccessEditor access={prefs.pluginAccess} save={(pluginAccess) => save({ pluginAccess })} />
       {error ? <Note tone="error">{error}</Note> : null}
     </Group>

@@ -67,7 +67,7 @@ function placeLine(input: RuntimeInput): string {
 
 function pluginLines(plugins: readonly CommandPlugin[]): string {
   if (plugins.length === 0) return "- Plugin commands: none are allowed on this call.";
-  const lines = plugins.map((plugin) => `  - ${plugin.name} (${plugin.id}): bb ${plugin.command}${plugin.summary ? ` — ${plugin.summary}` : ""}`);
+  const lines = plugins.map((plugin) => `  - ${plugin.name} (${plugin.id}): bb ${plugin.command}${plugin.summary ? `: ${plugin.summary}` : ""}`);
   return ["- Plugin commands you may run with run_plugin_command:", ...lines].join("\n");
 }
 

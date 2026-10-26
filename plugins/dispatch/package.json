@@ -1,7 +1,7 @@
 {
   "name": "bb-plugin-dispatch",
-  "version": "0.3.1",
-  "description": "Drive BB by voice. Talk to a named agent in the app or over a phone call, and it reads, starts, and steers your threads.",
+  "version": "0.3.2",
+  "description": "Drive BB by voice.",
   "license": "MIT",
   "author": "Hemanth Soni",
   "homepage": "https://github.com/hemaaanth/oh-my-bb/tree/main/plugins/dispatch",
@@ -22,13 +22,25 @@
     "phone"
   ],
   "type": "module",
+  "files": [
+    "dist",
+    "icons",
+    "voice-samples",
+    "skills",
+    "docs",
+    "README.md",
+    "PLUGIN_OVERVIEW.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "THIRD_PARTY.md"
+  ],
   "engines": {
     "bb": ">=0.46.1",
     "bbPluginSdk": ">=0.6.49"
   },
   "bb": {
     "name": "Dispatch",
-    "description": "Drive BB by voice. Talk to a named agent in the app or over a phone call, and it reads, starts, and steers your threads.",
+    "description": "Drive BB by voice.",
     "branding": {
       "icon": "./icons/dispatch.svg",
       "experimental_icons": {
@@ -42,7 +54,7 @@
     ]
   },
   "scripts": {
-    "build": "bb plugin build",
+    "build": "bb plugin build && node scripts/sanitize-build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "samples": "esbuild scripts/make-voice-samples.ts --bundle --platform=node --format=esm --packages=external --log-level=warning --outfile=node_modules/.cache/dispatch/make-voice-samples.mjs && node node_modules/.cache/dispatch/make-voice-samples.mjs"
@@ -51,12 +63,13 @@
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-slot": "^1.5.0",
     "agent-robot-avatar": "^0.5.2",
+    "react-colorful": "5.8.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "0.6.49",
-    "@radix-ui/react-context-menu": "^2.3.3",
-    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-popover": "^1.1.19",
+    "@radix-ui/react-select": "^2.3.3",
     "@testing-library/react": "16.3.2",
     "@types/better-sqlite3": "7.6.12",
     "@types/node": "^22.20.5",

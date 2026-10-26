@@ -1,4 +1,4 @@
-import { defineRpcContract } from "@get-bb/plugin-sdk";
+import type { PluginRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { deviceProfileSchema } from "./contract.js";
 
@@ -18,7 +18,7 @@ export const speechSchema = z.object({
 export type PodcastSpeech = z.infer<typeof speechSchema>;
 const session = { callId: z.string(), token: z.string() };
 const ok = z.object({ ok: z.literal(true) });
-export const podcastContract = defineRpcContract({
+export const podcastContract = {
   podcastProfiles: { input: z.object({}), output: z.object({ profiles: z.array(profileSchema) }) },
   podcastProfileSave: { input: profileSchema, output: profileSchema },
   podcastOpen: {
@@ -41,5 +41,5 @@ export const podcastContract = defineRpcContract({
     input: z.object({ ...session, speechId: z.string() }),
     output: z.object({ audio: z.string(), mime: z.literal("audio/mpeg") }),
   },
-});
+} as const satisfies PluginRpcContract;
 export type PodcastContract = typeof podcastContract;

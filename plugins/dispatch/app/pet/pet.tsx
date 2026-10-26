@@ -2,20 +2,20 @@
 // sidebar footer. It sleeps with no call, wakes when one starts, and acts out
 // what the agent does: listening, talking, reading, searching, looking at a
 // thread, typing, sending. mood.ts picks the face; this file turns a face into
-// avatar calls and draws the footer icon. The footer button around the icon
-// toggles the call. A long press or right-click opens the pet's menu.
+// avatar calls and draws the footer icon. BB owns its click disclosure and
+// native footer context menu; the icon does not intercept pointer events.
 import { useEffect, useRef, useState, type HTMLAttributes, type RefObject } from "react";
-import * as ContextMenu from "@radix-ui/react-context-menu";
 import "agent-robot-avatar";
 import type { AgentRobotAvatar } from "agent-robot-avatar";
+import type { ExperimentalSidebarFooterDisclosureProps } from "@get-bb/plugin-sdk/app";
+import { Button } from "@/app/components/ui/button.js";
+import { Icon } from "@/app/components/ui/icon.js";
 import { cn } from "@/app/lib/utils.js";
-import { usePortalScopeProps } from "@/app/lib/portal-scope.js";
 import { callStatusText, useConsoleCallState } from "@/app/console/presence.js";
 import { formatElapsed } from "@/app/console/format.js";
 import { useCall } from "@/voice/call-store.js";
 import { callMyPhone, toggleCall } from "@/voice/engine.js";
 import { useAgentName, usePrefs, useSetup } from "@/voice/preferences.js";
-import { openDispatchSettings } from "@/voice/settings-opener.js";
 import { PET_MARKER } from "@/app/pointer-ghost/model.js";
 import { PET_THEME_COLOR, type PetLook, type PetStyle } from "./look.js";
 import { FACE_LABEL, nextFace, OUTCOME_MS, petFace, type PetFace, type ShownFace } from "./mood.js";
@@ -295,26 +295,10 @@ export function Pet({ face, look, className }: { face: PetFace; look?: PetLook; 
   );
 }
 
-/**
- * When the pet's menu last opened. The release that ends a long press can
- * also click the footer button below. The footer's onActivate asks here and
- * skips its toggle for that click.
- */
-let menuOpenedAt = 0;
-export const petMenuJustOpened = () => Date.now() - menuOpenedAt < 1000;
-
-const MENU_ITEM =
-  "flex cursor-default select-none flex-col items-start rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-state-hover focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
-
-/**
- * The footer button's icon: a small live pet in the host's icon box. The host
- * draws the button, so the long press is caught here. The ::before pad widens
- * the press target from the icon to most of the button.
- */
+/** Live status only. BB owns all interactions on the surrounding footer button. */
 export function PetIcon({ className }: { className?: string }) {
   const face = usePetFace();
   const call = useConsoleCallState();
-  const { state } = useCall();
   const name = useAgentName();
   const phone = call.channel === "phone";
   const waiting = call.phase === "dialing" || call.phase === "ringing";
@@ -322,49 +306,31 @@ export function PetIcon({ className }: { className?: string }) {
   const label = phone || call.phase === "ended"
     ? `${name} · ${callStatusText(call)}${call.live && call.startedAt !== null ? ` · ${formatElapsed((call.now - call.startedAt) / 1000)}` : ""}`
     : `${name} · ${FACE_LABEL[face]}`;
+  return (
+    <span {...{ [PET_MARKER]: "" }} role="img" aria-label={label} title={label} className={cn("inline-flex shrink-0 items-center justify-center", className)}>
+      <Pet face={shownFace} className="dispatch-pet-footer" />
+    </span>
+  );
+}
+
+/** Two explicit actions. Opening or dismissing the disclosure never starts a call. */
+export function FooterControls({ dismiss }: ExperimentalSidebarFooterDisclosureProps) {
+  const { state } = useCall();
+  const call = useConsoleCallState();
   const setup = useSetup();
-  const scope = usePortalScopeProps();
-  // Unknown until the first read: leave the item on.
+  const waiting = call.phase === "dialing" || call.phase === "ringing";
   const phoneBlocked = setup !== null && !setup.phone.ready;
   return (
-    <ContextMenu.Root
-      onOpenChange={(open) => {
-        if (open) menuOpenedAt = Date.now();
-      }}
-    >
-      <ContextMenu.Trigger asChild>
-        <span
-          {...{ [PET_MARKER]: "" }}
-          role="img"
-          aria-label={label}
-          title={label}
-          className={cn(
-            "relative inline-flex shrink-0 select-none items-center justify-center [-webkit-touch-callout:none] before:absolute before:-inset-2",
-            className,
-          )}
-        >
-          <Pet face={shownFace} className="dispatch-pet-footer" />
-        </span>
-      </ContextMenu.Trigger>
-      <ContextMenu.Portal>
-        <ContextMenu.Content
-          {...scope}
-          className="z-50 min-w-[11rem] rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
-        >
-          <ContextMenu.Item className={MENU_ITEM} onSelect={() => void toggleCall()}>
-            {state === "idle" ? `Wake ${name} here` : `Put ${name} to sleep`}
-          </ContextMenu.Item>
-          <ContextMenu.Item className={MENU_ITEM} disabled={phoneBlocked || waiting} onSelect={() => void callMyPhone()}>
-            <span>{waiting ? "Calling…" : "Call my phone"}</span>
-            {phoneBlocked ? (
-              <span className="text-xs text-muted-foreground">Needs: {setup.phone.missing.join(", ") || "phone setup"}</span>
-            ) : null}
-          </ContextMenu.Item>
-          <ContextMenu.Item className={MENU_ITEM} onSelect={openDispatchSettings}>
-            Dispatch settings
-          </ContextMenu.Item>
-        </ContextMenu.Content>
-      </ContextMenu.Portal>
-    </ContextMenu.Root>
+    <div role="group" aria-label="Dispatch call controls" className="grid grid-cols-2 gap-1 p-1">
+      <Button variant="ghost" className="h-8 min-w-0 gap-1.5 px-2 text-xs" onClick={() => { dismiss(); void toggleCall(); }}>
+        <Icon name={state === "idle" ? "Mic" : "Square"} className="size-4 text-muted-foreground" aria-hidden="true" />
+        {state === "idle" ? "Talk in app" : "End call"}
+      </Button>
+      <Button variant="ghost" className="h-8 min-w-0 gap-1.5 px-2 text-xs" disabled={phoneBlocked || waiting} onClick={() => { dismiss(); void callMyPhone(); }}>
+        <Icon name="Smartphone" className="size-4 text-muted-foreground" aria-hidden="true" />
+        {waiting ? "Calling…" : "Call my phone"}
+      </Button>
+      {phoneBlocked ? <p className="col-span-2 px-2 pb-1 text-xs text-muted-foreground">Needs: {setup.phone.missing.join(", ") || "phone setup"}</p> : null}
+    </div>
   );
 }

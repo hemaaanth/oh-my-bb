@@ -7,7 +7,7 @@ The build bundles these packages into `dist/`. Each keeps its own license.
 | Package | Version | License | Used for |
 | --- | --- | --- | --- |
 | [`agent-robot-avatar`](https://www.npmjs.com/package/agent-robot-avatar) | 0.5.2 | MIT, © 2026 CX ART Lab | The pet's face. |
-| `@radix-ui/react-context-menu` | 2.4.1 | MIT | The pet menu. |
+| [`react-colorful`](https://www.npmjs.com/package/react-colorful) | 5.8.1 | MIT, © 2020-present Vlad Shilov | Visual colour selection, including keyboard and touch controls. |
 | `@radix-ui/react-slot` | 1.5.0 | MIT | The shared UI button. |
 | `@radix-ui/react-checkbox` | 1.3.3 | MIT | The plugin access checklist. |
 | `class-variance-authority` | 0.7.1 | Apache-2.0 | Shared UI variants. |
@@ -16,8 +16,9 @@ The build bundles these packages into `dist/`. Each keeps its own license.
 | `zod` | 4.6.7 | MIT | Checking setup values and RPC data. |
 
 React, the BB plugin SDK, and `better-sqlite3` come from the BB host. They are
-not bundled. `@radix-ui/react-select` 2.2.6 (MIT) is runtime-shimmed to BB's
-copy, so its popup shares the host's focus and overlay handling.
+not bundled. `@radix-ui/react-select` and `@radix-ui/react-popover` (MIT) are
+runtime-shimmed to BB's copies, so their popups share the host's focus and
+overlay handling. `bb plugin types` keeps their type-only dependencies aligned.
 
 ## BB shared UI
 
@@ -41,7 +42,7 @@ Soni, MIT. They were copied with new names, new imports, and new comments.
 | File | What it does |
 | --- | --- |
 | `app/pointer-ghost/model.ts`, `overlay.tsx`, `model.test.ts` | The pointer ghost. |
-| `app/pet/pet.tsx`, `pet.test.tsx` | The footer pet and its menu. |
+| `app/pet/pet.tsx`, `pet.test.tsx` | The footer pet and call disclosure. |
 | `app/pet/mood.ts`, `mood.test.ts` | The pet's mood from call state and tool calls. |
 | `app/pet/look.ts` | The look normaliser and type. The storage half was dropped. |
 | `voice/chimes.ts` | Start and stop sounds. |
@@ -54,3 +55,29 @@ Soni, MIT. They were copied with new names, new imports, and new comments.
 ## Dispatch icon
 
 `icons/dispatch.svg` is original to this package.
+
+## react-colorful license
+
+```text
+MIT License
+
+Copyright (c) 2020-present Vlad Shilov <omgovich@ya.ru>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

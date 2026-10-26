@@ -17,13 +17,15 @@ export const CONTENT_SCRIPTS = { hotkeys: "hotkeys" } as const;
 /** Palette commands (SPEC §6.5). */
 export const COMMANDS = { toggleCall: "toggle-call", toggleMute: "toggle-mute", callPhone: "call-phone" } as const;
 
-/** Settings sections in page order (SPEC §12), then the Mobile settings section. */
+/** Plugin-owned sections follow BB's native Configuration form. */
 export const SETTINGS_SECTIONS = [
-  { id: "readiness", title: "Readiness" },
-  { id: "agent", title: "Agent" },
-  { id: "appearance", title: "Appearance" },
-  { id: "calls", title: "Calls" },
-  { id: "tools", title: "Tools" },
-  { id: "advanced", title: "Advanced" },
+  { id: "readiness" },
+  { id: "agent" },
+  { id: "tools" },
+  { id: "appearance" },
+  { id: "calls" },
+  { id: "advanced" },
+  { id: "more" },
+  { id: "integrations" },
 ] as const;
 export const MOBILE_SETTINGS_SECTION = { id: "mobile", title: "Dispatch" } as const;

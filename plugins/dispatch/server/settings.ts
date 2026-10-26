@@ -29,42 +29,42 @@ export const SETUP_SETTINGS = {
     secret: true,
     label: SETUP_LABELS.openaiKey,
     description:
-      "Needed for every call. Use a real OpenAI API key from a project with GPT-Live access. ChatGPT or Codex subscription tokens do not work.",
+      "GPT-Live API key. No subscription tokens.",
     experimental_schema: SETUP_FORMATS.openaiKey,
   },
   twilioSid: {
     type: "string",
     secret: true,
     label: SETUP_LABELS.twilioSid,
-    description: "Only for phone calls. From the Twilio console, starts with AC.",
+    description: "Phone only. Starts with AC.",
     experimental_schema: SETUP_FORMATS.twilioSid,
   },
   twilioToken: {
     type: "string",
     secret: true,
     label: SETUP_LABELS.twilioToken,
-    description: "Only for phone calls. The auth token that belongs to the Account SID above.",
+    description: "Phone only. Twilio account token.",
     experimental_schema: SETUP_FORMATS.twilioToken,
   },
   twilioCallerNumber: {
     type: "string",
     secret: true,
     label: SETUP_LABELS.twilioCallerNumber,
-    description: "Only for phone calls. A Twilio voice number on this account. Calls to you come from it.",
+    description: "Phone only. Your Twilio voice number.",
     experimental_schema: SETUP_FORMATS.twilioCallerNumber,
   },
   yourPhoneNumber: {
     type: "string",
     secret: true,
     label: SETUP_LABELS.yourPhoneNumber,
-    description: "Only for phone calls. The number Dispatch dials when you ask for a call.",
+    description: "Phone only. The number Dispatch calls.",
     experimental_schema: SETUP_FORMATS.yourPhoneNumber,
   },
   openaiSipProject: {
     type: "string",
     secret: true,
     label: SETUP_LABELS.openaiSipProject,
-    description: "Only for phone calls. The OpenAI project that answers SIP calls, starts with proj_. Not a secret, but kept off the browser like the rest.",
+    description: "Phone only. Project ID starts with proj_.",
     experimental_schema: SETUP_FORMATS.openaiSipProject,
   },
 } as const;
@@ -79,7 +79,7 @@ export const isPresent = (value: string | undefined): value is string => value !
 export function needsKeyMessage(): string {
   return (
     "Dispatch needs an OpenAI API key before it can take a call. " +
-    "Add it in Dispatch settings, first field (In-app voice — OpenAI API key), " +
+    "Add it in Dispatch settings under OpenAI API key, " +
     "or run `bb plugin config dispatch set openaiKey <key>`. Phone calls are optional and never block this."
   );
 }

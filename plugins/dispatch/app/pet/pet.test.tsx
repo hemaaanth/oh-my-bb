@@ -1,21 +1,20 @@
 // @vitest-environment jsdom
-import { act, render } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import { renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { createElement } from "react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultPreferences } from "@/shared/constants.js";
 import type { LiveStatus, SetupStatus } from "@/shared/contract.js";
 import { phoneAttempt } from "@/app/phone-status.js";
 import { ConsoleStatusOverlay } from "@/app/console/presence.js";
 import { callStore, IDLE_CALL, updateCall } from "@/voice/call-store.js";
 import { prefsStore, setupStore } from "@/voice/preferences.js";
-import { setSettingsFallback } from "@/voice/settings-opener.js";
 import { DEFAULT_PET_LOOK } from "./look.js";
 
 const engine = vi.hoisted(() => ({ toggleCall: vi.fn(async () => undefined), callMyPhone: vi.fn(async () => null) }));
 vi.mock("@/voice/engine.js", () => engine);
 
-const { Pet, PetIcon, petMenuJustOpened } = await import("./pet.js");
+import { Pet, PetIcon, FooterControls, usePetFace } from "./pet.js";
 
 type Avatar = HTMLElement & {
   _sleeping?: boolean;
@@ -29,6 +28,7 @@ const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 const avatarIn = (root: HTMLElement) => root.querySelector("agent-robot-avatar") as Avatar;
 const lookStyle = (avatar: Avatar) => avatar.shadowRoot?.querySelector("style[data-dispatch-look]")?.textContent ?? "";
 
+
 function setup(phoneReady: boolean): SetupStatus {
   return {
     fields: {} as SetupStatus["fields"],
@@ -40,14 +40,6 @@ function setup(phoneReady: boolean): SetupStatus {
   };
 }
 
-beforeAll(() => {
-  // Radix positions the menu with these.
-  globalThis.ResizeObserver ??= class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  } as unknown as typeof ResizeObserver;
-});
 
 afterEach(() => {
   vi.useRealTimers();
@@ -55,16 +47,17 @@ afterEach(() => {
   phoneAttempt.set(null);
   prefsStore.set(defaultPreferences());
   setupStore.set(null);
-  setSettingsFallback(null);
   engine.toggleCall.mockClear();
   engine.callMyPhone.mockClear();
 });
 
 describe("footer pet", () => {
-  it("renders outside a plugin SDK slot, as host icon components do", () => {
-    const icon = render(createElement(PetIcon));
+  it("labels the footer without starting a call", () => {
+    const icon = renderSlot({ component: PetIcon }, {});
     try {
       expect(icon.container.querySelector("[data-dispatch-pet]")?.getAttribute("aria-label")).toBe("Juno · asleep");
+      expect(engine.toggleCall).not.toHaveBeenCalled();
+      expect(engine.callMyPhone).not.toHaveBeenCalled();
     } finally {
       icon.unmount();
     }
@@ -72,13 +65,11 @@ describe("footer pet", () => {
 
   it("sleeps with no call, ignores clicks, and draws an outline", async () => {
     vi.useFakeTimers();
-    const icon = renderSlot({ component: PetIcon }, { className: "size-4" });
+    const icon = renderSlot({ component: Pet }, { face: "sleep" });
     try {
       const avatar = avatarIn(icon.container);
       expect(typeof (avatar as { sleep?: unknown }).sleep).toBe("function");
-      expect(icon.container.querySelector(".dispatch-pet")?.getAttribute("data-mood")).toBe("sleep");
-      expect(icon.container.querySelector("[title]")?.getAttribute("title")).toBe("Juno · asleep");
-      // Clicks belong to the footer button, which toggles the call.
+      // Clicks belong to BB's footer disclosure button.
       expect(avatar.getAttribute("wake-on")).toBe("manual");
       expect(lookStyle(avatar)).toMatch(/stroke: currentColor/);
       // The ring sits last in the head group, above the eyelids.
@@ -93,57 +84,46 @@ describe("footer pet", () => {
     }
   });
 
-  it("opens a three-item menu on right-click and guards the footer click", async () => {
-    const openSettings = vi.fn();
-    setSettingsFallback(openSettings);
-    setupStore.set(setup(true));
-    const icon = renderSlot({ component: PetIcon }, { className: "size-4" });
-    // Hold the clock: jsdom is slow to position the menu.
-    const frozen = Date.now();
-    const now = vi.spyOn(Date, "now").mockReturnValue(frozen);
+  it("leaves right-click to the host without starting a call", () => {
+    const nativeMenu = vi.fn();
+    const icon = renderSlot({ component: () => (
+      <div onContextMenu={(event) => { expect(event.defaultPrevented).toBe(false); nativeMenu(); }}>
+        <PetIcon />
+      </div>
+    ) }, {});
     try {
-      expect(petMenuJustOpened()).toBe(false);
-      const trigger = icon.container.firstElementChild as HTMLElement;
-      await act(async () => {
-        trigger.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 4, clientY: 4 }));
-      });
-      // The release that ends a long press must not also toggle the call.
-      expect(petMenuJustOpened()).toBe(true);
-      const items = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")];
-      expect(items.map((item) => item.textContent)).toEqual(["Wake Juno here", "Call my phone", "Dispatch settings"]);
-      // The menu carries the plugin's portal scope and blocks the iOS callout.
-      expect(items[0]!.closest("[data-bb-plugin-root]")).not.toBeNull();
-      expect(trigger.className).toContain("[-webkit-touch-callout:none]");
-      await act(async () => items[1]!.click());
-      expect(engine.callMyPhone).toHaveBeenCalledTimes(1);
+      fireEvent.contextMenu(icon.container.querySelector("[data-dispatch-pet]")!);
+      expect(nativeMenu).toHaveBeenCalledTimes(1);
+      expect(icon.container.querySelector("[role=menu]")).toBeNull();
+      expect(engine.toggleCall).not.toHaveBeenCalled();
+      expect(engine.callMyPhone).not.toHaveBeenCalled();
     } finally {
-      now.mockRestore();
       icon.unmount();
     }
   });
 
-  it("labels the menu for a live call and disables the phone until it is set up", async () => {
-    const openSettings = vi.fn();
-    setSettingsFallback(openSettings);
+  it("keeps phone calls disabled until setup is ready, and while dialing", async () => {
     setupStore.set(setup(false));
-    prefsStore.set({ ...defaultPreferences(), agentName: "Ada" });
-    updateCall({ state: "live", owner: "self", startedAt: Date.now() });
-    const icon = renderSlot({ component: PetIcon }, {});
+    const dismiss = vi.fn();
+    const controls = renderSlot({ component: () => <><ConsoleStatusOverlay /><FooterControls dismiss={dismiss} /></> }, {}, {
+      rpc: { liveStatus: async () => ({ live: false, channel: null, startedAt: null, device: null }) },
+    });
     try {
-      await act(async () => {
-        (icon.container.firstElementChild as HTMLElement).dispatchEvent(
-          new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 4, clientY: 4 }),
-        );
-      });
-      const items = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")];
-      expect(items[0]!.textContent).toBe("Put Ada to sleep");
-      expect(items[1]!.hasAttribute("data-disabled")).toBe(true);
-      expect(items[1]!.textContent).toBe("Call my phoneNeeds: Twilio account");
-      await act(async () => items[2]!.click());
-      expect(openSettings).toHaveBeenCalledTimes(1);
+      await act(async () => {});
+      const buttons = controls.container.querySelectorAll("button");
+      const phone = buttons[1]!;
+      expect(phone.disabled).toBe(true);
+      fireEvent.click(phone);
+      expect(dismiss).not.toHaveBeenCalled();
+      expect(engine.callMyPhone).not.toHaveBeenCalled();
+      await act(async () => setupStore.set(setup(true)));
+      expect(phone.disabled).toBe(false);
+      await act(async () => phoneAttempt.set({ phase: "dialing", at: Date.now() }));
+      expect(phone.disabled).toBe(true);
+      expect(engine.toggleCall).not.toHaveBeenCalled();
       expect(engine.callMyPhone).not.toHaveBeenCalled();
     } finally {
-      icon.unmount();
+      controls.unmount();
     }
   });
 
@@ -157,7 +137,7 @@ describe("footer pet", () => {
       expect(icon.container.querySelector("[role=img]")?.getAttribute("aria-label")).toContain("Calling your phone…");
       await act(async () => phoneAttempt.set({ phase: "ringing", at: Date.now() }));
       expect(icon.container.querySelector("[title]")?.getAttribute("title")).toContain("Waiting for you to answer…");
-      expect(icon.getByRole("status", { name: "Dispatch call status" }).textContent).toBe("Dispatch: Waiting for you to answer…");
+      expect(icon.container.querySelector('[role="status"]')?.textContent).toBe("Dispatch: Waiting for you to answer…");
       const at = Date.now();
       status = { live: true, channel: "phone", startedAt: at - 65_000, device: null };
       await icon.emitRealtime("trace-tail", { callId: "phone", events: [{ id: 1, callId: "phone", kind: "call.started", at, payload: { channel: "phone" } }] });
@@ -204,7 +184,7 @@ describe("footer pet", () => {
   it("listening shows the text cursor and lingers through a pause in speech", async () => {
     vi.useFakeTimers();
     updateCall({ state: "live", owner: "self", startedAt: Date.now(), activity: "you" });
-    const pet = renderSlot({ component: PetIcon }, {});
+    const pet = renderSlot({ component: () => <Pet face={usePetFace()} /> }, {});
     try {
       const avatar = avatarIn(pet.container);
       expect(avatar.getAttribute("data-mood")).toBe("listen");

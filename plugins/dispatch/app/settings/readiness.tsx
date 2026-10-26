@@ -1,17 +1,18 @@
 // Readiness comes from the server. This section never receives a setup value.
-import { useSdk } from "@get-bb/plugin-sdk/app";
+import { useBbNavigate, useSdk } from "@get-bb/plugin-sdk/app";
 import { useState } from "react";
 import { Button } from "../components/ui/button";
 import { PLUGIN_ID } from "../../shared/constants.js";
 import { errorText, useSetupStatus } from "./data.js";
-import { Disclosure, Group, Loading, Note, Row } from "./layout.js";
+import { NAV_PANEL } from "../ids.js";
+import { Group, Loading, Note, Row } from "./layout.js";
 
-const shortLabel = (label: string): string => label.split(" — ").pop() ?? label;
-const missingText = (missing: string[]): string => `Needs: ${missing.map(shortLabel).join(", ")}`;
+const missingText = (missing: string[]): string => `Needs: ${missing.join(", ")}`;
 
-export function ReadinessSection() {
+export function ReadinessSection({ showSetupLink = true }: { showSetupLink?: boolean } = {}) {
   const { status, error } = useSetupStatus();
   const sdk = useSdk();
+  const navigate = useBbNavigate();
   const [reloading, setReloading] = useState(false);
   const [reloadError, setReloadError] = useState<string | null>(null);
 
@@ -41,14 +42,15 @@ export function ReadinessSection() {
           <span className={status.phone.ready ? "text-foreground" : "text-muted-foreground"}>{status.phone.ready ? "Ready" : "Not set up"}</span>
         </span>
       </div>
-      {!status.voice.ready ? <div className="py-3"><Note>{missingText(status.voice.missing)}. Add the key in Configuration above.</Note></div> : null}
-      <Disclosure label="Phone setup" defaultOpen={!status.phone.ready}>
-        {!status.phone.ready ? <Note>{missingText(status.phone.missing)}. Phone calls are optional.</Note> : null}
-        <Note>{status.phone.webhooksPlugin === "present" ? "Webhooks plugin found. Endpoint not verified." : "Webhooks plugin not found."}</Note>
-        <a className="self-start text-xs text-foreground underline underline-offset-4" href="https://github.com/hemaaanth/oh-my-bb/blob/main/plugins/dispatch/docs/phone-calls.md" target="_blank" rel="noreferrer">Set up phone calls</a>
-      </Disclosure>
+      {!status.voice.ready ? <div className="py-3"><Note>{missingText(status.voice.missing)}. Add the key in Configuration.</Note></div> : null}
+      {!status.phone.ready ? <div className="py-3"><Note>{missingText(status.phone.missing)}. Phone calls are optional.</Note></div> : null}
+      {showSetupLink && (!status.voice.ready || !status.phone.ready) ? (
+        <Row label="Setup needed" help="In-app voice and phone setup.">
+          <Button variant="outline" size="sm" onClick={() => navigate.toPluginPanel(NAV_PANEL.path, { subPath: "setup" })}>Open setup guide</Button>
+        </Row>
+      ) : null}
       {status.reloadPending ? (
-        <Row label="Reload to apply" help="Your key is saved. Reload Dispatch to clear the setup banner.">
+        <Row label="Reload to apply" help="Apply your saved OpenAI key.">
           <Button size="sm" onClick={() => void reload()} disabled={reloading}>
             {reloading ? "Reloading…" : "Reload to apply"}
           </Button>

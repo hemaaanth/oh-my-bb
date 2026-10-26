@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { setTimeout as delay } from "node:timers/promises";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LOCAL_KEYS, REASONING_MODELS } from "../../shared/constants.js";
+import { defaultPreferences, LOCAL_KEYS, REASONING_MODELS } from "../../shared/constants.js";
 import { chooseSetting, installFakeLocalStorage, makePrefsRpc, makeStatus, openSetting } from "./support.js";
 
 const stored = installFakeLocalStorage();
@@ -56,6 +57,68 @@ describe("Appearance", () => {
     const flashBefore = prefs.current.pet.antennaFlash;
     fireEvent.click(screen.getByRole("switch", { name: "Flash the antenna" }));
     await waitFor(() => expect(prefs.current.pet.antennaFlash).toBe(!flashBefore));
+  });
+
+  it("commits complete custom colours, rejects incomplete input and cancels edits", async () => {
+    const prefs = makePrefsRpc();
+    const originalLook = prefs.current.pet;
+    mount(byId("appearance"), prefs.handlers);
+    fireEvent.click(await screen.findByRole("button", { name: "Custom colour" }));
+    const input = screen.getByRole("textbox", { name: "Hex colour" });
+    fireEvent.change(input, { target: { value: "#12" } });
+    fireEvent.blur(input);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(prefs.writes).toEqual([]);
+    fireEvent.change(input, { target: { value: "A1B2C3" } });
+    input.focus();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(prefs.current.pet.color).toBe("#a1b2c3"));
+    expect(prefs.current.pet).toEqual({ ...originalLook, color: "#a1b2c3" });
+    const writes = prefs.writes.length;
+    fireEvent.change(input, { target: { value: "#ffffff" } });
+    input.focus();
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Custom colour" })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Custom colour" }));
+    expect((screen.getByRole("textbox", { name: "Hex colour" }) as HTMLInputElement).value).toBe("#a1b2c3");
+    expect(prefs.writes).toHaveLength(writes);
+    fireEvent.click(screen.getByRole("button", { name: "Theme" }));
+    await waitFor(() => expect(prefs.current.pet.color).toBe("theme"));
+    expect((screen.getByRole("textbox", { name: "Hex colour" }) as HTMLInputElement).value).toBe("");
+  });
+
+  it("keeps a complete hex edit when the popover is dismissed outside", async () => {
+    const prefs = makePrefsRpc();
+    mount(byId("appearance"), prefs.handlers);
+    fireEvent.click(await screen.findByRole("button", { name: "Custom colour" }));
+    const input = screen.getByRole("textbox", { name: "Hex colour" });
+    input.focus();
+    fireEvent.change(input, { target: { value: "#123abc" } });
+    // Radix attaches its outside-pointer listener after the opening event.
+    await act(() => delay(0));
+    fireEvent.pointerDown(document.body, { button: 0, pointerType: "mouse" });
+    await waitFor(() => expect(prefs.current.pet.color).toBe("#123abc"));
+    expect(screen.queryByRole("dialog", { name: "Custom colour" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Custom colour" }));
+    expect((screen.getByRole("textbox", { name: "Hex colour" }) as HTMLInputElement).value).toBe("#123abc");
+  });
+
+  it("previews visual colour changes and persists the final choice across remounts", async () => {
+    const originalLook = { ...defaultPreferences().pet, color: "#ff0000" };
+    const prefs = makePrefsRpc({ pet: originalLook });
+    const section = mount(byId("appearance"), prefs.handlers);
+    fireEvent.click(await screen.findByRole("button", { name: "Custom colour" }));
+    expect(prefs.writes).toEqual([]);
+    const hue = screen.getByRole("slider", { name: "Hue" });
+    fireEvent.keyDown(hue, { key: "ArrowRight", keyCode: 39, which: 39 });
+    expect((section.container.querySelector(".dispatch-pet-preview") as HTMLElement).style.color).toBe("rgb(255, 77, 0)");
+    expect(prefs.current.pet.color).toBe("#ff0000");
+    fireEvent.keyUp(hue, { key: "ArrowRight", keyCode: 39, which: 39 });
+    await waitFor(() => expect(prefs.current.pet).toEqual({ ...originalLook, color: "#ff4d00" }));
+    section.unmount();
+    mount(byId("appearance"), prefs.handlers);
+    fireEvent.click(await screen.findByRole("button", { name: "Custom colour" }));
+    expect((screen.getByRole("textbox", { name: "Hex colour" }) as HTMLInputElement).value).toBe("#ff4d00");
   });
 
   it("keeps the pointer ghost on this device", async () => {
@@ -219,10 +282,26 @@ describe("Tools", () => {
     await waitFor(() => expect(prefs.writes.at(-1)).toEqual({ pluginAccess: { mode: "selected", ids: ["notes"] } }));
   });
 
-  it("does not render the help-only built-in tool catalogue", async () => {
-    mount(byId("tools"), makePrefsRpc().handlers);
+  it("preserves saved plugin choices while discovery loads, including unavailable plugins", async () => {
+    const prefs = makePrefsRpc({ pluginAccess: { mode: "selected", ids: ["linear", "unavailable"] } });
+    type PluginList = { plugins: Array<{ id: string; name: string; command: string; summary: string }> };
+    let resolve!: (value: PluginList) => void;
+    // This package targets ES2022, which has no Promise.withResolvers.
+    const discovery = new Promise<PluginList>((done) => { resolve = done; });
+    const Settings = byId("tools").component;
+    const view = renderSlot({ component: () => <form><Settings /></form> }, {}, {
+      rpc: { ...prefs.handlers, pluginsWithCommands: () => discovery } as never,
+      pluginId: "dispatch",
+    });
     await screen.findByLabelText("Plugins the agent may run");
-    expect(screen.queryByText("Built-in tools")).toBeNull();
+    await act(async () => { fireEvent.change(view.container.querySelector("select")!, { target: { value: "" } }); });
+    expect(prefs.writes).toEqual([]);
+    resolve(await plugins());
+    const linear = await screen.findByRole("checkbox", { name: "Linear" });
+    expect(linear.getAttribute("aria-checked")).toBe("true");
+    expect(prefs.writes).toEqual([]);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Notes" }));
+    await waitFor(() => expect(prefs.writes.at(-1)).toEqual({ pluginAccess: { mode: "selected", ids: ["linear", "unavailable", "notes"] } }));
   });
 
   it("shows an empty state when no plugins offer commands", async () => {

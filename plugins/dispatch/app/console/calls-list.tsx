@@ -95,37 +95,37 @@ export function CallsList({ calls, error, hasMore, loadMore, loadingMore, onOpen
         <table className="w-full table-fixed border-collapse text-sm">
           <thead className="border-b border-border bg-surface-raised text-left text-xs text-muted-foreground">
             <tr>
-              <th scope="col" className="hidden w-40 px-3 py-2 font-normal sm:table-cell">When</th>
+              <th scope="col" className="hidden w-40 px-3 py-2 font-normal @min-[40rem]/dispatch:table-cell">When</th>
               <th scope="col" className="px-3 py-2 font-normal">Device</th>
-              <th scope="col" className="w-16 px-2 py-2 text-right font-normal sm:w-20 sm:px-3">Duration</th>
-              <th scope="col" className="w-16 px-2 py-2 text-right font-normal sm:w-20 sm:px-3">Cost</th>
-              <th scope="col" className="hidden w-28 px-3 py-2 font-normal sm:table-cell">Status</th>
+              <th scope="col" className="w-16 px-2 py-2 text-right font-normal @min-[40rem]/dispatch:w-20 @min-[40rem]/dispatch:px-3">Duration</th>
+              <th scope="col" className="w-16 px-2 py-2 text-right font-normal @min-[40rem]/dispatch:w-20 @min-[40rem]/dispatch:px-3">Cost</th>
+              <th scope="col" className="hidden w-28 px-3 py-2 font-normal @min-[40rem]/dispatch:table-cell">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
             {shown.map((call) => {
               const isLive = live.live && call.endedAt === null && !call.unclean && call.startedAt === live.startedAt && call.channel === live.channel;
               const status = isLive ? "Live" : call.unclean ? "Unclean end" : call.endedAt === null ? "Not closed" : call.closeReason === "failed" ? "Failed" : "Ended";
-              const duration = call.endedAt !== null ? formatElapsed((call.endedAt - call.startedAt) / 1000) : isLive ? formatElapsed((live.now - call.startedAt) / 1000) : "—";
+              const duration = call.endedAt !== null ? formatElapsed((call.endedAt - call.startedAt) / 1000) : isLive ? formatElapsed((live.now - call.startedAt) / 1000) : "Not available";
               const cost = formatUsd((call.billedSeconds / 60) * LIVE_USD_PER_MINUTE);
               const label = privateCallText(call.device.label || "Unknown device");
               const when = formatCallWhen(call.startedAt, live.now);
               const memory = memoryLine(call);
               return <tr key={call.id} onClick={() => onOpen(call)} className="group cursor-pointer hover:bg-state-hover focus-within:bg-state-hover">
-                <td className="hidden whitespace-nowrap px-3 py-2 text-xs tabular-nums text-muted-foreground sm:table-cell"><time dateTime={new Date(call.startedAt).toISOString()} title={formatDateTime(call.startedAt)}>{when}</time></td>
+                <td className="hidden whitespace-nowrap px-3 py-2 text-xs tabular-nums text-muted-foreground @min-[40rem]/dispatch:table-cell"><time dateTime={new Date(call.startedAt).toISOString()} title={formatDateTime(call.startedAt)}>{when}</time></td>
                 <td className="px-3 py-2">
                   <button type="button" aria-label={`${label}, ${when}, ${status}`} className="flex w-full min-w-0 items-start gap-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
                     <span className="mt-0.5 shrink-0 text-muted-foreground" aria-label={call.channel === "phone" ? "Phone call" : "In-app call"}>{call.channel === "phone" || call.device.mobile ? <PhoneGlyph /> : <DesktopGlyph />}</span>
                     <span className="min-w-0">
                       <span className="block truncate text-foreground">{label}</span>
                       {memory ? <span title={memory.full} className="mt-0.5 block truncate text-xs text-muted-foreground">{memory.line}</span> : null}
-                      <span className="mt-0.5 block text-xs text-muted-foreground sm:hidden">{when}<span className="ml-1.5 text-subtle-foreground">· {status}</span></span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground @min-[40rem]/dispatch:hidden">{when}<span className="ml-1.5 text-subtle-foreground">· {status}</span></span>
                     </span>
                   </button>
                 </td>
-                <td title={duration} className="truncate px-2 py-2 text-right text-xs tabular-nums text-muted-foreground sm:px-3">{duration}</td>
-                <td title={cost} className="truncate px-2 py-2 text-right text-xs tabular-nums text-foreground sm:px-3">{cost}</td>
-                <td className="hidden px-3 py-2 text-xs text-subtle-foreground sm:table-cell">{status}</td>
+                <td title={duration} className="truncate px-2 py-2 text-right text-xs tabular-nums text-muted-foreground @min-[40rem]/dispatch:px-3">{duration}</td>
+                <td title={cost} className="truncate px-2 py-2 text-right text-xs tabular-nums text-foreground @min-[40rem]/dispatch:px-3">{cost}</td>
+                <td className="hidden px-3 py-2 text-xs text-subtle-foreground @min-[40rem]/dispatch:table-cell">{status}</td>
               </tr>;
             })}
           </tbody>

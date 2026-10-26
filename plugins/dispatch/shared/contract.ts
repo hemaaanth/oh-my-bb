@@ -2,7 +2,7 @@
 // Owned by P0. Change it only together with CONTRACTS.md.
 // The server validates every RPC against these schemas. The app imports the
 // contract type for `useRpc` and the shared types below.
-import { defineRpcContract } from "@get-bb/plugin-sdk";
+import type { PluginRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   AGENT_NAME_MAX,
@@ -317,7 +317,7 @@ export type UsageReport = z.infer<typeof usageReportSchema>;
 
 const pageCursor = z.string().optional();
 
-export const rpcContract = defineRpcContract({
+export const rpcContract = {
   // §3.1 Calls
   openCall: {
     input: z.object({
@@ -431,7 +431,7 @@ export const rpcContract = defineRpcContract({
   },
   voiceCreate: { input: z.object({ name: z.string(), prompt: z.string() }), output: preferencesSchema },
   voiceRemove: { input: z.object({ id: z.string() }), output: preferencesSchema },
-});
+} as const satisfies PluginRpcContract;
 export type RpcContract = typeof rpcContract;
 
 /**
@@ -443,7 +443,7 @@ export type RpcContract = typeof rpcContract;
 export const RECEIVE_METHOD = "webhooks_receive";
 /** Field names the Webhooks endpoint must declare (see docs/phone-calls.md). */
 export const RECEIVE_FIELDS = { eventType: "type", sessionId: "session_id" } as const;
-export const receiveContract = defineRpcContract({
+export const receiveContract = {
   [RECEIVE_METHOD]: {
     input: z.object({
       endpointId: z.string(),
@@ -455,7 +455,7 @@ export const receiveContract = defineRpcContract({
     }),
     output: z.object({ handled: z.boolean(), accepted: z.boolean().optional() }),
   },
-});
+} as const satisfies PluginRpcContract;
 export type ReceiveContract = typeof receiveContract;
 
 /**
@@ -477,7 +477,7 @@ export const readCallSchema = z.object({
   threadIds: z.array(z.string()),
 });
 export type ReadCall = z.infer<typeof readCallSchema>;
-export const readContract = defineRpcContract({
+export const readContract = {
   [READ_CALLS_METHOD]: {
     input: z
       .object({ since: isoTime, until: isoTime })
@@ -488,7 +488,7 @@ export const readContract = defineRpcContract({
       }),
     output: z.object({ memory: z.boolean(), calls: z.array(readCallSchema) }),
   },
-});
+} as const satisfies PluginRpcContract;
 export type ReadContract = typeof readContract;
 
 export type RpcMethod = keyof RpcContract;

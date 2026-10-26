@@ -141,7 +141,7 @@ export function Transcript({ callId, call, agentName, onClose }: { callId: strin
   return (
     <section aria-label="Transcript" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Button variant="ghost" size="sm" onClick={onClose}>
             Back to calls
           </Button>

@@ -1,9 +1,9 @@
-Drive BB by voice. Talk to a named agent in the app or over a phone call, and it reads, starts, and steers your threads.
+Drive BB by voice.
 
 ## What you get
 
-Tap the pet in the sidebar footer, or press Mod+Shift+H, and say what you
-want. The agent, Juno by default, keeps its answers short and acts first. It can:
+Choose **Talk in app** from Dispatch in the sidebar footer, or press
+Mod+Shift+H, and say what you want. The agent, Juno by default, keeps its answers short and acts first. It can:
 
 - Tell you what is running, and read what a thread did last.
 - Start a thread, send it a message, change its model, rename, stop, or
@@ -12,7 +12,7 @@ want. The agent, Juno by default, keeps its answers short and acts first. It can
 - Run commands from the plugins you allow.
 
 While a call is live, it also tells you when a thread finishes or fails. The
-pet shows what the agent is doing: listening, talking, reading, or working.
+footer pet shows what the agent is doing: listening, talking, reading, or working.
 
 Pick a voice and play a short sample of it. Every listed voice has a
 built-in sample in the default style, so it plays at once with no key. Set the voice style: pace,
@@ -22,6 +22,10 @@ voice from a description.
 
 The Dispatch console lists every call with its transcript, the tools it ran,
 and the voice minutes it used.
+
+Keep your keys in the native Configuration form. Choose how Dispatch works
+under Preferences, including Plugin access for allowed commands. Open the setup
+guide from More. Oh My BB links to the Webhooks-owned phone-event integration.
 
 The agent remembers past calls. After each call, your reasoning model writes a
 short summary with your OpenAI key. The agent sees your last few calls and your

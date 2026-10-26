@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { NAV_PANEL } from "../ids.js";
 import { Icon } from "../components/ui/icon";
 import { usePreferences } from "../settings/data.js";
+import { SetupGuide } from "../settings/setup.js";
 import { useCalls, CallsList } from "./calls-list.js";
 import { PodcastPanel } from "./podcast.js";
 import { ConsoleHeader } from "./header.js";
@@ -41,6 +42,16 @@ const idFromPath = (subPath: string): string | null => {
 };
 
 export function ConsolePanel({ subPath }: PluginNavPanelProps) {
+  return (
+    <div className="h-full min-h-0 overflow-y-auto [scrollbar-gutter:stable]">
+      <main className="@container/dispatch mx-auto box-border w-full max-w-[760px] space-y-5 px-4 pb-4 pt-4 md:pt-5" aria-label="Dispatch console">
+        {subPath === "setup" ? <SetupGuide /> : <ConsoleBody subPath={subPath} />}
+      </main>
+    </div>
+  );
+}
+
+function ConsoleBody({ subPath }: PluginNavPanelProps) {
   const navigate = useBbNavigate();
   const call = useConsoleCallState();
   const { prefs } = usePreferences();
@@ -63,8 +74,7 @@ export function ConsolePanel({ subPath }: PluginNavPanelProps) {
   };
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto">
-      <main className="mx-auto w-full max-w-5xl space-y-5 px-4 py-4 md:px-5" aria-label="Dispatch console">
+    <>
         <ConsoleHeader call={call} onViewTranscript={() => liveCall && open(liveCall.id)} />
         <PodcastPanel />
         {openId ? (
@@ -75,7 +85,6 @@ export function ConsolePanel({ subPath }: PluginNavPanelProps) {
             <CallsList {...calls} live={call} onOpen={(row) => open(row.id)} />
           </>
         )}
-      </main>
-    </div>
+    </>
   );
 }

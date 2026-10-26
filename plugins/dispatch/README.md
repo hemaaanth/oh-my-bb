@@ -6,9 +6,9 @@ starts new ones, sends them messages, and brings them on screen.
 
 ## Features
 
-- **In-app voice.** Tap the pet in the sidebar footer, or press Mod+Shift+H, to
+- **In-app voice.** Tap Dispatch in the sidebar footer, or press Mod+Shift+H, to
   start a call. Audio goes straight from the browser to OpenAI GPT-Live over
-  WebRTC. Press the same key or tap the pet again to stop.
+  WebRTC. Press the same key or tap Dispatch again to stop.
 - **Tools that act on BB.** The agent can list and search threads, read what a
   thread did, start, stop, rename, and archive threads, send a message, change
   a thread's model, open a diff, and run commands from plugins you allow. It
@@ -20,8 +20,8 @@ starts new ones, sends them messages, and brings them on screen.
 - **Phone calls.** Dispatch can call your phone through Twilio. You get the
   same agent and the same tools. See [docs/phone-calls.md](docs/phone-calls.md).
 - **The pet.** A small robot face in the sidebar footer. It sleeps with no call
-  and shows when the agent listens, talks, reads, or works. Long-press or
-  right-click it for a menu.
+  and shows when the agent listens, talks, reads, or works. Click for call
+  actions. Right-click uses BB's native footer menu.
 - **A Dispatch console.** A nav panel with every call, its transcript, summary,
   and tool trace, and voice minutes with an estimated cost.
 - **Call memory.** After each call, your reasoning model writes a short title
@@ -75,17 +75,17 @@ bb plugin install git:https://github.com/hemaaanth/oh-my-bb.git@^0.3.1 \
 1. Create an OpenAI API key in a project that has GPT-Live access. A ChatGPT
    or Codex subscription token does not work.
 2. Open Dispatch's page in BB's plugin settings. Paste the key into the first
-   field, **In-app voice — OpenAI API key**, and save. Or run:
+   field, **OpenAI API key**, and save. Or run:
 
    ```sh
    bb plugin config dispatch set openaiKey <key>
    ```
 
 3. Dispatch reloads itself a moment later, and the **Needs configuration**
-   banner clears. If a call is live, or the reload fails, the **Readiness**
-   section shows **Reload to apply** instead. Press it, or run
+   banner clears. If a call is live, or the reload fails, the status card
+   shows **Reload to apply** instead. Press it, or run
    `bb plugin reload dispatch`.
-4. Tap the pet in the sidebar footer, or press Mod+Shift+H. Allow the
+4. Tap Dispatch in the sidebar footer, or press Mod+Shift+H. Allow the
    microphone when the browser asks.
 5. Say "Juno, what is running?" The agent answers to its name. You can change
    the name in **Agent**.
@@ -101,36 +101,45 @@ the top of the Dispatch settings page or with
 
 | Id | Label | Format |
 | --- | --- | --- |
-| `openaiKey` | In-app voice — OpenAI API key | No spaces. Needed for every call. |
-| `twilioSid` | Phone calls — Twilio Account SID | `AC` and 32 hex characters. |
-| `twilioToken` | Phone calls — Twilio Auth Token | No spaces. |
-| `twilioCallerNumber` | Phone calls — Twilio caller number | E.164, like `+14155550100`. |
-| `yourPhoneNumber` | Phone calls — your phone number | E.164. |
-| `openaiSipProject` | Phone calls — OpenAI project id for SIP | `proj_` and letters or digits. |
+| `openaiKey` | OpenAI API key | No spaces. Needed for every call. |
+| `twilioSid` | Twilio Account SID | `AC` and 32 hex characters. |
+| `twilioToken` | Twilio auth token | No spaces. |
+| `twilioCallerNumber` | Twilio number | E.164, like `+14155550100`. |
+| `yourPhoneNumber` | Your phone number | E.164. |
+| `openaiSipProject` | OpenAI SIP project | `proj_` and letters or digits. |
 
-Below the form, Dispatch adds its own sections. They are the same on every
-device, except where a row says it is saved for this device.
+**Configuration** keeps the six native secret fields together at the top.
+**Preferences** below it holds the controls for how Dispatch works. Secret
+storage, validation and `bb plugin config` commands are unchanged.
+
+Preferences use BB-native cards. Device-specific rows say so.
 
 | Section | What it holds |
 | --- | --- |
-| Readiness | Whether in-app voice and phone calls are ready, what is missing, the webhook route, and **Reload to apply** when needed. |
-| Agent | Name (up to 24 characters), voice with samples, voice style, **Design a voice**, your instructions (up to 4,000 characters) with history, and a read-only view of the full prompt. |
-| Appearance | The pet's style, colour, head shape, pointer follow, antenna flash, and a live preview. The pointer ghost switch is per device. |
-| Calls | Microphone and speaker (per device), announcements, mobile drawer behaviour, the two keyboard shortcuts, **Call memory**, **Remember calls for** (30 days, 90 days, 1 year, or forever), and **Home time zone** for phone calls. The three memory controls are on the desktop page only. |
-| Tools | Which plugins' commands the agent may run: all, none, or the ones you pick. |
-| Advanced | Voice model, reasoning model, and **Reset preferences**. Reset keeps setup values and instructions. |
+| Configuration | The six native secret fields. |
+| Preferences | Setup status, then Agent (name, voice, style, custom voices and instructions), Plugin access (permissions across all installed plugins), Appearance (the pet and pointer ghost), and Calls (devices, shortcuts, announcements, drawer behavior, memory and retention). |
+| Advanced | Voice model when needed, reasoning model, and **Reset preferences**. Reset keeps setup values and instructions. |
+| More | **Open setup guide** for in-app voice and optional phone calls. |
+| Oh My BB | Webhooks integration management, shown when Webhooks is enabled. **Manage in Webhooks** opens its settings without reloading BB. Webhooks owns the Dispatch receiver switch; Dispatch does not duplicate it. |
+
+Appearance has a left-aligned colour palette. Theme's dot follows BB's live
+foreground colour. **Custom colour** opens a visual popover without moving the
+page. Choose a hue, then drag in the colour area. The pet previews your choice
+as you drag and saves it on release. Hex entry is optional; Enter or blur saves
+a complete hex value, and Escape cancels that text edit. Saved custom colours
+remain unchanged.
+
+The console, transcript and setup page match Settings' 760px outer frame
+(728px content). A stable native scrollbar gutter keeps short and long pages aligned.
 
 On a phone, BB's mobile settings page has a short **Dispatch** section.
 
 ## Voices
 
-The voice list has two groups. **GPT-Live** holds the 21 voices in OpenAI's
-GPT-Live voice table, with language, accent, and presentation, plus `marin`,
-the GPT-Live default. **Realtime (unconfirmed)** holds `alloy`, `ash`,
-`ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`, and `cedar`. They are
-not in the GPT-Live table, so GPT-Live may refuse them. The default voice is
-`gleam`. A saved voice that is no longer listed stays in use and shows under
-**Saved voice**.
+**Built-in voices** lists all 31 supported voices together, including the
+Realtime voices. Language, accent and presentation appear where known.
+The default remains `gleam`. Custom designs appear under **Your voices**.
+A saved voice that is no longer listed stays in use under **Saved voice**.
 
 **Samples.** Each row has a play button. Every listed voice has a built-in
 sample: a recording of a fixed line in the default voice style, shipped in
@@ -179,8 +188,8 @@ voice off Dispatch's list.
 
 | Where | What |
 | --- | --- |
-| Pet tap | Start or stop a call. A second stop within 4 seconds ends calls on every device. |
-| Pet menu | Wake or sleep, **Call my phone**, and **Dispatch settings**. **Call my phone** is disabled and says "Needs: …" until phone setup is ready. |
+| Dispatch footer button | Open **Talk in app** / **End call** and **Call my phone**. Opening it never starts a call. Phone calls stay disabled until phone setup is ready. |
+| Right-click the footer button | BB's native **Hide from footer** and **Customize footer** menu. |
 | Mod+Shift+H | Start or stop a call. Works anywhere in BB. |
 | Mod+Shift+U | Mute or unmute. Works while a call is live. |
 | Command palette | **Dispatch: start or stop voice**, **Dispatch: mute or unmute** (only during a call), **Dispatch: call my phone**. |
@@ -243,8 +252,9 @@ page for the full bill. Phone calls also cost Twilio minutes.
 In-app voice needs no other plugin. Phone calls need the
 [Webhooks plugin](../webhooks/README.md) to receive OpenAI's incoming-call
 webhook. Install it yourself. Dispatch never installs, enables, or calls it.
-When Readiness is read, Dispatch looks in BB's plugin list to see whether
+When setup status is read, Dispatch looks in BB's plugin list to see whether
 Webhooks is enabled, and reports a missing **webhook route** when it is not.
+Allow Dispatch under Webhooks settings → **Oh My BB** before using that endpoint.
 
 Other plugins may read your calls with the discoverable, read-only
 `read.calls` RPC: titles, summaries, and thread ids for a window of up to

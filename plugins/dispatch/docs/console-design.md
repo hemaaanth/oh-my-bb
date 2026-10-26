@@ -1,4 +1,4 @@
-# Console design findings — 2026-10-19
+# Console design findings: 2026-10-19
 
 ## References
 

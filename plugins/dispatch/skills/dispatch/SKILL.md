@@ -60,7 +60,7 @@ Run `bb dispatch status` and read the two modes.
 
 - In-app voice not ready: the OpenAI key is missing. BB also shows "Needs
   configuration" for the plugin. Point the user to the first field of
-  Dispatch settings, **In-app voice — OpenAI API key**. After it is saved,
+  Dispatch settings, **OpenAI API key**. After it is saved,
   Dispatch reloads itself. If the settings page shows **Reload to apply**,
   the user presses it or runs `bb plugin reload dispatch`.
 - Phone calls not ready: status lists the missing field labels. `webhook route`
@@ -71,12 +71,12 @@ The six settings:
 
 | Id | Label |
 | --- | --- |
-| `openaiKey` | In-app voice — OpenAI API key |
-| `twilioSid` | Phone calls — Twilio Account SID |
-| `twilioToken` | Phone calls — Twilio Auth Token |
-| `twilioCallerNumber` | Phone calls — Twilio caller number |
-| `yourPhoneNumber` | Phone calls — your phone number |
-| `openaiSipProject` | Phone calls — OpenAI project id for SIP |
+| `openaiKey` | OpenAI API key |
+| `twilioSid` | Twilio Account SID |
+| `twilioToken` | Twilio auth token |
+| `twilioCallerNumber` | Twilio number |
+| `yourPhoneNumber` | Your phone number |
+| `openaiSipProject` | OpenAI SIP project |
 
 ## Memory questions
 

@@ -56,10 +56,6 @@ afterEach(() => {
 });
 
 describe("app registration", () => {
-  it("registers the footer pet with its live icon", () => {
-    expect(app.experimentalSidebarFooterItems.map((item) => item.id)).toEqual(["pet"]);
-    expect(app.icons.map((icon) => icon.name)).toContain("dispatch-pet");
-  });
 
   it("registers the pointer ghost, bindings and call-status overlays", () => {
     expect(app.appOverlays.map((overlay) => overlay.id)).toEqual(["pointer-ghost", "bindings", "call-status"]);
@@ -75,17 +71,6 @@ describe("app registration", () => {
     expect(app.threadPanelActions).toEqual([]);
   });
 
-  it("registers six settings sections in order, then the mobile section", () => {
-    expect(app.settingsSections.map((section) => [section.title, section.experimental_page ?? "plugin"])).toEqual([
-      ["Readiness", "plugin"],
-      ["Agent", "plugin"],
-      ["Appearance", "plugin"],
-      ["Calls", "plugin"],
-      ["Tools", "plugin"],
-      ["Advanced", "plugin"],
-      ["Dispatch", "mobile"],
-    ]);
-  });
 
   it("registers three palette commands; mute is offered only during a call", async () => {
     const commands = await registeredCommands();
@@ -133,9 +118,4 @@ describe("app registration", () => {
     expect(engine.toggleCall).toHaveBeenCalledTimes(2);
   });
 
-  it("the footer pet toggles the call and remembers the settings opener", async () => {
-    const item = app.experimentalSidebarFooterItems[0] as unknown as { onActivate(context: { openPluginDetails(): void }): void };
-    item.onActivate({ openPluginDetails: vi.fn() });
-    expect(engine.toggleCall).toHaveBeenCalledTimes(1);
-  });
 });

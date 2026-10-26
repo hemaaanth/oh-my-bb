@@ -1,11 +1,17 @@
 // Test fixtures for the settings and console tests. Not shipped: nothing in the
 // app imports this file, so the build leaves it out.
-import { defaultPreferences, SECRET_IDS } from "../../shared/constants.js";
+import { defaultPreferences, SECRET_IDS, SETUP_LABELS } from "../../shared/constants.js";
 import type { Preferences, SetupStatus } from "../../shared/contract.js";
 import { fireEvent, screen } from "@testing-library/react";
 
 // Radix scrolls the active item into view. jsdom has no layout implementation.
 HTMLElement.prototype.scrollIntoView ??= () => {};
+// Radix measures form checkboxes. jsdom has no layout observer.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
 
 export async function openSetting(label: string): Promise<void> {
   fireEvent.keyDown(await screen.findByRole("combobox", { name: label }), { key: "ArrowDown" });
@@ -39,8 +45,8 @@ export function installFakeLocalStorage(): Record<string, string> {
 
 export const makeStatus = (over: Partial<SetupStatus> = {}): SetupStatus => ({
   fields: Object.fromEntries(SECRET_IDS.map((id) => [id, false])) as SetupStatus["fields"],
-  voice: { ready: false, missing: ["In-app voice — OpenAI API key"] },
-  phone: { ready: false, missing: ["Phone calls — Twilio Account SID"], webhooksPlugin: "absent" },
+  voice: { ready: false, missing: [SETUP_LABELS.openaiKey] },
+  phone: { ready: false, missing: [SETUP_LABELS.twilioSid], webhooksPlugin: "absent" },
   needsConfiguration: true,
   reloadPending: false,
   version: "0.1.0",

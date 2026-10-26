@@ -23,7 +23,7 @@ export function AdvancedSection() {
       <Row label="Reasoning model" htmlFor="dispatch-reasoning-model" help="Plans and runs the agent's tools.">
         <SettingSelect id="dispatch-reasoning-model" label="Reasoning model" value={prefs.reasoningModel} options={listed(REASONING_MODELS, prefs.reasoningModel).map((model) => ({ value: model, label: model === RECOMMENDED ? `${model} (recommended)` : model }))} onValueChange={(reasoningModel) => void save({ reasoningModel })} />
       </Row>
-      <Row label="Reset preferences" help="Restore defaults. Setup values and instructions stay.">
+      <Row label="Reset preferences" help="Keep keys and instructions.">
         {confirming ? (
           <div className="flex flex-wrap gap-2">
             <Button

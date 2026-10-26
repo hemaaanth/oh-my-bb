@@ -171,7 +171,7 @@ function InstructionsEditor() {
         <label htmlFor="dispatch-instructions" className="text-sm text-foreground">
           Your instructions
         </label>
-        <Note>The built-in prompt stays in place. This text is added after it.</Note>
+        <Note>Added to the built-in prompt.</Note>
         <Textarea id="dispatch-instructions" rows={4} value={draft} onChange={(event) => setDraft(event.target.value)} />
         <div className="flex items-center justify-between gap-2">
           <span className={over ? "text-xs text-destructive" : "text-xs text-muted-foreground"} aria-live="polite">
@@ -219,7 +219,7 @@ export function AgentSection() {
   const { status } = useSetupStatus();
   if (!prefs) return <Loading error={error} />;
   return (
-    <Group>
+    <Group title="Agent">
       <NameRow saved={prefs.agentName} save={(agentName) => save({ agentName })} />
       <VoiceSettings prefs={prefs} save={save} adopt={adopt} hasKey={status?.fields.openaiKey === true} />
       {error ? <Note tone="error">{error}</Note> : null}

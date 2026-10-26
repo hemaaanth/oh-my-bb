@@ -1,9 +1,39 @@
 # Changelog
 
-## Unreleased
+## 0.3.2
 
 - Add experimental in-app Podcast mode with project people, scoped thread control, optional Journal reads, and queued spoken updates.
 - Preserve project speaker labels in call transcripts.
+- Keep native secret fields together in Configuration. Start ordinary controls
+  under a separate Preferences heading, followed by Advanced, More and Oh My BB.
+  Secret storage, validation and existing settings commands are unchanged.
+- Put setup guidance on its own page, linked from More and missing-setup warnings.
+- Reuse the Dispatch SVG for settings, rail and console. Keep the live footer
+  avatar, saved appearance and activity feedback.
+- Align console, transcript and setup to Settings' 760px outer frame with a stable
+  scrollbar gutter. Use pane-width queries for console controls and call columns.
+- Ignore settings-select values that are not offered, preserving saved choices
+  while device and plugin discovery load.
+- Combine all supported built-in voices in one list, including Realtime voices.
+  Remove obsolete compatibility warnings without changing saved choices or samples.
+- Align Microphone with Speaker and use one responsive width for dropdowns and
+  segmented selectors. Keep microphone actions below its picker.
+- Shorten settings labels, help and the plugin subtitle. Remove em dashes from UI copy.
+- Move call actions into a compact, two-button click disclosure. Leave right-click
+  to BB's native footer menu. Opening the disclosure never starts a call.
+- Replace the browser colour popup with a themed visual colour popover and presets.
+  Preview while dragging and save on release. Hex entry remains optional, with
+  validation and Escape cancellation. Opening it does not resize the settings row.
+- Left-align colour choices and show the live theme colour beside Theme.
+  Use three palette columns in narrow panes to keep labels from overflowing.
+- Move general plugin-command permissions into Preferences. Keep Oh My BB for
+  suite-specific integration controls.
+- Replace the passive Webhooks status with **Manage in Webhooks**, linking to
+  the owning receiver switch without reloading BB or duplicating the toggle.
+- Include runtime bundles and voice assets in the production package. Normalize
+  source-map paths so published artifacts contain no workstation paths.
+- Keep shared RPC contracts type-only with respect to the SDK so Git installs
+  build correctly after installing production dependencies without dev packages.
 
 ## 0.3.1
 

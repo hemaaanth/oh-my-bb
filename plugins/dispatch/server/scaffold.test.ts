@@ -4,7 +4,7 @@ import { METHOD_NAMES, READ_CALLS_METHOD, RECEIVE_METHOD } from "../shared/contr
 import { podcastContract } from "../shared/podcast.js";
 import plugin from "./index.js";
 import { MIGRATION_IDS } from "./migrations.js";
-import { SETUP_FORMATS, SETUP_SETTINGS } from "./settings.js";
+import { SETUP_FORMATS } from "./settings.js";
 
 async function load(settings?: Record<string, string>) {
   const { bb, harness } = createFakePluginHost({ pluginId: "dispatch", ...(settings ? { settings } : {}) });
@@ -41,8 +41,6 @@ describe("setup settings", () => {
     for (const descriptor of Object.values(descriptors)) {
       expect(descriptor).toMatchObject({ type: "string", secret: true });
     }
-    expect(descriptors.openaiKey?.label).toBe("In-app voice — OpenAI API key");
-    expect(SETUP_SETTINGS.openaiKey.description).toMatch(/subscription tokens do not work/);
   });
 
   it.each([

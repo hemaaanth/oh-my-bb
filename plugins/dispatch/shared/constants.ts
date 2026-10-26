@@ -4,7 +4,7 @@ import type { Preferences } from "./contract.js";
 
 export const PLUGIN_ID = "dispatch";
 /** Equals `version` in package.json. A test keeps them in step. */
-export const DISPATCH_VERSION = "0.3.1";
+export const DISPATCH_VERSION = "0.3.2";
 export const CLI_COMMAND = "dispatch";
 
 /** Setup values, in the order the host form shows them (CONTRACTS §7). */
@@ -18,14 +18,14 @@ export const SECRET_IDS = [
 ] as const;
 export type SecretId = (typeof SECRET_IDS)[number];
 
-/** Host form labels. The mode prefix groups the flat form. Readiness reports these, never ids. */
+/** Native field labels. Readiness reports these, never ids. */
 export const SETUP_LABELS: Readonly<Record<SecretId, string>> = {
-  openaiKey: "In-app voice — OpenAI API key",
-  twilioSid: "Phone calls — Twilio Account SID",
-  twilioToken: "Phone calls — Twilio Auth Token",
-  twilioCallerNumber: "Phone calls — Twilio caller number",
-  yourPhoneNumber: "Phone calls — your phone number",
-  openaiSipProject: "Phone calls — OpenAI project id for SIP",
+  openaiKey: "OpenAI API key",
+  twilioSid: "Twilio Account SID",
+  twilioToken: "Twilio auth token",
+  twilioCallerNumber: "Twilio number",
+  yourPhoneNumber: "Your phone number",
+  openaiSipProject: "OpenAI SIP project",
 };
 export const VOICE_SECRET_IDS = ["openaiKey"] as const satisfies readonly SecretId[];
 /** Phone calls need every setup value, the OpenAI key included. */
@@ -49,23 +49,15 @@ export type VoiceOption = {
   language: string | null;
   region: string | null;
   presentation: "Feminine" | "Masculine" | null;
-  group: (typeof VOICE_GROUPS)[number];
 };
-export const VOICE_GROUPS = ["GPT-Live", "Realtime (unconfirmed)"] as const;
 const live = (name: string, language: string | null, region: string | null, presentation: VoiceOption["presentation"]): VoiceOption => ({
   name,
   label: name.charAt(0).toUpperCase() + name.slice(1),
   language,
   region,
   presentation,
-  group: "GPT-Live",
 });
-const realtime = (name: string): VoiceOption => ({ ...live(name, null, null, null), group: "Realtime (unconfirmed)" });
-/**
- * GPT-Live voices from the OpenAI voice table (checked 2026-10-20), then the
- * GPT-Live default `marin`. The Realtime voices are not in the GPT-Live table;
- * the picker lists them apart because GPT-Live may refuse them.
- */
+/** Built-in GPT-Live and Realtime voices share one picker. Metadata is shown where known. */
 export const VOICE_OPTIONS: readonly VoiceOption[] = [
   live("quartz", "English", "Australian", "Feminine"),
   live("ripple", "English", "Australian", "Masculine"),
@@ -89,7 +81,7 @@ export const VOICE_OPTIONS: readonly VoiceOption[] = [
   live("shida", "Japanese", null, "Masculine"),
   live("noeul", "Korean", null, "Feminine"),
   live("marin", null, null, null),
-  ...["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "cedar"].map(realtime),
+  ...["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "cedar"].map((name) => live(name, null, null, null)),
 ];
 export const VOICE_NAMES: readonly string[] = VOICE_OPTIONS.map((voice) => voice.name);
 /** Custom voice ids from `POST /v1/audio/voices` start with this. */

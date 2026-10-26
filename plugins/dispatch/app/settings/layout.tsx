@@ -51,7 +51,7 @@ export function Row({ label, help, htmlFor, children, className, placement = "in
   );
 }
 
-/** A quiet segmented control. It fills a narrow row and sizes to its choices in a wide one. */
+/** Shared selector width. Narrow rows fill the pane; wide rows align right. */
 export function Segmented<T extends string>({ label, value, options, onChange }: {
   label: string;
   value: T;
@@ -59,13 +59,13 @@ export function Segmented<T extends string>({ label, value, options, onChange }:
   onChange: (value: T) => void;
 }) {
   return (
-    <div role="group" aria-label={label} className="flex w-full min-w-0 rounded-md border border-input p-0.5 @md:w-auto">
+    <div role="group" aria-label={label} className="flex w-full min-w-0 rounded-md border border-input p-0.5 @md:w-72">
       {options.map((option) => (
         <Button
           key={option.value}
           variant="ghost"
           size="sm"
-          className="h-7 min-w-0 flex-1 px-2.5 @md:flex-none"
+          className="h-7 min-w-0 flex-1 px-2.5"
           aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
         >
@@ -102,17 +102,26 @@ export function Disclosure({ label, defaultOpen = false, children }: { label: st
 }
 
 /** Rows with quiet dividers. A title and its note form one header block. */
-export function Group({ title, note, children }: { title?: string; note?: ReactNode; children: ReactNode }) {
+export function Group({ title, note, children, card = true }: { title?: string; note?: ReactNode; children: ReactNode; card?: boolean }) {
   return (
-    <div className="min-w-0 divide-y divide-border/60">
+    <div className={cn("min-w-0 divide-y divide-border/60", card && "rounded-md border border-border bg-surface-recessed/70 px-3")}>
       {title ? (
-        <div className="pb-2">
-          <h4 className="text-sm font-medium text-foreground">{title}</h4>
+        <div className="py-3">
+          <h3 className="text-sm font-medium text-foreground">{title}</h3>
           {note ? <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{note}</p> : null}
         </div>
       ) : null}
       {children}
     </div>
+  );
+}
+
+export function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="space-y-4">
+      <h2 className="text-sm font-medium text-foreground">{title}</h2>
+      {children}
+    </section>
   );
 }
 
@@ -126,11 +135,13 @@ export function SettingSelect({ id, label, value, options, onValueChange, disabl
   disabled?: boolean;
 }) {
   return (
-    <Select value={value} onValueChange={onValueChange} disabled={disabled}>
-      <SelectTrigger id={id} aria-label={label} className="h-8 w-full min-w-0 gap-2 bg-transparent px-2.5 text-xs @md:w-56">
+    <Select value={value} onValueChange={(next) => {
+      if (options.some((option) => option.value === next)) onValueChange(next);
+    }} disabled={disabled}>
+      <SelectTrigger id={id} aria-label={label} className="h-8 w-full min-w-0 max-w-full gap-2 bg-transparent px-2.5 text-xs @md:w-72">
         <SelectValue />
       </SelectTrigger>
-      <SelectContent className="max-h-[min(24rem,var(--radix-select-content-available-height))] max-w-[calc(100vw-2rem)]">
+      <SelectContent align="end" className="max-h-[min(24rem,var(--radix-select-content-available-height))] max-w-[calc(100vw-2rem)]">
         {options.map((option) => <SelectItem key={option.value} value={option.value} className="text-xs">{option.label}</SelectItem>)}
       </SelectContent>
     </Select>

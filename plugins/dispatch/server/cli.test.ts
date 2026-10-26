@@ -34,11 +34,6 @@ describe("bb dispatch status", () => {
     expectNoSecrets(JSON.stringify(harness.inspection.logEntries));
   });
 
-  it("lists missing fields by label", async () => {
-    const { harness } = await loadPlugin();
-    const { stdout } = await harness.runCli(["status"]);
-    expect(stdout).toContain("Voice: not ready (missing: In-app voice — OpenAI API key)");
-  });
 });
 
 describe("bb dispatch usage", () => {

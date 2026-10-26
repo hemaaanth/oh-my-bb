@@ -183,7 +183,7 @@ async function runPluginCommand(ctx: ServerContext, args: ToolArgs): Promise<str
   const argv = Array.isArray(args.argv) ? args.argv.filter((value): value is string => typeof value === "string") : [];
   const [preferences, plugins] = await Promise.all([readPreferences(ctx), listPlugins(ctx)]);
   const plugin = exposedPlugins(plugins, preferences.pluginAccess).find((entry) => entry.id === pluginId);
-  if (!plugin) throw new Error(`The plugin ${pluginId} is not available to run. The user can allow it in Dispatch settings, Tools.`);
+  if (!plugin) throw new Error(`The plugin ${pluginId} is not available to run. The user can allow it in Dispatch settings, Preferences → Plugin access.`);
   const result = await runBbCli([plugin.command, ...argv]);
   if (result.code !== 0) throw new Error(`exit code ${result.code}: ${clip(result.stderr.trim() || result.stdout.trim(), PLUGIN_OUTPUT_MAX)}`);
   return clip(result.stdout.trim(), PLUGIN_OUTPUT_MAX) || "The command finished with no output.";

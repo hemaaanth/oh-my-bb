@@ -5,6 +5,7 @@ import type { RpcContract } from "../../shared/contract.js";
 import { Button } from "../components/ui/button";
 import { Icon } from "../components/ui/icon";
 import { dialPhone } from "../phone-dial.js";
+import { ICON } from "../ids.js";
 import { privateCallText } from "../phone-status.js";
 import { errorText, useLatest, usePreferences } from "../settings/data.js";
 import { Note } from "../settings/layout.js";
@@ -38,10 +39,10 @@ export function ConsoleHeader({ call, onViewTranscript }: { call: CallState; onV
   return (
     <header className="flex flex-col gap-3">
       {/* Narrow screens always stack the actions under the identity, so status text changes never move them. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 @min-[40rem]/dispatch:flex-row @min-[40rem]/dispatch:items-center @min-[40rem]/dispatch:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-raised text-muted-foreground" aria-hidden="true">
-            <Icon name="dispatch/dispatch" className="size-5" />
+            <Icon name={ICON} className="size-5" />
           </span>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-sm font-semibold text-foreground">{name}</h1>
@@ -52,7 +53,7 @@ export function ConsoleHeader({ call, onViewTranscript }: { call: CallState; onV
             </div>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2" role="group" aria-label="Call actions">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Call actions">
           {call.live ? <>
             {call.channel !== "phone" ? <Button variant="outline" size="sm" disabled={busy} onClick={() => void run(() => rpcRef.current.call("relayCommand", { command: call.muted ? "unmute" : "mute", ...(call.nonce ? { nonce: call.nonce } : {}) }))}>
               <Icon name="Mic" />{call.muted ? "Unmute" : "Mute"}

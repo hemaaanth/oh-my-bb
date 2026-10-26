@@ -96,7 +96,7 @@ export function coreCommands(ctx: ServerContext): CliCommands {
           const human =
             threads.length === 0
               ? "No threads are working now."
-              : threads.map((thread) => `${thread.status.padEnd(12)} ${thread.title} — ${thread.projectName}, ${thread.machineName}, ${thread.ago}`).join("\n");
+              : threads.map((thread) => `${thread.status.padEnd(12)} ${thread.title}: ${thread.projectName}, ${thread.machineName}, ${thread.ago}`).join("\n");
           return ok(value, human, options.json);
         }),
     }),

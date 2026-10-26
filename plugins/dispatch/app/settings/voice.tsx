@@ -8,7 +8,6 @@ import {
   defaultPreferences,
   CUSTOM_VOICE_NAME_MAX,
   CUSTOM_VOICE_PROMPT_MAX,
-  VOICE_GROUPS,
   VOICE_NAMES,
   VOICE_OPTIONS,
   VOICE_STYLE_CHOICES,
@@ -27,22 +26,20 @@ import { Disclosure, Group, Note, Row, Segmented } from "./layout.js";
 
 type Save = (patch: Partial<Preferences>) => Promise<boolean>;
 
-export const SAMPLE_COST_NOTE = "Built-in samples are recordings in the default style. Your voices and Preview with this style use your OpenAI key, about 1¢ per new sample.";
-export const SAMPLE_NO_KEY_NOTE = "Built-in samples are recordings in the default style. Add an OpenAI API key in Setup to hear your own voices, preview your style, and design voices.";
+export const SAMPLE_COST_NOTE = "Built-in samples are free. Custom or styled previews cost about 1¢.";
+export const SAMPLE_NO_KEY_NOTE = "Built-in samples are free. Add an OpenAI key for custom voices.";
 export const SAMPLE_PROGRESS = "Making a sample, about 10 seconds";
 /** A cached sample plays well before this. Only a new sample shows the progress text. */
 const PROGRESS_AFTER_MS = 400;
 
 const DEFAULT_STYLE = defaultPreferences().voiceStyle;
 const isDefaultStyle = (style: VoiceStyle) => (Object.keys(DEFAULT_STYLE) as Array<keyof VoiceStyle>).every((key) => style[key].trim() === DEFAULT_STYLE[key]);
-export const STYLE_NOTE = "These are instructions in the voice prompt. The voice model follows them, but they are not exact controls.";
+export const STYLE_NOTE = "Style guides the voice, not exact settings.";
 
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** Language, accent, and presentation, as far as the OpenAI voice table gives them. */
 export function voiceDetail(voice: VoiceOption): string {
-  if (voice.group !== "GPT-Live") return "Realtime voice";
-  if (!voice.language) return "GPT-Live default";
   return [voice.region ? `${voice.language}, ${voice.region}` : voice.language, voice.presentation].filter(Boolean).join(" · ");
 }
 
@@ -130,9 +127,8 @@ function PlayButton({ voice, label, player, canPlay }: { voice: string; label: s
 
 type ListedVoice = { name: string; label: string; detail: string };
 
-function VoiceSection({ title, note, voices, chosen, onChoose, player, canPlay, onRemove }: {
+function VoiceSection({ title, voices, chosen, onChoose, player, canPlay, onRemove }: {
   title: string;
-  note?: string;
   voices: readonly ListedVoice[];
   chosen: string;
   onChoose: (voice: string) => void;
@@ -144,7 +140,6 @@ function VoiceSection({ title, note, voices, chosen, onChoose, player, canPlay, 
   return (
     <section aria-label={title} className="pb-1">
       <h5 className="sticky top-0 z-10 bg-background px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">{title}</h5>
-      {note ? <p className="px-2 pb-1 text-xs text-muted-foreground">{note}</p> : null}
       <ul className="flex flex-col">
         {voices.map((voice) => (
           <li key={voice.name} className="flex items-center gap-1">
@@ -155,7 +150,7 @@ function VoiceSection({ title, note, voices, chosen, onChoose, player, canPlay, 
               className="flex h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 text-left hover:bg-state-hover aria-pressed:bg-state-active"
             >
               <span className="shrink-0 text-xs font-medium text-foreground">{voice.label}</span>
-              <span className="truncate text-xs text-muted-foreground">{voice.detail}</span>
+              {voice.detail ? <span className="truncate text-xs text-muted-foreground">{voice.detail}</span> : null}
               {voice.name === chosen ? <Icon name="Check" className="ml-auto size-3.5 shrink-0" aria-hidden="true" /> : null}
             </button>
             <PlayButton voice={voice.name} label={voice.label} player={player} canPlay={canPlay(voice.name)} />
@@ -204,21 +199,17 @@ function VoicePicker({ prefs, save, player, hasKey, canPlay, remove }: {
     <div className="flex flex-col gap-2 py-3">
       <div className="flex min-w-0 items-baseline justify-between gap-2">
         <span className="shrink-0 text-sm text-foreground">Voice</span>
-        <span className="truncate text-xs text-muted-foreground">{chosen ? `${chosen.label} · ${chosen.detail}` : prefs.voice}</span>
+        <span className="truncate text-xs text-muted-foreground">{chosen ? [chosen.label, chosen.detail].filter(Boolean).join(" · ") : prefs.voice}</span>
       </div>
       <Note>{hasKey ? SAMPLE_COST_NOTE : SAMPLE_NO_KEY_NOTE}</Note>
       <div role="group" aria-label="Voice" className="max-h-80 overflow-y-auto overscroll-contain rounded-md border border-input bg-background px-1 pb-1">
         <VoiceSection title="Saved voice" voices={unlisted} {...common} />
         <VoiceSection title="Your voices" voices={custom} onRemove={remove} {...common} />
-        {VOICE_GROUPS.map((group) => (
-          <VoiceSection
-            key={group}
-            title={group}
-            note={group === "GPT-Live" ? undefined : "Not in the GPT-Live voice table. GPT-Live may refuse them."}
-            voices={VOICE_OPTIONS.filter((voice) => voice.group === group).map((voice) => ({ name: voice.name, label: voice.label, detail: voiceDetail(voice) }))}
-            {...common}
-          />
-        ))}
+        <VoiceSection
+          title="Built-in voices"
+          voices={VOICE_OPTIONS.map((voice) => ({ name: voice.name, label: voice.label, detail: voiceDetail(voice) }))}
+          {...common}
+        />
       </div>
       <SampleProgress player={player} style="default" />
       {player.error ? <Note tone="error">{player.error}</Note> : null}
@@ -232,7 +223,7 @@ const STYLE_ROWS: ReadonlyArray<{ key: Choice; label: string; help?: string }> =
   { key: "energy", label: "Energy" },
   { key: "expressiveness", label: "Expressiveness" },
   { key: "length", label: "Turn length" },
-  { key: "backchannels", label: "Backchannels", help: "Short sounds like “mm-hm” while you talk." },
+  { key: "backchannels", label: "Backchannels", help: "Brief sounds like “mm-hm”." },
 ];
 
 function StyleNotes({ saved, save }: { saved: string; save: (notes: string) => void }) {
@@ -269,7 +260,7 @@ function VoiceStyleGroup({ prefs, save, player, canPreview }: { prefs: Preferenc
   const previewing = player.current?.style === "saved";
   return (
     <div className="py-3">
-      <Group title="Voice style" note={STYLE_NOTE}>
+      <Group title="Voice style" note={STYLE_NOTE} card={false}>
         {STYLE_ROWS.map((row) => (
           <Row key={row.key} label={row.label} help={row.help}>
             <Segmented

@@ -147,6 +147,9 @@ load.
 
 ## Receiving the webhook
 
+Allow Dispatch under Webhooks settings → **Oh My BB**. This opt-in is owned
+and enforced by Webhooks; Dispatch does not change it.
+
 Dispatch has no listener or tunnel of its own. Create a Webhooks endpoint that
 hands deliveries to Dispatch. Pipe OpenAI's `whsec_…` signing secret on stdin:
 
@@ -193,12 +196,12 @@ These are the labels in Dispatch settings. All six are secret fields.
 
 | Label | What to put in it |
 | --- | --- |
-| In-app voice — OpenAI API key | Your OpenAI key. Phone calls use it for accept, hangup and the sideband. |
-| Phone calls — Twilio Account SID | `AC…` |
-| Phone calls — Twilio Auth Token | The Twilio auth token. |
-| Phone calls — Twilio caller number | A voice-capable Twilio number, in E.164. |
-| Phone calls — your phone number | The number Dispatch should call, in E.164. |
-| Phone calls — OpenAI project id for SIP | `proj_…` |
+| OpenAI API key | Your OpenAI key. Phone calls use it for accept, hangup and the sideband. |
+| Twilio Account SID | `AC…` |
+| Twilio auth token | The Twilio auth token. |
+| Twilio number | A voice-capable Twilio number, in E.164. |
+| Your phone number | The number Dispatch should call, in E.164. |
+| OpenAI SIP project | `proj_…` |
 
 The webhook signing secret lives in the Webhooks endpoint, not in Dispatch.
 
