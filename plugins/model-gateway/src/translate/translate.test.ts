@@ -344,6 +344,16 @@ describe("estimateTokens", () => {
     expect(withImage).toBeLessThan(base + 2000);
     expect(estimateTokens(cc.turn)).toBeGreaterThan(estimateTokens(cc.title));
   });
+
+  it("charges Responses images and PDFs a flat cost, and counts text in full", () => {
+    const text = (n: number) => ({ input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "x".repeat(n) }] }] });
+    const media = { input: [{ type: "message", role: "user", content: [
+      { type: "input_image", image_url: `data:image/png;base64,${"A".repeat(500_000)}` },
+      { type: "input_file", filename: "a.pdf", file_data: `data:application/pdf;base64,${"A".repeat(500_000)}` },
+    ] }] };
+    expect(estimateTokens(media)).toBeLessThan(estimateTokens(text(0)) + 4000);
+    expect(estimateTokens(text(350_000))).toBeGreaterThan(100_000);
+  });
 });
 
 describe("replay identity", () => {

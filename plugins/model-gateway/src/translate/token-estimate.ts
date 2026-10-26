@@ -9,6 +9,8 @@
 const LATIN_CHARS_PER_TOKEN = 3.5;
 const CJK_CHARS_PER_TOKEN = 1.5;
 // Images and documents: a flat cost instead of counting their base64 payload as text.
+// shortcut: an allowance, not a guarantee (PDF pages and very large images cost more);
+// the target's own too-long error stays the backstop. Count real dimensions if that bites.
 const MEDIA_TOKENS = 1600;
 
 function countCjk(text: string): number {
@@ -21,14 +23,17 @@ function countCjk(text: string): number {
   return cjk;
 }
 
-/** Estimated input tokens for an Anthropic Messages (or count_tokens) body. */
+/** Estimated input tokens for an Anthropic Messages (or count_tokens) or Responses body. */
 export function estimateTokens(body: unknown): number {
   let media = 0;
-  // Serialize everything except base64 payloads; each media block costs a flat amount.
+  // Serialize everything except media payloads (Messages `source`, Responses data URLs);
+  // each media block costs a flat amount.
   const text = JSON.stringify(body ?? {}, (key, value: unknown) => {
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const rec = value as Record<string, unknown>;
-      if ((rec.type === "image" || rec.type === "document") && typeof rec.source === "object") {
+      if (((rec.type === "image" || rec.type === "document") && typeof rec.source === "object")
+        || (rec.type === "input_image" && typeof rec.image_url === "string")
+        || (rec.type === "input_file" && typeof rec.file_data === "string")) {
         media++;
         return { type: rec.type };
       }

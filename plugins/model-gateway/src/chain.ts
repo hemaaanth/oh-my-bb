@@ -629,8 +629,23 @@ export function contextWindow(
   return CONTEXT_WINDOWS.find(([pattern]) => pattern.test(model))?.[1] ?? null;
 }
 
-export function contextExceededMessage(tokens: number): string {
-  return `Gateway: context (${tokens} tokens) exceeds every available fallback model. Compact the thread.`;
+/**
+ * A translated fallback cannot fit. Each harness gets the too-long error it compacts
+ * on: Claude Code matches "prompt is too long", Codex the `context_length_exceeded` code.
+ */
+export function contextExceededResponse(
+  provider: string,
+  model: string,
+  tokens: number,
+  window: number,
+): Response {
+  const message = `Gateway: the ${model} fallback needs about ${tokens} tokens (estimate), over its ${window}-token window. Compact the thread.`;
+  return Response.json(
+    provider === "claude"
+      ? { type: "error", error: { type: "invalid_request_error", message: `prompt is too long: ${message}` } }
+      : { error: { type: "invalid_request_error", code: "context_length_exceeded", message } },
+    { status: 400 },
+  );
 }
 
 /** Path below the plugin HTTP mount, e.g. `/v1/messages/count_tokens`. */

@@ -1302,7 +1302,7 @@ describe("chain failover in the hub", () => {
     });
   });
 
-  it("answers 400 when the context exceeds every remaining model", async () => {
+  it("keeps the primary's quota 429 when the translated fallback cannot fit", async () => {
     const gw = await gateway({
       withCodex: true,
       config: { chains: { "claude-code": ["claude-oauth:*", "chatgpt-oauth:*"] } },
@@ -1320,10 +1320,8 @@ describe("chain failover in the hub", () => {
     gw.upstream.maxExhausted = true;
     gw.upstream.attempts.length = 0;
     const response = await gw.send(key, big);
-    expect(response.status).toBe(400);
-    expect(response.text).toMatch(
-      /Gateway: context \(\d+ tokens\) exceeds every available fallback model\. Compact the thread\./u,
-    );
+    expect(response.status).toBe(429);
+    expect(JSON.parse(response.text)).toMatchObject({ error: { type: "rate_limit_error" } });
     expect(gw.upstream.attempts).toEqual(["max-token"]);
   });
 
@@ -1993,6 +1991,112 @@ describe("chain failover in the hub", () => {
       now = Math.max(...status.capacityCooldowns!.map((c) => c.retryAt)) + 1;
       gw.setNow(now);
     }
+  });
+
+  describe("translated fallback context guard", () => {
+    // Synthetic stand-ins: data URLs and opaque items far larger as text than as tokens.
+    const image = { type: "input_image", image_url: `data:image/png;base64,${"A".repeat(250_000)}` };
+    const mediaHeavy = [
+      { type: "message", role: "user", content: [{ type: "input_text", text: "Look." }, ...Array.from({ length: 18 }, () => image)] },
+      { type: "reasoning", id: "rs_native", summary: [], encrypted_content: "R".repeat(600_000) },
+      { type: "compaction", encrypted_content: "C".repeat(600_000) },
+      codexUser,
+    ];
+    const hugeText = [{ type: "message", role: "user", content: [{ type: "input_text", text: "x".repeat(4_000_000) }] }];
+    const post = async (key: string, body: object, route = "/v1/responses") => {
+      const response = await gw0!.host.harness.behavior.fetchHttp("POST", route, {
+        headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const text = await response.text();
+      return { status: response.status, retryAfter: response.headers.get("retry-after"), json: text.startsWith("{") ? JSON.parse(text) : text };
+    };
+    let gw0: Awaited<ReturnType<typeof gateway>> | null = null;
+    const limited429 = () => new Response("{}", { status: 429, headers: { "x-codex-primary-used-percent": "100", "x-codex-primary-reset-after-seconds": "3600" } });
+    const codexToClaudeKey = async () => {
+      gw0 = await gateway({ withCodex: true });
+      await gw0.cli("chain", "set", "codex", "chatgpt-oauth:*", "claude-key:*");
+      return { gw: gw0, key: await gw0.token("codex", "thr_fit") };
+    };
+
+    it("sizes the translated body: Responses images are flat, dropped reasoning and compaction are free", async () => {
+      const { gw, key } = await codexToClaudeKey();
+      gw.upstream.reply = (who) => (who === "pro-token" ? chatgptExhausted() : anthropicTwoTools());
+      expect((await post(key, codexBody(mediaHeavy))).status).toBe(200);
+      expect(gw.upstream.attempts).toEqual(["pro-token", "key-token"]);
+      const sent = gw.upstream.requests.at(-1)!.body;
+      expect(sent).not.toContain("RRRR");
+      expect(sent).not.toContain("CCCC");
+      expect(JSON.parse(sent).model).toBe("claude-opus-5-5");
+    });
+
+    it("sizes a Messages image translated to a Responses input_image as media", async () => {
+      gw0 = await gateway({ withCodex: true, config: { chains: { "claude-code": ["claude-oauth:*", "chatgpt-oauth:*"] } } });
+      gw0.upstream.maxExhausted = true;
+      gw0.upstream.reply = (who) => (who === "pro-token" ? completed("resp_image") : undefined);
+      const picture = { type: "image", source: { type: "base64", media_type: "image/png", data: "A".repeat(600_000) } };
+      const turn = { model: "claude-opus-4-7", max_tokens: 1024, messages: [{ role: "user", content: [{ type: "text", text: "Look." }, picture, picture] }] };
+      expect((await post(await gw0.token("claude-code", "thr_img"), turn, "/v1/messages")).status).toBe(200);
+      expect(gw0.upstream.attempts).toEqual(["max-token", "pro-token"]);
+    });
+
+    it("keeps the primary's 429, held retry and capacity 503 when the fallback cannot fit", async () => {
+      const { gw, key } = await codexToClaudeKey();
+      gw.upstream.reply = (who) => (who === "pro-token" ? limited429() : anthropicTwoTools());
+      const limited = await post(key, codexBody(hugeText));
+      expect(limited).toMatchObject({ status: 429, json: { error: { code: "rate_limit_exceeded" } } });
+      expect(Number(limited.retryAfter)).toBeGreaterThan(0);
+      expect(gw.upstream.attempts).toEqual(["pro-token"]);
+
+      const held = await gateway({ withCodex: true });
+      await held.cli("chain", "set", "codex", "chatgpt-oauth:*", "claude-key:*");
+      await held.cli("account", "hold", held.pro!.id, "--until", new Date(RESET).toISOString());
+      gw0 = held;
+      const waiting = await post(await held.token("codex", "thr_held"), codexBody(hugeText));
+      expect(waiting.status).toBe(429);
+      expect(Number(waiting.retryAfter)).toBeGreaterThan(0);
+      expect(held.upstream.attempts).toEqual([]);
+
+      const busy = await gateway({ withCodex: true });
+      await busy.cli("chain", "set", "codex", "chatgpt-oauth:*", "claude-key:*");
+      busy.upstream.reply = () => sse(capacityFrame());
+      gw0 = busy;
+      const capacity = await post(await busy.token("codex", "thr_busy"), codexBody(hugeText));
+      expect(capacity.status).toBe(503);
+      expect(Number(capacity.retryAfter)).toBeGreaterThan(0);
+      expect(busy.upstream.attempts).toEqual(["pro-token"]);
+    });
+
+    it("answers each harness's typed too-long error when only a translated model is left", async () => {
+      const { gw } = await codexToClaudeKey();
+      await gw.cli("chain", "set", "codex", "claude-key:*");
+      const codex = await post(await gw.token("codex", "thr_codex_big"), codexBody(hugeText));
+      expect(codex).toMatchObject({ status: 400, json: { error: { type: "invalid_request_error", code: "context_length_exceeded" } } });
+      expect(codex.json.error.message).toMatch(/claude-opus-5-5 fallback needs about \d+ tokens \(estimate\), over its 1000000-token window/u);
+
+      await gw.cli("chain", "set", "claude-code", "chatgpt-oauth:*");
+      const claudeKey = await gw.token("claude-code", "thr_claude_big");
+      const big = { model: "claude-opus-4-7", max_tokens: 1024, messages: [{ role: "user", content: "x".repeat(1_200_000) }] };
+      const claude = await post(claudeKey, big, "/v1/messages");
+      expect(claude).toMatchObject({ status: 400, json: { type: "error", error: { type: "invalid_request_error" } } });
+      expect(claude.json.error.message).toMatch(/^prompt is too long: Gateway: the gpt-6-sol fallback/u);
+      expect(gw.upstream.attempts).toEqual([]);
+      // count_tokens stays a local estimate: no translation, no window guard.
+      expect((await post(claudeKey, big, "/v1/messages/count_tokens")).json).toEqual({ input_tokens: expect.any(Number) });
+      expect(gw.upstream.attempts).toEqual([]);
+    });
+
+    it("estimates each translated target on its own body and window", async () => {
+      const { gw, key } = await codexToClaudeKey();
+      await addKey(gw, "anthropic-compatible-key", "kimi", KIMI, "sk-kimi");
+      await gw.cli("chain", "set", "codex", "chatgpt-oauth:*", "claude-key:*", "anthropic-compatible-key:kimi");
+      await gw.cli("model-map", "set", "claude-key", "gpt-*", "claude-opus-4-7");
+      await gw.cli("model-map", "set", "anthropic-compatible-key:kimi", "gpt-*", "claude-opus-5-5");
+      gw.upstream.reply = (who) => (who === "pro-token" ? chatgptExhausted() : anthropicTwoTools());
+      const medium = [{ type: "message", role: "user", content: [{ type: "input_text", text: "x".repeat(1_400_000) }] }];
+      expect((await post(key, codexBody(medium))).status).toBe(200);
+      expect(gw.upstream.attempts).toEqual(["pro-token", "sk-kimi"]);
+    });
   });
 
   it("never retries a tool call followed by overload in the same chunk", async () => {

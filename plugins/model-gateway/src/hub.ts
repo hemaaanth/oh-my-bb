@@ -54,7 +54,7 @@ import { askJev, JEV_TIMEOUT_MS, lastUserText, type JevPick } from "./jev.js";
 import {
   apiKeyUpstreamMessage,
   autoLadder,
-  contextExceededMessage,
+  contextExceededResponse,
   contextWindow,
   exhaustedUntil,
   expandChain,
@@ -181,6 +181,8 @@ export interface Translation {
   toClient: (upstream: Response) => Promise<Response>;
   /** Request parts with no form in the upstream protocol, left out (plan 9, P4 risk c). */
   dropped?: string[];
+  /** Estimated input tokens of the translated body: what the fallback will actually see. */
+  estimate: () => number;
 }
 
 /**
@@ -235,6 +237,7 @@ export function translateFor(
     };
     return {
       dropped: translated.dropped,
+      estimate: () => estimateTokens(translated.body),
       request: new Request(new URL(`${ROUTE}/v1/messages`, request.url), {
         method: "POST",
         headers: {
@@ -287,6 +290,7 @@ export function translateFor(
   const session = request.headers.get("x-claude-code-session-id");
   if (session !== null) headers.set("session_id", session);
   return {
+    estimate: () => estimateTokens(body),
     request: new Request(new URL(`${ROUTE}/v1/responses`, request.url), {
       method: "POST",
       headers,
@@ -907,7 +911,10 @@ export class AccountPoolHub {
       now,
     );
     let estimate: number | null = null;
-    let contextBlocked = false;
+    // The first translated fallback that could not fit, and whether a skipped route
+    // was only waiting (held): then its retry, not compaction, is the honest answer.
+    let blocked: { model: string; tokens: number; window: number } | null = null;
+    let held = false;
     let served = false;
     let failure: FailureSummary | null = null;
     try {
@@ -943,18 +950,10 @@ export class AccountPoolHub {
             apiKeyOnly ??= candidate.model;
             continue;
           }
-          // Same protocol: the upstream knows its real window and answers with
-          // its own too-long error, which the harness compacts on. Guess only
-          // for translated fallbacks.
-          const window = cross ? contextWindow(candidate.model, request.headers) : null;
-          if (window !== null && candidate.accounts.length > 0) {
-            estimate ??= estimateTokens(json);
-            if (estimate > window) {
-              contextBlocked = true;
-              continue;
-            }
+          if (candidate.accounts.length === 0) {
+            held = true;
+            continue;
           }
-          if (candidate.accounts.length === 0) continue;
           served = true;
           let translation: Translation | null = null;
           // Same protocol: thinking and reasoning go only to the upstream that minted them.
@@ -970,6 +969,18 @@ export class AccountPoolHub {
           if (cross) {
             const translated = translateFor(candidate, { request, body, json });
             if (!("toClient" in translated)) return translated;
+            // Same protocol: the upstream knows its real window and answers with
+            // its own too-long error, which the harness compacts on. Guess only for
+            // translated fallbacks, from the body they would receive: foreign
+            // reasoning and compaction items are already gone, media is flat-priced.
+            const window = contextWindow(candidate.model, request.headers);
+            if (window !== null && candidate.model !== null) {
+              const tokens = translated.estimate();
+              if (tokens > window) {
+                blocked ??= { model: candidate.model, tokens, window };
+                continue;
+              }
+            }
             translation = translated;
             if (identity !== null && translated.dropped !== undefined)
               this.noteDropped(identity.threadId, translated.dropped, candidate.kind);
@@ -1030,9 +1041,10 @@ export class AccountPoolHub {
         }
       }
       signal.throwIfAborted();
-      // A fallback that could not fit is the reason, even after the primary failed.
-      if (contextBlocked && estimate !== null)
-        return client.errorResponse(400, contextExceededMessage(estimate));
+      // A fallback that could not fit is the reason only when nothing else failed or
+      // waited; otherwise the primary's failure and its retry-after stand.
+      if (blocked !== null && failure === null && !held)
+        return contextExceededResponse(client.provider, blocked.model, blocked.tokens, blocked.window);
       if (apiKeyOnly !== null && !served)
         return client.errorResponse(400, apiKeyUpstreamMessage(apiKeyOnly));
       return failure === null
