@@ -2,6 +2,7 @@
 // The tool list agents see lives in app/spec/tools.ts; keep the two in step.
 import path from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import type { ExperimentalLiveFileTarget } from "@get-bb/plugin-sdk/app";
 import { FileSourceError, containedPath, relativePath, storageRoot, workspaceRoot } from "../files.js";
 import { parseFile } from "./data-parse.js";
 import { SpecError } from "./errors.js";
@@ -16,6 +17,9 @@ const PATCH_MAX_CHARS = 200_000;
 
 const TOOLS: Record<string, (sdk: Sdk, threadId: string, args: Record<string, unknown>, roots?: readonly ReadRoot[]) => Promise<unknown>> = {
   file: (sdk, threadId, args, roots) => readFile(sdk, threadId, args.path, roots),
+  asset: (sdk, threadId, args, roots) => readAsset(sdk, threadId, args.path, roots),
+  read_text: (sdk, threadId, args, roots) => readText(sdk, threadId, args.path, roots),
+  file_target: (sdk, threadId, args) => fileTarget(sdk, threadId, args.path),
   changes: changes,
   commits: async (sdk, threadId, args) => {
     const env = await environmentOf(sdk, threadId);
@@ -116,7 +120,7 @@ async function threadRoots(sdk: Sdk, threadId: string): Promise<ReadRoot[]> {
   ];
 }
 
-async function readFile(sdk: Sdk, threadId: string, raw: unknown, only?: readonly ReadRoot[]) {
+async function scopedFile(sdk: Sdk, threadId: string, raw: unknown, only?: readonly ReadRoot[]) {
   const roots = only ?? await threadRoots(sdk, threadId);
   const { root, file } = locate(roots, raw);
   // rootPath makes the host realpath both sides, so a symlink cannot lead out of the root.
@@ -124,7 +128,42 @@ async function readFile(sdk: Sdk, threadId: string, raw: unknown, only?: readonl
     if (typeof error === "object" && error !== null && "status" in error && error.status === 404) throw new SpecError(`No file at ${file} in the ${root.name}.`);
     throw error;
   });
+  return { root, file, result };
+}
+
+async function readText(sdk: Sdk, threadId: string, raw: unknown, only?: readonly ReadRoot[]): Promise<string> {
+  const { file, result } = await scopedFile(sdk, threadId, raw, only);
+  if (result.sizeBytes > FILE_MAX_BYTES) throw new SpecError(`${file} is ${Math.ceil(result.sizeBytes / 1024)} KB; text reads at most ${FILE_MAX_BYTES / 1024 / 1024} MB.`);
+  if (result.contentEncoding !== "utf8") throw new SpecError(`${file} is not UTF-8 text.`);
+  return result.content;
+}
+
+async function readFile(sdk: Sdk, threadId: string, raw: unknown, only?: readonly ReadRoot[]) {
+  const { file, result } = await scopedFile(sdk, threadId, raw, only);
   if (result.sizeBytes > FILE_MAX_BYTES) throw new SpecError(`${file} is ${Math.ceil(result.sizeBytes / 1024)} KB; Query("file") reads at most ${FILE_MAX_BYTES / 1024 / 1024} MB.`);
   if (result.contentEncoding !== "utf8") throw new SpecError(`${file} is not UTF-8 text.`);
   return parseFile(file, result.content);
+}
+
+/** A user-clicked file keeps the same scope and realpath check as Query reads. */
+async function fileTarget(sdk: Sdk, threadId: string, raw: unknown): Promise<ExperimentalLiveFileTarget> {
+  const { root, file } = await scopedFile(sdk, threadId, raw);
+  if (root.name === "thread storage") return { kind: "thread-storage", threadId, path: file };
+  if (root.name === "workspace") return { kind: "workspace", environmentId: (await environmentOf(sdk, threadId)).id, path: file };
+  return { kind: "host", hostId: root.hostId, path: containedPath(root.rootPath, file) };
+}
+
+const ASSET_TYPES: Record<string, string> = {
+  ".glb": "model/gltf-binary", ".gltf": "model/gltf+json", ".hdr": "image/vnd.radiance",
+  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif", ".avif": "image/avif", ".svg": "image/svg+xml",
+  ".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".ogg": "audio/ogg", ".flac": "audio/flac", ".webm": "audio/webm",
+};
+
+async function readAsset(sdk: Sdk, threadId: string, raw: unknown, only?: readonly ReadRoot[]) {
+  const { file, result } = await scopedFile(sdk, threadId, raw, only);
+  const type = ASSET_TYPES[path.posix.extname(file).toLowerCase()];
+  if (!type) throw new SpecError(`${file} is not a supported image, audio, model, or environment file.`);
+  if (result.sizeBytes > 10 * 1024 * 1024) throw new SpecError(`${file} is larger than the 10 MB asset limit.`);
+  const body = Buffer.from(result.content, result.contentEncoding === "base64" ? "base64" : "utf8");
+  return { dataUrl: `data:${type};base64,${body.toString("base64")}` };
 }

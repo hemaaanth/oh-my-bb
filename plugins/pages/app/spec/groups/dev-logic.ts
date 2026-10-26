@@ -116,7 +116,7 @@ const metric = (value: unknown): { covered: number; total: number } | null => {
   const pct = number(item.pct);
   return pct !== undefined ? { covered: pct, total: 100 } : null;
 };
-const coverageRow = (path: string, value: unknown, kind: string): CoverageRow | null => {
+export const coverageRow = (path: string, value: unknown, kind: string): CoverageRow | null => {
   const item = record(value);
   const pick = metric(item?.[kind]) ?? metric(item?.lines) ?? metric(item?.statements) ?? metric(item);
   return pick ? { path, ...pick, pct: pick.total > 0 ? (pick.covered / pick.total) * 100 : 100 } : null;

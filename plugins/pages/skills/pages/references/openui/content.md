@@ -38,7 +38,7 @@ root = Stack([Callout("info", "Heads up", "The API changes on Monday."), Callout
 
 ## Stat
 
-`Stat(label: string, value: string | number, change?: string, trend?: "neutral" | "up" | "down", tone?: "neutral" | "info" | "success" | "warning" | "danger")`
+`Stat(label: string, value: string | number, change?: string, trend?: "neutral" | "up" | "down", tone?: "neutral" | "info" | "success" | "warning" | "danger", source?: string)`
 
 One headline number. change is a short note under it, like "+12%" or "since May". trend "up" is good (green), "down" is bad (red), "neutral" (default) is muted. tone colours the value itself: "success", "warning", "danger", "info", or "neutral" (default, plain).
 

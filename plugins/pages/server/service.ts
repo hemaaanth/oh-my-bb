@@ -139,10 +139,10 @@ type ServiceDeps = {
 };
 
 export function createPageService({ sdk, store, changed, versionCreated, pageDeleted, bake }: ServiceDeps) {
-  const result = (pageId: string, versionId: string, created: boolean, didChange: boolean): PublishResult => {
+  const result = (pageId: string, versionId: string, created: boolean, didChange: boolean, display: "card" | "inline" = "card"): PublishResult => {
     const detail = store.detail(pageId, versionId);
     if (!detail) throw new Error(`Page ${pageId} disappeared while publishing.`);
-    return { result: { ...detail, directive: directive(pageId, versionId), created }, changed: didChange };
+    return { result: { ...detail, directive: directive(pageId, versionId, display), created }, changed: didChange };
   };
 
   const checkedHtml = (html: string) => {
@@ -219,7 +219,7 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
       const created = store.createPage({ title: input.title, kind: "document", projectId: input.provenance.projectId, folderPath: null, sourceKey: null, producer: input.producer, producerKey: input.producerKey }, version);
       changed(created.pageId, created.versionId);
       versionCreated(created.pageId, created.versionId);
-      return result(created.pageId, created.versionId, true, true);
+      return result(created.pageId, created.versionId, true, true, input.display);
     }
     const existing = store.rawPage(pageId)!;
     if (existing.page.kind !== "document") throw new PageInputError(`The producer key ${input.producerKey} belongs to a file page.`);
@@ -229,7 +229,7 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
     const added = store.appendVersion(pageId, input.baseVersionId, version, { title: input.title });
     changed(added.pageId, added.versionId);
     versionCreated(added.pageId, added.versionId);
-    return result(added.pageId, added.versionId, false, true);
+    return result(added.pageId, added.versionId, false, true, input.display);
   }
 
   function findPage(ref: PageRef): PageDetail | null {

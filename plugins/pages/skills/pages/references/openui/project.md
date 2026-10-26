@@ -88,7 +88,7 @@ root = PullRequest(null, "This branch has no pull request.")
 
 `Tests(results: any[] | string | Record<string, any>, title?: string)`
 
-Test results by suite, failures first with their messages. results is a list of cases {name, status, suite?, file?, ms?, message?}, a vitest or jest JSON report (`--reporter=json`), or JUnit XML text. status is passed, failed, or skipped (common words like pass, error, todo also work). Load a report with Query("file").
+Test results from existing case lists, vitest/Jest JSON, or JUnit XML. Failures sort first, with source locations, messages, and captured output behind disclosures. Search by name, suite, or file. Skips, pending tests, and expected failures stay distinct from passing tests. Load a report with Query("file").
 
 Cases:
 

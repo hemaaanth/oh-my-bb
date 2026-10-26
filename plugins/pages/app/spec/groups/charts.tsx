@@ -12,11 +12,14 @@ import { normalizeChartOptions } from "../../../render/charts-runtime/normalize.
 import { baseTheme } from "../../../render/charts-runtime/theme.js";
 import { childProps, type Group } from "../kit.js";
 import { useHost } from "../host.js";
+import { boxSummary, EDGES_ERROR, histogram, leftOutNote, readSample } from "./distribution.js";
+import { SourceLine } from "../SourceLine.js";
+import { useAnimationsOff } from "../motion.js";
 
 const Series = defineComponent({
   name: "Series",
-  props: z.object({ name: z.string(), values: z.array(z.number().nullable()) }),
-  description: "One named series of a Chart: one number per label. null leaves a gap.",
+  props: z.object({ name: z.string(), values: z.array(z.union([z.number(), z.string(), z.null()])), tone: z.enum(["neutral", "info", "success", "warning", "danger"]).optional() }),
+  description: "One named series of a Chart. Ordinal charts take one value per label; histogram and box take raw observations and leave out non-numeric values. null leaves a gap. Optional tone: neutral, info, success, warning, danger.",
   component: () => null,
 });
 
@@ -44,11 +47,13 @@ export function numericValue(value: unknown): number | null {
   return Number.isFinite(number) ? number : null;
 }
 
-const kinds = { bar: "Bar", line: "Line", area: "Area", stackedBar: "Stacked bar", horizontalBar: "Horizontal bar", pie: "Pie", donut: "Donut", radar: "Radar", radial: "Radial", scatter: "Scatter", funnel: "Funnel" } as const;
+const kinds = { bar: "Bar", line: "Line", area: "Area", stackedBar: "Stacked bar", horizontalBar: "Horizontal bar", pie: "Pie", donut: "Donut", radar: "Radar", radial: "Radial", scatter: "Scatter", funnel: "Funnel", histogram: "Histogram", box: "Box plot", heatmap: "Heatmap" } as const;
 type ChartType = keyof typeof kinds;
-type SeriesData = { name: string; values: (number | null)[] };
+type SeriesData = { name: string; values: (number | null)[]; tone?: "neutral" | "info" | "success" | "warning" | "danger" };
 const isNum = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const single = (type: ChartType) => type === "pie" || type === "donut" || type === "radial" || type === "funnel";
+
+const seriesStyle = (series: SeriesData): JsonObject => series.tone ? { className: `bb-tone-${series.tone}`, colorIndex: 0 } : {};
 
 /** The drawn height in px: round charts are square-ish, horizontal bars grow with their labels. */
 export function chartHeight(type: ChartType, labels: number): number {
@@ -65,6 +70,27 @@ export function chartOptions(type: ChartType, labels: string[], series: SeriesDa
     accessibility: { enabled: false },
     legend: { enabled: single(type) ? type === "pie" || type === "donut" : series.length > 1 },
   };
+  if (type === "histogram") {
+    const bins = histogram(labels, series.map((s) => readSample(s.name, s.values).values));
+    if (!bins) throw new Error(EDGES_ERROR);
+    const ranges = bins.edges.slice(0, -1).map((edge, i) => `${edge}–${bins.edges[i + 1]}`);
+    return { ...base, xAxis: { categories: ranges, title: { text: xLabel } }, yAxis: { min: 0, allowDecimals: false, title: { text: yLabel ?? "Count" } },
+      plotOptions: { column: { pointPadding: 0, groupPadding: 0.05 } },
+      series: series.map((s, i) => ({ type: "column", name: s.name, data: bins.counts[i], ...seriesStyle(s) })) };
+  }
+  if (type === "box") {
+    const boxes = series.map((s) => boxSummary(readSample(s.name, s.values).values));
+    return { ...base, chart: { ...(base.chart as JsonObject), inverted: true, height: Math.max(180, series.length * 64 + 80) },
+      xAxis: { categories: series.map((s, i) => `${s.name} (n=${boxes[i]?.n ?? 0})`) }, yAxis: { title: { text: yLabel ?? xLabel } },
+      series: [{ type: "boxplot", name: "Quartiles", data: boxes.map((b, i) => b ? { x: i, low: b.low, q1: b.q1, median: b.median, q3: b.q3, high: b.high, ...seriesStyle(series[i]!) } : null) },
+        { type: "scatter", name: "Outliers", data: boxes.flatMap((b, i) => b?.outliers.map((value) => [i, value]) ?? []) }] };
+  }
+  if (type === "heatmap") {
+    const values = series.flatMap((s) => s.values.filter(isNum));
+    const min = Math.min(...values), max = Math.max(...values);
+    return { ...base, legend: { enabled: false }, xAxis: { categories: labels, title: { text: xLabel } }, yAxis: { categories: series.map((s) => s.name), reversed: true, title: { text: yLabel ?? null } },
+      series: [{ type: "heatmap", name: "Value", data: series.flatMap((s, y) => s.values.flatMap((value, x) => isNum(value) ? [{ x, y, value, className: `bb-heat-${max === min ? 4 : 1 + Math.min(3, Math.floor(4 * (value - min) / (max - min)))}` }] : [])), dataLabels: { enabled: true } }] };
+  }
   if (type === "pie" || type === "donut") {
     return { ...base, plotOptions: { pie: { showInLegend: true, dataLabels: { enabled: false }, innerSize: type === "donut" ? "60%" : 0 } },
       series: [{ type: "pie", name: series[0]?.name, data: pieSlices(labels, first).map((slice) => ({ name: slice.label, y: slice.value })) }] };
@@ -85,18 +111,18 @@ export function chartOptions(type: ChartType, labels: string[], series: SeriesDa
     return { ...base, chart: { ...(base.chart as JsonObject), polar: true, className: "hc-radar" }, pane: { size: "80%" },
       xAxis: { categories: labels, tickmarkPlacement: "on", lineWidth: 0 },
       yAxis: { min: 0, gridLineInterpolation: "polygon", lineWidth: 0, title: { text: undefined } },
-      series: series.map((s) => ({ type: "area", name: s.name, data: s.values, pointPlacement: "on" })) };
+      series: series.map((s) => ({ type: "area", name: s.name, data: s.values, pointPlacement: "on", ...seriesStyle(s) })) };
   }
   const axes = { xAxis: { title: { text: xLabel } }, yAxis: { title: { text: yLabel ?? null } } };
   if (type === "scatter") {
     const xs = labels.map(numericValue);
     return { ...base, xAxis: { ...axes.xAxis, type: "linear" }, yAxis: axes.yAxis,
-      series: series.map((s) => ({ type: "scatter", name: s.name, data: xs.flatMap((x, i) => x !== null && isNum(s.values[i]) ? [[x, s.values[i]]] : []) })) };
+      series: series.map((s) => ({ type: "scatter", name: s.name, data: xs.flatMap((x, i) => x !== null && isNum(s.values[i]) ? [[x, s.values[i]]] : []), ...seriesStyle(s) })) };
   }
   const seriesType = type === "horizontalBar" ? "bar" : type === "line" || type === "area" ? type : "column";
-  return { ...base, xAxis: { ...axes.xAxis, categories: labels }, yAxis: { ...axes.yAxis, min: 0 },
+  return { ...base, xAxis: { ...axes.xAxis, categories: labels }, yAxis: { ...axes.yAxis, min: series.some((s) => s.values.some((value) => value !== null && value < 0)) ? undefined : 0 },
     plotOptions: type === "stackedBar" ? { series: { stacking: "normal" } } : {},
-    series: series.map((s) => ({ type: seriesType, name: s.name, data: s.values })) };
+    series: series.map((s) => ({ type: seriesType, name: s.name, data: s.values, ...seriesStyle(s) })) };
 }
 
 export type Highcharts = typeof import("highcharts/esm/highcharts").default;
@@ -142,7 +168,7 @@ export function loadHighcharts(modules: readonly ChartModule[] = []): Promise<Hi
   return Promise.all(modules.map(loadModule)).then(loadCore);
 }
 
-const typeModules = (type: ChartType): ChartModule[] => type === "radar" || type === "radial" ? ["more"] : type === "funnel" ? ["funnel"] : [];
+const typeModules = (type: ChartType): ChartModule[] => type === "radar" || type === "radial" || type === "box" ? ["more"] : type === "heatmap" ? ["heatmap"] : type === "funnel" ? ["funnel"] : [];
 
 // The chart CSS is scoped to .bb-spec-chart, so it never styles BB or a page outside a chart.
 // In chat and the gallery, .bb-spec-chart-bb maps the --bb-* tokens charts.css reads to BB's own,
@@ -212,6 +238,7 @@ export function useHighchart<T extends HTMLElement = HTMLDivElement>(key: string
   const latest = useRef(build);
   latest.current = build;
   const needs = modules.join(" ");
+  const animationsOff = useAnimationsOff();
   useEffect(() => {
     const node = canvas.current;
     if (!node || !key) return;
@@ -219,13 +246,13 @@ export function useHighchart<T extends HTMLElement = HTMLDivElement>(key: string
     installStyles(node);
     loadHighcharts(needs ? needs.split(" ") as ChartModule[] : []).then((highcharts) => {
       if (!live) return;
-      chart = highcharts.chart(node, highcharts.merge(latest.current(highcharts), { chart: { styledMode: true } }));
+      chart = highcharts.chart(node, highcharts.merge(latest.current(highcharts), { chart: { styledMode: true, ...(animationsOff ? { animation: false } : {}) }, ...(animationsOff ? { plotOptions: { series: { animation: false } }, tooltip: { animation: false } } : {}) }));
       observer = new ResizeObserver(() => chart?.reflow());
       observer.observe(node);
       setFailed(null);
     }).catch((caught: unknown) => { if (live) setFailed(caught instanceof Error ? caught.message : String(caught)); });
     return () => { live = false; observer?.disconnect(); chart?.destroy(); };
-  }, [key, needs]);
+  }, [key, needs, animationsOff]);
   return { canvas, failed };
 }
 
@@ -239,21 +266,28 @@ export function ChartFailed({ failed, inline }: { failed: string | null; inline?
 const Chart = defineComponent({
   name: "Chart",
   props: z.object({
-    type: z.enum(["bar", "line", "area", "stackedBar", "horizontalBar", "pie", "donut", "radar", "radial", "scatter", "funnel"]),
+    type: z.enum(["bar", "line", "area", "stackedBar", "horizontalBar", "pie", "donut", "radar", "radial", "scatter", "funnel", "histogram", "box", "heatmap"]),
     labels: z.array(z.union([z.string(), z.number()])),
     series: z.array(Series.ref),
     title: z.string().optional(),
     xLabel: z.string().optional(),
     yLabel: z.string().optional(),
+    source: z.string().optional(),
   }),
-  description: 'A small chart. labels name the x axis points; each Series gives one value per label. bar, line, area, stackedBar, horizontalBar, and radar (labels are the spokes, 3 or more) take several series. pie, donut, radial, and funnel draw the first series only. scatter reads labels as numeric x values and each series as the y for each x. Values are 0 or more, except in scatter. xLabel and yLabel title the bottom and left axes. For anything bigger, publish a page.',
+  description: 'A chart of Series. Ordinal types use one value per label. Histogram and box use raw observations: histogram labels are increasing numeric bin edges, or [] for shared automatic bins; box draws quartiles, 1.5 IQR whiskers and outliers. Heatmap uses labels as columns and Series as rows. scatter reads numeric labels as x values. source identifies where the numbers came from. xLabel and yLabel name the axes.',
   component: ({ props }) => {
-    const series = props.series.map((node) => childProps<SeriesData>(node)).filter((s): s is SeriesData => typeof s?.name === "string" && Array.isArray(s.values));
+    const raw = props.series.map((node) => childProps<{ name: string; values: unknown[]; tone?: SeriesData["tone"] }>(node)).filter((s): s is { name: string; values: unknown[]; tone?: SeriesData["tone"] } => typeof s?.name === "string" && Array.isArray(s.values));
+    const series: SeriesData[] = raw.map((s) => ({ name: s.name, values: s.values.map((v) => isNum(v) ? v : null), tone: s.tone }));
     const labels = props.labels.map((label) => String(label ?? ""));
     const type = props.type;
     const shown = single(type) ? series.slice(0, 1) : series;
-    const empty = labels.length === 0 || series.length === 0;
-    const options = empty ? "" : JSON.stringify(chartOptions(type, labels, shown, props.xLabel, props.yLabel));
+    const distribution = type === "histogram" || type === "box";
+    const samples = distribution ? raw.map((s) => readSample(s.name, s.values)) : [];
+    const bins = type === "histogram" ? histogram(labels, samples.map((s) => s.values)) : null;
+    const note = distribution ? leftOutNote(samples.reduce((n, s) => n + s.dropped, 0), bins?.outside ?? 0) : null;
+    const invalid = type === "histogram" && !bins ? EDGES_ERROR : null;
+    const empty = (!distribution && labels.length === 0) || series.length === 0;
+    const options = empty || invalid ? "" : JSON.stringify(chartOptions(type, labels, shown, props.xLabel, props.yLabel));
     const chartClass = useChartClass();
     const { canvas, failed } = useHighchart(options, (highcharts) => {
       const merge = (...objects: JsonObject[]) => highcharts.merge<JsonObject>({}, ...objects);
@@ -261,14 +295,17 @@ const Chart = defineComponent({
       if (error) throw new Error(error);
       return normalized as Options;
     }, typeModules(type));
+    if (invalid) return <p role="alert" className="m-0 text-sm text-destructive">{invalid}</p>;
     if (empty) return null;
     const summary = `${kinds[type] ?? "Bar"} chart of ${shown.map((s) => s.name).join(", ")} over ${labels.join(", ")}`;
     return <figure className={`${chartClass} m-0 flex min-w-0 flex-col gap-1.5`}>
       {props.title ? <div className="font-medium text-foreground">{props.title}</div> : null}
-      <div role="img" aria-label={props.title ? `${props.title}: ${summary}` : summary} className="relative min-w-0" style={{ height: chartHeight(type, labels.length) }}>
+      <div role="img" aria-label={props.title ? `${props.title}: ${summary}` : summary} className="relative min-w-0" style={{ height: type === "box" ? Math.max(180, shown.length * 64 + 80) : chartHeight(type, labels.length) }}>
         <div ref={canvas} aria-hidden="true" className="absolute inset-0" />
       </div>
       <ChartFailed failed={failed} />
+      {note ? <p className="m-0 text-xs text-muted-foreground">{note}</p> : null}
+      <SourceLine props={props} />
     </figure>;
   },
 });
@@ -289,6 +326,9 @@ export const group: Group = {
       { name: "Radial", code: `root = Chart("radial", ["Move", "Exercise", "Stand"], [Series("Goal %", [82, 60, 95])])` },
       { name: "Scatter", code: `root = Chart("scatter", [1, 2, 3, 5, 8, 13], [Series("Build time", [12, 15, 14, 22, 30, 41]), Series("Test time", [5, 6, null, 9, 14, 18])], "Time by package count", "Packages", "Seconds")` },
       { name: "Funnel", code: `root = Chart("funnel", ["Visited", "Signed up", "Activated", "Paid"], [Series("Users", [5000, 1200, 640, 180])], "Signup funnel")` },
+      { name: "Histogram", code: `root = Chart("histogram", [], [Series("Before", [11, 12, 12, 15, 16, 20, 31]), Series("After", [8, 9, 10, 11, 11, 13])], "Request latency", "Milliseconds", "Requests", "Illustrative")` },
+      { name: "Box plot", code: `root = Chart("box", [], [Series("Before", [11, 12, 13, 14, 15, 16, 45]), Series("After", [7, 8, 9, 10, 11, 12])], "Latency distribution", "Milliseconds")` },
+      { name: "Heatmap", code: `root = Chart("heatmap", ["Mon", "Tue", "Wed"], [Series("API", [8, 2, 5]), Series("Worker", [1, 9, 4])], "Failures by day")` },
     ] },
     { component: Series, summary: "one series of a Chart", part: true, examples: [] },
   ],

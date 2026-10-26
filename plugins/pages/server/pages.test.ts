@@ -76,6 +76,18 @@ describe("publishFile identity", () => {
 });
 
 describe("publishDocument", () => {
+  it("returns the selected display mode for both new and revised documents", async () => {
+    const { harness } = pagesHost();
+    const first = await harness.behavior.callRpc("publishDocument", { ...documentInput, display: "inline" }) as Result;
+    expect(first.directive).toBe(`::page{id="${first.page.id}" version="${first.version.id}" display="inline"}`);
+    const revised = await harness.behavior.callRpc("publishDocument", { ...documentInput, display: "inline", baseVersionId: first.version.id }) as Result;
+    expect(revised.page.id).toBe(first.page.id);
+    expect(revised.directive).toContain(' display="inline"}');
+    const card = await harness.behavior.callRpc("publishDocument", { ...documentInput, baseVersionId: revised.version.id }) as Result;
+    expect(card.directive).not.toContain("display=");
+    await harness.lifecycle.dispose();
+  });
+
   it("requires the current version as baseVersionId to revise", async () => {
     const { harness } = pagesHost();
     const first = await harness.behavior.callRpc("publishDocument", documentInput) as Result;

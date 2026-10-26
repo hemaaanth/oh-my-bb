@@ -1,6 +1,57 @@
 # Changelog
 
-## Unreleased
+## 0.6.1
+
+- Prebuilt packages retain runtime and loader files but exclude debug sourcemaps.
+
+- Gallery examples keep wide content inside their cards. Boards retain their own
+  horizontal scroll instead of spilling across the page.
+- Component categories use a compact keyboard-accessible menu beside Search.
+  Search shrinks on narrow panes so the category and BB/Site controls stay on one row.
+  Sources are grouped by component below each category's previews.
+- Apps size diagrams without an unnecessary scrollbar. Tall and wide app content
+  can still scroll.
+- Corrected glass materials and quoted expressions in the 3D/shader examples.
+- Provenance markers are centered on their vertical chain.
+- Added histogram, box, and heatmap charts, series tones, and data-source captions.
+  Source captions stay tied to resolved data during asynchronous file changes.
+- Added Scene and Shader components, bounded GPU context reuse, native OpenUI
+  scene expressions, textures, feedback buffers, and motion preferences.
+- Added closed-fence HTML apps with opaque frames, bounded storage, staged answers,
+  pane-scoped fullscreen, downloads, and streamed inert previews. Fetch and
+  resource loads are blocked; self-navigation can still make a network request.
+- Added FileCode source excerpts and static author checks/examples through agent
+  tools and the package-local `bb pages` CLI.
+- Hidden native code viewers remount when they receive real layout width.
+- Component schemas, examples, and skill references now regenerate during builds.
+- Images and diagrams share a pane-contained viewer with zoom, pan, pinch,
+  gallery navigation, and native modal focus restoration.
+- OptionCards supports image choices with separate expand controls that preserve selection.
+- Maps support day routes, replayable tours, and credited Wikipedia photos
+  through the existing Web lookups setting.
+- Expanded coverage formats, security audits, compiler findings, test failure
+  details, and benchmarks with measurement conditions and repeated samples.
+  Failed commands no longer become a successful benchmark's speed baseline.
+- JUnit XML reports retain failure details, source locations, and captured output.
+  They also work in Markdown export.
+- Acceptance matrices and CSV checks preserve missing and claimed results.
+  Installed/deployed provenance exposes mismatched receipts and unproven stages.
+- Image comparisons support wipe, motion-aware blink, and pixel differences.
+  Transcript comparisons align words, score recognition errors, and seek supplied audio.
+- Findings follow-up requests use explicit menu actions. Gallery actions preview
+  their request; read-only pages cannot send messages.
+- Added current-value Copy as Markdown and `bb pages render` text export.
+
+- Pages uses one canonical SVG in settings, navigation, and panel headers.
+- Configuration groups optional keys before behavior controls. Secret storage,
+  saved values, setting IDs, and defaults are unchanged.
+- More links to the library, component gallery, and setup guide. The gallery
+  keeps live previews and source disclosures on its own page.
+- Standard app pages use the Settings content width and outlined recessed
+  cards. Document canvases intentionally remain full-bleed.
+- Rename now takes focus after the page menu closes. Escape cancels without
+  saving and returns focus to the page menu.
+- Portal test dependencies are pinned to the host's Radix versions.
 
 - Pages now declares `bbPluginSdk >=0.6.49`, the SDK stable BB 0.46.1 ships. It was
   `>=0.4.84`.

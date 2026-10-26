@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PrReviewDocument } from "../contract.js";
+import { prReviewDocumentSchema, type PrReviewDocument } from "../contract.js";
 import { renderMarkdown, renderPrReview } from "./index.js";
 
 describe("renderMarkdown", () => {
@@ -48,18 +48,51 @@ const review: PrReviewDocument = {
 };
 
 describe("renderPrReview", () => {
+  it("round-trips optional diff counts, renders totals, and escapes notes", () => {
+    const parsed = prReviewDocumentSchema.parse({ ...review, diffBreakdown: { complete: false, note: "Missing <script>page</script>", rows: [
+      { category: "runtime", files: 2, additions: 55, deletions: 7, binaryFiles: 1 },
+      { category: "tests", files: 1, additions: 77, deletions: 1, binaryFiles: 0 },
+    ] } });
+    const html = renderPrReview(parsed);
+    expect(html).toContain('<th scope="row">Runtime</th>');
+    expect(html).toContain("Partial total");
+    expect(html).toContain("+132");
+    expect(html).toContain("−8");
+    expect(html).toContain("1 binary file(s)");
+    expect(html).toContain("Missing &lt;script&gt;page&lt;/script&gt;");
+    expect(html).not.toContain('<th scope="row">Evals</th>');
+    expect(html.indexOf("<h2>Diff breakdown</h2>")).toBeLessThan(html.indexOf("<h2>Coverage</h2>"));
+    expect(renderPrReview(prReviewDocumentSchema.parse(review))).toContain("Diff statistics unavailable for this review.");
+  });
+
+  it("keeps the full page while limiting inline mode to three expandable findings", () => {
+    const html = renderPrReview({ ...review, findings: Array.from({ length: 5 }, (_, index) => ({ ...review.findings[0]!, id: String(index), title: `Finding ${index}` })), coverage: { ...review.coverage, skipped: ["e2e unavailable"] } });
+    const full = html.slice(html.indexOf('<div class="review-page">'), html.indexOf('<section class="review-inline"'));
+    const inline = html.slice(html.indexOf('<section class="review-inline"'));
+    expect(full).toContain("Finding 4");
+    expect(inline).toContain("Finding 2");
+    expect(inline).not.toContain("Finding 3");
+    expect(inline).not.toMatch(/<h1>|<div class="tabs">|<figure/u);
+    expect(inline).toContain("2 more finding(s)");
+    expect(inline).toContain("Some review areas were skipped");
+    expect(inline).toContain("<summary>Explanation and evidence</summary>");
+    expect(html).toContain(':root[data-bb-frame="inline"] .review-page { display: none; }');
+    expect(html).toContain(':root[data-bb-frame="inline"] .review-inline { display: block; }');
+    expect(renderPrReview({ ...review, diagrams: [] })).not.toContain('<section data-tab="Diagrams">');
+  });
+
   const html = renderPrReview(review);
 
   it("renders the header once: title, lede, and a meta line with target, verdict, short SHA", () => {
     expect(html.match(/PR 1: &lt;review&gt;/gu)).toHaveLength(2); // <title> and <h1>
     expect(html).toContain('<div class="lede"><p>Two findings. &lt;script&gt;');
     expect(html).toContain('<div class="meta-line"><span><a href="https://github.com/org/repo/pull/1">org/repo#1</a></span><span class="verdict changes-requested">Changes requested</span><span class="sha">0c28434</span></div>');
-    expect(html.slice(html.indexOf('<div class="meta-line">'), html.indexOf("<h2>Coverage</h2>"))).not.toMatch(/<code>|class="badge"/u);
+    expect(html.match(/<div class="meta-line">.*?<\/div>/u)?.[0]).not.toMatch(/<code>|class="badge"/u);
     expect(html).not.toMatch(/renderer|footer/iu);
   });
 
-  it("orders Coverage, diagrams, then Findings, and omits empty coverage rows", () => {
-    const order = ["<h2>Coverage</h2>", '<figure class="diagram">', "<h2>Findings</h2>"].map((marker) => html.indexOf(marker));
+  it("uses Review, Diagrams, and Coverage tabs, and omits empty coverage rows", () => {
+    const order = ['<section data-tab="Review">', '<section data-tab="Diagrams">', '<section data-tab="Coverage">'].map((marker) => html.indexOf(marker));
     expect(order.every((index, i) => index > 0 && (i === 0 || index > order[i - 1]!))).toBe(true);
     expect(html).toContain("<dt>Intent</dt><dd>Make it <em>safe</em>.</dd>");
     expect(html).not.toContain("<dt>Skipped</dt>");
@@ -67,7 +100,7 @@ describe("renderPrReview", () => {
   });
 
   it("shows light and dark diagrams as images, never inline SVG", () => {
-    expect(html.match(/<img class="(light|dark)"/gu)).toEqual(['<img class="light"', '<img class="dark"']);
+    expect(html.match(/<img data-zoom class="(light|dark)"/gu)).toEqual(['<img data-zoom class="light"', '<img data-zoom class="dark"']);
     expect(html).not.toContain("<svg");
     expect(html).toContain('data-bb-theme="dark"] .diagram .light { display: none; }');
   });

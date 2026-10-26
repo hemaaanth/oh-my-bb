@@ -4,12 +4,15 @@ import { defineComponent } from "@openuidev/react-lang";
 import { z } from "zod";
 import { useHost } from "../host.js";
 import { Chevron, Reveal, focusRing, type Group } from "../kit.js";
-import type { PointOptionsObject } from "highcharts";
 import {
-  byStage, coverageTone, findLinks, formatAmount, formatElapsed, formatPercent, frameRows, niceTicks, overallStatus, readBenchmark, readCoverage, readDependencies, readFindings, readLogs, readPipeline,
-  readTiles, readTrace, readWaterfall, SEVERITIES, splitChange, treemapPoints, verdictOf, verdictWords, type BenchRow, type Bump, type Job, type LogLevel, type PipelineStatus,
+  byStage, findLinks, formatAmount, formatElapsed, frameRows, niceTicks, overallStatus, readLogs, readPipeline,
+  readTiles, readTrace, readWaterfall, treemapPoints, type Job, type LogLevel, type PipelineStatus,
 } from "./dev-logic.js";
 import { ChartFailed, useChartClass, useHighchart } from "./charts.js";
+import { BenchmarkView } from "../reports/BenchmarkView.js";
+import { CoverageView } from "../reports/CoverageView.js";
+import { DependenciesView } from "../reports/DependenciesView.js";
+import { FindingsView } from "../reports/ResultsView.js";
 
 const toggle = `flex w-full min-w-0 cursor-pointer items-baseline gap-2 rounded-sm text-left ${focusRing}`;
 const link = `cursor-pointer rounded-sm text-primary hover:underline ${focusRing}`;
@@ -25,149 +28,39 @@ function Empty({ text }: { text: string }) {
   return <p className="m-0 text-muted-foreground">{text}</p>;
 }
 
-/** A thin horizontal bar, `share` of the way along. */
-function Bar({ share, color }: { share: number; color: string }) {
-  return <div aria-hidden className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted"><div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(0, Math.min(1, share)) * 100}%` }} /></div>;
-}
 
-const VERDICT = { better: "text-success", worse: "text-destructive", same: "text-muted-foreground" } as const;
 const esc = (value: string) => value.replace(/[&<>"]/gu, (char) => `&#${char.charCodeAt(0)};`);
-type Labelled = PointOptionsObject & { custom: { label: string } };
 
-/** A ranking of runs with no before as bars, each labelled with its value and how far it is from the best. */
-function Ranking({ rows, title }: { rows: BenchRow[]; title?: string }) {
-  const best = rows.every((item) => item.better === "lower") ? Math.min(...rows.map((item) => item.after)) : Math.max(...rows.map((item) => item.after));
-  const points: Labelled[] = rows.map((item) => {
-    const ratio = best ? (item.better === "lower" ? item.after / best : best / item.after) : null;
-    const value = `${formatAmount(item.after, item.unit)}${item.noise !== null ? ` ± ${formatAmount(item.noise, item.unit)}` : ""}`;
-    const rank = ratio === null || rows.length < 2 ? "" : ratio === 1 ? ' · <span class="bb-good">fastest</span>' : ` · <span class="bb-faint">${ratio.toFixed(2)}×</span>`;
-    return { y: item.after, className: ratio === 1 && rows.length > 1 ? "bb-best" : undefined, custom: { label: `${esc(value)}${rank}` } };
-  });
-  const names = rows.map((item) => item.name);
-  const most = Math.max(...rows.map((item) => item.after));
-  const chartClass = useChartClass();
-  const { canvas, failed } = useHighchart(JSON.stringify({ points, names }), () => ({
-    chart: { type: "bar", className: "hc-simple bb-benchmark", spacing: [0, 0, 0, 0] },
-    legend: { enabled: false },
-    tooltip: { enabled: false },
-    xAxis: { categories: names, lineWidth: 0, tickLength: 0 },
-    // Room past the longest bar for its label.
-    yAxis: { visible: false, min: 0, max: most * 1.6, endOnTick: false },
-    plotOptions: { bar: { pointPadding: 0.12, groupPadding: 0, borderRadius: 2, enableMouseTracking: false, states: { inactive: { enabled: false } }, dataLabels: { enabled: true, crop: false, overflow: "allow", formatter() { return (this.options as Labelled).custom.label; } } } },
-    series: [{ type: "bar", name: title ?? "Results", data: points }],
-  }));
-  return <div className={chartClass}>
-    <div role="img" aria-label={rows.map((item, i) => `${item.name}: ${points[i]!.custom.label.replace(/<[^>]*>/gu, "")}`).join(", ")} className="relative min-w-0" style={{ height: 8 + rows.length * 30 }}><div ref={canvas} aria-hidden="true" className="absolute inset-0" /></div>
-    <ChartFailed failed={failed} />
-  </div>;
-}
 
 const Benchmark = defineComponent({
   name: "Benchmark",
   props: z.object({ results: data, title: z.string().optional(), unit: z.string().optional() }),
-  description: 'Benchmark results. results is [{name, before?, after, unit?, better?, noise?}] to compare two runs (value or mean also work for after), or hyperfine\'s --export-json output to rank commands. unit is ms, s, us, ns, B, KB, MB, ops/s, %, or any word. better is lower (default) or higher (default for rates and scores). A change under 1% or under noise counts as the same.',
-  component: ({ props }) => {
-    const rows = readBenchmark(props.results, props.unit);
-    const compared = rows.filter((item) => item.before !== null);
-    const verdicts = compared.map((item) => verdictOf(item.before!, item.after, item.better, item.noise));
-    const word = verdictWords(rows);
-    return <div className="flex min-w-0 flex-col gap-2">
-      <Title text={props.title}>{compared.length ? <span className="flex flex-wrap gap-x-3">{(["better", "worse", "same"] as const).map((verdict) => { const n = verdicts.filter((item) => item === verdict).length; return n ? <span key={verdict} className={VERDICT[verdict]}>{n} {verdict === "same" ? "unchanged" : word[verdict]}</span> : null; })}</span> : null}</Title>
-      {!rows.length ? <Empty text="No benchmark results." /> : !compared.length ? <Ranking rows={rows} title={props.title} /> : <ul className={list}>{rows.map((item, i) => {
-        const index = compared.indexOf(item), verdict = index >= 0 ? verdicts[index] : null;
-        const change = item.before ? ((item.after - item.before) / Math.abs(item.before)) * 100 : null;
-        return <li key={i} className={`flex min-w-0 items-baseline gap-3 ${row}`}>
-          <span className="min-w-0 flex-1 truncate font-mono text-[0.92em] text-foreground" title={item.name}>{item.name}</span>
-          {item.before !== null ? <span className="shrink-0 tabular-nums text-muted-foreground">{formatAmount(item.before, item.unit)} →</span> : null}
-          <span className="shrink-0 tabular-nums text-foreground">{formatAmount(item.after, item.unit)}</span>
-          {verdict && change !== null ? <span className={`w-16 shrink-0 text-right tabular-nums ${VERDICT[verdict]}`}>{verdict === "same" ? "same" : `${change > 0 ? "+" : "−"}${Math.abs(change).toFixed(Math.abs(change) < 10 ? 1 : 0)}%`}</span> : <span className="w-16 shrink-0" />}
-        </li>;
-      })}</ul>}
-    </div>;
-  },
+  description: 'Benchmark results from manual before/after rows, hyperfine JSON, vitest bench JSON, or runs with metrics and conditions. unit accepts time, bytes, rates, percentages, or a label. Changes smaller than noise stay unchanged. Different recorded conditions are not presented as a like-for-like improvement. Expand a result for samples and conditions.',
+  component: ({ props }) => <BenchmarkView results={props.results} title={props.title} unit={props.unit} />,
 });
 
-const COVERAGE = { good: ["text-success", "bg-success"], warn: ["text-warning", "bg-warning"], bad: ["text-destructive", "bg-destructive"] } as const;
 
 const Coverage = defineComponent({
   name: "Coverage",
-  props: z.object({ report: data, title: z.string().optional(), metric: z.enum(["lines", "statements", "functions", "branches"]).optional() }),
-  description: 'Test coverage: the total and each file, lowest first, toned at 80% and 60%. report is Istanbul\'s coverage-summary.json (vitest or jest --coverage --coverage.reporter=json-summary) or [{path, covered, total} | {path, pct}]. metric picks lines (default), statements, functions, or branches. Load the file with Query("file").',
-  component: ({ props }) => {
-    const [all, setAll] = useState(false);
-    const { total, files } = readCoverage(props.report, props.metric ?? "lines");
-    const shown = all ? files : files.slice(0, 20);
-    return <div className="flex min-w-0 flex-col gap-2">
-      <Title text={props.title} />
-      {total ? <div className="flex min-w-0 items-center gap-3">
-        <span className={`shrink-0 text-2xl font-semibold tabular-nums ${COVERAGE[coverageTone(total.pct)][0]}`}>{formatPercent(total.covered, total.total)}</span>
-        <span className="flex min-w-0 flex-1 flex-col gap-1"><span className="text-muted-foreground">{props.metric ?? "lines"} covered{total.total !== 100 || files.some((file) => file.total !== 100) ? ` · ${total.covered.toLocaleString()} of ${total.total.toLocaleString()}` : ""}</span><Bar share={total.total ? total.covered / total.total : 0} color={COVERAGE[coverageTone(total.pct)][1]} /></span>
-      </div> : <Empty text="No coverage data." />}
-      {shown.length ? <ul className={list}>{shown.map((file) => <li key={file.path} className={`flex min-w-0 items-center gap-3 ${row}`}>
-        <span className="min-w-0 flex-[2] truncate font-mono text-[0.92em] text-foreground" title={file.path}>{file.path}</span>
-        <Bar share={file.total ? file.covered / file.total : 0} color={COVERAGE[coverageTone(file.pct)][1]} />
-        <span className={`w-14 shrink-0 text-right tabular-nums ${COVERAGE[coverageTone(file.pct)][0]}`}>{formatPercent(file.covered, file.total)}</span>
-      </li>)}</ul> : null}
-      {files.length > shown.length ? <button type="button" onClick={() => setAll(true)} className={`self-start ${link}`}>Show all {files.length} files</button> : null}
-    </div>;
-  },
+  props: z.object({ report: z.union([data, z.string()]), title: z.string().optional(), metric: z.enum(["lines", "statements", "functions", "branches"]).optional() }),
+  description: 'Coverage from Istanbul coverage-summary.json, lcov.info text, coverage.py JSON, Go coverage.out text, or existing manual rows [{path, covered, total} | {path, pct}]. Files can be filtered, read as a directory tree, and expanded to inspect uncovered ranges. Query("file") returns .data for JSON and .text for lcov/Go. metric selects lines, statements, functions, or branches.',
+  component: ({ props }) => <CoverageView report={props.report} title={props.title} metric={props.metric} />,
 });
 
-const BUMP: Record<string, [string, string]> = { major: ["Major", "text-destructive"], minor: ["Minor", "text-warning"], patch: ["Patch", "text-success"], prerelease: ["Pre-release", "text-primary"], other: ["Other", "text-muted-foreground"] };
 
 const Dependencies = defineComponent({
   name: "Dependencies",
   props: z.object({ packages: data, title: z.string().optional() }),
-  description: 'Outdated packages grouped by how big the update is: major, minor, patch. The changed part of each new version is toned. packages is [{name, current, wanted?, latest, type?}] or `npm outdated --json` output (also pnpm outdated --format json). Load the file with Query("file").',
-  component: ({ props }) => {
-    const packages = readDependencies(props.packages);
-    const groups = new Map<string, typeof packages>();
-    for (const item of packages) groups.set(item.bump ?? "other", [...(groups.get(item.bump ?? "other") ?? []), item]);
-    return <div className="flex min-w-0 flex-col gap-3">
-      <Title text={props.title}>{packages.length ? <span className="text-muted-foreground">{packages.length} outdated</span> : null}</Title>
-      {packages.length ? [...groups].map(([bump, items]) => <section key={bump} className="flex min-w-0 flex-col gap-1">
-        <h4 className={`m-0 text-[0.85em] font-semibold uppercase tracking-wide ${BUMP[bump][1]}`}>{BUMP[bump][0]} <span className="font-normal text-muted-foreground">{items.length}</span></h4>
-        <ul className={list}>{items.map((item) => { const [same, changed] = splitChange(item.current, item.latest); return <li key={item.name} className={`flex min-w-0 items-baseline gap-3 ${row}`}>
-          <span className="min-w-0 flex-1 truncate font-mono text-[0.92em] text-foreground">{item.name}{item.type ? <span className="ml-2 font-sans text-muted-foreground">{item.type}</span> : null}</span>
-          <span className="shrink-0 font-mono text-[0.92em] tabular-nums"><span className="text-muted-foreground">{item.current || "?"} → </span>{same}<span className={BUMP[(item.bump as Bump | null) ?? "other"][1]}>{changed}</span></span>
-        </li>; })}</ul>
-      </section>) : <Empty text="Everything is up to date." />}
-    </div>;
-  },
+  description: 'Outdated and vulnerable dependencies. packages accepts existing manual rows, npm/pnpm outdated JSON, pip outdated JSON, npm audit v2, pnpm advisories, or {outdated, audit}. Expand a vulnerability for affected versions, direct/transitive relationships, advisory links, and the reported fix. This component never installs or updates a package.',
+  component: ({ props }) => <DependenciesView packages={props.packages} title={props.title} />,
 });
 
-const SEVERITY_TONE: Record<string, string> = { critical: "text-destructive", high: "text-destructive", medium: "text-warning", low: "text-primary", info: "text-muted-foreground" };
-
-function FindingRow({ item }: { item: ReturnType<typeof readFindings>[number] }) {
-  const host = useHost();
-  const [open, setOpen] = useState(false);
-  const more = Boolean(item.detail || item.code);
-  const head = <><span className={`w-16 shrink-0 ${SEVERITY_TONE[item.severity]}`}>{item.severity}</span>
-    <span className="min-w-0 flex-1 text-foreground">{item.title}</span>
-    {item.rule ? <code className="hidden shrink-0 font-mono text-[0.85em] text-muted-foreground sm:inline">{item.rule}</code> : null}
-    {item.line ? <span className="shrink-0 tabular-nums text-muted-foreground">line {item.line}</span> : null}</>;
-  return <li className={row}>
-    {more ? <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className={toggle}><Chevron open={open} />{head}</button> : <div className="flex min-w-0 items-baseline gap-2"><span className="w-[1em] shrink-0" />{head}</div>}
-    {more ? <Reveal open={open} className="mt-1.5 ml-5 flex min-w-0 flex-col gap-1.5">{item.detail ? <p className="m-0 whitespace-pre-wrap text-muted-foreground">{item.detail}</p> : null}{item.code ? <host.SourceCode content={item.code} path={item.file ?? "snippet.txt"} /> : null}</Reveal> : null}
-  </li>;
-}
 
 const Findings = defineComponent({
   name: "Findings",
-  props: z.object({ findings: data, title: z.string().optional() }),
-  description: 'Review, lint, or security findings by file, most severe first. findings is [{severity, title, file?, line?, rule?, detail?, code?}] (message works for title) or a SARIF report (CodeQL, Semgrep, ESLint --format sarif). severity is critical, high, medium, low, or info; error, warning, and note also work. A finding with detail or code opens to show it.',
-  component: ({ props }) => {
-    const findings = readFindings(props.findings);
-    const files = new Map<string, typeof findings>();
-    for (const item of findings) files.set(item.file ?? "", [...(files.get(item.file ?? "") ?? []), item]);
-    return <div className="flex min-w-0 flex-col gap-3">
-      <Title text={props.title}>{findings.length ? <span className="flex flex-wrap gap-x-3">{SEVERITIES.map((severity) => { const n = findings.filter((item) => item.severity === severity).length; return n ? <span key={severity} className={SEVERITY_TONE[severity]}>{n} {severity}</span> : null; })}</span> : null}</Title>
-      {findings.length ? [...files].map(([file, items]) => <section key={file} className="flex min-w-0 flex-col">
-        {file ? <h4 className="m-0 truncate font-mono text-[0.92em] font-semibold text-foreground" title={file}>{file}</h4> : null}
-        <ul className={list}>{items.map((item, i) => <FindingRow key={i} item={item} />)}</ul>
-      </section>) : <Empty text="No findings." />}
-    </div>;
-  },
+  props: z.object({ findings: z.union([data, z.string()]), title: z.string().optional() }),
+  description: 'Review, lint, or security findings from manual rows, ESLint/Ruff/oxlint/Biome JSON, SARIF, tsc text, or a structured review. Search by message, path, rule, or status. Expand a finding for evidence, source files, suggested patches, and ownership or verification details. Fixed by an owner is distinct from confirmed by a reviewer.',
+  component: ({ props }) => <FindingsView findings={props.findings} title={props.title} />,
 });
 
 const LEVEL_TONE: Record<string, string> = { fatal: "text-destructive", error: "text-destructive", warn: "text-warning", debug: "text-muted-foreground", trace: "text-muted-foreground" };
@@ -378,18 +271,26 @@ export const group: Group = {
     { component: Benchmark, summary: "benchmark comparison", examples: [
       { name: "Before and after", code: 'root = Benchmark([{name: "parse 1 MB", before: 18.4, after: 11.2, unit: "ms"}, {name: "render cart", before: 3.1, after: 3.12, unit: "ms"}, {name: "checkout", before: 42, after: 51, unit: "ms", noise: 2}, {name: "bundle", before: 349438, after: 331200, unit: "B"}], "This branch vs main")' },
       { name: "hyperfine", code: `root = Benchmark(${lit({ results: [{ command: "esbuild", mean: 0.312, stddev: 0.01 }, { command: "rollup", mean: 4.84, stddev: 0.2 }, { command: "webpack", mean: 9.71, stddev: 0.35 }] })}, "Bundlers")` },
+      { name: "Measurement conditions", code: 'root = Benchmark([{name:"Build",before:{value:120,context:{device:"Laptop",thermal:"Nominal"}},after:{value:80,context:{device:"Desktop",thermal:"Nominal"}},unit:"ms"},{name:"Parse",before:[18.2,18.5,18.3],after:[11.1,11.3,11.2],unit:"ms"}], "Comparable results")' },
+      { name: "All experiment runs", code: 'root = Benchmark({runs:[{name:"Laptop, cold",status:"ok",metrics:{latency:120,memory:24000},context:{device:"Laptop",cache:"Cold"}},{name:"Laptop, warm",status:"ok",metrics:{latency:80,memory:26000},context:{device:"Laptop",cache:"Warm"}},{name:"Desktop",status:"failed",context:{device:"Desktop"},note:"Process crashed before measuring"}],metrics:{latency:{unit:"ms",better:"lower"},memory:{unit:"B",better:"lower"}}}, "Experiment notebook")' },
     ] },
     { component: Coverage, summary: "test coverage", examples: [
       { name: "From a file", code: 'data = Query("file", {path: "coverage/coverage-summary.json"}, {data: null})\nroot = Coverage(data.data, "Coverage")', tools: fileOf("coverage/coverage-summary.json", { data: coverageFile }) },
       { name: "Inline, branches", code: `root = Coverage(${lit(coverageFile)}, null, "branches")` },
+      { name: "LCOV uncovered lines", code: `root = Coverage(${lit("SF:src/cart.ts\nDA:10,4\nDA:11,0\nDA:12,0\nDA:13,2\nLF:4\nLH:2\nend_of_record\n")}, "Cart coverage")` },
+      { name: "Python coverage", code: 'root = Coverage({meta:{version:"7.6"},files:{"worker.py":{executed_lines:[1,2,5],missing_lines:[3,4],summary:{covered_lines:3,num_statements:5,percent_covered:60}}},totals:{covered_lines:3,num_statements:5,percent_covered:60}}, "Worker coverage")' },
+      { name: "Go coverage", code: `root = Coverage(${lit("mode: set\nexample.com/shop/cart.go:10.1,12.2 2 1\nexample.com/shop/cart.go:14.1,18.2 3 0\n")}, "Go statements")` },
     ] },
-    { component: Dependencies, summary: "outdated packages", examples: [
+    { component: Dependencies, summary: "outdated packages and security audits", examples: [
       { name: "npm outdated", code: `root = Dependencies(${lit(npmOutdated)}, "Outdated")` },
       { name: "From a file", code: 'data = Query("file", {path: "outdated.json"}, {data: null})\nroot = Dependencies(data.data)', tools: fileOf("outdated.json", { data: npmOutdated }) },
+      { name: "npm audit", code: 'root = Dependencies({auditReportVersion:2,vulnerabilities:{axios:{name:"axios",severity:"high",isDirect:true,via:[{name:"axios",title:"Untrusted redirect",url:"https://github.com/axios/axios/security/advisories",severity:"high",range:"<1.8.2"}],effects:[],range:"<1.8.2",nodes:["node_modules/axios"],fixAvailable:{name:"axios",version:"1.8.2",isSemVerMajor:false}}},metadata:{dependencies:{total:311}}}, "Security audit")' },
     ] },
     { component: Findings, summary: "review and lint findings", examples: [
       { name: "Review", code: 'root = Findings([{severity: "high", title: "SQL built from user input", file: "src/orders/query.ts", line: 31, rule: "sql-injection", detail: "Pass the id as a parameter.", code: "db.query(`SELECT * FROM orders WHERE id = ${req.params.id}`)"}, {severity: "medium", title: "Promise is not awaited", file: "src/checkout/pay.ts", line: 58}, {severity: "low", title: "Unused import", file: "src/checkout/pay.ts", line: 2, rule: "no-unused-vars"}], "Review")' },
       { name: "SARIF", code: `root = Findings(${lit({ runs: [{ results: [{ ruleId: "js/xss", level: "error", message: { text: "Unescaped HTML from a query string." }, locations: [{ physicalLocation: { artifactLocation: { uri: "src/search.tsx" }, region: { startLine: 22 } } }] }, { ruleId: "js/unused-local", level: "note", message: { text: "Unused variable 'tmp'." }, locations: [{ physicalLocation: { artifactLocation: { uri: "src/util.ts" }, region: { startLine: 4 } } }] }] }] })})` },
+      { name: "Compiler output", code: `root = Findings(${lit("src/cart.ts(12,7): error TS2322: Type 'string' is not assignable to type 'number'.")}, "Type check")` },
+      { name: "Review lifecycle", code: 'root = Findings([{id:"auth",severity:"high",title:"Check the session before changing roles",area:"auth",file:"src/roles.ts",line:18,status:"open",fix:"Verify the session and required role before updating."},{id:"cache",severity:"medium",title:"Cache eviction",status:"fixed",fixNote:"Patch is applied; load check is still missing."},{id:"import",severity:"low",title:"Unused import",status:"confirmed",by:"Reviewer",revision:"abc123"}], "Follow-up review")' },
     ] },
     { component: Logs, summary: "log viewer", examples: [
       { name: "Server log", code: `root = Logs(${lit(serverLog)}, "server.log")` },

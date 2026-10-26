@@ -101,6 +101,9 @@
   "Snippet": {
    "$ref": "#/$defs/Snippet"
   },
+  "FileCode": {
+   "$ref": "#/$defs/FileCode"
+  },
   "Gauge": {
    "$ref": "#/$defs/Gauge"
   },
@@ -220,6 +223,15 @@
   },
   "ImageSearch": {
    "$ref": "#/$defs/ImageSearch"
+  },
+  "Scene": {
+   "$ref": "#/$defs/Scene"
+  },
+  "Shader": {
+   "$ref": "#/$defs/Shader"
+  },
+  "App": {
+   "$ref": "#/$defs/App"
   },
   "Benchmark": {
    "$ref": "#/$defs/Benchmark"
@@ -346,6 +358,7 @@
   "Code",
   "Diff",
   "Snippet",
+  "FileCode",
   "Gauge",
   "SegmentedBar",
   "Sparkline",
@@ -386,6 +399,9 @@
   "Hotspots",
   "Hotspot",
   "ImageSearch",
+  "Scene",
+  "Shader",
+  "App",
   "Benchmark",
   "Coverage",
   "Dependencies",
@@ -743,6 +759,9 @@
       "warning",
       "danger"
      ]
+    },
+    "source": {
+     "type": "string"
     }
    },
    "required": [
@@ -1064,6 +1083,9 @@
        ]
       }
      }
+    },
+    "source": {
+     "type": "string"
     }
    },
    "required": [
@@ -1071,7 +1093,7 @@
     "rows"
    ],
    "additionalProperties": false,
-   "description": "A data table. Each row is a list of cells in column order. Numbers align right."
+   "description": "A data table. Each row is a list of cells in column order. Numbers align right. source is an optional caption or HTTPS URL; otherwise loaded files are credited. An empty source hides the caption."
   },
   "Progress": {
    "type": "object",
@@ -1141,6 +1163,30 @@
    ],
    "additionalProperties": false,
    "description": "A short line of code or text with a Copy button, like a command to run, an ID, or a URL. For longer code with highlighting use Code."
+  },
+  "FileCode": {
+   "type": "object",
+   "properties": {
+    "file": {
+     "type": "string",
+     "minLength": 1
+    },
+    "from": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 9007199254740991
+    },
+    "to": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "file"
+   ],
+   "additionalProperties": false,
+   "description": "Read source lines from a real file in the thread workspace, thread storage, or /tmp. from and to are one-based inclusive lines; default is the file, at most 400 lines. Shows original line numbers and offers Copy and Open file. Published pages use the source captured at publish time. Unlike Snippet, this reads a file rather than copying supplied text."
   },
   "Gauge": {
    "type": "object",
@@ -1525,7 +1571,10 @@
       "radar",
       "radial",
       "scatter",
-      "funnel"
+      "funnel",
+      "histogram",
+      "box",
+      "heatmap"
      ]
     },
     "labels": {
@@ -1551,6 +1600,9 @@
     },
     "yLabel": {
      "type": "string"
+    },
+    "source": {
+     "type": "string"
     }
    },
    "required": [
@@ -1559,7 +1611,7 @@
     "series"
    ],
    "additionalProperties": false,
-   "description": "A small chart. labels name the x axis points; each Series gives one value per label. bar, line, area, stackedBar, horizontalBar, and radar (labels are the spokes, 3 or more) take several series. pie, donut, radial, and funnel draw the first series only. scatter reads labels as numeric x values and each series as the y for each x. Values are 0 or more, except in scatter. xLabel and yLabel title the bottom and left axes. For anything bigger, publish a page."
+   "description": "A chart of Series. Ordinal types use one value per label. Histogram and box use raw observations: histogram labels are increasing numeric bin edges, or [] for shared automatic bins; box draws quartiles, 1.5 IQR whiskers and outliers. Heatmap uses labels as columns and Series as rows. scatter reads numeric labels as x values. source identifies where the numbers came from. xLabel and yLabel name the axes."
   },
   "Series": {
    "type": "object",
@@ -1572,9 +1624,20 @@
      "items": {
       "type": [
        "number",
+       "string",
        "null"
       ]
      }
+    },
+    "tone": {
+     "type": "string",
+     "enum": [
+      "neutral",
+      "info",
+      "success",
+      "warning",
+      "danger"
+     ]
     }
    },
    "required": [
@@ -1582,7 +1645,7 @@
     "values"
    ],
    "additionalProperties": false,
-   "description": "One named series of a Chart: one number per label. null leaves a gap."
+   "description": "One named series of a Chart. Ordinal charts take one value per label; histogram and box take raw observations and leave out non-numeric values. null leaves a gap. Optional tone: neutral, info, success, warning, danger."
   },
   "Input": {
    "type": "object",
@@ -2042,6 +2105,9 @@
          },
          "icon": {
           "type": "string"
+         },
+         "image": {
+          "type": "string"
          }
         },
         "required": [
@@ -2077,7 +2143,7 @@
     "options"
    ],
    "additionalProperties": false,
-   "description": "Pick one of a few rich options shown as cards side by side, or several with multiple true. options are {label, value?, detail?, icon?}; value defaults to label. icon is one of: arrowdown, arrowleft, arrowright, arrowup, bell, bookmark, bug, calendar, check, chevrondown, chevronleft, chevronright, chevronup, help, clock, code, copy, download, more, external, eye, file, filter, folder, branch, heart, home, info, idea, link, lock, mail, minus, pause, edit, play, plus, refresh, rocket, search, send, settings, share, sparkles, star, thumbsdown, thumbsup, trash, warning, upload, user, close, zap."
+   "description": "Pick one of a few rich options shown as cards side by side, or several with multiple true. options are {label, value?, detail?, icon?, image?}; value defaults to label. image is a scoped file or https picture; its separate expand button does not change the choice. icon is one of: arrowdown, arrowleft, arrowright, arrowup, bell, bookmark, bug, calendar, check, chevrondown, chevronleft, chevronright, chevronup, help, clock, code, copy, download, more, external, eye, file, filter, folder, branch, heart, home, info, idea, link, lock, mail, minus, pause, edit, play, plus, refresh, rocket, search, send, settings, share, sparkles, star, thumbsdown, thumbsup, trash, warning, upload, user, close, zap."
   },
   "Swatches": {
    "type": "object",
@@ -2373,14 +2439,44 @@
     "markers": {
      "type": "array",
      "items": {
-      "$ref": "#/$defs/Marker"
+      "anyOf": [
+       {
+        "$ref": "#/$defs/Marker"
+       },
+       {
+        "type": "string"
+       },
+       {
+        "type": "object",
+        "propertyNames": {
+         "type": "string"
+        },
+        "additionalProperties": {}
+       }
+      ]
      }
     },
     "areas": {
-     "type": "array",
-     "items": {
-      "$ref": "#/$defs/Area"
-     }
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Area"
+       }
+      },
+      {
+       "type": "object",
+       "properties": {
+        "route": {
+         "type": "boolean"
+        },
+        "tour": {
+         "type": "boolean"
+        }
+       },
+       "additionalProperties": false
+      }
+     ]
     },
     "center": {
      "anyOf": [
@@ -2403,7 +2499,7 @@
     "markers"
    ],
    "additionalProperties": false,
-   "description": "A map of numbered places (Marker) and shaded regions (Area), with a key below. A position is [lat, lng] or a place name Pages looks up, like \"Belém Tower, Lisbon\"; give coordinates when you know them. center and zoom (1 world to 18 street, default 13 with a center) fix the view; without them the map fits everything. Readers drag to pan, use ⌘/Ctrl+scroll or the buttons to zoom, and click a place for its popup."
+   "description": "Numbered Marker parts, place names, or trip records {name,lat?,lng?,note?,day?,wiki?}. Existing Area lists, center, zoom, panning, and popups work unchanged. As the second argument, {route:true,tour:true} joins stops by day and drops pins in sequence without moving the camera. Days inherit from the preceding stop. A Wikipedia lead photo is looked up only when its place opens and must include reusable attribution. Tours pause in hidden pages and respect motion preferences."
   },
   "Marker": {
    "type": "object",
@@ -2441,6 +2537,15 @@
     },
     "link": {
      "type": "string"
+    },
+    "day": {
+     "type": [
+      "string",
+      "number"
+     ]
+    },
+    "wiki": {
+     "type": "string"
     }
    },
    "required": [
@@ -2448,7 +2553,7 @@
     "at"
    ],
    "additionalProperties": false,
-   "description": "One numbered place of Map. at is [lat, lng] or a place name. kind \"general\" (default, indigo), \"stay\" (green), \"daytrip\" (amber), or \"avoid\" (red). description, image (an http(s) URL), and link (an http(s) URL) fill the popup that opens when it is clicked."
+   "description": "One numbered place of Map. at is [lat, lng] or a place name. kind \"general\" (default, indigo), \"stay\" (green), \"daytrip\" (amber), or \"avoid\" (red). description, image, and link fill its click popup. day groups a trip's stops; later stops inherit it. wiki names an English Wikipedia article whose credited lead photo is looked up only when this place opens."
   },
   "Area": {
    "type": "object",
@@ -2645,6 +2750,167 @@
    "additionalProperties": false,
    "description": "Photos found on the web for query, from Wikimedia Commons, each credited with its author and licence. Use it to show what a place, landmark, plant, animal, or object looks like when you have no image URL. count is 1 (default) to 8. aspect \"wide\" (default), \"square\", or \"tall\" crops them alike. Clicking one opens it full size."
   },
+  "Scene": {
+   "type": "object",
+   "properties": {
+    "objects": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "propertyNames": {
+         "type": "string"
+        },
+        "additionalProperties": {}
+       }
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "height": {
+     "type": "number",
+     "minimum": 120,
+     "maximum": 720
+    },
+    "camera": {
+     "type": "object",
+     "properties": {
+      "yaw": {
+       "type": "number"
+      },
+      "pitch": {
+       "type": "number"
+      },
+      "zoom": {
+       "type": "number"
+      }
+     },
+     "additionalProperties": false
+    },
+    "spin": {
+     "type": "number"
+    },
+    "animate": {
+     "type": "boolean"
+    },
+    "orbit": {
+     "type": "boolean"
+    },
+    "inputs": {
+     "type": "object",
+     "propertyNames": {
+      "type": "string"
+     },
+     "additionalProperties": {}
+    }
+   },
+   "required": [
+    "objects"
+   ],
+   "additionalProperties": false,
+   "description": "Interactive 3D scene. Objects use shape: box, sphere, cylinder, surface, mesh, line, path, point, label, grid, axes, model, environment, sprite. Positions use at:[x,y,z], with y up. Materials take color (theme token or #rrggbb), roughness, metal, glow, glass, ior, dispersion, texture. Model src is a local embedded GLB/glTF; environment src is HDR or an image. A surface uses x:[min,max], z:[min,max], values:height rows or f:a quoted OpenUI expression such as \"@Sin($x)*@Cos($z)\". objects may be a quoted array expression using $t in seconds. Named inputs are available as $name. Use @Sin/@Cos and the native OpenUI math functions, never JavaScript. Orbit by drag, pinch or ctrl-wheel; double-click resets. GPU contexts pause off screen. System reduced motion and Pages Animations apply."
+  },
+  "Shader": {
+   "type": "object",
+   "properties": {
+    "code": {
+     "type": "string"
+    },
+    "height": {
+     "type": "number",
+     "minimum": 120,
+     "maximum": 720
+    },
+    "inputs": {
+     "type": "object",
+     "propertyNames": {
+      "type": "string"
+     },
+     "additionalProperties": {
+      "type": [
+       "number",
+       "boolean"
+      ]
+     }
+    },
+    "buffers": {
+     "maxItems": 4,
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "textures": {
+     "maxItems": 4,
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "animate": {
+     "type": "boolean"
+    },
+    "blend": {
+     "type": "string",
+     "enum": [
+      "light",
+      "alpha",
+      "opaque"
+     ]
+    },
+    "bloom": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 3
+    },
+    "orbit": {
+     "type": "boolean"
+    },
+    "spin": {
+     "type": "number"
+    },
+    "camera": {
+     "type": "object",
+     "properties": {
+      "yaw": {
+       "type": "number"
+      },
+      "pitch": {
+       "type": "number"
+      },
+      "zoom": {
+       "type": "number"
+      }
+     },
+     "additionalProperties": false
+    }
+   },
+   "required": [
+    "code"
+   ],
+   "additionalProperties": false,
+   "description": "Shadertoy-style WebGL2 shader: code defines void mainImage(out vec4 fragColor, in vec2 fragCoord). Uniforms include iResolution, iTime, iTimeDelta, iFrame, iMouse, iCamera, iNoise. Named inputs become float uniforms; booleans are 0/1. Up to four buffers run before the image, with ping-pong feedback as iChannel0-3; textures are iTexture0-3. Inputs update uniforms without recompilation. blend is light (black transparent), alpha, or opaque; bloom preserves HDR light. Optional orbit camera, spin, and live height. Rendering pauses off screen and respects reduced motion. No network from shaders; textures load through Pages."
+  },
+  "App": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "html": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "html"
+   ],
+   "additionalProperties": false,
+   "description": "Self-contained HTML/JavaScript for a custom visual, game or simulation. name is stable within this block and keys its saved state. Scripts run only after the fence closes. The opaque iframe blocks fetches and remote resource loads, but it can navigate its own frame and make a network request. Embed assets and code. localStorage persists up to 256 KB per app, with a 1 MB total budget; sessionStorage is memory-only. genui.answer(text) stages an answer for review in BB; null removes it. genui.canAnswer is false on published pages and downloads. genui.openLink(httpsUrl) requests a link from a user gesture. genui.reducedMotion and matchMedia expose motion preferences. Use CSS theme variables and the SVG kit classes t, ts, th, box, arr, leader and tone-good/warn/bad/info/accent. App actions include pane-scoped full screen, download, source, and sandbox limits."
+  },
   "Benchmark": {
    "type": "object",
    "properties": {
@@ -2674,7 +2940,7 @@
     "results"
    ],
    "additionalProperties": false,
-   "description": "Benchmark results. results is [{name, before?, after, unit?, better?, noise?}] to compare two runs (value or mean also work for after), or hyperfine's --export-json output to rank commands. unit is ms, s, us, ns, B, KB, MB, ops/s, %, or any word. better is lower (default) or higher (default for rates and scores). A change under 1% or under noise counts as the same."
+   "description": "Benchmark results from manual before/after rows, hyperfine JSON, vitest bench JSON, or runs with metrics and conditions. unit accepts time, bytes, rates, percentages, or a label. Changes smaller than noise stay unchanged. Different recorded conditions are not presented as a like-for-like improvement. Expand a result for samples and conditions."
   },
   "Coverage": {
    "type": "object",
@@ -2682,15 +2948,22 @@
     "report": {
      "anyOf": [
       {
-       "type": "array",
-       "items": {}
+       "anyOf": [
+        {
+         "type": "array",
+         "items": {}
+        },
+        {
+         "type": "object",
+         "propertyNames": {
+          "type": "string"
+         },
+         "additionalProperties": {}
+        }
+       ]
       },
       {
-       "type": "object",
-       "propertyNames": {
-        "type": "string"
-       },
-       "additionalProperties": {}
+       "type": "string"
       }
      ]
     },
@@ -2711,7 +2984,7 @@
     "report"
    ],
    "additionalProperties": false,
-   "description": "Test coverage: the total and each file, lowest first, toned at 80% and 60%. report is Istanbul's coverage-summary.json (vitest or jest --coverage --coverage.reporter=json-summary) or [{path, covered, total} | {path, pct}]. metric picks lines (default), statements, functions, or branches. Load the file with Query(\"file\")."
+   "description": "Coverage from Istanbul coverage-summary.json, lcov.info text, coverage.py JSON, Go coverage.out text, or existing manual rows [{path, covered, total} | {path, pct}]. Files can be filtered, read as a directory tree, and expanded to inspect uncovered ranges. Query(\"file\") returns .data for JSON and .text for lcov/Go. metric selects lines, statements, functions, or branches."
   },
   "Dependencies": {
    "type": "object",
@@ -2739,7 +3012,7 @@
     "packages"
    ],
    "additionalProperties": false,
-   "description": "Outdated packages grouped by how big the update is: major, minor, patch. The changed part of each new version is toned. packages is [{name, current, wanted?, latest, type?}] or `npm outdated --json` output (also pnpm outdated --format json). Load the file with Query(\"file\")."
+   "description": "Outdated and vulnerable dependencies. packages accepts existing manual rows, npm/pnpm outdated JSON, pip outdated JSON, npm audit v2, pnpm advisories, or {outdated, audit}. Expand a vulnerability for affected versions, direct/transitive relationships, advisory links, and the reported fix. This component never installs or updates a package."
   },
   "Findings": {
    "type": "object",
@@ -2747,15 +3020,22 @@
     "findings": {
      "anyOf": [
       {
-       "type": "array",
-       "items": {}
+       "anyOf": [
+        {
+         "type": "array",
+         "items": {}
+        },
+        {
+         "type": "object",
+         "propertyNames": {
+          "type": "string"
+         },
+         "additionalProperties": {}
+        }
+       ]
       },
       {
-       "type": "object",
-       "propertyNames": {
-        "type": "string"
-       },
-       "additionalProperties": {}
+       "type": "string"
       }
      ]
     },
@@ -2767,7 +3047,7 @@
     "findings"
    ],
    "additionalProperties": false,
-   "description": "Review, lint, or security findings by file, most severe first. findings is [{severity, title, file?, line?, rule?, detail?, code?}] (message works for title) or a SARIF report (CodeQL, Semgrep, ESLint --format sarif). severity is critical, high, medium, low, or info; error, warning, and note also work. A finding with detail or code opens to show it."
+   "description": "Review, lint, or security findings from manual rows, ESLint/Ruff/oxlint/Biome JSON, SARIF, tsc text, or a structured review. Search by message, path, rule, or status. Expand a finding for evidence, source files, suggested patches, and ownership or verification details. Fixed by an owner is distinct from confirmed by a reviewer."
   },
   "Logs": {
    "type": "object",
@@ -3131,7 +3411,7 @@
     "results"
    ],
    "additionalProperties": false,
-   "description": "Test results by suite, failures first with their messages. results is a list of cases {name, status, suite?, file?, ms?, message?}, a vitest or jest JSON report (`--reporter=json`), or JUnit XML text. status is passed, failed, or skipped (common words like pass, error, todo also work). Load a report with Query(\"file\")."
+   "description": "Test results from existing case lists, vitest/Jest JSON, or JUnit XML. Failures sort first, with source locations, messages, and captured output behind disclosures. Search by name, suite, or file. Skips, pending tests, and expected failures stay distinct from passing tests. Load a report with Query(\"file\")."
   },
   "Threads": {
    "type": "object",
@@ -3524,173 +3804,183 @@
    "type": "object",
    "properties": {
     "criteria": {
-     "type": "array",
-     "items": {
-      "type": "object",
-      "properties": {
-       "criterion": {
-        "type": "string"
-       },
-       "status": {
-        "type": "string",
-        "enum": [
-         "pass",
-         "fail",
-         "unknown"
-        ]
-       },
-       "evidence": {
-        "type": "string"
-       },
-       "note": {
-        "type": "string"
-       }
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {}
       },
-      "required": [
-       "criterion"
-      ],
-      "additionalProperties": false
-     }
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      },
+      {
+       "type": "string"
+      }
+     ]
     },
     "title": {
      "type": "string"
+    },
+    "columns": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
     }
    },
    "required": [
     "criteria"
    ],
    "additionalProperties": false,
-   "description": "Acceptance criteria with a result each and the evidence for it. status \"pass\", \"fail\", or \"unknown\" (default). evidence is a link, a file path (shown as code), or short text. The verdict on top says Done only when every criterion passes; unknown is never a pass."
+   "description": "Acceptance checks as a list, a condition matrix, an owner/reviewer result, or CSV text. Existing {criterion,status,evidence,note} rows work. Matrices use {name, cells:{condition:result}} and optional columns. A missing result is not tested; done or owner-reported work is only claimed, not independently verified. Click a condition for its evidence, method, reviewer, run, and time. Required gaps and user actions stay visible."
   },
   "Compare": {
    "type": "object",
    "properties": {
     "options": {
      "type": "array",
-     "items": {
-      "type": "string"
-     }
+     "items": {}
     },
     "rows": {
-     "type": "array",
-     "items": {
-      "type": "object",
-      "properties": {
-       "criterion": {
-        "type": "string"
-       },
-       "values": {
-        "type": "array",
-        "items": {
-         "type": [
-          "string",
-          "number",
-          "null"
-         ]
-        }
-       },
-       "better": {
-        "type": "string",
-        "enum": [
-         "high",
-         "low"
-        ]
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "criterion": {
+          "type": "string"
+         },
+         "values": {
+          "type": "array",
+          "items": {
+           "type": [
+            "string",
+            "number",
+            "null"
+           ]
+          }
+         },
+         "better": {
+          "type": "string",
+          "enum": [
+           "high",
+           "low"
+          ]
+         }
+        },
+        "required": [
+         "criterion",
+         "values"
+        ],
+        "additionalProperties": false
        }
       },
-      "required": [
-       "criterion",
-       "values"
-      ],
-      "additionalProperties": false
-     }
+      {
+       "type": "string"
+      }
+     ]
     },
     "best": {
      "type": "string"
     }
    },
    "required": [
-    "options",
-    "rows"
+    "options"
    ],
    "additionalProperties": false,
-   "description": "Options side by side across criteria. options are the column names; each row has a criterion and one value per option, in the same order (null for none). Give better \"high\" or \"low\" on rows of numbers: the best cell is marked, and the option that wins the most rows is marked as best. Text like \"$12\" or \"120 ms\" counts by its leading number. best names the overall pick and overrides that."
+   "description": "Compare(options, rows, best?) keeps the scored options table. Compare(images, title?, mode?) compares screenshots: images is [{src,label?,meta?,note?}], reference first. mode is side, wipe, blink, or difference. Blink respects motion preferences and can be paused. Inspect changed pixels and regions, adjust tolerance, and zoom in the shared viewer. Different capture conditions and image sizes are disclosed; this is pixel evidence, not design approval."
   },
   "Provenance": {
    "type": "object",
    "properties": {
     "claim": {
-     "type": "string"
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "array",
+       "items": {}
+      }
+     ]
     },
     "steps": {
-     "type": "array",
-     "items": {
-      "type": "object",
-      "properties": {
-       "step": {
-        "type": "string"
-       },
-       "value": {
-        "type": "string"
-       },
-       "source": {
-        "type": "string"
-       },
-       "url": {
-        "type": "string"
-       },
-       "detail": {
-        "type": "string"
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "step": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         },
+         "source": {
+          "type": "string"
+         },
+         "url": {
+          "type": "string"
+         },
+         "detail": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "step"
+        ],
+        "additionalProperties": false
        }
       },
-      "required": [
-       "step"
-      ],
-      "additionalProperties": false
-     }
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     ]
     },
     "value": {
      "type": "string"
     }
    },
    "required": [
-    "claim",
-    "steps"
+    "claim"
    ],
    "additionalProperties": false,
-   "description": "Where a claim or number came from: the steps from the sources to the claim, in order. Each step says what was done, the value it gave, and its source (a link when url is set). The claim and its value close the chain. Example step: {step: \"Summed paid invoices\", value: \"$1.2M\", source: \"billing.invoices\"}."
+   "description": "Two evidence chains. Provenance(claim, steps, value?) keeps the existing source-to-number chain. Provenance(stages, expected?, title?) checks which revision or build reached a device or server. Each stage has {name,status,facts?,evidence?,detail?}; expected holds requested branch/sha/build facts. Missing receipts never pass. Expand a stage for full, copyable facts and evidence; identity changes are flagged."
   },
   "Transcript": {
    "type": "object",
    "properties": {
     "lines": {
-     "type": "array",
-     "items": {
-      "type": "object",
-      "properties": {
-       "speaker": {
-        "type": "string"
-       },
-       "text": {
-        "type": "string"
-       },
-       "time": {
-        "type": [
-         "string",
-         "number"
-        ]
-       },
-       "highlight": {
-        "type": "boolean"
-       }
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {}
       },
-      "required": [
-       "speaker",
-       "text"
-      ],
-      "additionalProperties": false
-     }
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      },
+      {
+       "type": "string"
+      }
+     ]
     },
     "title": {
+     "type": "string"
+    },
+    "audio": {
      "type": "string"
     }
    },
@@ -3698,7 +3988,7 @@
     "lines"
    ],
    "additionalProperties": false,
-   "description": "Speaker-labelled lines of a conversation or call. time is seconds from the start (shown as m:ss) or text like \"10:42\". A name shows once per run of lines from the same speaker. Set highlight on the lines that matter; they get a bar."
+   "description": "Speaker-labelled call notes keep the existing [{speaker,text,time?,highlight?}] view. Transcript(tracks, title?, audio?) compares recognizer outputs: the first track is the reference. Each track has {name,words} or {name,text}; Whisper, Deepgram, AssemblyAI, SRT, and WebVTT work. Shows aligned words, word error rate, speaker errors, a zoomable timeline, and error navigation. audio is an optional scoped file or embedded data URL; no transcription service is called."
   },
   "Flashcards": {
    "type": "object",
@@ -3832,6 +4122,288 @@
    ],
    "additionalProperties": false,
    "description": "A step-by-step guide shown one step at a time, with Back and Next, or all at once. steps are strings (the body) or {title?, body?, code?, language?}; body is Markdown, code shows as a code block."
+  }
+ },
+ "functions": {
+  "Sin": {
+   "description": "Sine of x radians.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "x"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Cos": {
+   "description": "Cosine of x radians.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "x"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Tan": {
+   "description": "Tangent of x radians.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "x"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Asin": {
+   "description": "Inverse sine, in radians.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "x"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Acos": {
+   "description": "Inverse cosine, in radians.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "x"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Atan": {
+   "description": "Inverse tangent, in radians.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "x"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Atan2": {
+   "description": "Angle of y/x, in radians, preserving its quadrant.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "y": {
+      "type": "number"
+     },
+     "x": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "y",
+     "x"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Sqrt": {
+   "description": "Square root of a nonnegative number.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "x"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Pow": {
+   "description": "Base raised to exponent.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "base": {
+      "type": "number"
+     },
+     "exponent": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "base",
+     "exponent"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Exp": {
+   "description": "e raised to x.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "x"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Log": {
+   "description": "Natural logarithm of a positive number.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "x"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Log10": {
+   "description": "Base-10 logarithm of a positive number.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "x"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Clamp": {
+   "description": "Clamp a number to inclusive bounds.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "value": {
+      "type": "number"
+     },
+     "min": {
+      "type": "number"
+     },
+     "max": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "value",
+     "min",
+     "max"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Lerp": {
+   "description": "Linear interpolation; t=0 gives start and t=1 gives end.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "start": {
+      "type": "number"
+     },
+     "end": {
+      "type": "number"
+     },
+     "t": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "start",
+     "end",
+     "t"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Pi": {
+   "description": "The circle constant pi.",
+   "params": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+   }
+  },
+  "Tau": {
+   "description": "One full turn in radians, 2*pi.",
+   "params": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+   }
+  },
+  "Range": {
+   "description": "Integers 0 through count-1. Count must be an integer from 0 to 2000.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "count": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "count"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "Random": {
+   "description": "A deterministic pseudorandom number from 0 to 1 for a numeric seed.",
+   "params": {
+    "type": "object",
+    "properties": {
+     "seed": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "seed"
+    ],
+    "additionalProperties": false
+   }
   }
  }
 }

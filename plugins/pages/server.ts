@@ -14,6 +14,8 @@ import { registerShare, type ShareDeps } from "./server/share/index.js";
 import { registerSpec } from "./server/spec/index.js";
 import { createPageStore } from "./server/store.js";
 import { registerTools } from "./server/tools.js";
+import { definePageSettings } from "./server/settings.js";
+import { registerAuthoring } from "./server/spec/authoring.js";
 
 /** The core (T1) half of the RPC contract. Share methods are registered by server/share (T4). */
 export const coreRpcContract = defineRpcContract({
@@ -33,6 +35,7 @@ export const coreRpcContract = defineRpcContract({
 });
 
 export default function plugin(bb: BbPluginApi) {
+  const settings = definePageSettings(bb);
   const db = bb.storage.database();
   bb.storage.migrate(db, [...PAGE_MIGRATIONS]);
   const store = createPageStore(db);
@@ -77,9 +80,9 @@ export default function plugin(bb: BbPluginApi) {
       return `${full.slice(0, 51).trimEnd()}-${createHash("sha256").update(full).digest("hex").slice(0, 8)}`;
     },
   };
-  const share = registerShare(bb, shareDeps);
+  const share = registerShare(bb, shareDeps, settings);
 
-  const spec = registerSpec(bb);
+  const spec = registerSpec(bb, settings);
   const service = createPageService({
     sdk: bb.sdk,
     store,
@@ -110,8 +113,8 @@ export default function plugin(bb: BbPluginApi) {
   });
   registerRoutes(bb, store);
   registerTools(bb, service);
-  // BB allows one bb.cli.register per plugin, so share commands (T4) join the `bb pages` CLI here.
-  registerPagesCli(bb, service, store, share.cliCommands);
+  // BB allows one CLI registration; share and author commands join Pages here.
+  registerPagesCli(bb, service, store, { ...share.cliCommands, ...registerAuthoring(bb) });
 
   try {
     // Open the old database with the host's own better-sqlite3 build; the plugin bundles no native module.

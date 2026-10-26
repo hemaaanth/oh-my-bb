@@ -1,10 +1,11 @@
 // Shared pieces for the spec components in groups/. Styles use only BB's tokens, so the UI reads like BB
 // in chat and takes the hem.so theme on shared sites. Group files import from here, never from each other.
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { useFormName, useIsStreaming, type DefinedComponent } from "@openuidev/react-lang";
-import { ChevronLeft, ChevronRight, X } from "./icons.generated.js";
+import { ChevronRight } from "./icons.generated.js";
 import { focusRing } from "../ui.js";
 import { useHost } from "./host.js";
+import { sourcedQuery } from "./source-metadata.js";
 
 export { focusRing };
 
@@ -122,53 +123,6 @@ export type Tools = Record<string, (args: Record<string, unknown>) => Promise<un
 
 /** The toolProvider for an example in the gallery and tests: its fixtures answer its Query calls. */
 export function fixtureTools(fixtures: Record<string, unknown> | undefined): Tools {
-  return Object.fromEntries(Object.entries(fixtures ?? {}).map(([name, value]) => [name, () => Promise.resolve(value)]));
+  return Object.fromEntries(Object.entries(fixtures ?? {}).map(([name, value]) => [name, (args: Record<string, unknown>) => Promise.resolve(sourcedQuery(name, args, value))]));
 }
 
-/** The class for the picture inside a Lightbox: as large as the screen allows, never cropped. */
-export const lightboxImage = "block max-h-[calc(100dvh-7rem)] max-w-full rounded-sm object-contain max-sm:max-h-[calc(100dvh-6rem)]";
-const lightboxButton = "z-10 grid size-10 cursor-pointer place-items-center rounded-full border border-white/25 bg-black/40 p-0 text-white hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
-
-/**
- * The one full-screen image viewer, shared by Image, Gallery, BeforeAfter, and the other picture components so they look
- * and behave alike (Pages' .image-lightbox). Escape, the close button, or a click on the backdrop closes it, and focus
- * returns to what opened it. `nav` adds previous/next buttons and the arrow keys.
- */
-export function Lightbox({ open, onClose, label, caption, nav, children }: {
-  open: boolean; onClose: () => void; label: string; caption?: ReactNode;
-  nav?: { index: number; count: number; go: (index: number) => void }; children: ReactNode;
-}) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const opener = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    const el = dialog.current;
-    if (!el || open === el.hasAttribute("open")) return;
-    // jsdom and old browsers lack showModal; the open attribute still shows it.
-    if (open) { opener.current = document.activeElement as HTMLElement | null; if (typeof el.showModal === "function") el.showModal(); else el.setAttribute("open", ""); }
-    else { if (typeof el.close === "function") el.close(); else el.removeAttribute("open"); if (opener.current?.isConnected) opener.current.focus(); }
-  }, [open]);
-  const many = nav !== undefined && nav.count > 1;
-  const step = (by: number) => { if (many) nav.go((nav.index + by + nav.count) % nav.count); };
-  return <dialog ref={dialog} aria-label={label} onClose={onClose} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
-    onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); step(event.key === "ArrowLeft" ? -1 : 1); } }}
-    className="m-0 h-dvh max-h-none w-screen max-w-none overflow-auto border-0 bg-black/95 p-12 text-white backdrop:bg-black/80 open:grid open:place-items-center open:content-center open:gap-3 max-sm:px-4 max-sm:pt-14 max-sm:pb-4">
-    {open ? <>
-      <button type="button" aria-label="Close image preview" onClick={onClose} className={`fixed top-3 right-3 ${lightboxButton}`}><X aria-hidden className="size-5" /></button>
-      {many ? <>
-        <button type="button" aria-label="Previous image" onClick={() => step(-1)} className={`fixed top-1/2 left-3 -translate-y-1/2 ${lightboxButton}`}><ChevronLeft aria-hidden className="size-5" /></button>
-        <button type="button" aria-label="Next image" onClick={() => step(1)} className={`fixed top-1/2 right-3 -translate-y-1/2 ${lightboxButton}`}><ChevronRight aria-hidden className="size-5" /></button>
-      </> : null}
-      {children}
-      {caption || many ? <p className="m-0 max-w-[min(46rem,100%)] text-center text-sm text-white/75">{many ? <span className="tabular-nums">{nav.index + 1} / {nav.count}{caption ? " · " : ""}</span> : null}{caption}</p> : null}
-    </> : null}
-  </dialog>;
-}
-
-/** Makes `children` (a picture) a button that opens `src` in the Lightbox. Enter and Space work as on any button. */
-export function Zoomable({ src, alt, caption, className, children }: { src: string; alt: string; caption?: string; className?: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  return <>
-    <button type="button" aria-haspopup="dialog" aria-label={`${alt ? `${alt}. ` : ""}Open full-size image`} onClick={() => setOpen(true)} className={`block max-w-full cursor-zoom-in border-0 bg-transparent p-0 text-left ${focusRing} ${className ?? "w-fit rounded-md"}`}>{children}</button>
-    <Lightbox open={open} onClose={() => setOpen(false)} label={alt || "Image preview"} caption={caption || alt}><img src={src} alt={alt} className={lightboxImage} /></Lightbox>
-  </>;
-}

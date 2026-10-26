@@ -3,13 +3,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import { dropItems, slotIndex, type BoardSlot } from "./manage-logic.js";
+import { useAnimationsOff } from "../motion.js";
 
 // The lifted card lands in document.body (or the shadow root a page block renders in), outside the plugin's
 // scoped stylesheet, so it carries the scope itself.
 const SCOPE = { "data-bb-portaled-overlay": "", "data-bb-plugin-root": "", "data-bb-plugin": "pages" };
 const liftShadow = "0 0 0 1px var(--border), 0 18px 36px -10px rgb(0 0 0 / 0.35), 0 6px 14px -6px rgb(0 0 0 / 0.2)";
 const ease = "cubic-bezier(0.2, 0.9, 0.3, 1)";
-const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const canAnimate = () => typeof HTMLElement.prototype.animate === "function";
 
 function homeOf(index: number, lists: Record<string, readonly number[]>): BoardSlot | null {
@@ -142,6 +142,7 @@ export function useBoardDrag(options: {
   scroller: RefObject<HTMLElement | null>;
   onDrop: (index: number, slot: BoardSlot) => void;
 }) {
+  const animationsOff = useAnimationsOff();
   const latest = useRef(options);
   latest.current = options;
   const [drag, setDrag] = useState<{ index: number; height: number; target: BoardSlot | null } | null>(null);
@@ -172,7 +173,7 @@ export function useBoardDrag(options: {
   // FLIP: a card whose layout moved starts at its old place and slides to the new one.
   const positions = useRef(new WeakMap<HTMLElement, Map<string, number>>());
   useLayoutEffect(() => {
-    const animate = canAnimate() && !reducedMotion();
+    const animate = canAnimate() && !animationsOff;
     for (const element of lists.current.values()) {
       const before = positions.current.get(element);
       const after = new Map<string, number>();
@@ -212,7 +213,7 @@ export function useBoardDrag(options: {
     const source = event.currentTarget;
     if (abort.current || event.button !== 0 || !event.isPrimary || !source.contains(event.target as Node) || (event.target as Element).closest("[data-no-drag]")) return;
     const touch = event.pointerType === "touch";
-    const reduced = reducedMotion();
+    const reduced = animationsOff;
     const origin = { x: event.clientX, y: event.clientY };
     const pointer = { ...origin };
     let overlay: HTMLDivElement | null = null;

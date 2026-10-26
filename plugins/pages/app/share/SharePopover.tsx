@@ -2,7 +2,7 @@
 import { useCallback, useState, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Popover from "@radix-ui/react-popover";
-import { experimental_Icon as Icon, useRpc, type PluginAppBuilder, type PluginPendingInteractionProps } from "@get-bb/plugin-sdk/app";
+import { experimental_Icon as Icon, UrlLink, useRpc, type PluginAppBuilder, type PluginPendingInteractionProps } from "@get-bb/plugin-sdk/app";
 import type { Access, PageDetail, PagesRpc, Share } from "../../contract.js";
 import type { ShareConfirmPayload, ShareStatus } from "../../server/share/service.js";
 import { pageTag, refreshCached, useCachedQuery, usePageDetail } from "../data.js";
@@ -288,7 +288,7 @@ export function SharePopover({ detail }: { detail: PageDetail }) {
       <button type="button" className={pending.kind === "unshare" ? `${smallButton} text-destructive` : primaryButton} onClick={confirm}>{pending.kind === "unshare" ? "Delete" : pending.kind === "share" && pending.access !== "link" ? "Share" : "Make public"}</button>
     </div>;
   } else if (!configured) {
-    footer = <p role="status" className="text-xs text-muted-foreground">Here.now key not set. Add it in Settings → Plugins → Pages.</p>;
+    footer = <p role="status" className="text-xs text-muted-foreground">Here.now key not set.{" "}<UrlLink href="/plugins/pages/pages/setup" className={`text-foreground underline underline-offset-2 ${focusRing}`}>Open setup guide</UrlLink></p>;
   } else if (busy || share?.status === "publishing") {
     footer = <p role="status" className="flex items-center gap-1.5 text-xs text-muted-foreground"><Icon name="Spinner" aria-hidden className="size-3 animate-spin" />{busy ?? "Publishing…"}</p>;
   } else if (notice) {

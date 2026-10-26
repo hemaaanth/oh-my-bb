@@ -5,17 +5,20 @@ import { z } from "zod";
 import { useCopy, useHost } from "../host.js";
 import { Chevron, focusRing, seriesColor, type Group } from "../kit.js";
 import { ChartFailed, useChartClass, useHighchart } from "./charts.js";
+import { SourceLine } from "../SourceLine.js";
+import { FileExcerpt } from "../FileExcerpt.js";
+import { ZoomDiagram } from "../viewer.js";
 
 const Table = defineComponent({
   name: "Table",
-  props: z.object({ columns: z.array(z.string()), rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))) }),
-  description: "A data table. Each row is a list of cells in column order. Numbers align right.",
-  component: ({ props }) => <div className="min-w-0 overflow-x-auto">
+  props: z.object({ columns: z.array(z.string()), rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))), source: z.string().optional() }),
+  description: "A data table. Each row is a list of cells in column order. Numbers align right. source is an optional caption or HTTPS URL; otherwise loaded files are credited. An empty source hides the caption.",
+  component: ({ props }) => <div className="flex min-w-0 flex-col gap-1.5"><div className="min-w-0 overflow-x-auto">
     <table className="w-full border-collapse">
       <thead><tr>{props.columns.map((column, i) => <th key={i} className="border-b border-border px-2 py-1.5 text-left font-medium text-muted-foreground first:pl-0">{column}</th>)}</tr></thead>
       <tbody>{props.rows.map((row, r) => <tr key={r}>{row.map((cell, c) => <td key={c} className={`border-b border-border-hairline px-2 py-1.5 text-foreground first:pl-0 ${typeof cell === "number" ? "text-right tabular-nums" : ""}`}>{cell ?? ""}</td>)}</tr>)}</tbody>
     </table>
-  </div>,
+  </div><SourceLine props={props} /></div>,
 });
 
 const Progress = defineComponent({
@@ -314,7 +317,7 @@ const Diagram = defineComponent({
     const alongSize = 2 * pad + (layers.length - 1) * along + H, acrossSize = outer + 14 * lanes + room + pad;
     const [width, height] = right ? [alongSize, acrossSize] : [acrossSize, alongSize];
     const name = (id: string) => nodes.get(id)!.label;
-    return <svg role="img" aria-label={`Diagram: ${edges.length ? edges.map((edge) => `${name(edge.from)} to ${name(edge.to)}`).join(", ") : [...nodes.values()].map((node) => node.label).join(", ")}`} width={width} viewBox={`0 0 ${width} ${height}`} className="h-auto max-w-full" style={{ fontSize: 12 }}>
+    return <ZoomDiagram width={width} height={height} label="Diagram"><svg role="img" aria-label={`Diagram: ${edges.length ? edges.map((edge) => `${name(edge.from)} to ${name(edge.to)}`).join(", ") : [...nodes.values()].map((node) => node.label).join(", ")}`} width={width} viewBox={`0 0 ${width} ${height}`} className="h-auto max-w-full" style={{ fontSize: 12 }}>
       <defs><marker id={marker} viewBox="0 0 8 8" refX={8} refY={4} markerWidth={8} markerHeight={8} orient="auto-start-reverse" className="text-muted-foreground"><path d="M0,0 L8,4 L0,8 z" fill="currentColor" /></marker></defs>
       {routes.map((route, i) => { const [x, y] = xy(...route.label); return <g key={i}>
         <path d={route.d} fill="none" className="stroke-muted-foreground" strokeWidth={1.25} markerEnd={`url(#${marker})`} />
@@ -324,7 +327,7 @@ const Diagram = defineComponent({
         <rect x={x} y={y} width={w} height={h} rx={4} className={`fill-background ${toneStroke[node.tone]}`} strokeWidth={node.tone === "neutral" ? 1 : 1.5} />
         <text x={x + w / 2} y={y + h / 2} dy="0.32em" textAnchor="middle" className="fill-foreground">{short(node.label)}{node.label.length > 26 ? <title>{node.label}</title> : null}</text>
       </g>; })}
-    </svg>;
+    </svg></ZoomDiagram>;
   },
 });
 
@@ -404,6 +407,13 @@ const Snippet = defineComponent({
       </div>
     </div>;
   },
+});
+
+const FileCode = defineComponent({
+  name: "FileCode",
+  props: z.object({ file: z.string().min(1), from: z.number().int().min(1).optional(), to: z.number().int().min(1).optional() }),
+  description: "Read source lines from a real file in the thread workspace, thread storage, or /tmp. from and to are one-based inclusive lines; default is the file, at most 400 lines. Shows original line numbers and offers Copy and Open file. Published pages use the source captured at publish time. Unlike Snippet, this reads a file rather than copying supplied text.",
+  component: ({ props }) => <FileExcerpt {...props} />,
 });
 
 /** "Trend from 12 to 18, up 50%": what a sparkline shows, for screen readers. Ported from GenUI chartMath.ts (Apache-2.0). */
@@ -621,6 +631,13 @@ export const group: Group = {
     { component: Snippet, summary: "short text to copy", examples: [
       { name: "Command", code: `root = Snippet("npm install @openuidev/react-lang", "Install")` },
       { name: "ID", code: `root = Snippet("thr_8f2a91c4")` },
+    ] },
+    { component: FileCode, summary: "source lines read from a file", examples: [
+      { name: "Real line numbers", code: 'root = FileCode("src/math.ts", 2, 4)', tools: { file: { path: "src/math.ts", text: `export function add(a: number, b: number) {
+  const total = a + b;
+  return total;
+}
+` } } },
     ] },
     { component: Gauge, summary: "one value on a dial", examples: [
       { name: "Score", code: `root = Gauge("Lighthouse score", 92, 100, "success")` },

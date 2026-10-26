@@ -1,11 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
-import { BuiltinActionType, Renderer, type ActionEvent, type ParseResult } from "@openuidev/react-lang";
+import { BuiltinActionType, type ActionEvent, type ParseResult } from "@openuidev/react-lang";
 import { useSdk, type ExperimentalCodeFenceRendererProps } from "@get-bb/plugin-sdk/app";
 import { specLibrary } from "./spec/catalog.js";
 import { HostContext } from "./spec/host.js";
 import { SentContext } from "./spec/kit.js";
 import { useBbHost, useBbTools } from "./specHost.js";
 import { QuietLine, messageOf } from "./ui.js";
+import { annotateSources } from "./spec/source-metadata.js";
+import { MotionBoundary } from "./spec/motion.js";
+import { SpecRenderer } from "./spec/SpecRenderer.js";
 
 export { SPEC_LANGUAGES } from "../render/spec-baked.js";
 
@@ -40,9 +43,9 @@ export function messageFor(event: ActionEvent): string {
  */
 export function SpecFence({ code, language, status, index, message, Original }: ExperimentalCodeFenceRendererProps) {
   const sdk = useSdk();
-  const host = useBbHost("chat");
-  const tools = useBbTools(message.threadId);
   const stateKey = `bb.pages.spec:${message.id}#${language}#${index}`;
+  const host = useBbHost("chat", { threadId: message.threadId, blockKey: stateKey, appsReady: status === "closed" });
+  const tools = useBbTools(message.threadId);
   const sentKey = `${stateKey}:sent`;
   const [initialState] = useState(() => readState(stateKey));
   // A sent Form stays locked after a reload, like forms on pages.
@@ -50,7 +53,7 @@ export function SpecFence({ code, language, status, index, message, Original }: 
   const [hasRoot, setHasRoot] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const onParseResult = useCallback((result: ParseResult | null) => setHasRoot(Boolean(result?.root)), []);
+  const onParseResult = useCallback((result: ParseResult | null) => { annotateSources(result); setHasRoot(Boolean(result?.root)); }, []);
   const onStateUpdate = useCallback((state: Record<string, unknown>) => writeState(stateKey, state), [stateKey]);
   const mark = useCallback((form: string, label: string | null) => setSent((current) => {
     const next = { ...current };
@@ -84,9 +87,11 @@ export function SpecFence({ code, language, status, index, message, Original }: 
     {failed ? <Original /> : null}
     <div hidden={failed} className="my-2 min-w-0">
       <HostContext.Provider value={host}>
+        <MotionBoundary>
         <SentContext.Provider value={sentValue}>
-          <Renderer response={code} library={specLibrary} isStreaming={status === "streaming"} initialState={initialState} onStateUpdate={onStateUpdate} onParseResult={onParseResult} onAction={onAction} toolProvider={tools} />
+          <SpecRenderer response={code} library={specLibrary} isStreaming={status === "streaming"} initialState={initialState} onStateUpdate={onStateUpdate} onParseResult={onParseResult} onAction={onAction} toolProvider={tools} />
         </SentContext.Provider>
+        </MotionBoundary>
       </HostContext.Provider>
       {error ? <QuietLine tone="error">{error}</QuietLine> : null}
     </div>

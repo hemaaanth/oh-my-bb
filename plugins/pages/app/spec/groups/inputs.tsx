@@ -8,6 +8,8 @@ import {
 import type { IconComponent } from "../glyph.js";
 import { z } from "zod";
 import { Label, ReadOnlyNote, SentContext, field, focusRing, useLocked, useReadOnly, type Group } from "../kit.js";
+import { useImageResource } from "../image-resource.js";
+import { Lightbox, lightboxImage } from "../viewer.js";
 
 /** A field's state. A Form sends what it holds itself, so a bound, preset, or shown value is copied into the Form too. */
 function useField<V>(name: string, value: V, shown?: unknown) {
@@ -29,9 +31,9 @@ function useField<V>(name: string, value: V, shown?: unknown) {
 const text = (value: unknown): string | undefined => (typeof value === "string" && value.trim() !== "" ? value.trim() : typeof value === "number" ? String(value) : undefined);
 const finite = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
 
-export type Option = { value: string; label: string; detail?: string; icon?: string };
+export type Option = { value: string; label: string; detail?: string; icon?: string; image?: string };
 
-/** Options as strings or `{label, value?, detail?, icon?}`. Half-written or repeated entries are skipped. */
+/** Options as strings or `{label, value?, detail?, icon?, image?}`. Half-written or repeated entries are skipped. */
 export function optionsOf(items: unknown): Option[] {
   if (!Array.isArray(items)) return [];
   const out: Option[] = [];
@@ -40,7 +42,7 @@ export function optionsOf(items: unknown): Option[] {
     const label = text(entry.label) ?? text(entry.title) ?? text(entry.value);
     const value = text(entry.value) ?? label;
     if (label === undefined || value === undefined || out.some((o) => o.value === value)) continue;
-    out.push({ value, label, detail: text(entry.detail) ?? text(entry.description), icon: text(entry.icon) });
+    out.push({ value, label, detail: text(entry.detail) ?? text(entry.description), icon: text(entry.icon), image: text(entry.image) });
   }
   return out;
 }
@@ -297,28 +299,37 @@ const Select = defineComponent({
   },
 });
 
+function OptionCard({ option, on, locked, pick }: { option: Option; on: boolean; locked: boolean; pick: () => void }) {
+  const image = useImageResource(option.image);
+  const [open, setOpen] = useState(false);
+  const Icon = iconFor(option.icon);
+  const url = image?.image?.src;
+  return <div className="relative min-w-0">
+    <button type="button" aria-pressed={on} disabled={locked} onClick={pick} className={`flex h-full w-full cursor-pointer flex-col items-start gap-1 rounded-md border p-3 text-left disabled:cursor-default ${locked && !on ? "opacity-60" : ""} ${focusRing} ${on ? "border-primary ring-1 ring-primary" : "border-border-hairline hover:bg-state-hover"}`}>
+      {option.image ? <span className="mb-2 flex aspect-[2/1] w-full items-center justify-center overflow-hidden rounded-md bg-muted">{url ? <img src={url} alt="" draggable={false} className="size-full object-cover" /> : <span className="break-words p-2 text-xs text-muted-foreground">{image?.error ?? "Loading image…"}</span>}</span> : null}
+      <span className="flex w-full items-center gap-2 font-medium text-foreground">{Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden /> : null}<span className="min-w-0 flex-1">{option.label}</span>{on ? <Check className="size-4 shrink-0 text-primary" aria-hidden /> : null}</span>
+      {option.detail ? <span className="text-muted-foreground">{option.detail}</span> : null}
+    </button>
+    {url ? <button type="button" aria-label={`Enlarge ${option.label} image`} aria-haspopup="dialog" onClick={() => setOpen(true)} className={`absolute top-4 right-4 grid size-7 place-items-center rounded-md border border-border bg-background/90 text-foreground ${focusRing}`}><Eye aria-hidden className="size-4" /></button> : null}
+    <Lightbox open={open} onClose={() => setOpen(false)} label={option.label} caption={option.detail}>{url ? <img src={url} alt={option.label} draggable={false} className={lightboxImage} /> : null}</Lightbox>
+  </div>;
+}
+
 const OptionCards = defineComponent({
   name: "OptionCards",
   props: z.object({
     name: z.string(),
-    options: z.array(z.union([z.string(), z.object({ label: z.string(), value: z.string().optional(), detail: z.string().optional(), icon: z.string().optional() })])),
+    options: z.array(z.union([z.string(), z.object({ label: z.string(), value: z.string().optional(), detail: z.string().optional(), icon: z.string().optional(), image: z.string().optional() })])),
     label: z.string().optional(),
     multiple: z.boolean().optional(),
     value: reactive(z.union([z.string(), z.array(z.string())]).optional()),
   }),
-  description: `Pick one of a few rich options shown as cards side by side, or several with multiple true. options are {label, value?, detail?, icon?}; value defaults to label. icon is one of: ${ICON_NAMES}.`,
+  description: `Pick one of a few rich options shown as cards side by side, or several with multiple true. options are {label, value?, detail?, icon?, image?}; value defaults to label. image is a scoped file or https picture; its separate expand button does not change the choice. icon is one of: ${ICON_NAMES}.`,
   component: ({ props }) => {
     const list = optionsOf(props.options);
     const { chosen, pick, locked } = usePick(props.name, list, props.multiple, props.value);
     return <Titled label={props.label} name={props.name}>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-2">{list.map((o) => {
-        const Icon = iconFor(o.icon);
-        const on = chosen.has(o.value);
-        return <button key={o.value} type="button" aria-pressed={on} disabled={locked} onClick={() => pick(o.value)} className={`flex cursor-pointer flex-col items-start gap-1 rounded-md border p-3 text-left disabled:cursor-default ${locked && !on ? "opacity-60" : ""} ${focusRing} ${on ? "border-primary ring-1 ring-primary" : "border-border-hairline hover:bg-state-hover"}`}>
-          <span className="flex w-full items-center gap-2 font-medium text-foreground">{Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden /> : null}<span className="min-w-0 flex-1">{o.label}</span>{on ? <Check className="size-4 shrink-0 text-primary" aria-hidden /> : null}</span>
-          {o.detail ? <span className="text-muted-foreground">{o.detail}</span> : null}
-        </button>;
-      })}</div>
+      <div className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(11rem,100%),1fr))] gap-2">{list.map(option => <OptionCard key={option.value} option={option} on={chosen.has(option.value)} locked={locked} pick={() => pick(option.value)} />)}</div>
     </Titled>;
   },
 });
@@ -651,6 +662,7 @@ export const group: Group = {
     { component: OptionCards, summary: "pick one of a few rich options", examples: [
       { name: "One", code: `root = OptionCards("approach", [{label: "Patch", icon: "zap", detail: "Fix the query in place. Fast, keeps the debt."}, {label: "Refactor", icon: "code", detail: "Move reads to the cache layer. Two days."}, {label: "Rewrite", icon: "rocket", detail: "New service. A sprint, cleanest result."}], "How should we fix it?", false, "Refactor")` },
       { name: "Several", code: `root = OptionCards("extras", [{label: "Dark mode"}, {label: "Export to CSV", detail: "From any table"}, {label: "Slack alerts", icon: "bell"}], "Add to the next release", true)` },
+      { name: "Visual choices", code: `root = OptionCards("layout", ${JSON.stringify([{label:"List",image:`data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="120"><rect width="240" height="120" fill="#f4f4f5"/><path d="M24 28h192M24 60h192M24 92h192" stroke="#2563eb" stroke-width="16"/></svg>')}`},{label:"Columns",image:`data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="120"><rect width="240" height="120" fill="#f4f4f5"/><path d="M52 20v80M120 20v80M188 20v80" stroke="#2563eb" stroke-width="40"/></svg>')}`}])}, "Choose a layout")` },
     ] },
     { component: Swatches, summary: "colour pick", examples: [
       { name: "Named", code: `root = Swatches("accent", [{value: "#2563eb", name: "Blue"}, {value: "#16a34a", name: "Green"}, {value: "#d97706", name: "Amber"}, {value: "#dc2626", name: "Red"}, {value: "#7c3aed", name: "Violet"}], "Accent colour", "#16a34a")` },

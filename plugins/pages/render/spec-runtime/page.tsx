@@ -2,13 +2,17 @@
 // chat components. A page has no server to ask, so both read the answers the publish baked into it
 // (server/spec/bake.ts). Nothing here sends to a thread: components that would reply turn read-only.
 import { createRoot } from "react-dom/client";
-import { BuiltinActionType, Renderer, type ActionEvent, type OpenUIError } from "@openuidev/react-lang";
+import { BuiltinActionType, type ActionEvent, type OpenUIError } from "@openuidev/react-lang";
 import type { SpecResult } from "../../contract.js";
 import { specLibrary } from "../../app/spec/catalog.js";
 import { HostContext, fallbackHost, type Host, type WebMethod } from "../../app/spec/host.js";
 import type { Tools } from "../../app/spec/kit.js";
+import { hostResources } from "../../app/spec/resources.js";
 import { specTools } from "../../app/spec/tools.js";
-import { BAKED_ATTRIBUTE, SPEC_TYPE, bakedKey, unescapeSpec, type Baked } from "../spec-baked.js";
+import { APP_READY_ATTRIBUTE, BAKED_ATTRIBUTE, SPEC_TYPE, bakedKey, unescapeSpec, type Baked } from "../spec-baked.js";
+import { annotateSources, sourcedQuery } from "../../app/spec/source-metadata.js";
+import { MotionBoundary } from "../../app/spec/motion.js";
+import { SpecRenderer } from "../../app/spec/SpecRenderer.js";
 
 const answer = (result: SpecResult | undefined, missing: string): Promise<unknown> =>
   !result ? Promise.reject(new Error(missing)) : result.ok ? Promise.resolve(result.data) : Promise.reject(new Error(result.message));
@@ -18,6 +22,7 @@ const missingWeb: Record<WebMethod, string> = {
   geocode: "This place was not saved with the page.",
   search: "These photos were not saved with the page.",
   image: "This image was not saved with the page.",
+  wiki: "This place photo was not saved with the page.",
 };
 
 /**
@@ -40,18 +45,33 @@ function openLink(url: string): void {
 export function pageHost(baked: Baked): Host {
   return {
     kind: "page",
+    threadId: null,
+    blockKey: null,
+    appsReady: true,
+    App: fallbackHost.App,
     SourceCode: fallbackHost.SourceCode,
     Diff: fallbackHost.Diff,
     Markdown: fallbackHost.Markdown,
     web: (method, input) => answer(baked[bakedKey("web", method, input)], missingWeb[method]),
+    ...hostResources(
+      (src) => answer(baked[bakedKey("tool", "asset", { path: src })], "This asset was not saved with the page."),
+      (src) => answer(baked[bakedKey("web", "image", { url: src })], missingWeb.image),
+    ),
+    loadText: async (src) => {
+      const data = await answer(baked[bakedKey("tool", "read_text", { path: src })], "This source file was not saved with the page.");
+      if (typeof data !== "string") throw new Error("Source text has an invalid response.");
+      return data;
+    },
+    animations: (baked[bakedKey("tool", "_preferences", {})] as { ok?: boolean; data?: { animations?: boolean } } | undefined)?.data?.animations !== false,
     openUrl: openLink,
+    openFile: null,
     replies: false,
   };
 }
 
 /** The Renderer's toolProvider on a page: each listed tool answers from the baked results. */
 export function bakedTools(baked: Baked): Tools {
-  return Object.fromEntries(specTools.map(({ name }) => [name, (args: Record<string, unknown>) => answer(baked[bakedKey("tool", name, args)], `Query("${name}") was not saved with this page.`)]));
+  return Object.fromEntries(specTools.map(({ name }) => [name, async (args: Record<string, unknown>) => sourcedQuery(name, args, await answer(baked[bakedKey("tool", name, args)], `Query("${name}") was not saved with this page.`))]));
 }
 
 /** The baked answers on the page, or none. */
@@ -74,7 +94,9 @@ export function SpecBlock({ code, host, tools, onError }: SpecBlockProps) {
     if (event.type === BuiltinActionType.OpenUrl) host.openUrl(String(event.params.url ?? ""));
   };
   return <HostContext.Provider value={host}>
-    <Renderer response={code} library={specLibrary} isStreaming={false} toolProvider={tools} onAction={onAction} onError={onError} />
+    <MotionBoundary>
+    <SpecRenderer response={code} library={specLibrary} isStreaming={false} toolProvider={tools} onAction={onAction} onError={onError} onParseResult={annotateSources} />
+    </MotionBoundary>
   </HostContext.Provider>;
 }
 
@@ -88,8 +110,14 @@ export function mountSpecs(doc: Document, css: string, onError?: (errors: OpenUI
   const baked = readBaked(doc);
   const host = pageHost(baked);
   const tools = bakedTools(baked);
+  const identity = new URL(doc.URL);
+  identity.searchParams.delete("theme");
+  identity.searchParams.delete("frame");
+  identity.hash = "";
+  let ordinal = 0;
   let count = 0;
   for (const script of Array.from(doc.querySelectorAll<HTMLScriptElement>(`script[type="${SPEC_TYPE}"]`))) {
+    const blockKey = `bb.pages.page:${identity.href}#${ordinal++}`;
     if (script.hasAttribute("data-bb-spec-drawn")) continue;
     script.setAttribute("data-bb-spec-drawn", "");
     const index = count;
@@ -104,7 +132,7 @@ export function mountSpecs(doc: Document, css: string, onError?: (errors: OpenUI
     root.setAttribute("data-bb-plugin-root", "");
     root.setAttribute("data-bb-plugin", "pages");
     shadow.append(style, root);
-    createRoot(root).render(<SpecBlock code={unescapeSpec(script.textContent ?? "")} host={host} tools={tools} onError={onError ? (errors) => onError(errors, index) : undefined} />);
+    createRoot(root).render(<SpecBlock code={unescapeSpec(script.textContent ?? "")} host={{ ...host, blockKey, appsReady: script.getAttribute(APP_READY_ATTRIBUTE) !== "false" }} tools={tools} onError={onError ? (errors) => onError(errors, index) : undefined} />);
     count += 1;
   }
   return count;

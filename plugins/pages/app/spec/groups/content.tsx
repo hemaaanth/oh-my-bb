@@ -10,8 +10,11 @@ import {
 } from "../icons.generated.js";
 import type { IconComponent } from "../glyph.js";
 import { z } from "zod";
-import { childProps, focusRing, toneBar, trendText, Zoomable, type Group } from "../kit.js";
+import { childProps, focusRing, toneBar, trendText, type Group } from "../kit.js";
+import { Zoomable } from "../viewer.js";
 import { useHost } from "../host.js";
+import { SourceContext, SourceLine } from "../SourceLine.js";
+import { sameCaption, sourceCaption } from "../source.js";
 
 const Heading = defineComponent({
   name: "Heading",
@@ -43,12 +46,13 @@ const TONES = 'tone "neutral" (default), "info", "success", "warning", or "dange
 
 const Stat = defineComponent({
   name: "Stat",
-  props: z.object({ label: z.string(), value: z.union([z.string(), z.number()]), change: z.string().optional(), trend: z.enum(["neutral", "up", "down"]).optional(), tone: tone.optional() }),
+  props: z.object({ label: z.string(), value: z.union([z.string(), z.number()]), change: z.string().optional(), trend: z.enum(["neutral", "up", "down"]).optional(), tone: tone.optional(), source: z.string().optional() }),
   description: 'One headline number. change is a short note under it, like "+12%" or "since May". trend "up" is good (green), "down" is bad (red), "neutral" (default) is muted. tone colours the value itself: "success", "warning", "danger", "info", or "neutral" (default, plain).',
   component: ({ props }) => <div className="flex min-w-24 flex-col">
     <span className="text-muted-foreground">{props.label}</span>
     <span className={`text-2xl font-semibold tabular-nums ${props.tone && props.tone !== "neutral" ? toneText[props.tone] : "text-foreground"}`}>{props.value}</span>
     {props.change ? <span className={`tabular-nums ${trendText[props.trend ?? "neutral"]}`}>{props.change}</span> : null}
+    <SourceLine props={props} />
   </div>,
 });
 
@@ -56,7 +60,15 @@ const Stats = defineComponent({
   name: "Stats",
   props: z.object({ items: z.array(Stat.ref) }),
   description: "A row of Stat numbers that wraps on narrow screens.",
-  component: ({ props, renderNode }) => <div className="flex flex-wrap gap-x-8 gap-y-3">{renderNode(props.items)}</div>,
+  component: ({ props, renderNode }) => {
+    const items = props.items.map((item) => childProps<Record<string, unknown>>(item) ?? {});
+    const caption = items.length ? sourceCaption(items[0]) : null;
+    const common = caption && items.every((item) => sameCaption(caption, sourceCaption(item))) ? caption : null;
+    return <div className="flex min-w-0 flex-col gap-1.5">
+      <SourceContext.Provider value={common}><div className="flex flex-wrap gap-x-8 gap-y-3">{renderNode(props.items)}</div></SourceContext.Provider>
+      {common ? <SourceLine props={items[0]} /> : null}
+    </div>;
+  },
 });
 
 const Badge = defineComponent({
@@ -176,7 +188,7 @@ const Entity = defineComponent({
     return <div className="@container min-w-0">
       <div className={`flex min-w-0 items-start gap-3 ${shown ? "@max-[16rem]:flex-col" : ""}`}>
         <div className={`flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground ${shown ? "@max-[16rem]:aspect-[4/3] @max-[16rem]:size-auto @max-[16rem]:w-full" : ""}`}>
-          {shown ? <img src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(src)} className="size-full object-cover" />
+          {shown ? <Zoomable src={src} alt={name} className="size-full"><img src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(src)} className="size-full object-cover" /></Zoomable>
             : Glyph ? <Glyph aria-hidden className="size-5" /> : <span aria-hidden className="text-lg font-semibold uppercase">{Array.from(name)[0] ?? ""}</span>}
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">

@@ -6,7 +6,7 @@ Most Dev components read the report a tool writes. Load it with Query("file", {p
 
 `Benchmark(results: any[] | Record<string, any>, title?: string, unit?: string)`
 
-Benchmark results. results is [{name, before?, after, unit?, better?, noise?}] to compare two runs (value or mean also work for after), or hyperfine's --export-json output to rank commands. unit is ms, s, us, ns, B, KB, MB, ops/s, %, or any word. better is lower (default) or higher (default for rates and scores). A change under 1% or under noise counts as the same.
+Benchmark results from manual before/after rows, hyperfine JSON, vitest bench JSON, or runs with metrics and conditions. unit accepts time, bytes, rates, percentages, or a label. Changes smaller than noise stay unchanged. Different recorded conditions are not presented as a like-for-like improvement. Expand a result for samples and conditions.
 
 Before and after:
 
@@ -20,11 +20,23 @@ hyperfine:
 root = Benchmark({"results":[{"command":"esbuild","mean":0.312,"stddev":0.01},{"command":"rollup","mean":4.84,"stddev":0.2},{"command":"webpack","mean":9.71,"stddev":0.35}]}, "Bundlers")
 ```
 
+Measurement conditions:
+
+```openui-lang
+root = Benchmark([{name:"Build",before:{value:120,context:{device:"Laptop",thermal:"Nominal"}},after:{value:80,context:{device:"Desktop",thermal:"Nominal"}},unit:"ms"},{name:"Parse",before:[18.2,18.5,18.3],after:[11.1,11.3,11.2],unit:"ms"}], "Comparable results")
+```
+
+All experiment runs:
+
+```openui-lang
+root = Benchmark({runs:[{name:"Laptop, cold",status:"ok",metrics:{latency:120,memory:24000},context:{device:"Laptop",cache:"Cold"}},{name:"Laptop, warm",status:"ok",metrics:{latency:80,memory:26000},context:{device:"Laptop",cache:"Warm"}},{name:"Desktop",status:"failed",context:{device:"Desktop"},note:"Process crashed before measuring"}],metrics:{latency:{unit:"ms",better:"lower"},memory:{unit:"B",better:"lower"}}}, "Experiment notebook")
+```
+
 ## Coverage
 
-`Coverage(report: any[] | Record<string, any>, title?: string, metric?: "lines" | "statements" | "functions" | "branches")`
+`Coverage(report: any[] | Record<string, any> | string, title?: string, metric?: "lines" | "statements" | "functions" | "branches")`
 
-Test coverage: the total and each file, lowest first, toned at 80% and 60%. report is Istanbul's coverage-summary.json (vitest or jest --coverage --coverage.reporter=json-summary) or [{path, covered, total} | {path, pct}]. metric picks lines (default), statements, functions, or branches. Load the file with Query("file").
+Coverage from Istanbul coverage-summary.json, lcov.info text, coverage.py JSON, Go coverage.out text, or existing manual rows [{path, covered, total} | {path, pct}]. Files can be filtered, read as a directory tree, and expanded to inspect uncovered ranges. Query("file") returns .data for JSON and .text for lcov/Go. metric selects lines, statements, functions, or branches.
 
 From a file:
 
@@ -39,11 +51,29 @@ Inline, branches:
 root = Coverage({"total":{"lines":{"total":1240,"covered":1017,"pct":82.02},"statements":{"total":1302,"covered":1046,"pct":80.34},"functions":{"total":210,"covered":151,"pct":71.9},"branches":{"total":388,"covered":251,"pct":64.69}},"/w/shop/src/cart/total.ts":{"lines":{"total":48,"covered":48,"pct":100}},"/w/shop/src/cart/coupons.ts":{"lines":{"total":120,"covered":70,"pct":58.33}},"/w/shop/src/checkout/pay.ts":{"lines":{"total":310,"covered":229,"pct":73.87}},"/w/shop/src/checkout/address.ts":{"lines":{"total":95,"covered":94,"pct":98.94}}}, null, "branches")
 ```
 
+LCOV uncovered lines:
+
+```openui-lang
+root = Coverage("SF:src/cart.ts\nDA:10,4\nDA:11,0\nDA:12,0\nDA:13,2\nLF:4\nLH:2\nend_of_record\n", "Cart coverage")
+```
+
+Python coverage:
+
+```openui-lang
+root = Coverage({meta:{version:"7.6"},files:{"worker.py":{executed_lines:[1,2,5],missing_lines:[3,4],summary:{covered_lines:3,num_statements:5,percent_covered:60}}},totals:{covered_lines:3,num_statements:5,percent_covered:60}}, "Worker coverage")
+```
+
+Go coverage:
+
+```openui-lang
+root = Coverage("mode: set\nexample.com/shop/cart.go:10.1,12.2 2 1\nexample.com/shop/cart.go:14.1,18.2 3 0\n", "Go statements")
+```
+
 ## Dependencies
 
 `Dependencies(packages: any[] | Record<string, any>, title?: string)`
 
-Outdated packages grouped by how big the update is: major, minor, patch. The changed part of each new version is toned. packages is [{name, current, wanted?, latest, type?}] or `npm outdated --json` output (also pnpm outdated --format json). Load the file with Query("file").
+Outdated and vulnerable dependencies. packages accepts existing manual rows, npm/pnpm outdated JSON, pip outdated JSON, npm audit v2, pnpm advisories, or {outdated, audit}. Expand a vulnerability for affected versions, direct/transitive relationships, advisory links, and the reported fix. This component never installs or updates a package.
 
 npm outdated:
 
@@ -58,11 +88,17 @@ data = Query("file", {path: "outdated.json"}, {data: null})
 root = Dependencies(data.data)
 ```
 
+npm audit:
+
+```openui-lang
+root = Dependencies({auditReportVersion:2,vulnerabilities:{axios:{name:"axios",severity:"high",isDirect:true,via:[{name:"axios",title:"Untrusted redirect",url:"https://github.com/axios/axios/security/advisories",severity:"high",range:"<1.8.2"}],effects:[],range:"<1.8.2",nodes:["node_modules/axios"],fixAvailable:{name:"axios",version:"1.8.2",isSemVerMajor:false}}},metadata:{dependencies:{total:311}}}, "Security audit")
+```
+
 ## Findings
 
-`Findings(findings: any[] | Record<string, any>, title?: string)`
+`Findings(findings: any[] | Record<string, any> | string, title?: string)`
 
-Review, lint, or security findings by file, most severe first. findings is [{severity, title, file?, line?, rule?, detail?, code?}] (message works for title) or a SARIF report (CodeQL, Semgrep, ESLint --format sarif). severity is critical, high, medium, low, or info; error, warning, and note also work. A finding with detail or code opens to show it.
+Review, lint, or security findings from manual rows, ESLint/Ruff/oxlint/Biome JSON, SARIF, tsc text, or a structured review. Search by message, path, rule, or status. Expand a finding for evidence, source files, suggested patches, and ownership or verification details. Fixed by an owner is distinct from confirmed by a reviewer.
 
 Review:
 
@@ -74,6 +110,18 @@ SARIF:
 
 ```openui-lang
 root = Findings({"runs":[{"results":[{"ruleId":"js/xss","level":"error","message":{"text":"Unescaped HTML from a query string."},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"src/search.tsx"},"region":{"startLine":22}}}]},{"ruleId":"js/unused-local","level":"note","message":{"text":"Unused variable 'tmp'."},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"src/util.ts"},"region":{"startLine":4}}}]}]}]})
+```
+
+Compiler output:
+
+```openui-lang
+root = Findings("src/cart.ts(12,7): error TS2322: Type 'string' is not assignable to type 'number'.", "Type check")
+```
+
+Review lifecycle:
+
+```openui-lang
+root = Findings([{id:"auth",severity:"high",title:"Check the session before changing roles",area:"auth",file:"src/roles.ts",line:18,status:"open",fix:"Verify the session and required role before updating."},{id:"cache",severity:"medium",title:"Cache eviction",status:"fixed",fixNote:"Patch is applied; load check is still missing."},{id:"import",severity:"low",title:"Unused import",status:"confirmed",by:"Reviewer",revision:"abc123"}], "Follow-up review")
 ```
 
 ## Logs

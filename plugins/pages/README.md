@@ -41,6 +41,61 @@ and provides a searchable library for finding earlier work.
   data, place names, photos, and map tiles the blocks need, so shared sites
   work offline from BB. Buttons and forms there are read-only.
 
+### Upstream features
+
+These features are adapted from GenUI 0.3.1 at
+`c9700a34a9cc24961d17771590274e0703dc481c`. They use Pages' existing OpenUI
+language and preserve existing form behavior:
+
+- Histogram, box, and heatmap charts, with shared distribution bins and series tones.
+- Scene and Shader components, including surfaces, embedded models and lighting,
+  feedback buffers, textures, orbit controls, and a six-context GPU budget.
+- `app` and `pages-app` fences, plus `App(name, html)` inside OpenUI.
+  App scripts run only after the fence closes. Answers are staged for review;
+  existing Pages Buttons and Forms still send directly.
+- Source captions on Table, Chart, and Stat. Automatic captions follow the
+  resolved file result while a different file is loading. `FileCode` reads
+  bounded source excerpts with original line numbers. Existing `Snippet`
+  remains a supplied-text copy control.
+- `page_examples` and `page_check`, also available as `bb pages examples`
+  and `bb pages check <file>`. Checks include input boundaries, scenes, GLSL,
+  and app script syntax. They do not execute app JavaScript or prove security.
+- One image and diagram viewer with fit, zoom, pan, pinch, gallery navigation,
+  and focus return to the opener. The viewer stays inside its BB pane.
+  OptionCards can show visual choices; expanding an image does not change the choice.
+- Maps accept day groups, straight route connections, and replayable tours.
+  Optional Wikipedia photos include the author, license, and Commons source.
+  These lookups use the existing Web lookups setting and saved-page asset path.
+- Coverage reads LCOV, Istanbul, coverage.py, and Go reports, with metric
+  selection, uncovered ranges, and file details. Dependencies also reads security
+  audits. Findings and test results expose source, failures, and captured output.
+- Benchmarks retain repeated measurements and their conditions. Measurements
+  from different conditions are not called a performance improvement. Failed
+  commands are not used as the fastest successful baseline.
+- Acceptance supports device/condition matrices, CSV checks, and evidence
+  details. Missing, claimed, and verified results stay distinct. Provenance can
+  compare checkout, build, install, and launch receipts against expected facts.
+- Compare supports reference/candidate images, wipe and blink views, and pixel
+  differences with tolerance and changed regions. Blink follows motion preferences.
+- Transcript can align recognition tracks against a reference, show word errors,
+  and seek a supplied recording from words or errors. It does not transcribe audio.
+- Findings has explicit fix requests in click menus. Opening a menu sends
+  nothing. The gallery previews the request; exported pages cannot send it.
+- Copy as Markdown uses the current field values and loaded data. Use
+  `bb pages render path/to/report.md` for plain-text export, or add `--state`
+  with a JSON object to export supplied field values. Omit the path to render
+  the current thread's latest component output.
+
+App frames have an opaque origin. Fetches and remote resource loads are blocked.
+**An app can still navigate its own frame and make a network request.**
+Do not put secrets in apps. Storage is bounded per app and across saved apps.
+Published pages and downloads cannot send app answers into BB.
+
+The gallery has a compact category menu beside Search, with full names and keyboard
+navigation. Each category puts its component-named code disclosures in a Sources
+section below the live previews.
+
+
 ## Install
 
 Add the `oh-my-bb` marketplace once:
@@ -70,15 +125,30 @@ Pages needs BB 0.46.1 or later.
 Open Settings → Plugins → Pages. Every setting is optional, and Pages never asks
 you to configure it before use. Each feature shows its own status where you use it.
 
+Configuration keeps the Here.now and Mapbox keys together before sharing defaults
+and Web lookups. Keys use BB's native secret storage; setting IDs and CLI commands
+are unchanged.
+
+More links to the library, a dedicated component gallery, and the setup guide.
+The gallery keeps live BB/Site previews and source disclosures off the settings
+page. The setup guide covers optional keys, sharing access, and chart licensing.
+
 | Setting | What it does | If unset |
 | --- | --- | --- |
 | Here.now API key | Lets Pages create and update shared sites. Stored as a secret. | The Share popover and `page_share` say the key is not set. |
+| Mapbox token | Map tiles. Stored as a secret. | Maps show their places on a blank grid, with a note naming the token. |
 | Default access | Access for a new share: restricted, password, or link. Defaults to password. | Password. |
 | Default allowed domains | Comma-separated email domains that fill Restricted access in the Share popover. | Empty. |
 | Web lookups | Lets maps, image search, and galleries fetch tiles, place names, and photos. On by default. | When off, those components show a short note. |
-| Mapbox token | Map tiles. Stored as a secret. | Maps show their places on a blank grid, with a note naming the token. |
+| Animations | Controls motion in charts, boards, scenes, and apps. System reduced motion also applies. | On. |
 
 Changes apply to the next request. You do not need to reload.
+
+The library, gallery, and setup guide use a 760px outer frame with 16px side
+padding (728px content at full width). Symmetric scrollbar gutters keep these
+pages centered when content starts scrolling. Page previews and document
+canvases remain full-bleed on purpose: exported HTML, charts, and custom layouts
+keep their own reading width. Their panel header is 36px tall.
 
 ## Highcharts license
 
@@ -118,3 +188,7 @@ dependencies only.
 
 Original Pages source code is MIT licensed. Bundled third-party components keep
 their own licenses. See [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md).
+
+PR Review documents may include an optional `diffBreakdown` with categorized file and line counts. Pages renders it before review coverage, labels partial inventories, and reports binary files separately. Documents without statistics remain readable.
+
+PR Review pages use the Pages theme, keyboard-accessible Review/Diagrams/Coverage tabs, and zoomable diagrams. The same version renders a compact summary when opened through `display="inline"`, and the full page in its panel or shared view. `publishDocument` accepts `display: "card" | "inline"` to select the returned directive; the document and identity stay the same.

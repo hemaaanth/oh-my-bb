@@ -64,12 +64,22 @@ const renderedDiagramSchema = z.object({
   assets: z.array(z.object({ id: z.string(), lens: z.enum(["architecture", "data-flow"]), theme: z.enum(["light", "dark"]), view: z.string().nullable(), svg: z.string(), width: z.number().positive(), height: z.number().positive(), animated: z.boolean() }).strict()).optional(),
   svg: z.string().optional(),
 }).strict().refine((value) => Boolean(value.svg || value.assets?.length), { message: "A diagram needs an SVG or rendered assets" });
+// Optional for existing review pages. Kept in sync with PR Review's wire contract.
+const diffCountSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+export const diffBreakdownSchema = z.object({
+  complete: z.boolean(), note: z.string().optional(),
+  rows: z.array(z.object({
+    category: z.enum(["runtime", "tests", "evals", "docs", "build-config", "dependencies", "generated", "other"]),
+    files: diffCountSchema, additions: diffCountSchema, deletions: diffCountSchema, binaryFiles: diffCountSchema,
+  }).strict()).max(8),
+}).strict();
 export const prReviewDocumentSchema = z.object({
   schema: z.literal("pr-review/v1"), title: titleSchema, target: reviewTargetSchema,
   intent: z.string().trim().min(1).max(4_000), summary: z.string().trim().min(1).max(6_000),
   verdict: z.enum(["pass", "changes-requested", "advisory"]),
   diagramPolicy: z.enum(["auto", "yes", "no"]).optional(), commentPolicy: z.enum(["off", "draft", "post"]).optional(),
   coverage: z.object({ reviewed: z.array(shortText).max(100), skipped: z.array(shortText).max(100), validation: z.array(shortText).max(100) }).strict(),
+  diffBreakdown: diffBreakdownSchema.optional(),
   findings: z.array(reviewFindingSchema).max(100), diagrams: z.array(renderedDiagramSchema).max(20).optional(),
 }).strict();
 export type PrReviewDocument = z.infer<typeof prReviewDocumentSchema>;
@@ -148,7 +158,7 @@ export type PublishFileInput = z.infer<typeof publishFileInputSchema>;
 export const publishDocumentInputSchema = z.object({
   producer: z.string().trim().min(1).max(100), producerKey: z.string().trim().min(1).max(1_000),
   title: titleSchema, provenance: provenanceSchema, document: pageDocumentSchema,
-  label: labelSchema.optional(), baseVersionId: uuid.optional(),
+  label: labelSchema.optional(), baseVersionId: uuid.optional(), display: displaySchema.optional(),
 }).strict();
 
 export const pageRefSchema = z.object({ pageId: uuid.optional(), producerKey: z.string().trim().min(1).max(1_000).optional(), key: pageKeySchema.optional() }).strict()
@@ -205,7 +215,7 @@ export type SentForm = z.infer<typeof sentFormSchema>;
 
 // ---- Spec fences (openui-lang) ------------------------------------------------
 /** Web lookups the Pages server runs for spec components (Map, Gallery, ImageSearch). */
-export const WEB_METHODS = ["tile", "geocode", "search", "image"] as const;
+export const WEB_METHODS = ["tile", "geocode", "search", "image", "wiki"] as const;
 /** A spec call's answer. `ok: false` carries text the component shows, so errors do not throw. */
 const specResultSchema = z.union([z.object({ ok: z.literal(true), data: z.unknown() }).strict(), z.object({ ok: z.literal(false), message: z.string() }).strict()]);
 export type SpecResult = z.infer<typeof specResultSchema>;

@@ -2,9 +2,9 @@
 
 ## Table
 
-`Table(columns: string[], rows: (string | number | any)[][])`
+`Table(columns: string[], rows: (string | number | any)[][], source?: string)`
 
-A data table. Each row is a list of cells in column order. Numbers align right.
+A data table. Each row is a list of cells in column order. Numbers align right. source is an optional caption or HTTPS URL; otherwise loaded files are credited. An empty source hides the caption.
 
 Mixed cells:
 
@@ -64,6 +64,18 @@ ID:
 
 ```openui-lang
 root = Snippet("thr_8f2a91c4")
+```
+
+## FileCode
+
+`FileCode(file: string, from?: number, to?: number)`
+
+Read source lines from a real file in the thread workspace, thread storage, or /tmp. from and to are one-based inclusive lines; default is the file, at most 400 lines. Shows original line numbers and offers Copy and Open file. Published pages use the source captured at publish time. Unlike Snippet, this reads a file rather than copying supplied text.
+
+Real line numbers:
+
+```openui-lang
+root = FileCode("src/math.ts", 2, 4)
 ```
 
 ## Gauge

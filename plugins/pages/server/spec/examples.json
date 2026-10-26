@@ -1,0 +1,1658 @@
+[
+ {
+  "name": "Stack",
+  "group": "layout",
+  "description": "Layout. direction \"column\" (default) or \"row\"; rows wrap. gap \"none\"|\"s\"|\"m\"|\"l\", default \"m\".",
+  "signature": "Stack(children: any[], direction?: \"column\" | \"row\", gap?: \"none\" | \"s\" | \"m\" | \"l\")",
+  "examples": [
+   {
+    "name": "Column",
+    "code": "root = Stack([Text(\"First\"), Text(\"Second\")])"
+   },
+   {
+    "name": "Row",
+    "code": "root = Stack([Text(\"Left\"), Text(\"Right\")], \"row\", \"l\")"
+   }
+  ]
+ },
+ {
+  "name": "Card",
+  "group": "layout",
+  "description": "A framed group of parts with an optional title. variant \"card\" (default) has a hairline frame; \"sunk\" is a muted tile, good for options side by side; \"clear\" has no frame. A \"card\" inside another Card draws as \"sunk\". Cards in a Row or Grid share one height.",
+  "signature": "Card(children: any[], title?: string, variant?: \"card\" | \"sunk\" | \"clear\")",
+  "examples": [
+   {
+    "name": "Card",
+    "code": "root = Card([Text(\"Two blockers remain before the release.\"), Stack([Badge(\"In review\", \"info\"), Badge(\"Due Fri\")], \"row\", \"s\")], \"Release 2.4\")"
+   },
+   {
+    "name": "Nested",
+    "code": "root = Card([Row([Card([Text(\"Ship Friday with the known bug.\")], \"Ship\"), Card([Text(\"Wait a week for the fix.\")], \"Wait\")])], \"Two options\")"
+   },
+   {
+    "name": "Variants",
+    "code": "root = Stack([Card([Text(\"A hairline frame.\")], \"Card\"), Card([Text(\"A muted tile.\")], \"Sunk\", \"sunk\"), Card([Text(\"No frame, only spacing.\")], \"Clear\", \"clear\")])"
+   }
+  ]
+ },
+ {
+  "name": "Row",
+  "group": "layout",
+  "description": "Parts side by side in equal columns. Each column is at least 10rem wide, so a narrow screen wraps them. gap \"none\"|\"s\"|\"m\"|\"l\", default \"l\". For buttons or small items at their own width, use Stack with \"row\".",
+  "signature": "Row(children: any[], gap?: \"none\" | \"s\" | \"m\" | \"l\")",
+  "examples": [
+   {
+    "name": "Three columns",
+    "code": "root = Row([Card([Text(\"Postgres\")], \"Database\", \"sunk\"), Card([Text(\"Redis\")], \"Cache\", \"sunk\"), Card([Text(\"S3\")], \"Files\", \"sunk\")])"
+   }
+  ]
+ },
+ {
+  "name": "Grid",
+  "group": "layout",
+  "description": "Tiles on an even grid. With no columns it fits as many tiles of about 10rem as there is room for. columns (1 to 6) asks for that many; a narrow screen shows fewer, each at least 8rem. Tiles in a row share one height.",
+  "signature": "Grid(children: any[], columns?: number)",
+  "examples": [
+   {
+    "name": "Fit to width",
+    "code": "root = Grid([Stat(\"Users\", 1240), Stat(\"Teams\", 86), Stat(\"Seats\", 3100), Stat(\"Churn\", \"2.1%\"), Stat(\"NPS\", 48)])"
+   },
+   {
+    "name": "Two columns",
+    "code": "root = Grid([Card([Text(\"Faster builds.\")], \"Pro\", \"sunk\"), Card([Text(\"A smaller bundle.\")], \"Pro\", \"sunk\"), Card([Text(\"A new config format.\")], \"Con\", \"sunk\"), Card([Text(\"One more plugin to keep.\")], \"Con\", \"sunk\")], 2)"
+   }
+  ]
+ },
+ {
+  "name": "Carousel",
+  "group": "layout",
+  "description": "A row of slides that scrolls sideways, with previous and next buttons. Each item is one slide, often a Card or an Entity. Slides are about 16rem wide. label names the carousel for screen readers.",
+  "signature": "Carousel(items: any[], label?: string)",
+  "examples": [
+   {
+    "name": "Cards",
+    "code": "root = Carousel([Card([Text(\"Kyoto, 3 nights\")], \"Day 1-3\", \"sunk\"), Card([Text(\"Nara, day trip\")], \"Day 4\", \"sunk\"), Card([Text(\"Osaka, 2 nights\")], \"Day 5-6\", \"sunk\"), Card([Text(\"Fly home\")], \"Day 7\", \"sunk\")], \"Trip plan\")"
+   }
+  ]
+ },
+ {
+  "name": "Details",
+  "group": "layout",
+  "description": "A collapsible section: the title shows, the content opens on click. Closed unless open is true. Use it for detail most readers skip.",
+  "signature": "Details(title: string, children: any[], open?: boolean)",
+  "examples": [
+   {
+    "name": "Closed and open",
+    "code": "root = Stack([Details(\"Why this works\", [Text(\"The cache holds the last good build, so a retry is cheap.\")]), Details(\"Steps\", [List([\"Clear the cache\", \"Run the build\", \"Check the logs\"], true)], true)])"
+   }
+  ]
+ },
+ {
+  "name": "Divider",
+  "group": "layout",
+  "description": "A thin line between parts. With a label, the label sits in the middle of the line.",
+  "signature": "Divider(label?: string)",
+  "examples": [
+   {
+    "name": "Plain and labelled",
+    "code": "root = Stack([Text(\"Above the line.\"), Divider(), Text(\"Below the line.\"), Divider(\"or\"), Text(\"Another way.\")])"
+   }
+  ]
+ },
+ {
+  "name": "Accordion",
+  "group": "layout",
+  "description": "Stacked sections where one opens at a time; the first starts open. Clicking an open title closes it. Up and down arrows move between titles. While the reply streams, the newest section opens until the reader clicks one.",
+  "signature": "Accordion(items: AccordionItem[])",
+  "examples": [
+   {
+    "name": "FAQ",
+    "code": "root = Accordion([AccordionItem(\"What is included?\", [Text(\"Hosting, backups, and email support.\")]), AccordionItem(\"Can I cancel?\", [Text(\"Yes, any time. You keep access to the end of the month.\")]), AccordionItem(\"Is there a free tier?\", [Text(\"Yes, for one project.\")])])"
+   }
+  ]
+ },
+ {
+  "name": "AccordionItem",
+  "group": "layout",
+  "description": "One section of an Accordion: a title and its content.",
+  "signature": "AccordionItem(title: string, children: any[])",
+  "examples": []
+ },
+ {
+  "name": "Modal",
+  "group": "layout",
+  "description": "A button that opens a dialog with the children inside. label is the button text; title heads the dialog and defaults to label. Escape, the close button, or a click outside closes it. Use it for detail or a Form that should not take room in the reply.",
+  "signature": "Modal(label: string, children: any[], title?: string)",
+  "examples": [
+   {
+    "name": "Details in a dialog",
+    "code": "root = Modal(\"See the full log\", [Text(\"The build failed at step 4 of 6.\"), Code(\"text\", \"error: cannot find module 'zod'\")], \"Build log\")"
+   },
+   {
+    "name": "Form in a dialog",
+    "code": "root = Modal(\"Change the plan\", [Form(\"plan\", [Choice(\"tier\", [\"Free\", \"Pro\", \"Team\"], \"Tier\")], [Button(\"Save\")])])"
+   }
+  ]
+ },
+ {
+  "name": "Tabs",
+  "group": "layout",
+  "description": "Switch between a few views of related content. The first tab shows first.",
+  "signature": "Tabs(tabs: Tab[])",
+  "examples": [
+   {
+    "name": "Two tabs",
+    "code": "root = Tabs([Tab(\"Summary\", [Text(\"Shipped on time.\")]), Tab(\"Notes\", [Text(\"Docs follow next week.\", \"muted\")])])"
+   }
+  ]
+ },
+ {
+  "name": "Tab",
+  "group": "layout",
+  "description": "One tab of Tabs: a label and its content.",
+  "signature": "Tab(label: string, children: any[])",
+  "examples": []
+ },
+ {
+  "name": "Heading",
+  "group": "content",
+  "description": "A section title inside the UI. The reply already names the UI, so do not open with one.",
+  "signature": "Heading(text: string)",
+  "examples": [
+   {
+    "name": "Heading",
+    "code": "root = Stack([Heading(\"Open questions\"), Text(\"Two remain.\")])"
+   }
+  ]
+ },
+ {
+  "name": "Text",
+  "group": "content",
+  "description": "A paragraph of plain text. tone \"default\"|\"muted\"|\"strong\".",
+  "signature": "Text(text: string, tone?: \"default\" | \"muted\" | \"strong\")",
+  "examples": [
+   {
+    "name": "Tones",
+    "code": "root = Stack([Text(\"Default text.\"), Text(\"Muted text.\", \"muted\"), Text(\"Strong text.\", \"strong\")])"
+   }
+  ]
+ },
+ {
+  "name": "Callout",
+  "group": "content",
+  "description": "A short highlighted note with a coloured side bar.",
+  "signature": "Callout(tone: \"info\" | \"success\" | \"warning\" | \"danger\", title: string, body?: string)",
+  "examples": [
+   {
+    "name": "Tones",
+    "code": "root = Stack([Callout(\"info\", \"Heads up\", \"The API changes on Monday.\"), Callout(\"success\", \"Deployed\"), Callout(\"warning\", \"Two blockers\", \"Fix them before Friday.\"), Callout(\"danger\", \"Build failed\")])"
+   }
+  ]
+ },
+ {
+  "name": "Stat",
+  "group": "content",
+  "description": "One headline number. change is a short note under it, like \"+12%\" or \"since May\". trend \"up\" is good (green), \"down\" is bad (red), \"neutral\" (default) is muted. tone colours the value itself: \"success\", \"warning\", \"danger\", \"info\", or \"neutral\" (default, plain).",
+  "signature": "Stat(label: string, value: string | number, change?: string, trend?: \"neutral\" | \"up\" | \"down\", tone?: \"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\", source?: string)",
+  "examples": [
+   {
+    "name": "With change",
+    "code": "root = Stat(\"Signups\", 1240, \"+12%\", \"up\")"
+   },
+   {
+    "name": "Coloured value",
+    "code": "root = Stats([Stat(\"Failing tests\", 3, \"since main\", \"neutral\", \"danger\"), Stat(\"Uptime\", \"99.98%\", \"30 days\", \"neutral\", \"success\")])"
+   }
+  ]
+ },
+ {
+  "name": "Stats",
+  "group": "content",
+  "description": "A row of Stat numbers that wraps on narrow screens.",
+  "signature": "Stats(items: Stat[])",
+  "examples": [
+   {
+    "name": "Three numbers",
+    "code": "root = Stats([Stat(\"Signups\", 1240, \"+12%\", \"up\"), Stat(\"Churn\", \"2.1%\", \"+0.4%\", \"down\"), Stat(\"Due\", \"Fri\")])"
+   }
+  ]
+ },
+ {
+  "name": "Badge",
+  "group": "content",
+  "description": "A short status in a tinted pill, like \"Shipped\", \"Blocked\", or \"3 open\". tone \"neutral\" (default), \"info\", \"success\", \"warning\", or \"danger\". For a topic or category, use Tag.",
+  "signature": "Badge(text: string, tone?: \"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\")",
+  "examples": [
+   {
+    "name": "Tones",
+    "code": "root = Stack([Badge(\"Draft\"), Badge(\"In review\", \"info\"), Badge(\"Shipped\", \"success\"), Badge(\"At risk\", \"warning\"), Badge(\"Blocked\", \"danger\")], \"row\", \"s\")"
+   }
+  ]
+ },
+ {
+  "name": "Tag",
+  "group": "content",
+  "description": "A label for a topic, category, or owner, in a hairline outline. icon is an Icon name shown before the text. tone \"neutral\" (default), \"info\", \"success\", \"warning\", or \"danger\" colours the icon, or a small dot when there is no icon. For a status, use Badge.",
+  "signature": "Tag(text: string, icon?: string, tone?: \"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\")",
+  "examples": [
+   {
+    "name": "Plain, dot, and icon",
+    "code": "root = Stack([Tag(\"design\"), Tag(\"backend\", null, \"info\"), Tag(\"Ana\", \"User\"), Tag(\"Berlin\", \"MapPin\", \"danger\")], \"row\", \"s\")"
+   }
+  ]
+ },
+ {
+  "name": "Chips",
+  "group": "content",
+  "description": "A wrapping row of tags. Each item is a plain string or a Tag. For chips the reader picks from, use Choice.",
+  "signature": "Chips(items: (string | Tag)[])",
+  "examples": [
+   {
+    "name": "Strings and tags",
+    "code": "root = Chips([\"react\", \"zod\", \"vitest\", Tag(\"needs review\", \"Warning\", \"warning\")])"
+   }
+  ]
+ },
+ {
+  "name": "Icon",
+  "group": "content",
+  "description": "A small icon at the size of the text around it. With no tone it takes the text colour; tone \"neutral\", \"info\", \"success\", \"warning\", or \"danger\" colours it. label is read by screen readers; leave it out when the icon only decorates. An unknown name shows nothing. Names: ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, Book, Bookmark, Briefcase, Bug, Building, Calendar, Car, ChartBar, ChartLine, Check, CircleCheck, CircleX, Clock, Cloud, Code, Coffee, CreditCard, Database, DollarSign, Download, ExternalLink, Eye, File, FileText, Flag, Folder, GitBranch, GitCommit, GitPullRequest, Globe, GraduationCap, Heart, Home, Image, Info, Key, Lightbulb, Link, Lock, Mail, MapPin, Message, Minus, Moon, Package, Pencil, Phone, Plane, Plus, Rocket, Search, Server, Settings, Shield, ShoppingCart, Sparkles, Star, Sun, Tag, Target, Terminal, Train, Trash, TrendingDown, TrendingUp, Upload, User, Users, Utensils, Warning, Wrench, X, Zap.",
+  "signature": "Icon(name: string, tone?: \"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\", label?: string)",
+  "examples": [
+   {
+    "name": "Inline and toned",
+    "code": "root = Stack([Icon(\"Check\", \"success\", \"Done\"), Icon(\"Warning\", \"warning\", \"Warning\"), Icon(\"CircleX\", \"danger\", \"Failed\"), Icon(\"Rocket\"), Icon(\"GitPullRequest\", \"info\")], \"row\", \"m\")"
+   }
+  ]
+ },
+ {
+  "name": "Entity",
+  "group": "content",
+  "description": "One person, place, or thing: a picture, the name, a subtitle, and a few facts. facts is an object like {\"Rating\": 4.6, \"Price\": \"$$\"} or a list of [label, value] pairs. image is an http(s) or data: image URL; with none, a kind icon or the first letter stands in. url (http or https) makes the name a link. kind \"person\", \"place\", \"org\", \"product\", \"link\", or \"other\" (default). In a narrow tile, like a Grid or Carousel, the picture goes on top.",
+  "signature": "Entity(name: string, subtitle?: string, image?: string, facts?: Record<string, any> | any[][], url?: string, kind?: \"person\" | \"place\" | \"org\" | \"product\" | \"link\" | \"other\")",
+  "examples": [
+   {
+    "name": "Place with photo",
+    "code": "root = Entity(\"Eiffel Tower\", \"Landmark in Paris\", \"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Tour_Eiffel_Wikimedia_Commons.jpg/640px-Tour_Eiffel_Wikimedia_Commons.jpg\", {\"Height\": \"330 m\", \"Opened\": 1889, \"Visitors\": \"6M a year\"}, \"https://www.toureiffel.paris\", \"place\")"
+   },
+   {
+    "name": "Person, no photo",
+    "code": "root = Entity(\"Ana Lima\", \"Staff engineer, Payments\", null, [[\"Team\", \"Payments\"], [\"Time zone\", \"UTC-3\"]], null, \"person\")"
+   },
+   {
+    "name": "Tiles",
+    "code": "root = Grid([Entity(\"Kyoto\", \"3 nights\", \"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Tour_Eiffel_Wikimedia_Commons.jpg/640px-Tour_Eiffel_Wikimedia_Commons.jpg\", {\"From\": \"$180\"}), Entity(\"Nara\", \"Day trip\", null, {\"Train\": \"45 min\"}, null, \"place\"), Entity(\"Osaka\", \"2 nights\", null, {\"From\": \"$140\"})])"
+   }
+  ]
+ },
+ {
+  "name": "File",
+  "group": "content",
+  "description": "A file reference in mono, as path or path:line. An http(s) URL opens on click; a workspace path shows as text.",
+  "signature": "File(path: string, line?: number)",
+  "examples": [
+   {
+    "name": "Path and URL",
+    "code": "root = Stack([File(\"src/server/auth.ts\", 42), File(\"README.md\"), File(\"https://github.com/hemaaanth/oh-my-bb/blob/main/README.md\")])"
+   }
+  ]
+ },
+ {
+  "name": "Image",
+  "group": "content",
+  "description": "A picture from an http(s) or data: image URL. alt describes it for screen readers, and shows in its place if it fails to load. caption is a line under it. Clicking it opens it full size. Other sources, like file paths, show the alt text.",
+  "signature": "Image(src: string, alt: string, caption?: string)",
+  "examples": [
+   {
+    "name": "With caption",
+    "code": "root = Image(\"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Tour_Eiffel_Wikimedia_Commons.jpg/640px-Tour_Eiffel_Wikimedia_Commons.jpg\", \"The Eiffel Tower on a clear day\", \"Paris, from the Champ de Mars\")"
+   },
+   {
+    "name": "Cannot load",
+    "code": "root = Image(\"/tmp/chart.png\", \"Weekly signups chart\")"
+   }
+  ]
+ },
+ {
+  "name": "KeyValue",
+  "group": "content",
+  "description": "Labels and their values in two aligned columns; on a narrow screen each label sits above its value. pairs is an object like {\"Owner\": \"Ana\", \"Due\": \"Fri\"} or a list of [label, value] pairs. A value may be text, a number, null (shown as a dash), or a component such as Badge or File.",
+  "signature": "KeyValue(pairs: Record<string, any> | any[][])",
+  "examples": [
+   {
+    "name": "Object",
+    "code": "root = KeyValue({\"Owner\": \"Ana Lima\", \"Status\": Badge(\"In review\", \"info\"), \"Due\": \"Fri 24 Oct\", \"Budget\": 12000, \"Notes\": null})"
+   },
+   {
+    "name": "Pairs",
+    "code": "root = KeyValue([[\"Entry point\", File(\"server.ts\", 12)], [\"Runtime\", \"Node 22\"]])"
+   }
+  ]
+ },
+ {
+  "name": "List",
+  "group": "content",
+  "description": "A bulleted list, or a numbered one with ordered true. Each item is a string or a component, like File or Text. A List right after an item nests under it.",
+  "signature": "List(items: any[], ordered?: boolean)",
+  "examples": [
+   {
+    "name": "Bullets",
+    "code": "root = List([\"Faster builds\", \"Smaller bundle\", \"One config file\"])"
+   },
+   {
+    "name": "Numbered, nested",
+    "code": "root = List([\"Set up\", List([\"Install Node 22\", \"Run npm ci\"]), \"Build\", File(\"dist/index.js\"), \"Deploy\"], true)"
+   }
+  ]
+ },
+ {
+  "name": "Sources",
+  "group": "content",
+  "description": "The links an answer drew on, numbered in order, so \"[2]\" in the reply is the second. Each link is a URL string or a Source with a title and note. Only http(s) links open; another link keeps its number and says it cannot open. title heads the list, default \"Sources\".",
+  "signature": "Sources(links: (string | Source)[], title?: string)",
+  "examples": [
+   {
+    "name": "With titles",
+    "code": "root = Sources([Source(\"https://react.dev/reference/react/useId\", \"useId\", \"Stable ids for accessibility attributes.\"), Source(\"https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog\", \"The dialog element\"), \"https://www.w3.org/WAI/ARIA/apg/patterns/accordion/\"])"
+   }
+  ]
+ },
+ {
+  "name": "Source",
+  "group": "content",
+  "description": "One cited link of Sources: an http(s) url, a title (the domain shows when it is missing), and an optional short note.",
+  "signature": "Source(url: string, title?: string, note?: string)",
+  "examples": []
+ },
+ {
+  "name": "Table",
+  "group": "data",
+  "description": "A data table. Each row is a list of cells in column order. Numbers align right. source is an optional caption or HTTPS URL; otherwise loaded files are credited. An empty source hides the caption.",
+  "signature": "Table(columns: string[], rows: (string | number | any)[][], source?: string)",
+  "examples": [
+   {
+    "name": "Mixed cells",
+    "code": "root = Table([\"Task\", \"Owner\", \"Days\"], [[\"Copy\", \"Ana\", 2], [\"QA\", \"Raj\", 5], [\"Launch\", \"Ana\", null]])"
+   }
+  ]
+ },
+ {
+  "name": "Progress",
+  "group": "data",
+  "description": "A labelled progress bar. max defaults to 100.",
+  "signature": "Progress(label: string, value: number, max?: number)",
+  "examples": [
+   {
+    "name": "Two bars",
+    "code": "root = Stack([Progress(\"Done\", 3, 5), Progress(\"Budget used\", 72)])"
+   }
+  ]
+ },
+ {
+  "name": "Code",
+  "group": "data",
+  "description": "A code block with BB's highlighting. language is a file extension like \"ts\", \"py\", \"sh\", \"json\".",
+  "signature": "Code(code: string, language?: string)",
+  "examples": [
+   {
+    "name": "TypeScript",
+    "code": "root = Code(\"export function add(a: number, b: number) {\\n  return a + b;\\n}\", \"ts\")"
+   }
+  ]
+ },
+ {
+  "name": "Diff",
+  "group": "data",
+  "description": "A unified diff of one file in BB's diff viewer. patch is unified diff text with @@ hunks. file is its path.",
+  "signature": "Diff(patch: string, file: string)",
+  "examples": [
+   {
+    "name": "One hunk",
+    "code": "root = Diff(\"@@ -1,3 +1,3 @@\\n export function add(a, b) {\\n-  return a - b;\\n+  return a + b;\\n }\", \"src/math.ts\")"
+   }
+  ]
+ },
+ {
+  "name": "Snippet",
+  "group": "data",
+  "description": "A short line of code or text with a Copy button, like a command to run, an ID, or a URL. For longer code with highlighting use Code.",
+  "signature": "Snippet(text: string, label?: string)",
+  "examples": [
+   {
+    "name": "Command",
+    "code": "root = Snippet(\"npm install @openuidev/react-lang\", \"Install\")"
+   },
+   {
+    "name": "ID",
+    "code": "root = Snippet(\"thr_8f2a91c4\")"
+   }
+  ]
+ },
+ {
+  "name": "FileCode",
+  "group": "data",
+  "description": "Read source lines from a real file in the thread workspace, thread storage, or /tmp. from and to are one-based inclusive lines; default is the file, at most 400 lines. Shows original line numbers and offers Copy and Open file. Published pages use the source captured at publish time. Unlike Snippet, this reads a file rather than copying supplied text.",
+  "signature": "FileCode(file: string, from?: number, to?: number)",
+  "examples": [
+   {
+    "name": "Real line numbers",
+    "code": "root = FileCode(\"src/math.ts\", 2, 4)"
+   }
+  ]
+ },
+ {
+  "name": "Gauge",
+  "group": "data",
+  "description": "One value on a half-circle dial from 0 to max (default 100), like a score or a utilisation. tone colours the dial: \"info\" (default), \"success\", \"warning\", \"danger\", or \"neutral\".",
+  "signature": "Gauge(label: string, value: number, max?: number, tone?: \"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\")",
+  "examples": [
+   {
+    "name": "Score",
+    "code": "root = Gauge(\"Lighthouse score\", 92, 100, \"success\")"
+   },
+   {
+    "name": "Two dials",
+    "code": "root = Stack([Gauge(\"CPU\", 71, 100, \"warning\"), Gauge(\"Disk GB\", 120, 512)], \"row\")"
+   }
+  ]
+ },
+ {
+  "name": "SegmentedBar",
+  "group": "data",
+  "description": "One bar split into parts by value, with a legend of each part's value and share, like a budget or a disk. Parts without a tone take the chart colours in order.",
+  "signature": "SegmentedBar(parts: {label: string, value: number, tone?: \"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\"}[], label?: string)",
+  "examples": [
+   {
+    "name": "Budget",
+    "code": "root = SegmentedBar([{label: \"Design\", value: 12000}, {label: \"Build\", value: 30000}, {label: \"Launch\", value: 8000}], \"Budget\")"
+   },
+   {
+    "name": "Disk with tones",
+    "code": "root = SegmentedBar([{label: \"Used\", value: 380, tone: \"warning\"}, {label: \"Free\", value: 132, tone: \"neutral\"}])"
+   }
+  ]
+ },
+ {
+  "name": "Sparkline",
+  "group": "data",
+  "description": "A tiny line of recent values with no axes, to show a trend at a glance next to text or in a Table cell's place. tone \"info\" (default), \"success\", \"warning\", \"danger\", or \"neutral\".",
+  "signature": "Sparkline(values: number[], tone?: \"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\")",
+  "examples": [
+   {
+    "name": "Up",
+    "code": "root = Sparkline([12, 14, 13, 17, 16, 21, 24], \"success\")"
+   },
+   {
+    "name": "Down",
+    "code": "root = Sparkline([9, 7, 8, 4, 5, 2], \"danger\")"
+   }
+  ]
+ },
+ {
+  "name": "Steps",
+  "group": "data",
+  "description": "Numbered steps in order, joined by a line, like a setup guide or a plan. status \"done\", \"current\", \"todo\" (default), or \"blocked\".",
+  "signature": "Steps(items: {title: string, detail?: string, status?: \"done\" | \"current\" | \"todo\" | \"blocked\"}[])",
+  "examples": [
+   {
+    "name": "Setup",
+    "code": "root = Steps([{title: \"Create the project\", status: \"done\"}, {title: \"Connect GitHub\", detail: \"Pick the repositories BB may read.\", status: \"current\"}, {title: \"Invite the team\"}])"
+   },
+   {
+    "name": "Blocked",
+    "code": "root = Steps([{title: \"Build\", status: \"done\"}, {title: \"Deploy\", detail: \"Waiting on a production approval.\", status: \"blocked\"}, {title: \"Announce\"}])"
+   }
+  ]
+ },
+ {
+  "name": "Timeline",
+  "group": "data",
+  "description": "Events in order along a line, like a changelog, an incident, or a history. time is free text such as \"09:42\" or \"May 2026\". tone colours the dot: \"neutral\" (default), \"info\", \"success\", \"warning\", or \"danger\".",
+  "signature": "Timeline(items: {time?: string, title: string, detail?: string, tone?: \"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\"}[])",
+  "examples": [
+   {
+    "name": "Incident",
+    "code": "root = Timeline([{time: \"09:42\", title: \"Alert fired\", detail: \"p95 latency over 2 s.\", tone: \"danger\"}, {time: \"09:50\", title: \"Rolled back v2.14\", tone: \"warning\"}, {time: \"10:05\", title: \"Resolved\", tone: \"success\"}])"
+   },
+   {
+    "name": "History",
+    "code": "root = Timeline([{time: \"Jan 2026\", title: \"Beta\"}, {time: \"May 2026\", title: \"1.0\"}, {time: \"Oct 2026\", title: \"Teams\", detail: \"Shared projects and roles.\"}])"
+   }
+  ]
+ },
+ {
+  "name": "Tree",
+  "group": "data",
+  "description": "A collapsible tree. Each item is a path string (\"src/app/main.ts\"; paths that share folders merge) or {label, note?, children?}, where children is a list of the same kind of items. note is short muted text after the label. Folders start open while the tree stays short.",
+  "signature": "Tree(items: (string | {label: string, note?: string, children?: any[]})[])",
+  "examples": [
+   {
+    "name": "File paths",
+    "code": "root = Tree([\"src/app/main.ts\", \"src/app/routes.ts\", \"src/lib/db.ts\", \"package.json\", \"README.md\"])"
+   },
+   {
+    "name": "Labels and notes",
+    "code": "root = Tree([{label: \"Company\", children: [{label: \"Engineering\", note: \"24\", children: [{label: \"Platform\", note: \"9\"}, {label: \"Product\", note: \"15\"}]}, {label: \"Design\", note: \"6\"}]}])"
+   }
+  ]
+ },
+ {
+  "name": "Calendar",
+  "group": "data",
+  "description": "A month calendar with events. date is \"yyyy-mm-dd\". month \"yyyy-mm\" picks the month shown first; it defaults to the first event's month, then today. People step between months and pick a day to see its events. tone colours an event: \"info\" (default), \"success\", \"warning\", \"danger\", or \"neutral\".",
+  "signature": "Calendar(events: {date: string, title: string, tone?: \"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\"}[], month?: string)",
+  "examples": [
+   {
+    "name": "Launch month",
+    "code": "root = Calendar([{date: \"2026-11-03\", title: \"Design review\"}, {date: \"2026-11-12\", title: \"Code freeze\", tone: \"warning\"}, {date: \"2026-11-12\", title: \"QA starts\"}, {date: \"2026-11-19\", title: \"Launch\", tone: \"success\"}], \"2026-11\")"
+   }
+  ]
+ },
+ {
+  "name": "CalendarHeatmap",
+  "group": "data",
+  "description": "Daily counts as a GitHub-style grid of weeks, from the first date to the last. date is \"yyyy-mm-dd\"; missing days count as 0 and repeated dates add up. label names what is counted, like \"Commits\". tone colours the cells: \"success\" (default), \"info\", \"warning\", \"danger\", or \"neutral\".",
+  "signature": "CalendarHeatmap(days: {date: string, value: number}[], label?: string, tone?: \"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\")",
+  "examples": [
+   {
+    "name": "Commits",
+    "code": "root = CalendarHeatmap([{date: \"2026-09-01\", value: 3}, {date: \"2026-09-02\", value: 5}, {date: \"2026-09-04\", value: 1}, {date: \"2026-09-08\", value: 8}, {date: \"2026-09-09\", value: 2}, {date: \"2026-09-10\", value: 6}, {date: \"2026-09-15\", value: 4}, {date: \"2026-09-17\", value: 9}, {date: \"2026-09-18\", value: 3}, {date: \"2026-09-22\", value: 2}, {date: \"2026-09-24\", value: 7}, {date: \"2026-09-29\", value: 5}, {date: \"2026-10-01\", value: 1}, {date: \"2026-10-06\", value: 6}, {date: \"2026-10-08\", value: 4}, {date: \"2026-10-13\", value: 10}], \"Commits\")"
+   }
+  ]
+ },
+ {
+  "name": "Diagram",
+  "group": "data",
+  "description": "A flow diagram of boxes and arrows, laid out in layers. Each node has an id and an optional label (defaults to the id). Each edge goes from one node id to another, with an optional short label. direction \"down\" (default) or \"right\". tone outlines a node: \"info\", \"success\", \"warning\", \"danger\", or \"neutral\" (default). Keep it under about 15 nodes.",
+  "signature": "Diagram(nodes: {id: string, label?: string, tone?: \"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\"}[], edges: {from: string, to: string, label?: string}[], direction?: \"down\" | \"right\")",
+  "examples": [
+   {
+    "name": "Flow",
+    "code": "root = Diagram([{id: \"req\", label: \"Request\"}, {id: \"auth\", label: \"Auth\"}, {id: \"cache\", label: \"Cache\"}, {id: \"db\", label: \"Database\"}, {id: \"res\", label: \"Response\", tone: \"success\"}], [{from: \"req\", to: \"auth\"}, {from: \"auth\", to: \"cache\"}, {from: \"cache\", to: \"res\", label: \"hit\"}, {from: \"cache\", to: \"db\", label: \"miss\"}, {from: \"db\", to: \"res\"}])"
+   },
+   {
+    "name": "Left to right with a loop",
+    "code": "root = Diagram([{id: \"draft\", label: \"Draft\"}, {id: \"review\", label: \"Review\", tone: \"info\"}, {id: \"ship\", label: \"Ship\", tone: \"success\"}], [{from: \"draft\", to: \"review\"}, {from: \"review\", to: \"draft\", label: \"changes\"}, {from: \"review\", to: \"ship\"}], \"right\")"
+   }
+  ]
+ },
+ {
+  "name": "Chart",
+  "group": "charts",
+  "description": "A chart of Series. Ordinal types use one value per label. Histogram and box use raw observations: histogram labels are increasing numeric bin edges, or [] for shared automatic bins; box draws quartiles, 1.5 IQR whiskers and outliers. Heatmap uses labels as columns and Series as rows. scatter reads numeric labels as x values. source identifies where the numbers came from. xLabel and yLabel name the axes.",
+  "signature": "Chart(type: \"bar\" | \"line\" | \"area\" | \"stackedBar\" | \"horizontalBar\" | \"pie\" | \"donut\" | \"radar\" | \"radial\" | \"scatter\" | \"funnel\" | \"histogram\" | \"box\" | \"heatmap\", labels: (string | number)[], series: Series[], title?: string, xLabel?: string, yLabel?: string, source?: string)",
+  "examples": [
+   {
+    "name": "Bar",
+    "code": "root = Chart(\"bar\", [\"Mon\", \"Tue\", \"Wed\"], [Series(\"Signups\", [4, 9, 6]), Series(\"Churn\", [1, 2, 1])])"
+   },
+   {
+    "name": "Line",
+    "code": "root = Chart(\"line\", [\"Jan\", \"Feb\", \"Mar\", \"Apr\"], [Series(\"Revenue\", [12, 18, 15, 24])])"
+   },
+   {
+    "name": "Area with axis titles",
+    "code": "root = Chart(\"area\", [\"W1\", \"W2\", \"W3\", \"W4\", \"W5\"], [Series(\"Active users\", [120, 180, 160, 240, 310]), Series(\"New\", [40, 60, null, 80, 95])], \"Weekly users\", \"Week\", \"Users\")"
+   },
+   {
+    "name": "Stacked bar",
+    "code": "root = Chart(\"stackedBar\", [\"Q1\", \"Q2\", \"Q3\", \"Q4\"], [Series(\"Web\", [30, 42, 51, 60]), Series(\"iOS\", [12, 18, 22, 30]), Series(\"Android\", [8, 11, 15, 21])], \"Revenue by platform\")"
+   },
+   {
+    "name": "Horizontal bar",
+    "code": "root = Chart(\"horizontalBar\", [\"Search\", \"Referral\", \"Social\", \"Email\"], [Series(\"Visits\", [4200, 1800, 950, 600])], \"Traffic sources\")"
+   },
+   {
+    "name": "Pie",
+    "code": "root = Chart(\"pie\", [\"Chrome\", \"Safari\", \"Firefox\", \"Edge\"], [Series(\"Share\", [64, 19, 4, 5])], \"Browsers\")"
+   },
+   {
+    "name": "Donut",
+    "code": "root = Chart(\"donut\", [\"Passed\", \"Failed\", \"Skipped\"], [Series(\"Tests\", [412, 6, 18])], \"Test run\")"
+   },
+   {
+    "name": "Radar",
+    "code": "root = Chart(\"radar\", [\"Speed\", \"Cost\", \"Quality\", \"Support\", \"Docs\"], [Series(\"Us\", [8, 6, 9, 7, 5]), Series(\"Rival\", [6, 8, 6, 5, 7])])"
+   },
+   {
+    "name": "Radial",
+    "code": "root = Chart(\"radial\", [\"Move\", \"Exercise\", \"Stand\"], [Series(\"Goal %\", [82, 60, 95])])"
+   },
+   {
+    "name": "Scatter",
+    "code": "root = Chart(\"scatter\", [1, 2, 3, 5, 8, 13], [Series(\"Build time\", [12, 15, 14, 22, 30, 41]), Series(\"Test time\", [5, 6, null, 9, 14, 18])], \"Time by package count\", \"Packages\", \"Seconds\")"
+   },
+   {
+    "name": "Funnel",
+    "code": "root = Chart(\"funnel\", [\"Visited\", \"Signed up\", \"Activated\", \"Paid\"], [Series(\"Users\", [5000, 1200, 640, 180])], \"Signup funnel\")"
+   },
+   {
+    "name": "Histogram",
+    "code": "root = Chart(\"histogram\", [], [Series(\"Before\", [11, 12, 12, 15, 16, 20, 31]), Series(\"After\", [8, 9, 10, 11, 11, 13])], \"Request latency\", \"Milliseconds\", \"Requests\", \"Illustrative\")"
+   },
+   {
+    "name": "Box plot",
+    "code": "root = Chart(\"box\", [], [Series(\"Before\", [11, 12, 13, 14, 15, 16, 45]), Series(\"After\", [7, 8, 9, 10, 11, 12])], \"Latency distribution\", \"Milliseconds\")"
+   },
+   {
+    "name": "Heatmap",
+    "code": "root = Chart(\"heatmap\", [\"Mon\", \"Tue\", \"Wed\"], [Series(\"API\", [8, 2, 5]), Series(\"Worker\", [1, 9, 4])], \"Failures by day\")"
+   }
+  ]
+ },
+ {
+  "name": "Series",
+  "group": "charts",
+  "description": "One named series of a Chart. Ordinal charts take one value per label; histogram and box take raw observations and leave out non-numeric values. null leaves a gap. Optional tone: neutral, info, success, warning, danger.",
+  "signature": "Series(name: string, values: (number | string | any)[], tone?: \"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\")",
+  "examples": []
+ },
+ {
+  "name": "Input",
+  "group": "inputs",
+  "description": "A one-line text field. Bind value to a $variable to use it elsewhere.",
+  "signature": "Input(name: string, label?: string, placeholder?: string, value?: $binding<string>)",
+  "examples": [
+   {
+    "name": "With label",
+    "code": "root = Input(\"title\", \"Title\", \"Name the release\")"
+   },
+   {
+    "name": "Bound",
+    "code": "$name = \"Ada\"\nroot = Stack([Input(\"name\", \"Name\", null, $name), Text(\"Hello, \" + $name, \"muted\")])"
+   }
+  ]
+ },
+ {
+  "name": "TextArea",
+  "group": "inputs",
+  "description": "A text field for a few lines or more. The reader can drag it taller.",
+  "signature": "TextArea(name: string, label?: string, placeholder?: string, value?: $binding<string>)",
+  "examples": [
+   {
+    "name": "Notes",
+    "code": "root = TextArea(\"notes\", \"Anything else?\", \"Context, constraints, links\")"
+   },
+   {
+    "name": "Preset",
+    "code": "root = TextArea(\"summary\", \"Summary\", null, \"Ship the beta to 5% of users on Monday.\\nRoll back if errors pass 1%.\")"
+   }
+  ]
+ },
+ {
+  "name": "Slider",
+  "group": "inputs",
+  "description": "A number slider. Bind value to a $variable to drive other components live.",
+  "signature": "Slider(name: string, min: number, max: number, step?: number, label?: string, value?: $binding<number>)",
+  "examples": [
+   {
+    "name": "Drives a Text",
+    "code": "$budget = 40\nroot = Stack([Slider(\"budget\", 0, 100, 5, \"Budget\", $budget), Text(\"Budget: \" + $budget + \"%\", \"muted\")])"
+   }
+  ]
+ },
+ {
+  "name": "Stepper",
+  "group": "inputs",
+  "description": "A whole or decimal number with - and + buttons, for counts and small amounts. step defaults to 1; it starts at value, else min, else 0. Arrow keys step, Page Up/Down step by 10.",
+  "signature": "Stepper(name: string, label?: string, min?: number, max?: number, step?: number, value?: $binding<number>)",
+  "examples": [
+   {
+    "name": "Count",
+    "code": "root = Stepper(\"seats\", \"Seats\", 1, 20, 1, 3)"
+   },
+   {
+    "name": "Decimals, bound",
+    "code": "$ratio = 1.5\nroot = Stack([Stepper(\"ratio\", \"Ratio\", 0, 3, 0.25, $ratio), Text(\"Ratio \" + $ratio, \"muted\")])"
+   },
+   {
+    "name": "No bounds",
+    "code": "root = Stepper(\"offset\", \"Offset\")"
+   }
+  ]
+ },
+ {
+  "name": "DateInput",
+  "group": "inputs",
+  "description": "A date picker. value, min, and max are yyyy-mm-dd dates, and the answer is sent the same way.",
+  "signature": "DateInput(name: string, label?: string, min?: string, max?: string, value?: $binding<string>)",
+  "examples": [
+   {
+    "name": "Range",
+    "code": "root = DateInput(\"launch\", \"Launch date\", \"2026-11-01\", \"2026-12-31\", \"2026-11-18\")"
+   },
+   {
+    "name": "Empty",
+    "code": "root = DateInput(\"due\", \"Due\")"
+   }
+  ]
+ },
+ {
+  "name": "Rating",
+  "group": "inputs",
+  "description": "Stars from 1 to max (default 5, at most 10). 0 means not rated yet. Picking the current star again clears it.",
+  "signature": "Rating(name: string, label?: string, max?: number, value?: $binding<number>)",
+  "examples": [
+   {
+    "name": "Rated",
+    "code": "root = Rating(\"quality\", \"How good was the answer?\", 5, 4)"
+   },
+   {
+    "name": "Ten, unrated",
+    "code": "root = Rating(\"likely\", \"How likely are you to recommend us?\", 10)"
+   }
+  ]
+ },
+ {
+  "name": "Toggle",
+  "group": "inputs",
+  "description": "An on/off switch.",
+  "signature": "Toggle(name: string, label: string, value?: $binding<boolean>)",
+  "examples": [
+   {
+    "name": "Toggle",
+    "code": "root = Toggle(\"notify\", \"Notify me\")"
+   }
+  ]
+ },
+ {
+  "name": "Choice",
+  "group": "inputs",
+  "description": "Pick one option, or several with multiple true. Shown as pills, so keep options short; options are strings or {label, value?, detail?}; value defaults to label and is what is sent. For options that need a line of detail use Radio or CheckBoxGroup; for a long list use Select.",
+  "signature": "Choice(name: string, options: (string | {label: string, value?: string, detail?: string})[], label?: string, multiple?: boolean, value?: $binding<string | string[]>)",
+  "examples": [
+   {
+    "name": "One",
+    "code": "root = Choice(\"channel\", [\"Email\", \"Ads\", \"Social\"], \"Channel\")"
+   },
+   {
+    "name": "Several",
+    "code": "root = Choice(\"days\", [\"Mon\", \"Tue\", \"Wed\", \"Thu\", \"Fri\"], \"Days\", true, [\"Mon\", \"Wed\"])"
+   }
+  ]
+ },
+ {
+  "name": "Radio",
+  "group": "inputs",
+  "description": "Pick exactly one option from a short column of radio buttons; options are strings or {label, value?, detail?}; value defaults to label and is what is sent, and detail shows under the option. Arrow keys move the pick.",
+  "signature": "Radio(name: string, options: (string | {label: string, value?: string, detail?: string})[], label?: string, value?: $binding<string>)",
+  "examples": [
+   {
+    "name": "With detail",
+    "code": "root = Radio(\"plan\", [{label: \"Starter\", detail: \"One project, community support\"}, {label: \"Team\", detail: \"Ten projects, email support\"}, {label: \"Business\", value: \"biz\", detail: \"Unlimited, SSO, a named contact\"}], \"Plan\", \"Team\")"
+   },
+   {
+    "name": "Plain",
+    "code": "root = Radio(\"size\", [\"Small\", \"Medium\", \"Large\"], \"Size\")"
+   }
+  ]
+ },
+ {
+  "name": "CheckBoxGroup",
+  "group": "inputs",
+  "description": "Tick any number of options in a column of checkboxes; options are strings or {label, value?, detail?}; value defaults to label and is what is sent. The ticked values are sent in option order.",
+  "signature": "CheckBoxGroup(name: string, options: (string | {label: string, value?: string, detail?: string})[], label?: string, value?: $binding<string[]>)",
+  "examples": [
+   {
+    "name": "With detail",
+    "code": "root = CheckBoxGroup(\"checks\", [{label: \"Unit tests\", detail: \"vitest, about 40s\"}, {label: \"Type check\"}, {label: \"End-to-end\", detail: \"Playwright, about 6 min\"}], \"Run before merge\", [\"Unit tests\", \"Type check\"])"
+   }
+  ]
+ },
+ {
+  "name": "Checklist",
+  "group": "inputs",
+  "description": "A to-do list the reader ticks off, with an \"n of m done\" count. items are strings or {label, value?, detail?}; value lists the items already done. Done items are sent.",
+  "signature": "Checklist(name: string, items: (string | {label: string, value?: string, detail?: string})[], label?: string, value?: $binding<string[]>)",
+  "examples": [
+   {
+    "name": "Launch",
+    "code": "root = Checklist(\"launch\", [\"Freeze the branch\", \"Run the migration\", {label: \"Flip the flag\", detail: \"billing.v2 to 100%\"}, \"Post in #releases\"], \"Launch steps\", [\"Freeze the branch\"])"
+   },
+   {
+    "name": "Empty",
+    "code": "root = Checklist(\"todo\", [], \"Nothing to do\")"
+   }
+  ]
+ },
+ {
+  "name": "Select",
+  "group": "inputs",
+  "description": "Pick one option from a dropdown, good for long lists; options are strings or {label, value?, detail?}; value defaults to label and is what is sent. placeholder shows until a pick, default \"Choose…\".",
+  "signature": "Select(name: string, options: (string | {label: string, value?: string, detail?: string})[], label?: string, placeholder?: string, value?: $binding<string>)",
+  "examples": [
+   {
+    "name": "Region",
+    "code": "root = Select(\"region\", [\"us-east-1\", \"us-west-2\", \"eu-west-1\", \"eu-central-1\", \"ap-southeast-1\", \"ap-northeast-1\"], \"Region\", \"Pick a region\")"
+   },
+   {
+    "name": "Labels and preset",
+    "code": "root = Select(\"tz\", [{label: \"London\", value: \"Europe/London\"}, {label: \"New York\", value: \"America/New_York\"}, {label: \"Tokyo\", value: \"Asia/Tokyo\", detail: \"UTC+9\"}], \"Time zone\", null, \"America/New_York\")"
+   }
+  ]
+ },
+ {
+  "name": "OptionCards",
+  "group": "inputs",
+  "description": "Pick one of a few rich options shown as cards side by side, or several with multiple true. options are {label, value?, detail?, icon?, image?}; value defaults to label. image is a scoped file or https picture; its separate expand button does not change the choice. icon is one of: arrowdown, arrowleft, arrowright, arrowup, bell, bookmark, bug, calendar, check, chevrondown, chevronleft, chevronright, chevronup, help, clock, code, copy, download, more, external, eye, file, filter, folder, branch, heart, home, info, idea, link, lock, mail, minus, pause, edit, play, plus, refresh, rocket, search, send, settings, share, sparkles, star, thumbsdown, thumbsup, trash, warning, upload, user, close, zap.",
+  "signature": "OptionCards(name: string, options: (string | {label: string, value?: string, detail?: string, icon?: string, image?: string})[], label?: string, multiple?: boolean, value?: $binding<string | string[]>)",
+  "examples": [
+   {
+    "name": "One",
+    "code": "root = OptionCards(\"approach\", [{label: \"Patch\", icon: \"zap\", detail: \"Fix the query in place. Fast, keeps the debt.\"}, {label: \"Refactor\", icon: \"code\", detail: \"Move reads to the cache layer. Two days.\"}, {label: \"Rewrite\", icon: \"rocket\", detail: \"New service. A sprint, cleanest result.\"}], \"How should we fix it?\", false, \"Refactor\")"
+   },
+   {
+    "name": "Several",
+    "code": "root = OptionCards(\"extras\", [{label: \"Dark mode\"}, {label: \"Export to CSV\", detail: \"From any table\"}, {label: \"Slack alerts\", icon: \"bell\"}], \"Add to the next release\", true)"
+   },
+   {
+    "name": "Visual choices",
+    "code": "root = OptionCards(\"layout\", [{\"label\":\"List\",\"image\":\"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22240%22%20height%3D%22120%22%3E%3Crect%20width%3D%22240%22%20height%3D%22120%22%20fill%3D%22%23f4f4f5%22%2F%3E%3Cpath%20d%3D%22M24%2028h192M24%2060h192M24%2092h192%22%20stroke%3D%22%232563eb%22%20stroke-width%3D%2216%22%2F%3E%3C%2Fsvg%3E\"},{\"label\":\"Columns\",\"image\":\"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22240%22%20height%3D%22120%22%3E%3Crect%20width%3D%22240%22%20height%3D%22120%22%20fill%3D%22%23f4f4f5%22%2F%3E%3Cpath%20d%3D%22M52%2020v80M120%2020v80M188%2020v80%22%20stroke%3D%22%232563eb%22%20stroke-width%3D%2240%22%2F%3E%3C%2Fsvg%3E\"}], \"Choose a layout\")"
+   }
+  ]
+ },
+ {
+  "name": "Swatches",
+  "group": "inputs",
+  "description": "Pick one colour from a row of chips. colors are CSS colours (\"#2563eb\", \"oklch(0.7 0.1 200)\") or {value, name?}; the chosen value is sent.",
+  "signature": "Swatches(name: string, colors: (string | {value: string, name?: string})[], label?: string, value?: $binding<string>)",
+  "examples": [
+   {
+    "name": "Named",
+    "code": "root = Swatches(\"accent\", [{value: \"#2563eb\", name: \"Blue\"}, {value: \"#16a34a\", name: \"Green\"}, {value: \"#d97706\", name: \"Amber\"}, {value: \"#dc2626\", name: \"Red\"}, {value: \"#7c3aed\", name: \"Violet\"}], \"Accent colour\", \"#16a34a\")"
+   },
+   {
+    "name": "Plain CSS",
+    "code": "root = Swatches(\"bg\", [\"white\", \"oklch(0.95 0.02 90)\", \"#0f172a\"], \"Background\")"
+   }
+  ]
+ },
+ {
+  "name": "ListEditor",
+  "group": "inputs",
+  "description": "A list the reader grows, edits in place, and trims, such as names or tags. value is the starting list. Repeats are refused.",
+  "signature": "ListEditor(name: string, label?: string, placeholder?: string, value?: $binding<string[]>)",
+  "examples": [
+   {
+    "name": "Tags",
+    "code": "root = ListEditor(\"tags\", \"Tags\", \"Add a tag\", [\"billing\", \"urgent\"])"
+   },
+   {
+    "name": "Empty",
+    "code": "root = ListEditor(\"reviewers\", \"Reviewers\", \"Name or handle\")"
+   }
+  ]
+ },
+ {
+  "name": "EditableTable",
+  "group": "inputs",
+  "description": "A small table the reader edits: change cells, add rows, remove rows. columns are keys or {key, label?, type?}; type \"text\", \"number\", or \"boolean\" (a checkbox), else the kind of the first filled cell. rows are the starting rows. The rows are sent as JSON.",
+  "signature": "EditableTable(name: string, columns: (string | {key: string, label?: string, type?: \"text\" | \"number\" | \"boolean\"})[], label?: string, rows?: Record<string, any>[])",
+  "examples": [
+   {
+    "name": "Typed columns",
+    "code": "root = EditableTable(\"order\", [{key: \"item\"}, {key: \"qty\", label: \"Qty\", type: \"number\"}, {key: \"gift\", label: \"Gift wrap\", type: \"boolean\"}], \"Order\", [{item: \"Tea\", qty: 2, gift: false}, {item: \"Mug\", qty: 1, gift: true}])"
+   },
+   {
+    "name": "Empty",
+    "code": "root = EditableTable(\"guests\", [\"name\", \"email\"], \"Guests\")"
+   }
+  ]
+ },
+ {
+  "name": "Button",
+  "group": "inputs",
+  "description": "A button. With no action it sends its label (and its Form answers) to the assistant, then locks. variant \"primary\" (default) or \"secondary\".",
+  "signature": "Button(label: string, action?: ActionExpression, variant?: \"primary\" | \"secondary\")",
+  "examples": [
+   {
+    "name": "Variants",
+    "code": "root = Stack([Button(\"Ship it\"), Button(\"Not yet\", null, \"secondary\")], \"row\", \"s\")"
+   }
+  ]
+ },
+ {
+  "name": "IconButton",
+  "group": "inputs",
+  "description": "A square button that shows only an icon; label is its tooltip and screen reader name, and is what it sends, like Button. variant \"secondary\" (default, hairline frame), \"primary\" (solid), or \"ghost\" (no frame). icon is one of: arrowdown, arrowleft, arrowright, arrowup, bell, bookmark, bug, calendar, check, chevrondown, chevronleft, chevronright, chevronup, help, clock, code, copy, download, more, external, eye, file, filter, folder, branch, heart, home, info, idea, link, lock, mail, minus, pause, edit, play, plus, refresh, rocket, search, send, settings, share, sparkles, star, thumbsdown, thumbsup, trash, warning, upload, user, close, zap. An unknown icon shows the label instead.",
+  "signature": "IconButton(label: string, icon: string, action?: ActionExpression, variant?: \"primary\" | \"secondary\" | \"ghost\")",
+  "examples": [
+   {
+    "name": "Variants",
+    "code": "root = Stack([IconButton(\"Like\", \"thumbs-up\", null, \"primary\"), IconButton(\"Retry\", \"refresh\"), IconButton(\"More\", \"more\", null, \"ghost\"), IconButton(\"Unknown icon\", \"kraken\")], \"row\", \"s\")"
+   }
+  ]
+ },
+ {
+  "name": "FollowUps",
+  "group": "inputs",
+  "description": "Suggested next questions, at the end of a reply. Each prompt is a row the reader clicks to send its text to the thread as their next message. Keep 2 to 4 short prompts. label is a heading above them.",
+  "signature": "FollowUps(prompts: string[], label?: string)",
+  "examples": [
+   {
+    "name": "Prompts",
+    "code": "root = FollowUps([\"Show the slowest queries\", \"Compare with last week\", \"Draft the incident note\"], \"Next\")"
+   }
+  ]
+ },
+ {
+  "name": "Form",
+  "group": "inputs",
+  "description": "Groups fields so a Button sends all their answers to the assistant in one message. A sent Form locks until the reader picks Edit answers.",
+  "signature": "Form(name: string, fields: any[], buttons: (Button | IconButton)[])",
+  "examples": [
+   {
+    "name": "Form",
+    "code": "root = Form(\"launch\", [Choice(\"channel\", [\"Email\", \"Ads\"], \"Channel\"), Slider(\"budget\", 0, 100, 5, \"Budget\"), Input(\"note\", \"Note\")], [Button(\"Approve\"), Button(\"Hold\", null, \"secondary\")])"
+   },
+   {
+    "name": "Many fields",
+    "code": "root = Form(\"intake\", [Radio(\"kind\", [\"Bug\", \"Feature\", \"Question\"], \"Kind\"), DateInput(\"due\", \"Needed by\"), Stepper(\"people\", \"People affected\", 1, 1000), Rating(\"pain\", \"How painful?\"), CheckBoxGroup(\"areas\", [\"API\", \"Web\", \"Mobile\"], \"Areas\"), TextArea(\"details\", \"Details\")], [Button(\"Send\"), IconButton(\"Discard\", \"trash\", null, \"ghost\")])"
+   }
+  ]
+ },
+ {
+  "name": "Map",
+  "group": "media",
+  "description": "Numbered Marker parts, place names, or trip records {name,lat?,lng?,note?,day?,wiki?}. Existing Area lists, center, zoom, panning, and popups work unchanged. As the second argument, {route:true,tour:true} joins stops by day and drops pins in sequence without moving the camera. Days inherit from the preceding stop. A Wikipedia lead photo is looked up only when its place opens and must include reusable attribution. Tours pause in hidden pages and respect motion preferences.",
+  "signature": "Map(markers: (Marker | string | Record<string, any>)[], areas?: Area[] | {route?: boolean, tour?: boolean}, center?: string | number[], zoom?: number)",
+  "examples": [
+   {
+    "name": "Trip plan",
+    "code": "root = Map([Marker(\"Belém Tower\", [38.6916, -9.216], \"daytrip\", \"16th-century fort on the Tagus. Go early.\", \"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Lisbon_Torre_de_Bel%C3%A9m_BW_2018-10-03_16-33-21.jpg/960px-Lisbon_Torre_de_Bel%C3%A9m_BW_2018-10-03_16-33-21.jpg\", \"https://en.wikipedia.org/wiki/Bel%C3%A9m_Tower\"), Marker(\"Guesthouse\", [38.7118, -9.1300], \"stay\", \"Two nights in Alfama.\"), Marker(\"Tram 28 stop\", [38.7107, -9.1336], \"general\", \"Ride it uphill, not at noon.\", \"https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/Tram_28_Lisbon_Portuguese.jpg/960px-Tram_28_Lisbon_Portuguese.jpg\"), Marker(\"Rua Augusta at noon\", [38.7101, -9.1366], \"avoid\", \"Packed with tour groups.\")], [Area(\"Alfama\", [[38.7148, -9.1345], [38.7152, -9.1262], [38.7098, -9.1250], [38.7090, -9.1322]], \"stay\", \"Old quarter: steep lanes, good rooms.\")])"
+   },
+   {
+    "name": "Places by name",
+    "code": "root = Map([Marker(\"Lisbon\", \"Lisbon, Portugal\"), Marker(\"Sintra\", \"Sintra, Portugal\", \"daytrip\", \"Pena Palace and the Moorish Castle.\"), Marker(\"Cascais\", \"Cascais, Portugal\", \"daytrip\", \"Beach town at the end of the train line.\")])"
+   },
+   {
+    "name": "Fixed view",
+    "code": "root = Map([Marker(\"Time Out Market\", [38.7069, -9.1459], \"general\", \"Food hall by Cais do Sodré.\")], null, [38.7069, -9.1459], 16)"
+   },
+   {
+    "name": "Days and routes",
+    "code": "root = Map([{name:\"Belém Tower\",lat:38.6916,lng:-9.216,day:1,wiki:\"Belém Tower\",note:\"Go early.\"},{name:\"Jerónimos Monastery\",lat:38.6979,lng:-9.2067},{name:\"Pena Palace\",lat:38.7876,lng:-9.3906,day:2,wiki:\"Pena Palace\"},{name:\"Moorish Castle\",lat:38.7924,lng:-9.3894}], {route:true,tour:true})"
+   }
+  ]
+ },
+ {
+  "name": "Marker",
+  "group": "media",
+  "description": "One numbered place of Map. at is [lat, lng] or a place name. kind \"general\" (default, indigo), \"stay\" (green), \"daytrip\" (amber), or \"avoid\" (red). description, image, and link fill its click popup. day groups a trip's stops; later stops inherit it. wiki names an English Wikipedia article whose credited lead photo is looked up only when this place opens.",
+  "signature": "Marker(title: string, at: string | number[], kind?: \"general\" | \"stay\" | \"daytrip\" | \"avoid\", description?: string, image?: string, link?: string, day?: string | number, wiki?: string)",
+  "examples": []
+ },
+ {
+  "name": "Area",
+  "group": "media",
+  "description": "A shaded region of Map: points are three or more [lat, lng] corners in order. kind \"general\" (default, indigo), \"stay\" (green), \"daytrip\" (amber), or \"avoid\" (red). description shows in its popup.",
+  "signature": "Area(title: string, points: number[][], kind?: \"general\" | \"stay\" | \"daytrip\" | \"avoid\", description?: string)",
+  "examples": []
+ },
+ {
+  "name": "Gallery",
+  "group": "media",
+  "description": "A grid of pictures; clicking one opens it full size, with previous and next. Each item is an image URL or a Photo with a caption. columns is 1 to 6; by default one picture fills the width, two or four sit in pairs, and more go in threes.",
+  "signature": "Gallery(items: (string | Photo)[], columns?: number)",
+  "examples": [
+   {
+    "name": "Captioned photos",
+    "code": "root = Gallery([Photo(\"https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/Tram_28_Lisbon_Portuguese.jpg/960px-Tram_28_Lisbon_Portuguese.jpg\", \"Tram 28 in the old town\"), Photo(\"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Lisbon_Torre_de_Bel%C3%A9m_BW_2018-10-03_16-33-21.jpg/960px-Lisbon_Torre_de_Bel%C3%A9m_BW_2018-10-03_16-33-21.jpg\", \"Belém Tower\"), Photo(\"https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Sintra_Portugal_Pal%C3%A1cio_da_Pena-01.jpg/960px-Sintra_Portugal_Pal%C3%A1cio_da_Pena-01.jpg\", \"Pena Palace, Sintra\"), Photo(\"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Alfama%2C_Lisbon_%28DSC03367%29.jpg/960px-Alfama%2C_Lisbon_%28DSC03367%29.jpg\", \"Alfama rooftops\")])"
+   },
+   {
+    "name": "Links in three columns",
+    "code": "root = Gallery([\"https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Sintra_Portugal_Pal%C3%A1cio_da_Pena-01.jpg/960px-Sintra_Portugal_Pal%C3%A1cio_da_Pena-01.jpg\", \"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Lisbon_Torre_de_Bel%C3%A9m_BW_2018-10-03_16-33-21.jpg/960px-Lisbon_Torre_de_Bel%C3%A9m_BW_2018-10-03_16-33-21.jpg\", \"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Alfama%2C_Lisbon_%28DSC03367%29.jpg/960px-Alfama%2C_Lisbon_%28DSC03367%29.jpg\"], 3)"
+   }
+  ]
+ },
+ {
+  "name": "Photo",
+  "group": "media",
+  "description": "One picture of Gallery: src is an http(s) or data: image URL, caption a short line under it, alt describes it for screen readers (default: the caption).",
+  "signature": "Photo(src: string, caption?: string, alt?: string)",
+  "examples": []
+ },
+ {
+  "name": "BeforeAfter",
+  "group": "media",
+  "description": "Two or more pictures side by side to compare, like Before and After or option A and B; they stack on a narrow screen. Each item is {\"label\", \"src\", \"alt\", \"tone\", \"caption\"}: label heads the column, src is an http(s) or data: image URL, alt describes it, tone \"positive\"|\"negative\"|\"warning\" puts a coloured dot by the label, and caption is a line under it. Clicking a picture opens it full size.",
+  "signature": "BeforeAfter(items: {label: string, src: string, alt: string, tone?: \"positive\" | \"negative\" | \"warning\", caption?: string}[])",
+  "examples": [
+   {
+    "name": "Before and after",
+    "code": "root = BeforeAfter([{\"label\": \"Before\", \"src\": \"data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20480%20300'%3E%3Crect%20width%3D'480'%20height%3D'300'%20fill%3D'%23f4f4f5'%2F%3E%3Cg%20fill%3D'%23d4d4d8'%3E%3Crect%20x%3D'32'%20y%3D'28'%20width%3D'220'%20height%3D'16'%2F%3E%3Crect%20x%3D'32'%20y%3D'64'%20width%3D'416'%20height%3D'22'%2F%3E%3Crect%20x%3D'32'%20y%3D'98'%20width%3D'200'%20height%3D'22'%2F%3E%3Crect%20x%3D'248'%20y%3D'98'%20width%3D'200'%20height%3D'22'%2F%3E%3Crect%20x%3D'32'%20y%3D'132'%20width%3D'416'%20height%3D'22'%2F%3E%3Crect%20x%3D'32'%20y%3D'166'%20width%3D'130'%20height%3D'22'%2F%3E%3Crect%20x%3D'175'%20y%3D'166'%20width%3D'130'%20height%3D'22'%2F%3E%3Crect%20x%3D'318'%20y%3D'166'%20width%3D'130'%20height%3D'22'%2F%3E%3Crect%20x%3D'32'%20y%3D'200'%20width%3D'416'%20height%3D'22'%2F%3E%3C%2Fg%3E%3Crect%20x%3D'32'%20y%3D'244'%20width%3D'70'%20height%3D'26'%20fill%3D'%23a1a1aa'%2F%3E%3Crect%20x%3D'112'%20y%3D'244'%20width%3D'70'%20height%3D'26'%20fill%3D'%23a1a1aa'%2F%3E%3Crect%20x%3D'192'%20y%3D'244'%20width%3D'70'%20height%3D'26'%20fill%3D'%23a1a1aa'%2F%3E%3C%2Fsvg%3E\", \"alt\": \"Sign-up form with nine fields and three buttons\", \"tone\": \"negative\", \"caption\": \"Nine fields, three equal buttons.\"}, {\"label\": \"After\", \"src\": \"data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20480%20300'%3E%3Crect%20width%3D'480'%20height%3D'300'%20fill%3D'%23f4f4f5'%2F%3E%3Crect%20x%3D'32'%20y%3D'40'%20width%3D'180'%20height%3D'18'%20fill%3D'%23a1a1aa'%2F%3E%3Cg%20fill%3D'%23e4e4e7'%20stroke%3D'%23d4d4d8'%3E%3Crect%20x%3D'32'%20y%3D'84'%20width%3D'416'%20height%3D'34'%2F%3E%3Crect%20x%3D'32'%20y%3D'138'%20width%3D'416'%20height%3D'34'%2F%3E%3C%2Fg%3E%3Crect%20x%3D'32'%20y%3D'206'%20width%3D'120'%20height%3D'36'%20fill%3D'%236366f1'%2F%3E%3C%2Fsvg%3E\", \"alt\": \"Sign-up form with two fields and one primary button\", \"tone\": \"positive\", \"caption\": \"Two fields and one clear action.\"}])"
+   },
+   {
+    "name": "Two options",
+    "code": "root = BeforeAfter([{\"label\": \"Option A: Alfama\", \"src\": \"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Alfama%2C_Lisbon_%28DSC03367%29.jpg/960px-Alfama%2C_Lisbon_%28DSC03367%29.jpg\", \"alt\": \"Rooftops of Alfama above the river\", \"caption\": \"Old town, steep lanes, near the river.\"}, {\"label\": \"Option B: Belém\", \"src\": \"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Lisbon_Torre_de_Bel%C3%A9m_BW_2018-10-03_16-33-21.jpg/960px-Lisbon_Torre_de_Bel%C3%A9m_BW_2018-10-03_16-33-21.jpg\", \"alt\": \"Belém Tower on the Tagus\", \"tone\": \"warning\", \"caption\": \"Calmer, but a tram ride from the centre.\"}])"
+   }
+  ]
+ },
+ {
+  "name": "Hotspots",
+  "group": "media",
+  "description": "A picture with numbered points on it and a key below; picking a point or its row shows its text. image is an http(s) or data: image URL, and alt describes it. Only use it when you know where each feature sits in the picture.",
+  "signature": "Hotspots(image: string, points: Hotspot[], alt?: string)",
+  "examples": [
+   {
+    "name": "Parts of a building",
+    "code": "root = Hotspots(\"https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Sintra_Portugal_Pal%C3%A1cio_da_Pena-01.jpg/960px-Sintra_Portugal_Pal%C3%A1cio_da_Pena-01.jpg\", [Hotspot(22, 20, \"Dome tower\", \"The yellow tower with the grey dome, the **New Palace** side.\"), Hotspot(67, 26, \"Clock tower\", \"The red tower belongs to the old monastery the palace grew from.\"), Hotspot(54, 32, \"Golden domes\", \"Two small domes that echo the big one.\"), Hotspot(40, 66, \"Battlements\", \"Crenellated walls wrap the whole hilltop.\")], \"Pena Palace in Sintra, yellow and red towers above the trees\")"
+   }
+  ]
+ },
+ {
+  "name": "Hotspot",
+  "group": "media",
+  "description": "One numbered point of Hotspots: x and y are percent across and down the picture (0 to 100), title names it, and text (Markdown) shows when it is picked.",
+  "signature": "Hotspot(x: number, y: number, title: string, text?: string)",
+  "examples": []
+ },
+ {
+  "name": "ImageSearch",
+  "group": "media",
+  "description": "Photos found on the web for query, from Wikimedia Commons, each credited with its author and licence. Use it to show what a place, landmark, plant, animal, or object looks like when you have no image URL. count is 1 (default) to 8. aspect \"wide\" (default), \"square\", or \"tall\" crops them alike. Clicking one opens it full size.",
+  "signature": "ImageSearch(query: string, count?: number, aspect?: \"wide\" | \"square\" | \"tall\")",
+  "examples": [
+   {
+    "name": "One photo",
+    "code": "root = ImageSearch(\"Pena Palace Sintra\")"
+   },
+   {
+    "name": "A few, square",
+    "code": "root = ImageSearch(\"Lisbon tram 28\", 4, \"square\")"
+   }
+  ]
+ },
+ {
+  "name": "Scene",
+  "group": "gpu",
+  "description": "Interactive 3D scene. Objects use shape: box, sphere, cylinder, surface, mesh, line, path, point, label, grid, axes, model, environment, sprite. Positions use at:[x,y,z], with y up. Materials take color (theme token or #rrggbb), roughness, metal, glow, glass, ior, dispersion, texture. Model src is a local embedded GLB/glTF; environment src is HDR or an image. A surface uses x:[min,max], z:[min,max], values:height rows or f:a quoted OpenUI expression such as \"@Sin($x)*@Cos($z)\". objects may be a quoted array expression using $t in seconds. Named inputs are available as $name. Use @Sin/@Cos and the native OpenUI math functions, never JavaScript. Orbit by drag, pinch or ctrl-wheel; double-click resets. GPU contexts pause off screen. System reduced motion and Pages Animations apply.",
+  "signature": "Scene(objects: Record<string, any>[] | string, height?: number, camera?: {yaw?: number, pitch?: number, zoom?: number}, spin?: number, animate?: boolean, orbit?: boolean, inputs?: Record<string, any>)",
+  "examples": [
+   {
+    "name": "Solids and labels",
+    "code": "root = Scene([{shape: \"box\", at: [-1, 0.5, 0], size: 1, color: \"accent\"}, {shape: \"sphere\", at: [0.7, 0.65, 0], radius: 0.65, color: \"chart3\", metal: 0.3}, {shape: \"grid\", size: 5}, {shape: \"axes\", size: 2}, {shape: \"label\", at: [-1, 1.3, 0], text: \"Box\"}])"
+   },
+   {
+    "name": "Sampled surface",
+    "code": "root = Scene([{shape: \"surface\", x: [-3, 3], z: [-3, 3], f: \"@Sin($x) * @Cos($z)\", detail: 40, colors: [\"chart2\", \"accent\", \"chart3\"]}, {shape: \"axes\", size: 3}], 320)"
+   },
+   {
+    "name": "Animated orbit",
+    "code": "root = Scene(\"[{shape: \\\"sphere\\\", at: [@Cos($t) * 1.2, 0.6, @Sin($t) * 1.2], radius: 0.4, color: \\\"accent\\\"}, {shape: \\\"sphere\\\", at: [0, 0.6, 0], radius: 0.25, color: \\\"chart4\\\", glow: 0.5}, {shape: \\\"grid\\\", size: 4}]\", 280)"
+   },
+   {
+    "name": "Glass and glow",
+    "code": "root = Scene([{shape: \"sphere\", at: [-0.8, 0.7, 0], radius: 0.7, color: \"accent\", glass: true, roughness: 0.05}, {shape: \"box\", at: [0.8, 0.5, 0], color: \"chart4\", glow: 0.8}, {shape: \"grid\", size: 5}], 280)"
+   }
+  ]
+ },
+ {
+  "name": "Shader",
+  "group": "gpu",
+  "description": "Shadertoy-style WebGL2 shader: code defines void mainImage(out vec4 fragColor, in vec2 fragCoord). Uniforms include iResolution, iTime, iTimeDelta, iFrame, iMouse, iCamera, iNoise. Named inputs become float uniforms; booleans are 0/1. Up to four buffers run before the image, with ping-pong feedback as iChannel0-3; textures are iTexture0-3. Inputs update uniforms without recompilation. blend is light (black transparent), alpha, or opaque; bloom preserves HDR light. Optional orbit camera, spin, and live height. Rendering pauses off screen and respects reduced motion. No network from shaders; textures load through Pages.",
+  "signature": "Shader(code: string, height?: number, inputs?: Record<string, number | boolean>, buffers?: string[], textures?: string[], animate?: boolean, blend?: \"light\" | \"alpha\" | \"opaque\", bloom?: number, orbit?: boolean, spin?: number, camera?: {yaw?: number, pitch?: number, zoom?: number})",
+  "examples": [
+   {
+    "name": "Animated light",
+    "code": "root = Shader(\"void mainImage(out vec4 c, in vec2 p) { vec2 uv = (p - 0.5 * iResolution.xy) / iResolution.y; float light = 0.02 / max(0.015, abs(length(uv) - 0.2 - 0.04 * sin(iTime))); c = vec4(vec3(0.2, 0.55, 1.0) * light, 1.0); }\", 240)"
+   },
+   {
+    "name": "Live input",
+    "code": "$speed = 1\nroot = Stack([Slider(\"speed\", 0, 3, 0.1, \"Speed\", $speed), Shader(\"void mainImage(out vec4 c, in vec2 p) { vec2 uv = p / iResolution.xy; c = vec4(0.5 + 0.5 * cos(iTime * speed + uv.xyx * 6.0 + vec3(0.0, 2.0, 4.0)), 1.0); }\", 220, {speed: $speed}, [], [], true, \"opaque\")])"
+   },
+   {
+    "name": "Feedback buffer",
+    "code": "root = Shader(\"void mainImage(out vec4 c, in vec2 p) { c = texture(iChannel0, p / iResolution.xy); }\", 220, {}, [\"void mainImage(out vec4 c, in vec2 p) { vec2 uv = p / iResolution.xy; vec3 previous = texture(iChannel0, uv).rgb * 0.96; vec2 center = 0.5 + 0.25 * vec2(cos(iTime), sin(iTime * 1.3)); float dotLight = exp(-500.0 * dot(uv - center, uv - center)); c = vec4(previous + dotLight * vec3(0.1, 0.4, 0.8), 1.0); }\"])"
+   }
+  ]
+ },
+ {
+  "name": "App",
+  "group": "apps",
+  "description": "Self-contained HTML/JavaScript for a custom visual, game or simulation. name is stable within this block and keys its saved state. Scripts run only after the fence closes. The opaque iframe blocks fetches and remote resource loads, but it can navigate its own frame and make a network request. Embed assets and code. localStorage persists up to 256 KB per app, with a 1 MB total budget; sessionStorage is memory-only. genui.answer(text) stages an answer for review in BB; null removes it. genui.canAnswer is false on published pages and downloads. genui.openLink(httpsUrl) requests a link from a user gesture. genui.reducedMotion and matchMedia expose motion preferences. Use CSS theme variables and the SVG kit classes t, ts, th, box, arr, leader and tone-good/warn/bad/info/accent. App actions include pane-scoped full screen, download, source, and sandbox limits.",
+  "signature": "App(name: string, html: string)",
+  "examples": [
+   {
+    "name": "Persistent counter",
+    "code": "root = App(\"counter\", \"<title>Counter</title>\\n<div style=\\\"display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px\\\">\\n<button id=\\\"minus\\\" aria-label=\\\"Decrease\\\">−</button><output id=\\\"value\\\" style=\\\"min-width:3ch;text-align:center;font-size:24px;font-variant-numeric:tabular-nums\\\"></output><button id=\\\"plus\\\" aria-label=\\\"Increase\\\">+</button>\\n<button id=\\\"answer\\\">Use count</button>\\n</div>\\n<script>\\nlet count = Number(localStorage.getItem('count') || 0);\\nconst value = document.getElementById('value');\\nfunction draw() { value.textContent = count; localStorage.setItem('count', String(count)); }\\ndocument.getElementById('minus').onclick = () => { count--; draw(); };\\ndocument.getElementById('plus').onclick = () => { count++; draw(); };\\nconst answer = document.getElementById('answer');\\nanswer.hidden = !genui.canAnswer;\\nanswer.onclick = () => genui.answer('Count: ' + count);\\ndraw();\\n</script>\")"
+   },
+   {
+    "name": "SVG diagram kit",
+    "code": "root = App(\"request-flow\", \"<title>Request flow</title>\\n<svg viewBox=\\\"0 0 560 160\\\" role=\\\"img\\\" aria-label=\\\"Browser requests API, API reads database\\\" style=\\\"width:100%;height:auto\\\">\\n<g class=\\\"tone-info\\\"><rect class=\\\"box\\\" x=\\\"8\\\" y=\\\"46\\\" width=\\\"132\\\" height=\\\"64\\\" rx=\\\"6\\\"/><text class=\\\"th\\\" x=\\\"74\\\" y=\\\"84\\\" text-anchor=\\\"middle\\\">Browser</text></g>\\n<path class=\\\"arr\\\" d=\\\"M148 78H210\\\" marker-end=\\\"url(#genui-arrow)\\\"/><text class=\\\"ts\\\" x=\\\"180\\\" y=\\\"55\\\" text-anchor=\\\"middle\\\">request</text>\\n<g class=\\\"tone-accent\\\"><rect class=\\\"box\\\" x=\\\"218\\\" y=\\\"46\\\" width=\\\"124\\\" height=\\\"64\\\" rx=\\\"6\\\"/><text class=\\\"th\\\" x=\\\"280\\\" y=\\\"84\\\" text-anchor=\\\"middle\\\">API</text></g>\\n<path class=\\\"arr\\\" d=\\\"M350 78H412\\\" marker-end=\\\"url(#genui-arrow)\\\"/><text class=\\\"ts\\\" x=\\\"382\\\" y=\\\"55\\\" text-anchor=\\\"middle\\\">query</text>\\n<g class=\\\"tone-good\\\"><rect class=\\\"box\\\" x=\\\"420\\\" y=\\\"46\\\" width=\\\"132\\\" height=\\\"64\\\" rx=\\\"6\\\"/><text class=\\\"th\\\" x=\\\"486\\\" y=\\\"84\\\" text-anchor=\\\"middle\\\">Database</text></g>\\n</svg>\")"
+   }
+  ]
+ },
+ {
+  "name": "Benchmark",
+  "group": "dev",
+  "description": "Benchmark results from manual before/after rows, hyperfine JSON, vitest bench JSON, or runs with metrics and conditions. unit accepts time, bytes, rates, percentages, or a label. Changes smaller than noise stay unchanged. Different recorded conditions are not presented as a like-for-like improvement. Expand a result for samples and conditions.",
+  "signature": "Benchmark(results: any[] | Record<string, any>, title?: string, unit?: string)",
+  "examples": [
+   {
+    "name": "Before and after",
+    "code": "root = Benchmark([{name: \"parse 1 MB\", before: 18.4, after: 11.2, unit: \"ms\"}, {name: \"render cart\", before: 3.1, after: 3.12, unit: \"ms\"}, {name: \"checkout\", before: 42, after: 51, unit: \"ms\", noise: 2}, {name: \"bundle\", before: 349438, after: 331200, unit: \"B\"}], \"This branch vs main\")"
+   },
+   {
+    "name": "hyperfine",
+    "code": "root = Benchmark({\"results\":[{\"command\":\"esbuild\",\"mean\":0.312,\"stddev\":0.01},{\"command\":\"rollup\",\"mean\":4.84,\"stddev\":0.2},{\"command\":\"webpack\",\"mean\":9.71,\"stddev\":0.35}]}, \"Bundlers\")"
+   },
+   {
+    "name": "Measurement conditions",
+    "code": "root = Benchmark([{name:\"Build\",before:{value:120,context:{device:\"Laptop\",thermal:\"Nominal\"}},after:{value:80,context:{device:\"Desktop\",thermal:\"Nominal\"}},unit:\"ms\"},{name:\"Parse\",before:[18.2,18.5,18.3],after:[11.1,11.3,11.2],unit:\"ms\"}], \"Comparable results\")"
+   },
+   {
+    "name": "All experiment runs",
+    "code": "root = Benchmark({runs:[{name:\"Laptop, cold\",status:\"ok\",metrics:{latency:120,memory:24000},context:{device:\"Laptop\",cache:\"Cold\"}},{name:\"Laptop, warm\",status:\"ok\",metrics:{latency:80,memory:26000},context:{device:\"Laptop\",cache:\"Warm\"}},{name:\"Desktop\",status:\"failed\",context:{device:\"Desktop\"},note:\"Process crashed before measuring\"}],metrics:{latency:{unit:\"ms\",better:\"lower\"},memory:{unit:\"B\",better:\"lower\"}}}, \"Experiment notebook\")"
+   }
+  ]
+ },
+ {
+  "name": "Coverage",
+  "group": "dev",
+  "description": "Coverage from Istanbul coverage-summary.json, lcov.info text, coverage.py JSON, Go coverage.out text, or existing manual rows [{path, covered, total} | {path, pct}]. Files can be filtered, read as a directory tree, and expanded to inspect uncovered ranges. Query(\"file\") returns .data for JSON and .text for lcov/Go. metric selects lines, statements, functions, or branches.",
+  "signature": "Coverage(report: any[] | Record<string, any> | string, title?: string, metric?: \"lines\" | \"statements\" | \"functions\" | \"branches\")",
+  "examples": [
+   {
+    "name": "From a file",
+    "code": "data = Query(\"file\", {path: \"coverage/coverage-summary.json\"}, {data: null})\nroot = Coverage(data.data, \"Coverage\")"
+   },
+   {
+    "name": "Inline, branches",
+    "code": "root = Coverage({\"total\":{\"lines\":{\"total\":1240,\"covered\":1017,\"pct\":82.02},\"statements\":{\"total\":1302,\"covered\":1046,\"pct\":80.34},\"functions\":{\"total\":210,\"covered\":151,\"pct\":71.9},\"branches\":{\"total\":388,\"covered\":251,\"pct\":64.69}},\"/w/shop/src/cart/total.ts\":{\"lines\":{\"total\":48,\"covered\":48,\"pct\":100}},\"/w/shop/src/cart/coupons.ts\":{\"lines\":{\"total\":120,\"covered\":70,\"pct\":58.33}},\"/w/shop/src/checkout/pay.ts\":{\"lines\":{\"total\":310,\"covered\":229,\"pct\":73.87}},\"/w/shop/src/checkout/address.ts\":{\"lines\":{\"total\":95,\"covered\":94,\"pct\":98.94}}}, null, \"branches\")"
+   },
+   {
+    "name": "LCOV uncovered lines",
+    "code": "root = Coverage(\"SF:src/cart.ts\\nDA:10,4\\nDA:11,0\\nDA:12,0\\nDA:13,2\\nLF:4\\nLH:2\\nend_of_record\\n\", \"Cart coverage\")"
+   },
+   {
+    "name": "Python coverage",
+    "code": "root = Coverage({meta:{version:\"7.6\"},files:{\"worker.py\":{executed_lines:[1,2,5],missing_lines:[3,4],summary:{covered_lines:3,num_statements:5,percent_covered:60}}},totals:{covered_lines:3,num_statements:5,percent_covered:60}}, \"Worker coverage\")"
+   },
+   {
+    "name": "Go coverage",
+    "code": "root = Coverage(\"mode: set\\nexample.com/shop/cart.go:10.1,12.2 2 1\\nexample.com/shop/cart.go:14.1,18.2 3 0\\n\", \"Go statements\")"
+   }
+  ]
+ },
+ {
+  "name": "Dependencies",
+  "group": "dev",
+  "description": "Outdated and vulnerable dependencies. packages accepts existing manual rows, npm/pnpm outdated JSON, pip outdated JSON, npm audit v2, pnpm advisories, or {outdated, audit}. Expand a vulnerability for affected versions, direct/transitive relationships, advisory links, and the reported fix. This component never installs or updates a package.",
+  "signature": "Dependencies(packages: any[] | Record<string, any>, title?: string)",
+  "examples": [
+   {
+    "name": "npm outdated",
+    "code": "root = Dependencies({\"react\":{\"current\":\"19.0.2\",\"wanted\":\"19.0.2\",\"latest\":\"20.1.0\",\"type\":\"dependencies\"},\"zod\":{\"current\":\"4.0.5\",\"wanted\":\"4.1.3\",\"latest\":\"4.1.3\",\"type\":\"dependencies\"},\"vitest\":{\"current\":\"3.2.1\",\"wanted\":\"3.2.4\",\"latest\":\"3.2.4\",\"type\":\"devDependencies\"},\"typescript\":{\"current\":\"5.9.2\",\"wanted\":\"5.9.3\",\"latest\":\"6.0.1\",\"type\":\"devDependencies\"}}, \"Outdated\")"
+   },
+   {
+    "name": "From a file",
+    "code": "data = Query(\"file\", {path: \"outdated.json\"}, {data: null})\nroot = Dependencies(data.data)"
+   },
+   {
+    "name": "npm audit",
+    "code": "root = Dependencies({auditReportVersion:2,vulnerabilities:{axios:{name:\"axios\",severity:\"high\",isDirect:true,via:[{name:\"axios\",title:\"Untrusted redirect\",url:\"https://github.com/axios/axios/security/advisories\",severity:\"high\",range:\"<1.8.2\"}],effects:[],range:\"<1.8.2\",nodes:[\"node_modules/axios\"],fixAvailable:{name:\"axios\",version:\"1.8.2\",isSemVerMajor:false}}},metadata:{dependencies:{total:311}}}, \"Security audit\")"
+   }
+  ]
+ },
+ {
+  "name": "Findings",
+  "group": "dev",
+  "description": "Review, lint, or security findings from manual rows, ESLint/Ruff/oxlint/Biome JSON, SARIF, tsc text, or a structured review. Search by message, path, rule, or status. Expand a finding for evidence, source files, suggested patches, and ownership or verification details. Fixed by an owner is distinct from confirmed by a reviewer.",
+  "signature": "Findings(findings: any[] | Record<string, any> | string, title?: string)",
+  "examples": [
+   {
+    "name": "Review",
+    "code": "root = Findings([{severity: \"high\", title: \"SQL built from user input\", file: \"src/orders/query.ts\", line: 31, rule: \"sql-injection\", detail: \"Pass the id as a parameter.\", code: \"db.query(`SELECT * FROM orders WHERE id = ${req.params.id}`)\"}, {severity: \"medium\", title: \"Promise is not awaited\", file: \"src/checkout/pay.ts\", line: 58}, {severity: \"low\", title: \"Unused import\", file: \"src/checkout/pay.ts\", line: 2, rule: \"no-unused-vars\"}], \"Review\")"
+   },
+   {
+    "name": "SARIF",
+    "code": "root = Findings({\"runs\":[{\"results\":[{\"ruleId\":\"js/xss\",\"level\":\"error\",\"message\":{\"text\":\"Unescaped HTML from a query string.\"},\"locations\":[{\"physicalLocation\":{\"artifactLocation\":{\"uri\":\"src/search.tsx\"},\"region\":{\"startLine\":22}}}]},{\"ruleId\":\"js/unused-local\",\"level\":\"note\",\"message\":{\"text\":\"Unused variable 'tmp'.\"},\"locations\":[{\"physicalLocation\":{\"artifactLocation\":{\"uri\":\"src/util.ts\"},\"region\":{\"startLine\":4}}}]}]}]})"
+   },
+   {
+    "name": "Compiler output",
+    "code": "root = Findings(\"src/cart.ts(12,7): error TS2322: Type 'string' is not assignable to type 'number'.\", \"Type check\")"
+   },
+   {
+    "name": "Review lifecycle",
+    "code": "root = Findings([{id:\"auth\",severity:\"high\",title:\"Check the session before changing roles\",area:\"auth\",file:\"src/roles.ts\",line:18,status:\"open\",fix:\"Verify the session and required role before updating.\"},{id:\"cache\",severity:\"medium\",title:\"Cache eviction\",status:\"fixed\",fixNote:\"Patch is applied; load check is still missing.\"},{id:\"import\",severity:\"low\",title:\"Unused import\",status:\"confirmed\",by:\"Reviewer\",revision:\"abc123\"}], \"Follow-up review\")"
+   }
+  ]
+ },
+ {
+  "name": "Logs",
+  "group": "dev",
+  "description": "A log viewer: levels toned, repeated lines folded with a count, links clickable, and filters for errors and warnings. log is the text (ANSI colours are removed) or a list of lines or {level, msg, time} entries (pino and bunyan JSON lines work). Levels are read from words like ERROR, [warn], level=info. wrap true wraps long lines. Load a file with Query(\"file\") and pass its text.",
+  "signature": "Logs(log: string | any[], title?: string, wrap?: boolean)",
+  "examples": [
+   {
+    "name": "Server log",
+    "code": "root = Logs(\"2026-06-15T09:00:01Z INFO  server listening on http://localhost:3000\\n2026-06-15T09:00:04Z DEBUG cache warm: 312 keys\\n2026-06-15T09:01:10Z WARN  slow query (812 ms): SELECT * FROM orders\\n2026-06-15T09:01:12Z INFO  GET /api/cart 200 14ms\\n2026-06-15T09:01:12Z INFO  GET /api/cart 200 14ms\\n2026-06-15T09:01:12Z INFO  GET /api/cart 200 14ms\\n2026-06-15T09:01:15Z ERROR payment failed: card_declined\\n    at charge (src/checkout/pay.ts:42:11)\\n2026-06-15T09:01:15Z INFO  see https://docs.example.com/errors/card_declined\", \"server.log\")"
+   },
+   {
+    "name": "From a file",
+    "code": "data = Query(\"file\", {path: \"/tmp/build.log\"}, {text: \"\"})\nroot = Logs(data.text, data.path, true)"
+   },
+   {
+    "name": "JSON lines",
+    "code": "root = Logs([{level: 30, time: \"09:00:01\", msg: \"worker started\"}, {level: 40, time: \"09:00:05\", msg: \"queue is 80% full\"}, {level: 50, time: \"09:00:07\", msg: \"job 812 failed\"}])"
+   }
+  ]
+ },
+ {
+  "name": "Pipeline",
+  "group": "dev",
+  "description": "A CI run: its overall status, then jobs by stage, failures first; a job with steps opens to show them (failed jobs start open). jobs is [{name, status, ms?, stage?, url?, steps?}] or `gh run view --json jobs` output (status and conclusion, startedAt and completedAt). status is success, failure, in_progress, queued, cancelled, or skipped; words like passed, running, pending, error also work.",
+  "signature": "Pipeline(jobs: any[] | Record<string, any>, title?: string)",
+  "examples": [
+   {
+    "name": "Stages",
+    "code": "root = Pipeline([{name: \"lint\", stage: \"check\", status: \"success\", ms: 21000}, {name: \"typecheck\", stage: \"check\", status: \"success\", ms: 48000}, {name: \"unit (node 22)\", stage: \"test\", status: \"failure\", ms: 95000, steps: [{name: \"install\", status: \"success\", ms: 30000}, {name: \"vitest\", status: \"failure\", ms: 64000}, {name: \"upload\", status: \"skipped\"}]}, {name: \"unit (node 24)\", stage: \"test\", status: \"success\", ms: 91000}, {name: \"deploy\", stage: \"release\", status: \"skipped\"}], \"CI #812\")"
+   },
+   {
+    "name": "gh run view",
+    "code": "root = Pipeline({\"jobs\":[{\"name\":\"build\",\"status\":\"completed\",\"conclusion\":\"success\",\"startedAt\":\"2026-06-15T09:00:00Z\",\"completedAt\":\"2026-06-15T09:02:14Z\",\"steps\":[{\"name\":\"Checkout\",\"status\":\"completed\",\"conclusion\":\"success\"},{\"name\":\"Build\",\"status\":\"completed\",\"conclusion\":\"success\"}]},{\"name\":\"e2e\",\"status\":\"in_progress\",\"startedAt\":\"2026-06-15T09:02:20Z\"}]})"
+   }
+  ]
+ },
+ {
+  "name": "StackTrace",
+  "group": "dev",
+  "description": "An error and its stack, your code first: runs of library frames (node_modules, node:, site-packages, java.*) fold into one row; causes follow. trace is the text of a JavaScript, Python, or Java/Kotlin trace, or {name, message, stack}. Python traces show the innermost frame first like the others.",
+  "signature": "StackTrace(trace: string | Record<string, any>, title?: string)",
+  "examples": [
+   {
+    "name": "JavaScript",
+    "code": "root = StackTrace(\"TypeError: Cannot read properties of undefined (reading 'price')\\n    at lineTotal (/w/shop/src/cart/total.ts:12:24)\\n    at Array.map (<anonymous>)\\n    at total (/w/shop/src/cart/total.ts:5:22)\\n    at renderWithHooks (/w/shop/node_modules/react-dom/cjs/react-dom.development.js:15486:18)\\n    at mountIndeterminateComponent (/w/shop/node_modules/react-dom/cjs/react-dom.development.js:20103:13)\\n    at beginWork (/w/shop/node_modules/react-dom/cjs/react-dom.development.js:21626:16)\\n    at Cart (/w/shop/src/cart/Cart.tsx:31:9)\\n  [cause]: Error: item 3 has no product\\n    at loadItems (/w/shop/src/cart/load.ts:20:11)\")"
+   },
+   {
+    "name": "Python",
+    "code": "root = StackTrace(\"Traceback (most recent call last):\\n  File \\\"/app/main.py\\\", line 14, in <module>\\n    main()\\n  File \\\"/app/main.py\\\", line 10, in main\\n    total = order_total(items)\\n  File \\\"/app/orders.py\\\", line 7, in order_total\\n    return sum(item[\\\"price\\\"] for item in items)\\nKeyError: 'price'\", \"Worker crash\")"
+   }
+  ]
+ },
+ {
+  "name": "Treemap",
+  "group": "dev",
+  "description": "Sizes as nested tiles, area by value: bundle or folder sizes, time by area, cost by service. items is [{name, value, group?}] (path and size also work) or {name: size}. Items that share a group sit together under its name. The largest 24 show; the rest fold into one \"N more\" tile. unit (B, KB, ms, $, …) formats values.",
+  "signature": "Treemap(items: any[] | Record<string, any>, title?: string, unit?: string)",
+  "examples": [
+   {
+    "name": "Bundle",
+    "code": "root = Treemap([{name: \"react-dom\", value: 131000, group: \"vendor\"}, {name: \"zod\", value: 58000, group: \"vendor\"}, {name: \"date-fns\", value: 31000, group: \"vendor\"}, {name: \"checkout\", value: 72000, group: \"app\"}, {name: \"cart\", value: 41000, group: \"app\"}, {name: \"search\", value: 26000, group: \"app\"}, {name: \"app.css\", value: 18000, group: \"styles\"}], \"dist/ by chunk\", \"B\")"
+   },
+   {
+    "name": "Flat",
+    "code": "root = Treemap({compute: 4210, storage: 1380, network: 920, logs: 410, backups: 160}, \"Cloud cost\", \"$\")"
+   }
+  ]
+ },
+ {
+  "name": "Waterfall",
+  "group": "dev",
+  "description": "Spans on one time axis: trace spans, build steps, page requests. spans is [{name, start, duration, depth?, failed?, detail?}] (end works for duration; status failure marks it failed), a HAR file (browser devtools export), or Chrome trace events. unit is the unit of start and duration: ms (default), s, or us. depth indents a child span.",
+  "signature": "Waterfall(spans: any[] | Record<string, any>, title?: string, unit?: string)",
+  "examples": [
+   {
+    "name": "Trace",
+    "code": "root = Waterfall([{name: \"POST /checkout\", start: 0, duration: 412}, {name: \"auth\", start: 4, duration: 22, depth: 1}, {name: \"load cart\", start: 28, duration: 96, depth: 1}, {name: \"SELECT items\", start: 31, duration: 80, depth: 2}, {name: \"charge card\", start: 130, duration: 270, depth: 1, failed: true, detail: \"card_declined\"}], \"Request trace\")"
+   },
+   {
+    "name": "From a HAR file",
+    "code": "data = Query(\"file\", {path: \"/tmp/shop.har\"}, {data: null})\nroot = Waterfall(data.data, \"Page load\")"
+   }
+  ]
+ },
+ {
+  "name": "Changes",
+  "group": "project",
+  "description": "Changed files with line counts. Each file with a patch (unified diff text) opens to show it in BB's diff viewer. status is added, modified (default), deleted, renamed, copied, or type_changed; give previousPath for renames. open true starts every file open. Use Query(\"changes\") for this thread's uncommitted changes.",
+  "signature": "Changes(files: {path: string, status?: string, additions?: number, deletions?: number, patch?: string, previousPath?: string}[], title?: string, open?: boolean)",
+  "examples": [
+   {
+    "name": "From the thread",
+    "code": "data = Query(\"changes\", {}, {files: []})\nroot = Changes(data.files, \"Uncommitted changes\")"
+   },
+   {
+    "name": "Inline, one file open",
+    "code": "root = Changes([{path: \"src/total.ts\", status: \"modified\", additions: 2, deletions: 1, patch: \"@@ -1,4 +1,5 @@\\n export function total(items) {\\n-  return items.reduce((a, b) => a + b);\\n+  if (!items.length) return 0;\\n+  return items.reduce((a, b) => a + b, 0);\\n }\"}, {path: \"src/sum.ts\", previousPath: \"src/add.ts\", status: \"renamed\", additions: 0, deletions: 0}], null, true)"
+   }
+  ]
+ },
+ {
+  "name": "Commits",
+  "group": "project",
+  "description": "A list of commits, newest first: short sha, subject, author, and when. date is ISO text or epoch ms. Use Query(\"commits\") for the commits on this thread's branch.",
+  "signature": "Commits(commits: {subject: string, sha?: string, author?: string, date?: string | number}[], title?: string)",
+  "examples": [
+   {
+    "name": "From the thread",
+    "code": "data = Query(\"commits\", {limit: 5}, {commits: []})\nroot = Commits(data.commits, \"On \" + data.branch)"
+   },
+   {
+    "name": "Inline",
+    "code": "root = Commits([{sha: \"a1b2c3d\", subject: \"Ship the new checkout\", author: \"Ana\", date: \"2026-03-02T10:00:00Z\"}, {subject: \"Draft release notes\"}])"
+   }
+  ]
+ },
+ {
+  "name": "Json",
+  "group": "project",
+  "description": "A collapsible JSON viewer for any value: objects and lists open and close; closed ones show their size. open is how many levels start open (default 1). Good for Query(\"file\") data and API responses.",
+  "signature": "Json(data: any, title?: string, open?: number)",
+  "examples": [
+   {
+    "name": "Nested",
+    "code": "root = Json({name: \"shop\", version: \"2.4.0\", private: true, scripts: {build: \"vite build\", test: \"vitest\"}, workspaces: [\"web\", \"api\"], licence: null}, \"package.json\")"
+   },
+   {
+    "name": "From a file",
+    "code": "data = Query(\"file\", {path: \"package.json\"}, {data: null})\nroot = Json(data.data, data.path, 2)"
+   }
+  ]
+ },
+ {
+  "name": "PullRequest",
+  "group": "project",
+  "description": "One pull request: number, title, state, branches, checks, review, and whether it can merge. state is open, draft, merged, or closed. checks.state is passing, failing, pending, or no_checks; review is approved, changes_requested, review_requested, or review_required; mergeable is mergeable, conflicts, or blocked. A null pullRequest shows message. Use Query(\"pull_request\") for this thread's branch.",
+  "signature": "PullRequest(pullRequest?: {number?: number, title: string, url?: string, state?: string, base?: string, head?: string, updatedAt?: string, checks?: {state?: string, passed?: number, failed?: number, pending?: number, total?: number}, review?: string, mergeable?: string}, message?: string)",
+  "examples": [
+   {
+    "name": "From the thread",
+    "code": "data = Query(\"pull_request\", {}, {pullRequest: null, message: \"\"})\nroot = PullRequest(data.pullRequest, data.message)"
+   },
+   {
+    "name": "Merged",
+    "code": "root = PullRequest({number: 97, title: \"Move cart totals to the server\", state: \"merged\", base: \"main\", head: \"cart-server\", checks: {state: \"passing\", passed: 9, total: 9}, review: \"approved\"})"
+   },
+   {
+    "name": "None",
+    "code": "root = PullRequest(null, \"This branch has no pull request.\")"
+   }
+  ]
+ },
+ {
+  "name": "Tests",
+  "group": "project",
+  "description": "Test results from existing case lists, vitest/Jest JSON, or JUnit XML. Failures sort first, with source locations, messages, and captured output behind disclosures. Search by name, suite, or file. Skips, pending tests, and expected failures stay distinct from passing tests. Load a report with Query(\"file\").",
+  "signature": "Tests(results: any[] | string | Record<string, any>, title?: string)",
+  "examples": [
+   {
+    "name": "Cases",
+    "code": "root = Tests([{name: \"adds items\", status: \"passed\", suite: \"cart\", ms: 4}, {name: \"totals an empty cart\", status: \"failed\", suite: \"cart\", ms: 2, message: \"AssertionError: expected NaN to be 0\"}, {name: \"charges the card\", status: \"passed\", suite: \"checkout\", ms: 120}, {name: \"refunds\", status: \"todo\", suite: \"checkout\"}], \"Unit tests\")"
+   },
+   {
+    "name": "JUnit report",
+    "code": "data = Query(\"file\", {path: \"reports/junit.xml\"}, {text: \"\"})\nroot = Tests(data.text)"
+   },
+   {
+    "name": "vitest JSON",
+    "code": "root = Tests({testResults: [{name: \"src/math.test.ts\", assertionResults: [{title: \"adds\", ancestorTitles: [\"math\"], status: \"passed\", duration: 1}, {title: \"divides by zero\", ancestorTitles: [\"math\"], status: \"failed\", duration: 3, failureMessages: [\"Error: expected Infinity to throw\"]}]}]})"
+   }
+  ]
+ },
+ {
+  "name": "Threads",
+  "group": "project",
+  "description": "Threads with their status, branch, and last update. status is active, idle, error, pending, starting, or stopping. waiting true marks a thread that needs an answer; current marks this one. Use Query(\"threads\") for this project.",
+  "signature": "Threads(threads: {title: string, status?: string, updatedAt?: string | number, branch?: string, waiting?: boolean, current?: boolean}[], title?: string)",
+  "examples": [
+   {
+    "name": "From the project",
+    "code": "data = Query(\"threads\", {limit: 10}, {threads: []})\nroot = Threads(data.threads)"
+   }
+  ]
+ },
+ {
+  "name": "Environments",
+  "group": "project",
+  "description": "Environments (checkouts and worktrees) with branch, base, and status. status is ready, creating, provisioning, or error. current marks this thread's. Use Query(\"environments\") for this project.",
+  "signature": "Environments(environments: {name: string, branch?: string, base?: string, status?: string, worktree?: boolean, path?: string, updatedAt?: string | number, current?: boolean}[], title?: string)",
+  "examples": [
+   {
+    "name": "From the project",
+    "code": "data = Query(\"environments\", {}, {environments: []})\nroot = Environments(data.environments)"
+   }
+  ]
+ },
+ {
+  "name": "Board",
+  "group": "manage",
+  "description": "Kanban columns of cards. Each card has a title and a status; cards with the same status share a column. Common statuses (\"todo\", \"in progress\", \"in review\", \"blocked\", \"done\") sort in workflow order, others follow as first seen. columns names the columns to show, in order, empty ones too. due is yyyy-mm-dd and shows red once past, unless the card is done. Give name to let the reader move cards (drag, or the ⋯ menu on each card) and send the moves to the thread as \"- Card: From → To\" lines. Without name it is read-only.",
+  "signature": "Board(cards: {title: string, status?: string, owner?: string, tags?: string[], due?: string, detail?: string}[], columns?: string[], name?: string)",
+  "examples": [
+   {
+    "name": "By status",
+    "code": "root = Board([{title: \"Pricing page copy\", status: \"todo\", owner: \"Ana\", tags: [\"web\"]}, {title: \"Billing webhooks\", status: \"in progress\", owner: \"Raj\", due: \"2026-10-12\"}, {title: \"Invoice PDF\", status: \"in review\", owner: \"Ana\"}, {title: \"Tax rules\", status: \"blocked\", detail: \"Waiting on legal\"}, {title: \"Stripe keys\", status: \"done\", owner: \"Raj\"}])"
+   },
+   {
+    "name": "Fixed columns",
+    "code": "root = Board([{title: \"Draft post\", status: \"Writing\"}, {title: \"Pick images\", status: \"Writing\"}, {title: \"Launch email\", status: \"Scheduled\", due: \"2026-11-02\"}], [\"Ideas\", \"Writing\", \"Scheduled\", \"Sent\"])"
+   },
+   {
+    "name": "Reader moves cards",
+    "code": "root = Board([{title: \"Dark mode\", status: \"Backlog\"}, {title: \"CSV export\", status: \"Backlog\", tags: [\"data\"]}, {title: \"SSO\", status: \"Next\"}, {title: \"Audit log\", status: \"Next\"}, {title: \"Faster search\", status: \"Now\", owner: \"Ana\"}], [\"Backlog\", \"Next\", \"Now\"], \"priorities\")"
+   }
+  ]
+ },
+ {
+  "name": "Decision",
+  "group": "manage",
+  "description": "Options for one decision, each with pros, cons, and a note. recommend is the name of the option you recommend; it is marked. Give name to let the reader choose: each option gets a Choose button that sends \"<question>: <option>\" to the thread, then locks. Without name it is read-only.",
+  "signature": "Decision(question: string, options: {name: string, pros?: string[], cons?: string[], note?: string}[], recommend?: string, name?: string)",
+  "examples": [
+   {
+    "name": "Read-only",
+    "code": "root = Decision(\"Which queue?\", [{name: \"BullMQ\", pros: [\"Mature\", \"Redis we already run\"], cons: [\"Another Redis load\"]}, {name: \"SQS\", pros: [\"No servers\"], cons: [\"AWS lock-in\", \"Slower local dev\"]}, {name: \"Postgres queue\", note: \"pg-boss on the main DB\", pros: [\"No new service\"], cons: [\"Load on the main DB\"]}], \"BullMQ\")"
+   },
+   {
+    "name": "Reader picks",
+    "code": "root = Decision(\"Launch date?\", [{name: \"Nov 4\", pros: [\"Before the conference\"], cons: [\"Tight QA\"]}, {name: \"Nov 18\", pros: [\"Full QA week\"], cons: [\"Misses the conference\"]}], \"Nov 18\", \"launch-date\")"
+   }
+  ]
+ },
+ {
+  "name": "Estimate",
+  "group": "manage",
+  "description": "Three-point estimates: per task the best case (low), the likely case, and the worst case (high), with a total. likely defaults to the midpoint. The total also shows P50, P80, and P90 from a PERT model (tasks taken as independent). unit is a short word like \"d\" (default), \"h\", \"w\", or \"pts\".",
+  "signature": "Estimate(tasks: {task: string, low: number, likely?: number, high: number}[], unit?: string)",
+  "examples": [
+   {
+    "name": "Days",
+    "code": "root = Estimate([{task: \"API\", low: 2, likely: 3, high: 6}, {task: \"UI\", low: 3, likely: 4, high: 8}, {task: \"Migration\", low: 1, high: 4}, {task: \"QA\", low: 1, likely: 2, high: 3}])"
+   },
+   {
+    "name": "Points, one invalid",
+    "code": "root = Estimate([{task: \"Search\", low: 3, likely: 5, high: 8}, {task: \"Filters\", low: 5, likely: 2, high: 8}], \"pts\")"
+   }
+  ]
+ },
+ {
+  "name": "Plan",
+  "group": "manage",
+  "description": "Ordered steps with an owner and a status each. status \"todo\" (default), \"doing\", \"done\", \"blocked\", or \"skipped\". due is yyyy-mm-dd or short text like \"Fri\". A line on top counts done and blocked steps.",
+  "signature": "Plan(steps: {step: string, status?: \"todo\" | \"doing\" | \"done\" | \"blocked\" | \"skipped\", owner?: string, due?: string, detail?: string}[])",
+  "examples": [
+   {
+    "name": "In progress",
+    "code": "root = Plan([{step: \"Freeze the schema\", status: \"done\", owner: \"Raj\"}, {step: \"Backfill old rows\", status: \"doing\", owner: \"Ana\", due: \"2026-10-20\", detail: \"About 2M rows, in batches\"}, {step: \"Switch reads\", status: \"blocked\", owner: \"Raj\", detail: \"Needs the backfill\"}, {step: \"Drop the old table\", owner: \"Ana\", due: \"Fri\"}, {step: \"Load test\", status: \"skipped\"}])"
+   }
+  ]
+ },
+ {
+  "name": "Roadmap",
+  "group": "manage",
+  "description": "Items on a time axis, grouped by lane. Dates are yyyy-mm-dd; end is the last day. An item with no end, or with milestone true, is a milestone on its start day. status \"done\", \"active\", \"planned\", \"at-risk\", or \"blocked\"; without one, an item is active when today is inside it, else planned. The axis reads in days, weeks, or months by span. today defaults to the reader's date.",
+  "signature": "Roadmap(items: {title: string, start: string, end?: string, lane?: string, status?: \"done\" | \"active\" | \"planned\" | \"at-risk\" | \"blocked\", milestone?: boolean}[], today?: string)",
+  "examples": [
+   {
+    "name": "Weeks, by lane",
+    "code": "root = Roadmap([{title: \"Auth rework\", lane: \"Platform\", start: \"2026-10-01\", end: \"2026-10-24\", status: \"done\"}, {title: \"Rate limits\", lane: \"Platform\", start: \"2026-10-20\", end: \"2026-11-14\", status: \"at-risk\"}, {title: \"New editor\", lane: \"Product\", start: \"2026-10-12\", end: \"2026-11-28\"}, {title: \"Beta\", lane: \"Product\", start: \"2026-11-30\", milestone: true}, {title: \"Pricing\", lane: \"Growth\", start: \"2026-11-02\", end: \"2026-11-20\", status: \"blocked\"}], \"2026-10-28\")"
+   },
+   {
+    "name": "Months",
+    "code": "root = Roadmap([{title: \"Research\", start: \"2026-01-05\", end: \"2026-02-27\", status: \"done\"}, {title: \"Build\", start: \"2026-03-02\", end: \"2026-07-31\", status: \"active\"}, {title: \"Launch\", start: \"2026-08-15\"}], \"2026-05-10\")"
+   }
+  ]
+ },
+ {
+  "name": "Status",
+  "group": "manage",
+  "description": "A status report: the overall state, a one-line summary, then highlights, risks, and next steps as short lists. state \"on-track\", \"at-risk\", \"off-track\", \"blocked\", or \"done\". Empty lists are left out.",
+  "signature": "Status(state: \"on-track\" | \"at-risk\" | \"off-track\" | \"blocked\" | \"done\", summary?: string, highlights?: string[], risks?: string[], next?: string[])",
+  "examples": [
+   {
+    "name": "At risk",
+    "code": "root = Status(\"at-risk\", \"Launch may slip a week.\", [\"Billing is live in staging\", \"Docs are done\"], [\"Tax rules still with legal\", \"One QA engineer out\"], [\"Decide the date on Monday\", \"Start the load test\"])"
+   },
+   {
+    "name": "On track",
+    "code": "root = Status(\"on-track\", \"All three milestones met.\")"
+   }
+  ]
+ },
+ {
+  "name": "Acceptance",
+  "group": "evidence",
+  "description": "Acceptance checks as a list, a condition matrix, an owner/reviewer result, or CSV text. Existing {criterion,status,evidence,note} rows work. Matrices use {name, cells:{condition:result}} and optional columns. A missing result is not tested; done or owner-reported work is only claimed, not independently verified. Click a condition for its evidence, method, reviewer, run, and time. Required gaps and user actions stay visible.",
+  "signature": "Acceptance(criteria: any[] | Record<string, any> | string, title?: string, columns?: string[])",
+  "examples": [
+   {
+    "name": "Not proven",
+    "code": "root = Acceptance([{criterion: \"Signup works on mobile\", status: \"pass\", evidence: \"https://ci.example.com/runs/812\"}, {criterion: \"Errors show inline\", status: \"pass\", evidence: \"app/signup.test.tsx:44\"}, {criterion: \"Page loads under 1 s\", status: \"unknown\", note: \"No perf run yet\"}], \"Signup form\")"
+   },
+   {
+    "name": "Not done",
+    "code": "root = Acceptance([{criterion: \"Exports CSV\", status: \"pass\", evidence: \"Tried with 10k rows\"}, {criterion: \"Keeps filters\", status: \"fail\", evidence: \"Filters reset after export\"}])"
+   },
+   {
+    "name": "Done",
+    "code": "root = Acceptance([{criterion: \"Old links redirect\", status: \"pass\"}, {criterion: \"No 404s in logs for a day\", status: \"pass\", evidence: \"logs/2026-10-16.txt\"}])"
+   },
+   {
+    "name": "Device matrix",
+    "code": "root = Acceptance([{name:\"Upgrade keeps data\",cells:{Phone:{status:\"pass\",by:\"QA\",evidence:\"10,000 records retained\"},Desktop:{status:\"fail\",note:\"Filters reset\"}}},{name:\"Cold start\",cells:{Phone:{status:\"blocked\",needs:\"Unlock the test phone\"},Desktop:\"claimed\"}},{name:\"Deep links\",cells:{Desktop:\"pass\"}}], \"Release checks\")"
+   },
+   {
+    "name": "CSV checks",
+    "code": "root = Acceptance(\"criterion,status,evidence\\nBuilds,pass,Build log\\nExports CSV,unknown,No run recorded\", \"Import checks\")"
+   }
+  ]
+ },
+ {
+  "name": "Compare",
+  "group": "evidence",
+  "description": "Compare(options, rows, best?) keeps the scored options table. Compare(images, title?, mode?) compares screenshots: images is [{src,label?,meta?,note?}], reference first. mode is side, wipe, blink, or difference. Blink respects motion preferences and can be paused. Inspect changed pixels and regions, adjust tolerance, and zoom in the shared viewer. Different capture conditions and image sizes are disclosed; this is pixel evidence, not design approval.",
+  "signature": "Compare(options: any[], rows?: {criterion: string, values: (string | number | any)[], better?: \"high\" | \"low\"}[] | string, best?: string)",
+  "examples": [
+   {
+    "name": "Scored",
+    "code": "root = Compare([\"Postgres\", \"DynamoDB\", \"SQLite\"], [{criterion: \"Cost / month\", values: [\"$120\", \"$310\", \"$0\"], better: \"low\"}, {criterion: \"p99 read\", values: [\"4 ms\", \"9 ms\", \"1 ms\"], better: \"low\"}, {criterion: \"Max size (TB)\", values: [64, null, 0.3], better: \"high\"}, {criterion: \"Joins\", values: [\"Yes\", \"No\", \"Yes\"]}])"
+   },
+   {
+    "name": "Chosen",
+    "code": "root = Compare([\"Plan A\", \"Plan B\"], [{criterion: \"Weeks\", values: [6, 4], better: \"low\"}, {criterion: \"Risk\", values: [\"Low\", \"High\"]}], \"Plan A\")"
+   },
+   {
+    "name": "Image difference",
+    "code": "root = Compare([{\"src\":\"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22384%22%20height%3D%22216%22%3E%3Crect%20width%3D%22384%22%20height%3D%22216%22%20fill%3D%22%23f4f4f5%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%2224%22%20width%3D%22240%22%20height%3D%2216%22%20rx%3D%224%22%20fill%3D%22%2327272a%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%2260%22%20width%3D%22320%22%20height%3D%228%22%20rx%3D%224%22%20fill%3D%22%23a1a1aa%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%22134%22%20width%3D%2296%22%20height%3D%2236%22%20rx%3D%226%22%20fill%3D%22%232563eb%22%2F%3E%3Ctext%20x%3D%2245%22%20y%3D%22157%22%20font-family%3D%22sans-serif%22%20font-size%3D%2214%22%20fill%3D%22white%22%3EContinue%3C%2Ftext%3E%3C%2Fsvg%3E\",\"label\":\"Reference\"},{\"src\":\"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22384%22%20height%3D%22216%22%3E%3Crect%20width%3D%22384%22%20height%3D%22216%22%20fill%3D%22%23f4f4f5%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%2224%22%20width%3D%22240%22%20height%3D%2216%22%20rx%3D%224%22%20fill%3D%22%2327272a%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%2260%22%20width%3D%22320%22%20height%3D%228%22%20rx%3D%224%22%20fill%3D%22%23a1a1aa%22%2F%3E%3Crect%20x%3D%2240%22%20y%3D%22134%22%20width%3D%2296%22%20height%3D%2236%22%20rx%3D%226%22%20fill%3D%22%232563eb%22%2F%3E%3Ctext%20x%3D%2261%22%20y%3D%22157%22%20font-family%3D%22sans-serif%22%20font-size%3D%2214%22%20fill%3D%22white%22%3EContinue%3C%2Ftext%3E%3C%2Fsvg%3E\",\"label\":\"Candidate\"}], \"Button position\")"
+   }
+  ]
+ },
+ {
+  "name": "Provenance",
+  "group": "evidence",
+  "description": "Two evidence chains. Provenance(claim, steps, value?) keeps the existing source-to-number chain. Provenance(stages, expected?, title?) checks which revision or build reached a device or server. Each stage has {name,status,facts?,evidence?,detail?}; expected holds requested branch/sha/build facts. Missing receipts never pass. Expand a stage for full, copyable facts and evidence; identity changes are flagged.",
+  "signature": "Provenance(claim: string | any[], steps?: {step: string, value?: string, source?: string, url?: string, detail?: string}[] | Record<string, any>, value?: string)",
+  "examples": [
+   {
+    "name": "Revenue",
+    "code": "root = Provenance(\"Q3 net revenue\", [{step: \"Exported paid invoices\", value: \"4,812 rows\", source: \"Stripe export\", url: \"https://dashboard.stripe.com/invoices\"}, {step: \"Summed amounts\", value: \"$1.31M\", source: \"billing.invoices\"}, {step: \"Took out refunds\", value: \"−$58k\", source: \"billing.refunds\", detail: \"Refunds dated inside Q3 only\"}], \"$1.25M\")"
+   },
+   {
+    "name": "Installed build",
+    "code": "root = Provenance([{name:\"Checkout\",status:\"done\",facts:{branch:\"release\",sha:\"abc123456789\"}},{name:\"Build\",status:\"done\",facts:{sha:\"abc123456789\",build:\"204\"}},{name:\"Install\",status:\"done\",facts:{branch:\"main\",build:\"203\",device:\"Test phone\"}},{name:\"Launch\"}], {branch:\"release\",build:\"204\"}, \"Device receipts\")"
+   }
+  ]
+ },
+ {
+  "name": "Transcript",
+  "group": "evidence",
+  "description": "Speaker-labelled call notes keep the existing [{speaker,text,time?,highlight?}] view. Transcript(tracks, title?, audio?) compares recognizer outputs: the first track is the reference. Each track has {name,words} or {name,text}; Whisper, Deepgram, AssemblyAI, SRT, and WebVTT work. Shows aligned words, word error rate, speaker errors, a zoomable timeline, and error navigation. audio is an optional scoped file or embedded data URL; no transcription service is called.",
+  "signature": "Transcript(lines: any[] | Record<string, any> | string, title?: string, audio?: string)",
+  "examples": [
+   {
+    "name": "Call",
+    "code": "root = Transcript([{speaker: \"Dana\", time: 12, text: \"Where do we stand on the import bug?\"}, {speaker: \"Lee\", time: 18, text: \"Found it. Dates in the old format break the parser.\"}, {speaker: \"Lee\", time: 25, text: \"Fix is in review, should ship today.\", highlight: true}, {speaker: \"Dana\", time: 71, text: \"Great. Let's tell support once it's out.\"}], \"Standup, Oct 16\")"
+   },
+   {
+    "name": "Recognition comparison",
+    "code": "root = Transcript([{name:\"Reference\",words:[{text:\"Send\",start:0,end:0.4},{text:\"the\",start:0.4,end:0.6},{text:\"invoice\",start:0.6,end:1.1},{text:\"tomorrow\",start:1.1,end:1.8}]},{name:\"Recognizer\",words:[{text:\"Send\",start:0,end:0.4},{text:\"an\",start:0.4,end:0.6},{text:\"invoice\",start:0.6,end:1.1},{text:\"today\",start:1.1,end:1.7}]}], \"Check recognition errors\")"
+   }
+  ]
+ },
+ {
+  "name": "Flashcards",
+  "group": "widgets",
+  "description": "Study cards, one at a time. The reader flips a card to see its back, steps with Previous and Next (or arrow keys), and can shuffle.",
+  "signature": "Flashcards(cards: {front: string, back?: string}[], title?: string)",
+  "examples": [
+   {
+    "name": "Terms",
+    "code": "root = Flashcards([{front: \"Idempotent\", back: \"Running it twice has the same effect as running it once.\"}, {front: \"Backpressure\", back: \"A slow consumer making a fast producer wait.\"}, {front: \"Tombstone\", back: \"A marker that records a delete.\"}], \"Systems terms\")"
+   },
+   {
+    "name": "Empty",
+    "code": "root = Flashcards([])"
+   }
+  ]
+ },
+ {
+  "name": "Quiz",
+  "group": "widgets",
+  "description": "A quiz, one question at a time. answer is the right option's text or its 0-based index; why explains it after a pick. The reader sees right or wrong at once, then a score. With sendScore true, the score screen has a Send score button that sends it to the thread.",
+  "signature": "Quiz(questions: {q: string, options: string[], answer: number | string, why?: string}[], title?: string, sendScore?: boolean)",
+  "examples": [
+   {
+    "name": "Score sent",
+    "code": "root = Quiz([{q: \"Which HTTP status means Not Found?\", options: [\"200\", \"301\", \"404\", \"500\"], answer: \"404\"}, {q: \"Which method should be idempotent?\", options: [\"POST\", \"PUT\"], answer: 1, why: \"PUT replaces the resource, so repeating it changes nothing.\"}, {q: \"What does TTL stand for?\", options: [\"Time to live\", \"Total transfer load\"], answer: 0}], \"HTTP basics\", true)"
+   },
+   {
+    "name": "Local only",
+    "code": "root = Quiz([{q: \"2 + 2?\", options: [\"3\", \"4\", \"5\"], answer: \"4\", why: \"Basic arithmetic.\"}])"
+   }
+  ]
+ },
+ {
+  "name": "Timer",
+  "group": "widgets",
+  "description": "A countdown from seconds, or a stopwatch when seconds is left out. The reader starts, pauses, and resets it.",
+  "signature": "Timer(seconds?: number, label?: string)",
+  "examples": [
+   {
+    "name": "Countdown",
+    "code": "root = Timer(300, \"Standup\")"
+   },
+   {
+    "name": "Stopwatch",
+    "code": "root = Timer(null, \"Focus\")"
+   }
+  ]
+ },
+ {
+  "name": "Walkthrough",
+  "group": "widgets",
+  "description": "A step-by-step guide shown one step at a time, with Back and Next, or all at once. steps are strings (the body) or {title?, body?, code?, language?}; body is Markdown, code shows as a code block.",
+  "signature": "Walkthrough(steps: (string | {title?: string, body?: string, code?: string, language?: string})[], title?: string)",
+  "examples": [
+   {
+    "name": "Setup",
+    "code": "root = Walkthrough([{title: \"Install\", body: \"Add the package to the app.\", code: \"npm install @acme/sdk\", language: \"sh\"}, {title: \"Configure\", body: \"Set **ACME_KEY** in `.env`.\"}, {title: \"Call it\", code: \"import { acme } from \\\"@acme/sdk\\\";\\nawait acme.ping();\", language: \"ts\"}], \"Add the SDK\")"
+   },
+   {
+    "name": "Plain steps",
+    "code": "root = Walkthrough([\"Open Settings.\", \"Pick Billing.\", \"Choose Cancel plan and confirm.\"])"
+   }
+  ]
+ }
+]

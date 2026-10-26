@@ -5,6 +5,7 @@ import { accessSchema, rpcContract, shareInputSchema, type Access, type Share, t
 import { HereNowError, createHereNowClient } from "./here-now.js";
 import { NOT_CONFIGURED, ShareError, createShareService, describeAccess, safeMessage, wanted, type ShareConfirmPayload, type ShareDeps } from "./service.js";
 import { createShareStore } from "./store.js";
+import type { PageSettings } from "../settings.js";
 
 export type { ShareDeps } from "./service.js";
 
@@ -53,12 +54,7 @@ function describeShare(share: Share, versionN: number | null): string {
   ].join("\n");
 }
 
-export function registerShare(bb: BbPluginApi, deps: ShareDeps): ShareRegistration {
-  const settings = bb.settings.define({
-    hereNowApiKey: { type: "string", label: "Here.now API key", description: "Used only by the Pages server to create and update shared sites.", secret: true },
-    defaultAccess: { type: "select", label: "Default access", description: "Access for a new share started with the Share button.", options: [...ACCESS_VALUES], default: "password" },
-    defaultAllowedDomains: { type: "string", label: "Default allowed domains", description: "Comma-separated, e.g. example.com. Fills Restricted access in the Share popover.", default: "" },
-  });
+export function registerShare(bb: BbPluginApi, deps: ShareDeps, settings: PageSettings): ShareRegistration {
 
   const store = createShareStore(bb.storage.database());
   store.markInterrupted();

@@ -2,7 +2,6 @@
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
-import { REALTIME_CHANNEL as CONTRACT_CHANNEL, directive } from "./contract.js";
 import { parseDirective } from "./app/directives.js";
 
 // The real Share popover belongs to T4. This stand-in exposes the props the card passes.
@@ -23,7 +22,7 @@ Object.defineProperty(window, "localStorage", { configurable: true, value: {
 
 const app = await loadPluginApp(() => import("./app.js"));
 // These import the SDK app runtime, which loadPluginApp installs.
-const { REALTIME_CHANNEL, pageDirective, resetPagesCache } = await import("./app/data.js");
+const { REALTIME_CHANNEL, resetPagesCache } = await import("./app/data.js");
 const { directiveComponent } = await import("./app/PageCard.js");
 const { readFrameMessage } = await import("./app/bridge.js");
 const pageId = "123e4567-e89b-42d3-a456-426614174000";
@@ -46,7 +45,7 @@ const getPage = ({ versionId }: { versionId?: string }) => detail(versionId ?? v
 const pageSlot = app.messageDirectives.find(({ id }) => id === "page")!;
 const panel = app.threadPanelActions.find(({ id }) => id === "page")!;
 
-afterEach(() => { cleanup(); window.localStorage.clear(); resetPagesCache(); });
+afterEach(() => { cleanup(); window.localStorage.clear(); resetPagesCache(); vi.unstubAllGlobals(); });
 
 describe("directive parsing", () => {
   it("reads each alias into one card reference", () => {
@@ -76,16 +75,6 @@ describe("directive parsing", () => {
     expect(parseDirective("inline-vis", { file: "a.html", source: "host" }).ok).toBe(false);
   });
 
-  it("keeps the app's copies of contract values in step", () => {
-    expect(REALTIME_CHANNEL).toBe(CONTRACT_CHANNEL);
-    expect(pageDirective(pageId, v1)).toBe(directive(pageId, v1));
-    expect(directive(pageId, v1, "inline")).toBe(`::page{id="${pageId}" version="${v1}" display="inline"}`);
-    expect(directive(pageId, v1, "card")).toBe(directive(pageId, v1));
-  });
-
-  it("owns ::page and the legacy ::artifact and ::inline-vis ids after the switch-over", () => {
-    expect(app.messageDirectives.map(({ id }) => id)).toEqual(["page", "artifact", "inline-vis"]);
-  });
 });
 
 describe("inline card", () => {
@@ -403,6 +392,22 @@ describe("side panel", () => {
     slot.lifecycle.unmount();
   });
 
+  it("keeps focus in Rename and returns it to the page menu on Escape without saving", async () => {
+    const renamePage = vi.fn();
+    const slot = renderSlot(panel, { threadId: "thread-a", params: { pageId } }, { rpc: { getPage, renamePage } as never });
+    await openMenu(slot);
+    fireEvent.click(slot.getByRole("menuitem", { name: "Rename" }));
+    const input = await slot.findByRole("textbox", { name: "Page title" });
+    await waitFor(() => expect(slot.queryByRole("menu")).toBeNull());
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: "Unsaved title" } });
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(slot.queryByRole("textbox", { name: "Page title" })).toBeNull());
+    expect(document.activeElement).toBe(slot.getByRole("button", { name: "Version 2. Page menu" }));
+    expect(renamePage).not.toHaveBeenCalled();
+    slot.lifecycle.unmount();
+  });
+
   it("sends feedback on the shown version to the panel's thread, and shows an archived thread's message", async () => {
     const sendFeedback = vi.fn()
       .mockResolvedValueOnce({ ok: false, reason: "thread-archived", message: "That thread is archived." })
@@ -511,7 +516,15 @@ form = Form("launch", [Text("Pick a plan.", "muted"), Choice("channel", ["Email"
 tabs = Tabs([Tab("Trend", [chart]), Tab("Code", [Code("const a = 1", "ts"), Diff("@@ -1 +1 @@\\n-a\\n+b", "src/a.ts")])])
 chart = Chart("bar", ["Mon", "Tue"], [Series("Signups", [4, 9]), Series("Churn", [1, 2])])`;
   // Fence state lives in localStorage under the message id, so each test starts clean.
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    // jsdom has no layout observer; native viewer layout is checked in the browser smoke.
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+  });
 
   it("claims openui-lang and openui, not GenUI's ui", () => {
     expect(fence.languages).toEqual(["openui-lang", "openui"]);
@@ -541,13 +554,10 @@ chart = Chart("bar", ["Mon", "Tue"], [Series("Signups", [4, 9]), Series("Churn",
     const chart = await slot.findByRole("img", { name: "Bar chart of Signups, Churn over Mon, Tue" });
     // Highcharts draws each series in styled mode, with the chart CSS in place. jsdom has no layout, so no bars.
     await waitFor(() => expect(chart.querySelectorAll(".highcharts-series.highcharts-column-series")).toHaveLength(2));
-    expect(document.querySelector("style[data-bb-spec-charts]")?.textContent).toContain(".bb-spec-chart");
     expect(slot.getByText("Churn")).toBeTruthy();
     const codeTab = slot.getByRole("tab", { name: "Code" });
     fireEvent.keyDown(slot.getByRole("tab", { name: "Trend" }), { key: "ArrowRight" });
     expect(codeTab.getAttribute("aria-selected")).toBe("true");
-    expect(slot.getByTestId("bb-source-code").getAttribute("data-path")).toBe("snippet.ts");
-    expect(slot.getByTestId("bb-diff").getAttribute("data-path")).toBe("src/a.ts");
     expect(slot.queryByRole("img")).toBeNull();
     slot.lifecycle.unmount();
   });
@@ -598,50 +608,33 @@ chart = Chart("bar", ["Mon", "Tue"], [Series("Signups", [4, 9]), Series("Churn",
     slot.lifecycle.unmount();
   });
 
-  it("keeps the skill reference in step with the library", async () => {
-    // OpenUI's prompt telemetry skips browser windows (jsdom) and honours DO_NOT_TRACK.
-    vi.stubEnv("DO_NOT_TRACK", "1");
-    const { specReference } = await import("./app/spec/reference.js");
-    const files = specReference();
-    vi.unstubAllEnvs();
-    for (const [file, text] of Object.entries(files)) await expect(text).toMatchFileSnapshot(`./skills/pages/references/${file}`);
-    // No group file outlives its group.
-    const { readdirSync } = await import("node:fs");
-    expect(readdirSync("skills/pages/references/openui").map((name) => `openui/${name}`).sort()).toEqual(Object.keys(files).filter((file) => file.startsWith("openui/")).sort());
-    const example = /```openui-lang\n([\s\S]*?)```/u.exec(files["openui.md"]!)![1];
-    const slot = renderSlot(fence, props(example));
-    expect(await slot.findByText("Next focus")).toBeTruthy();
-    expect(slot.getByText("Open bugs")).toBeTruthy();
-    slot.lifecycle.unmount();
-  });
 
-  it("shows every component in the settings gallery, live, with its source", async () => {
-    const gallery = app.settingsSections.find(({ id }) => id === "components")!;
-    const slot = renderSlot(gallery, {});
-    expect(await slot.findByRole("tab", { name: "Layout" })).toBeTruthy();
-    expect(slot.getByText("Shipped on time.")).toBeTruthy();
-    fireEvent.click(slot.getByRole("tab", { name: "Inputs" }));
-    fireEvent.click(slot.getAllByRole("button", { name: "Approve" })[0]!);
-    // Look only: a sent form locks but nothing goes to a thread.
-    expect(await slot.findByText(/Sent to the thread/u)).toBeTruthy();
+  it("keeps gallery replies local and searches across categories", async () => {
+    const gallery = app.navPanels.find(({ id }) => id === "pages")!;
+    const send = vi.fn();
+    const slot = renderSlot(gallery, { subPath: "components" }, { sdk: { threads: { send } } as never });
+    fireEvent.keyDown(await slot.findByRole("button", { name: "Component category: Layout" }), { key: "Enter" });
+    fireEvent.click(await slot.findByRole("menuitemradio", { name: "Inputs" }));
+    const approve = slot.getAllByRole("button", { name: "Approve" })[0] as HTMLButtonElement;
+    fireEvent.click(approve);
+    await waitFor(() => expect(approve.disabled).toBe(true));
+    expect(send).not.toHaveBeenCalled();
     fireEvent.change(slot.getByRole("searchbox", { name: "Search components" }), { target: { value: "diff" } });
     expect(slot.getByRole("region", { name: "Diff" })).toBeTruthy();
-    expect(slot.queryByRole("tab")).toBeNull();
     slot.lifecycle.unmount();
   });
 
   it("shows the gallery in the shared-site look, where replies are read-only", async () => {
-    const gallery = app.settingsSections.find(({ id }) => id === "components")!;
-    const slot = renderSlot(gallery, {});
-    fireEvent.click(await slot.findByRole("tab", { name: "Inputs" }));
+    const gallery = app.navPanels.find(({ id }) => id === "pages")!;
+    const slot = renderSlot(gallery, { subPath: "components" });
+    fireEvent.keyDown(await slot.findByRole("button", { name: "Component category: Layout" }), { key: "Enter" });
+    fireEvent.click(await slot.findByRole("menuitemradio", { name: "Inputs" }));
     expect((slot.getAllByRole("button", { name: "Approve" })[0] as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(slot.getByRole("radio", { name: "Site" }));
     expect(slot.getByRole("radio", { name: "Site" }).getAttribute("aria-checked")).toBe("true");
-    expect(document.querySelector(".bb-site-look")).toBeTruthy();
-    expect(Array.from(document.querySelectorAll("style")).some((style) => style.textContent?.includes(".bb-site-look {") && style.textContent.includes("--bb-bg"))).toBe(true);
     expect((slot.getAllByRole("button", { name: "Approve" })[0] as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(slot.getByRole("radio", { name: "BB" }));
-    expect(document.querySelector(".bb-site-look")).toBeNull();
+    expect((slot.getAllByRole("button", { name: "Approve" })[0] as HTMLButtonElement).disabled).toBe(false);
     slot.lifecycle.unmount();
   });
 

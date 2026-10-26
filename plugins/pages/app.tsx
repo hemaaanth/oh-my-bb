@@ -2,11 +2,13 @@ import { useState } from "react";
 import { definePluginApp, type PluginThreadPanelProps } from "@get-bb/plugin-sdk/app";
 import { registerShareSlots } from "./app/share/SharePopover.js";
 import { UUID, relativeFile } from "./app/directives.js";
-import { Gallery } from "./app/Gallery.js";
+import { PAGES_ICON, PagesSettings } from "./app/Settings.js";
 import { Library, LibraryPanel } from "./app/Library.js";
 import { PANEL_ACTION_ID, directiveComponent } from "./app/PageCard.js";
 import { LIBRARY_PATH, LiveFileView, PageView } from "./app/PageView.js";
 import { SPEC_LANGUAGES, SpecFence } from "./app/SpecFence.js";
+import { AppFence } from "./app/AppFence.js";
+import { APP_LANGUAGES } from "./render/spec-baked.js";
 
 /** Panel params are untrusted: `{ pageId, versionId? }`, `{ threadId, source, file }` for a live file, or none for the library. */
 function ThreadPanel({ threadId: panelThreadId, params }: PluginThreadPanelProps) {
@@ -36,12 +38,13 @@ export default definePluginApp((app) => {
     app.slots.messageDirective({ id: "artifact", component: directiveComponent("artifact") });
     app.slots.messageDirective({ id: "inline-vis", component: directiveComponent("inline-vis") });
   }
-  app.slots.threadPanelAction({ id: PANEL_ACTION_ID, title: "Pages", icon: "FileText", layout: "flush", component: ThreadPanel });
-  app.slots.navPanel({ id: "pages", title: "Pages", icon: "FileText", path: LIBRARY_PATH, component: LibraryPanel });
+  app.slots.threadPanelAction({ id: PANEL_ACTION_ID, title: "Pages", icon: PAGES_ICON, layout: "flush", component: ThreadPanel });
+  app.slots.navPanel({ id: "pages", title: "Pages", icon: PAGES_ICON, path: LIBRARY_PATH, component: LibraryPanel });
   registerShareSlots(app);
   // The fence slot is experimental. If a BB release drops it, fences stay code blocks.
   if (typeof app.slots.experimental_codeFenceRenderer === "function") {
     app.slots.experimental_codeFenceRenderer({ id: "pages-spec", languages: SPEC_LANGUAGES, component: SpecFence });
+    app.slots.experimental_codeFenceRenderer({ id: "pages-app", languages: APP_LANGUAGES, component: AppFence });
   }
-  app.slots.settingsSection({ id: "components", title: "Components", description: "Every component agents can put in an openui-lang fence, in your theme.", component: Gallery });
+  app.slots.settingsSection({ id: "more", component: PagesSettings });
 });

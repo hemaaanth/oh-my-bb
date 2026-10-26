@@ -2,7 +2,7 @@
 
 Write a fenced `openui-lang` block in a reply. BB renders it in place, live, while it streams. Text outside the fence stays chat.
 
-Use it for UI that belongs to this reply: numbers, a table or chart, tabs, code or a diff, a map, a plan, or a choice or form for the user to answer. Use `page_publish` for anything long, anything to keep or share, or custom HTML.
+Use it for UI that belongs to this reply: numbers, a table or chart, tabs, code or a diff, a map, a plan, or a choice or form for the user to answer. Use `page_publish` for anything long, anything to keep or share. For a small custom HTML/JavaScript app in a reply, read `references/openui/apps.md` and use a `pages-app` fence.
 
 ## Pages rules
 
@@ -13,6 +13,8 @@ Use it for UI that belongs to this reply: numbers, a table or chart, tabs, code 
 - Only http(s) links open.
 - Query reads data with the tools listed below. Mutation is not available. Otherwise put the data in the program.
 - A fence that does not parse shows as code, so check it before you send.
+- Use `page_examples` or `bb pages examples <component>` for signatures and examples. `page_check` and `bb pages check <file>` check programs and app HTML without publishing. Checks are static, not browser or security proofs.
+- App answers are selected for review, not sent automatically. Existing Buttons and Forms keep their direct-send behavior. App frames block fetch and remote resource loads, but self-navigation can still make a network request. Never put secrets in an app.
 - The same programs work on a published page: a fence in a Markdown page, or `<script type="text/openui-lang">` in an HTML page. Buttons and Forms there are read-only. Query and map answers are saved when you publish, so publish again to refresh them.
 
 Example:
@@ -62,6 +64,24 @@ Use @-prefixed built-in functions (@Count, @Sum, @Avg, @Min, @Max, @Round) on Qu
 @Floor(number: number) → number — Round down to nearest integer
 @Ceil(number: number) → number — Round up to nearest integer
 @Each(array: any[], varName: string, template: any) — Evaluate template for each element. varName is the loop variable — use it ONLY inside the template expression (inline). Do NOT create a separate statement for the template.
+@Sin(x: number) — Sine of x radians.
+@Cos(x: number) — Cosine of x radians.
+@Tan(x: number) — Tangent of x radians.
+@Asin(x: number) — Inverse sine, in radians.
+@Acos(x: number) — Inverse cosine, in radians.
+@Atan(x: number) — Inverse tangent, in radians.
+@Atan2(y: number, x: number) — Angle of y/x, in radians, preserving its quadrant.
+@Sqrt(x: number) — Square root of a nonnegative number.
+@Pow(base: number, exponent: number) — Base raised to exponent.
+@Exp(x: number) — e raised to x.
+@Log(x: number) — Natural logarithm of a positive number.
+@Log10(x: number) — Base-10 logarithm of a positive number.
+@Clamp(value: number, min: number, max: number) — Clamp a number to inclusive bounds.
+@Lerp(start: number, end: number, t: number) — Linear interpolation; t=0 gives start and t=1 gives end.
+@Pi() — The circle constant pi.
+@Tau() — One full turn in radians, 2*pi.
+@Range(count: number) — Integers 0 through count-1. Count must be an integer from 0 to 2000.
+@Random(seed: number) — A deterministic pseudorandom number from 0 to 1 for a numeric seed.
 
 Builtins compose — output of one is input to the next:
 `@Count(@Filter(data.rows, "field", "==", "val"))` for KPIs/chart values, `@Round(@Avg(data.rows.score), 1)`, `@Each(data.rows, "item", Comp(item.field))` for per-item rendering.
@@ -169,6 +189,27 @@ Before finishing, walk your output and verify:
 4. Every $binding appears in at least one component or expression.
 5. Every visible filter $binding appears in at least one Query args object.
 
+## Math functions
+
+- `@Sin(x)`: Sine of x radians.
+- `@Cos(x)`: Cosine of x radians.
+- `@Tan(x)`: Tangent of x radians.
+- `@Asin(x)`: Inverse sine, in radians.
+- `@Acos(x)`: Inverse cosine, in radians.
+- `@Atan(x)`: Inverse tangent, in radians.
+- `@Atan2(y, x)`: Angle of y/x, in radians, preserving its quadrant.
+- `@Sqrt(x)`: Square root of a nonnegative number.
+- `@Pow(base, exponent)`: Base raised to exponent.
+- `@Exp(x)`: e raised to x.
+- `@Log(x)`: Natural logarithm of a positive number.
+- `@Log10(x)`: Base-10 logarithm of a positive number.
+- `@Clamp(value, min, max)`: Clamp a number to inclusive bounds.
+- `@Lerp(start, end, t)`: Linear interpolation; t=0 gives start and t=1 gives end.
+- `@Pi()`: The circle constant pi.
+- `@Tau()`: One full turn in radians, 2*pi.
+- `@Range(count)`: Integers 0 through count-1. Count must be an integer from 0 to 2000.
+- `@Random(seed)`: A deterministic pseudorandom number from 0 to 1 for a numeric seed.
+
 ## Components
 
 Arguments marked with ? are optional. Sub-components can be inline or referenced; prefer references for better streaming.
@@ -216,6 +257,7 @@ Props marked `$binding<type>` accept a `$variable` reference for two-way binding
 - Code: highlighted code
 - Diff: one file's diff
 - Snippet: short text to copy
+- FileCode: source lines read from a file
 - Gauge: one value on a dial
 - SegmentedBar: one bar split into parts
 - Sparkline: tiny trend line
@@ -266,11 +308,20 @@ Props marked `$binding<type>` accept a `$variable` reference for two-way binding
 - Hotspot: one point of Hotspots
 - ImageSearch: photos found on the web for a query
 
+### 3D & shaders (references/openui/gpu.md)
+
+- Scene: 3D solids, surfaces, models, labels, and materials
+- Shader: GLSL, feedback buffers, textures, and live uniforms
+
+### Apps (references/openui/apps.md)
+
+- App: sandboxed HTML, simulations, and custom visuals
+
 ### Dev (references/openui/dev.md)
 
 - Benchmark: benchmark comparison
 - Coverage: test coverage
-- Dependencies: outdated packages
+- Dependencies: outdated packages and security audits
 - Findings: review and lint findings
 - Logs: log viewer
 - Pipeline: CI run

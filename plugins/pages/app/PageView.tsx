@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Popover from "@radix-ui/react-popover";
@@ -15,10 +15,10 @@ export const LIBRARY_PATH = "pages";
 
 const quiet = "flex h-full items-center justify-center p-6 text-sm text-muted-foreground";
 
-/** Full-bleed shell: 40px header, an optional thin banner, then the page. All on the app background, which a page that follows the app shares, so the panel shows one surface. */
+/** Full-bleed document canvas: native 36px header, optional banner, then the page. */
 function PanelShell({ header, banner, children }: { header: ReactNode; banner?: ReactNode; children: ReactNode }) {
   return <div className="flex h-full min-h-0 flex-col bg-background">
-    <header className="flex h-10 shrink-0 items-center gap-1 border-b border-border pl-3 pr-2">{header}</header>
+    <header className="flex h-9 shrink-0 items-center gap-1 border-b border-border pl-3 pr-2">{header}</header>
     {banner ? <div aria-live="polite" className="flex h-7 shrink-0 items-center gap-1.5 border-b border-border bg-muted/40 px-3 text-xs text-muted-foreground">{banner}</div> : null}
     <div className="relative min-h-0 flex-1">{children}</div>
   </div>;
@@ -39,7 +39,7 @@ function RenameInput({ detail, onDone }: { detail: PageDetail; onDone: (error?: 
   const [saving, setSaving] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const settled = useRef(false);
-  useEffect(() => { input.current?.select(); }, []);
+  useEffect(() => { input.current?.focus(); input.current?.select(); }, []);
   // Enter, Escape, and blur all end the edit; only the first one counts.
   const finish = (error?: string) => { settled.current = true; onDone(error); };
   const save = async () => {
@@ -67,20 +67,21 @@ function RenameInput({ detail, onDone }: { detail: PageDetail; onDone: (error?: 
   />;
 }
 
-function VersionMenu({ detail, shownId, inLibrary, onSelect, onRename, onCopy, onDelete }: {
-  detail: PageDetail; shownId: string; inLibrary: boolean;
+function VersionMenu({ detail, shownId, inLibrary, triggerRef, onSelect, onRename, onCopy, onDelete }: {
+  detail: PageDetail; shownId: string; inLibrary: boolean; triggerRef: Ref<HTMLButtonElement>;
   onSelect: (versionId: string) => void; onRename: () => void; onCopy: () => void; onDelete: () => void;
 }) {
   const navigate = useBbNavigate();
+  const renaming = useRef(false);
   const versions = [...detail.versions].sort((a, b) => b.n - a.n);
   return <DropdownMenu.Root>
     <DropdownMenu.Trigger asChild>
-      <button type="button" aria-label={`Version ${detail.version.n}. Page menu`} className={`inline-flex h-6 shrink-0 items-center gap-0.5 rounded-md px-1.5 text-xs tabular-nums text-muted-foreground hover:bg-state-hover hover:text-foreground data-[state=open]:bg-state-hover ${focusRing}`}>
+      <button ref={triggerRef} type="button" aria-label={`Version ${detail.version.n}. Page menu`} className={`inline-flex h-6 shrink-0 items-center gap-0.5 rounded-md px-1.5 text-xs tabular-nums text-muted-foreground hover:bg-state-hover hover:text-foreground data-[state=open]:bg-state-hover ${focusRing}`}>
         v{detail.version.n}<Icon name="ChevronDown" aria-hidden className="size-3" />
       </button>
     </DropdownMenu.Trigger>
     <DropdownMenu.Portal>
-      <DropdownMenu.Content {...PORTAL_SCOPE} align="start" sideOffset={4} collisionPadding={8} style={{ zIndex: 75 }} className={`w-72 max-w-[calc(100vw-16px)] ${menuContent}`}>
+      <DropdownMenu.Content {...PORTAL_SCOPE} align="start" sideOffset={4} collisionPadding={8} style={{ zIndex: 75 }} onCloseAutoFocus={(event) => { if (renaming.current) { event.preventDefault(); renaming.current = false; onRename(); } }} className={`w-72 max-w-[calc(100vw-16px)] ${menuContent}`}>
         <DropdownMenu.Label className="px-2 pb-1 pt-1.5 text-xs text-muted-foreground">Versions</DropdownMenu.Label>
         <DropdownMenu.RadioGroup value={shownId} onValueChange={onSelect} className="max-h-64 overflow-y-auto">
           {versions.map((version) => <DropdownMenu.RadioItem key={version.id} value={version.id} className={menuItem}>
@@ -91,7 +92,7 @@ function VersionMenu({ detail, shownId, inLibrary, onSelect, onRename, onCopy, o
           </DropdownMenu.RadioItem>)}
         </DropdownMenu.RadioGroup>
         <DropdownMenu.Separator className="-mx-1 my-1 h-px bg-border" />
-        <DropdownMenu.Item className={menuItem} onSelect={onRename}>Rename</DropdownMenu.Item>
+        <DropdownMenu.Item className={menuItem} onSelect={() => { renaming.current = true; }}>Rename</DropdownMenu.Item>
         <DropdownMenu.Item className={menuItem} onSelect={onCopy}>Copy reference</DropdownMenu.Item>
         {inLibrary ? null : <DropdownMenu.Item className={menuItem} onSelect={() => navigate.toPluginPanel(LIBRARY_PATH, { subPath: detail.page.id })}>Show in library</DropdownMenu.Item>}
         <DropdownMenu.Separator className="-mx-1 my-1 h-px bg-border" />
@@ -243,6 +244,7 @@ export function PageView({ pageId, versionId = null, inLibrary = false, threadId
   const [deleting, setDeleting] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
   useEffect(() => { setViewing(versionId); setDeleted(false); }, [pageId, versionId]);
   useEffect(() => {
     if (!notice) return;
@@ -264,12 +266,13 @@ export function PageView({ pageId, versionId = null, inLibrary = false, threadId
   const actionThreadId = threadId ?? detail.version.threadId;
   const header = <>
     {renaming
-      ? <RenameInput detail={detail} onDone={(error) => { setRenaming(false); if (error) setNotice(error); else latest.reload(); }} />
+      ? <RenameInput detail={detail} onDone={(error) => { setRenaming(false); menuTrigger.current?.focus(); if (error) setNotice(error); else latest.reload(); }} />
       : <h2 className="min-w-0 truncate text-sm font-medium" title={detail.page.title}>{detail.page.title}</h2>}
     <VersionMenu
       detail={shown ?? detail}
       shownId={shown?.version.id ?? olderId ?? detail.version.id}
       inLibrary={inLibrary}
+      triggerRef={menuTrigger}
       onSelect={(id) => setViewing(id === detail.version.id ? null : id)}
       onRename={() => setRenaming(true)}
       onCopy={() => {

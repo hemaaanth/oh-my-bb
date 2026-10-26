@@ -24,9 +24,9 @@ export function parseFile(path: string, raw: string): ParsedFile {
         try { return [JSON.parse(line)]; } catch { throw new SpecError(`${path}: line ${index + 1} is not valid JSON.`); }
       }));
     case "csv":
-      return done("rows", table(path, parseCsv(path, text)));
+      return done("rows", tableRows(path, parseCsv(path, text)));
     case "tsv":
-      return done("rows", table(path, text.split(/\r?\n/u).filter((line) => line !== "").map((line) => line.split("\t"))));
+      return done("rows", tableRows(path, text.split(/\r?\n/u).filter((line) => line !== "").map((line) => line.split("\t"))));
     default:
       return { path, kind: "text", rows: [], data: null, text };
   }
@@ -76,7 +76,7 @@ export function parseCsv(path: string, text: string): string[][] {
   return records;
 }
 
-function table(path: string, records: readonly string[][]): Record<string, unknown>[] {
+export function tableRows(path: string, records: readonly string[][]): Record<string, unknown>[] {
   const [header, ...rows] = records;
   if (!header) return [];
   if (new Set(header).size !== header.length) throw new SpecError(`${path}: the header names a column twice.`);

@@ -7,6 +7,9 @@ import type { SpecResult } from "../contract.js";
 export const SPEC_TYPE = "text/openui-lang";
 /** Fence languages Pages claims, in chat and in Markdown pages. OpenUI's own prompt teaches `openui-lang`. GenUI owns `ui`. */
 export const SPEC_LANGUAGES = ["openui-lang", "openui"] as const;
+/** Raw executable HTML fences; their documents stay in opaque resource-restricted frames. */
+export const APP_LANGUAGES = ["app", "pages-app"] as const;
+export const APP_READY_ATTRIBUTE = "data-bb-apps-ready";
 export const BAKED_ATTRIBUTE = "data-bb-spec-baked";
 
 /** Query results and web lookups by bakedKey. A failed lookup is kept as its message. */

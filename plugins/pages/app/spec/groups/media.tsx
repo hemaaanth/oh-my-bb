@@ -6,12 +6,18 @@ import { defineComponent, useIsStreaming } from "@openuidev/react-lang";
 import { ArrowUpRight, Image as ImageIcon, Maximize2, Minus, Plus, X } from "../icons.generated.js";
 import type { IconComponent } from "../glyph.js";
 import { z } from "zod";
-import { childProps, focusRing, Lightbox, lightboxImage, type Group } from "../kit.js";
+import { childProps, focusRing, type Group } from "../kit.js";
+import { Lightbox, lightboxImage, Zoomable } from "../viewer.js";
 import { useHost, type Host, type WebMethod } from "../host.js";
 import {
   autoColumns, centroid, clampView, latLng, lightText, MAP_FALLBACK_SIZE, mapNear, mapView, MAX_ZOOM, MIN_ZOOM, pan, pinPercent, placeKey, project, searchInput, toScreen, visibleTiles, zoomAround,
   type LatLng, type Size, type Tile, type View,
 } from "./media-logic.js";
+import { mapMarkers } from "../map-input.js";
+import { useTour } from "../map-tour.js";
+import { useAnimationsOff } from "../motion.js";
+import { useImageResource } from "../image-resource.js";
+import { NO_BB_SWIPE } from "../gpu/style.js";
 
 // --- Web lookups: one session cache per host kind, shared by every component and remount. ---
 
@@ -131,8 +137,8 @@ const KIND_NOTE = 'kind "general" (default, indigo), "stay" (green), "daytrip" (
 
 const Marker = defineComponent({
   name: "Marker",
-  props: z.object({ title: z.string(), at: position, kind: z.enum(KINDS).optional(), description: z.string().optional(), image: z.string().optional(), link: z.string().optional() }),
-  description: `One numbered place of Map. at is [lat, lng] or a place name. ${KIND_NOTE}. description, image (an http(s) URL), and link (an http(s) URL) fill the popup that opens when it is clicked.`,
+  props: z.object({ title: z.string(), at: position, kind: z.enum(KINDS).optional(), description: z.string().optional(), image: z.string().optional(), link: z.string().optional(), day: z.union([z.string(), z.number()]).optional(), wiki: z.string().optional() }),
+  description: `One numbered place of Map. at is [lat, lng] or a place name. ${KIND_NOTE}. description, image, and link fill its click popup. day groups a trip's stops; later stops inherit it. wiki names an English Wikipedia article whose credited lead photo is looked up only when this place opens.`,
   component: () => null,
 });
 
@@ -143,10 +149,36 @@ const Area = defineComponent({
   component: () => null,
 });
 
-type MarkerProps = { title: string; at: string | number[]; kind: Kind; description: string; image: string; link: string };
 type AreaProps = { title: string; points: number[][]; kind: Kind; description: string };
-type Pin = { key: string; n: number; title: string; kind: Kind; description?: string; image?: string; link?: string; at: LatLng };
+type Pin = { key: string; n: number; title: string; kind: Kind; description?: string; image?: string; link?: string; at: LatLng; day: string | null; wiki: string | null };
 type Shape = { key: string; title: string; kind: Kind; description?: string; points: LatLng[] };
+const DAY_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#0ea5e9", "#a855f7"];
+
+function MapPin({ pin, point, on, highlighted, color, onToggle, onHover, drop }: { pin: Pin; point: { left: number; top: number }; on: boolean; highlighted: boolean; color: string; onToggle: () => void; onHover: (hovered: boolean) => void; drop: boolean }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const off = useAnimationsOff();
+  useEffect(() => {
+    if (!drop || off || !ref.current) return;
+    const animation = ref.current.animate([{ opacity: 0, transform: "translateY(-16px)" }, { opacity: 1, transform: "translateY(0)" }], { duration: 360, easing: "cubic-bezier(.22,1,.36,1)" });
+    return () => animation.cancel();
+  }, [drop, off]);
+  const lit = on || highlighted;
+  return <button ref={ref} type="button" aria-label={`${pin.n}. ${pin.title}`} aria-expanded={on} onClick={onToggle} onPointerEnter={() => onHover(true)} onPointerLeave={() => onHover(false)} onFocus={() => onHover(true)} onBlur={() => onHover(false)}
+    style={{ ...point, "--pin": color, borderColor: lit ? color : undefined, boxShadow: lit ? `2px 2px 0 ${color}` : undefined } as CSSProperties}
+    className={`absolute inline-flex h-7 min-w-7 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center gap-1 rounded-md border border-border bg-background px-1.5 text-xs font-semibold tabular-nums text-foreground hover:z-10 hover:border-(--pin) hover:shadow-[2px_2px_0_var(--pin)] ${lit ? "z-10" : ""} ${focusRing}`}><span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: color }} />{pin.n}</button>;
+}
+
+function WikiPhoto({ title, name, onError }: { title: string; name: string; onError: (error: string) => void }) {
+  const answer = useAsk<{ photo: (Found & { articleUrl: string }) | null }>("wiki", { title });
+  const photo = answer.value?.photo;
+  const image = useImageResource(photo?.url);
+  const error = answer.error ?? image?.error;
+  useEffect(() => { if (error) onError(error); }, [error, onError]);
+  if (error) return null;
+  if (!answer.value || photo && !image?.image) return <p role="status" className="m-0 text-xs text-muted-foreground">Loading place photo…</p>;
+  if (!photo) return <p className="m-0 text-xs text-muted-foreground">No credited lead photo found.</p>;
+  return <figure className="m-0 flex min-w-0 flex-col gap-1"><Zoomable src={image!.image!.src} alt={name} caption={`${photo.creator} · ${photo.license}`}><img src={image!.image!.src} alt={name} className="max-h-32 max-w-full rounded-md object-contain" /></Zoomable><Credit image={photo} /></figure>;
+}
 
 const PAN_STEP = 80;
 
@@ -161,12 +193,12 @@ function MapTile({ tile, theme, onError }: { tile: Tile; theme: "light" | "dark"
   </div>;
 }
 
-function MapPopup({ at, size, color, title, description, image, link, onClose }: { at: { left: number; top: number }; size: Size; color: string; title: string; description?: string; image?: string; link?: string; onClose: () => void }) {
+function MapPopup({ at, size, color, title, description, image, link, wiki, onError, onClose }: { at: { left: number; top: number }; size: Size; color: string; title: string; description?: string; image?: string; link?: string; wiki?: string | null; onError: (error: string) => void; onClose: () => void }) {
   const { openUrl } = useHost();
   const href = webHref(link);
   const below = at.top < (image ? 210 : 110);
-  const style: CSSProperties = { left: Math.max(8, Math.min(at.left - 120, size.width - 248)), ...(below ? { top: at.top + 20 } : { bottom: size.height - at.top + 20 }) };
-  return <div data-map-ui="" role="dialog" aria-label={title} style={style} className="absolute z-20 w-60 cursor-auto select-text overflow-hidden rounded-md border border-border-hairline bg-background text-foreground shadow-[2px_2px_0_var(--border)]">
+  const style: CSSProperties = { left: Math.max(8, Math.min(at.left - 120, size.width - 248)), maxHeight: Math.max(80, below ? size.height - at.top - 28 : at.top - 28), ...(below ? { top: at.top + 20 } : { bottom: size.height - at.top + 20 }) };
+  return <div data-map-ui="" role="dialog" aria-label={title} style={style} onClick={event => event.stopPropagation()} className="absolute z-20 w-60 cursor-auto select-text overflow-y-auto rounded-md border border-border-hairline bg-background text-foreground shadow-[2px_2px_0_var(--border)]">
     {image ? <Picture src={image} alt="" quiet className="block h-28 w-full object-cover" /> : null}
     <div className="flex flex-col gap-1 p-2.5">
       <div className="flex items-start gap-1.5">
@@ -176,11 +208,12 @@ function MapPopup({ at, size, color, title, description, image, link, onClose }:
         <button type="button" aria-label="Close" onClick={onClose} className={`-mt-0.5 -mr-1 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground ${focusRing}`}><X aria-hidden className="size-3.5" /></button>
       </div>
       {description ? <p className="m-0 text-sm text-muted-foreground">{description}</p> : null}
+      {wiki && !image ? <WikiPhoto title={wiki} name={title} onError={onError} /> : null}
     </div>
   </div>;
 }
 
-function MapBody({ markers, areas, center, zoom }: { markers: unknown[]; areas: unknown[]; center?: unknown; zoom?: number }) {
+function MapBody({ markers, areas, center, zoom, route = false, tour: wantedTour = false }: { markers: unknown[]; areas: unknown[]; center?: unknown; zoom?: number; route?: boolean; tour?: boolean }) {
   const host = useHost();
   const streaming = useIsStreaming();
   const frame = useRef<HTMLDivElement>(null);
@@ -193,7 +226,7 @@ function MapBody({ markers, areas, center, zoom }: { markers: unknown[]; areas: 
   const [tileError, setTileError] = useState<string>();
 
   // Place names are looked up one at a time, nudged toward the places given as coordinates. A name still streaming waits.
-  const marks = markers.map((node) => childProps<MarkerProps>(node));
+  const marks = mapMarkers(markers);
   const nearby = mapNear(marks.map((m) => m?.at));
   const names = marks.flatMap((m, i) => typeof m?.at === "string" && m.at.trim() && !(streaming && i === marks.length - 1) ? [m.at.trim()] : []);
   if (typeof center === "string" && center.trim() && !streaming) names.push(center.trim());
@@ -214,9 +247,20 @@ function MapBody({ markers, areas, center, zoom }: { markers: unknown[]; areas: 
     return latLng(at) ?? (typeof known === "object" ? known : null);
   };
   const pins: Pin[] = marks.flatMap((m, i) => {
-    const at = resolve(m?.at);
-    return at ? [{ key: `m${i}`, n: i + 1, title: m?.title ?? "", kind: kindOf(m?.kind), description: m?.description, image: m?.image, link: m?.link, at }] : [];
+    const at = resolve(m.at);
+    return at ? [{ key: `m${i}`, n: i + 1, title: m.title, kind: kindOf(m.kind), description: m.description, image: m.image, link: m.link, at, day: m.day, wiki: m.wiki }] : [];
   });
+  const days = [...new Set(marks.flatMap(mark => mark.day === null ? [] : [mark.day]))];
+  const grouped = new Map<string | null, Pin[]>([null, ...days].map(day => [day, []]));
+  for (const pin of pins) grouped.get(pin.day)!.push(pin);
+  const dayGroups = [...grouped].map(([day, pins]) => ({ day, pins }));
+  const order = dayGroups.flatMap(group => group.pins);
+  const positionByKey = new Map(order.map((pin, index) => [pin.key, index]));
+  const dayColors = new Map(days.map((day, index) => [day, DAY_COLORS[index % DAY_COLORS.length]!]));
+  if (days.length) order.forEach((pin, index) => { pin.n = index + 1; });
+  const tour = useTour(wantedTour, order.length, frame);
+  const shown = order.slice(0, tour.shown);
+  const colorOf = (pin: Pin) => pin.day === null ? KIND_COLOR[pin.kind] : dayColors.get(pin.day)!;
   const shapes: Shape[] = areas.flatMap((node, i) => {
     const a = childProps<AreaProps>(node);
     const points = (Array.isArray(a?.points) ? a.points : []).flatMap((p) => latLng(p) ?? []);
@@ -282,6 +326,8 @@ function MapBody({ markers, areas, center, zoom }: { markers: unknown[]; areas: 
   };
   const show = (key: string, at: LatLng) => {
     setActive(key);
+    const position = positionByKey.get(key);
+    if (position !== undefined && tour.active) tour.seek(position);
     const { left, top } = screen(at);
     if (left < 40 || top < 40 || left > size.width - 40 || top > size.height - 40) setMoved(clampView({ ...project(at.lat, at.lng), zoom: view.zoom }, size));
   };
@@ -294,7 +340,9 @@ function MapBody({ markers, areas, center, zoom }: { markers: unknown[]; areas: 
     className={`inline-flex size-7 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-foreground hover:bg-state-hover disabled:cursor-default disabled:text-muted-foreground disabled:hover:bg-transparent ${focusRing}`}><Icon aria-hidden className="size-3.5" /></button>;
 
   return <div className="flex min-w-0 flex-col gap-1.5">
+    {days.length || tour.active ? <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 text-xs">{days.length ? <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1">{days.map((day, index) => <span key={day} className="inline-flex min-w-0 items-center gap-1.5"><span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: DAY_COLORS[index % DAY_COLORS.length] }} /><span className="truncate">{day}</span></span>)}</div> : null}{tour.active ? <div className="flex shrink-0 items-center gap-3">{!tour.done ? <button type="button" onClick={tour.toggle} className={`rounded-sm text-muted-foreground ${focusRing}`}>{tour.paused ? "Resume tour" : "Pause tour"}</button> : null}<button type="button" onClick={() => { setActive(null); tour.replay(); }} className={`rounded-sm text-muted-foreground ${focusRing}`}>Replay tour</button></div> : null}</div> : null}
     <div ref={frame} role="region" aria-roledescription="map" aria-label={`Map of ${pins.length} ${pins.length === 1 ? "place" : "places"}. Arrow keys pan, plus and minus zoom, 0 fits everything.`} tabIndex={0} data-bb-image-preview-ignore=""
+      {...NO_BB_SWIPE}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag} onKeyDown={onKeyDown}
       onClickCapture={(event) => { if (dragged.current) { dragged.current = false; event.stopPropagation(); event.preventDefault(); } }}
       onClick={(event) => { if (!onUi(event.target)) setActive(null); }}
@@ -306,6 +354,10 @@ function MapBody({ markers, areas, center, zoom }: { markers: unknown[]; areas: 
       className={`relative h-72 cursor-grab touch-none select-none overflow-hidden rounded-md border border-border-hairline bg-background text-foreground active:cursor-grabbing ${focusRing}`}>
       <div aria-hidden className="absolute inset-0">{visibleTiles(view, size).map((tile) => <MapTile key={tile.key} tile={tile} theme={dark ? "dark" : "light"} onError={setTileError} />)}</div>
       <svg className="pointer-events-none absolute inset-0" width={size.width} height={size.height}>
+        {route ? dayGroups.map(group => {
+          const stops = group.pins.filter(pin => positionByKey.get(pin.key)! < tour.shown);
+          return stops.length > 1 ? <polyline key={group.day ?? "unassigned"} data-map-route="" points={stops.map(pin => { const point = screen(pin.at); return `${point.left},${point.top}`; }).join(" ")} fill="none" stroke={group.day === null ? "var(--primary)" : dayColors.get(group.day)} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" strokeDasharray="5 4" /> : null;
+        }) : null}
         {shapes.map((s) => {
           const on = hover === s.key || active === s.key, color = KIND_COLOR[s.kind];
           const toggle = () => setActive(active === s.key ? null : s.key);
@@ -317,19 +369,13 @@ function MapBody({ markers, areas, center, zoom }: { markers: unknown[]; areas: 
             onPointerEnter={() => setHover(s.key)} onPointerLeave={() => setHover((h) => h === s.key ? null : h)} onFocus={() => setHover(s.key)} onBlur={() => setHover((h) => h === s.key ? null : h)} />;
         })}
       </svg>
-      {pins.map((p) => {
-        const { left, top } = screen(p.at);
-        if (left < -24 || top < -24 || left > size.width + 24 || top > size.height + 24) return null;
-        const on = active === p.key, color = KIND_COLOR[p.kind];
-        // A muted fill sinks into the grey tiles, so hover outlines the pin in its own color instead.
-        return <button key={p.key} type="button" aria-label={`${p.n}. ${p.title}`} aria-expanded={on} onClick={() => setActive(on ? null : p.key)}
-          style={{ left, top, "--pin": color, borderColor: on ? color : undefined, boxShadow: on ? `2px 2px 0 ${color}` : undefined } as CSSProperties}
-          className={`absolute inline-flex h-7 min-w-7 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center gap-1 rounded-md border border-border bg-background px-1.5 text-xs font-semibold tabular-nums text-foreground hover:z-10 hover:border-(--pin) hover:shadow-[2px_2px_0_var(--pin)] ${on ? "z-10" : ""} ${focusRing}`}>
-          <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: color }} />{p.n}
-        </button>;
+      {shown.map((pin, index) => {
+        const point = screen(pin.at);
+        if (point.left < -24 || point.top < -24 || point.left > size.width + 24 || point.top > size.height + 24) return null;
+        return <MapPin key={`${tour.epoch}:${pin.key}`} pin={pin} point={point} on={active === pin.key} highlighted={hover === pin.key} color={colorOf(pin)} onToggle={() => setActive(active === pin.key ? null : pin.key)} onHover={hovered => setHover(hovered ? pin.key : null)} drop={tour.active && index === tour.shown - 1 && performance.now() - tour.droppedAt < 1000} />;
       })}
-      {pin ? <MapPopup at={screen(pin.at)} size={size} color={KIND_COLOR[pin.kind]} title={pin.title} description={pin.description} image={pin.image} link={pin.link} onClose={() => setActive(null)} />
-        : shape && shapeCenter ? <MapPopup at={screen(shapeCenter)} size={size} color={KIND_COLOR[shape.kind]} title={shape.title} description={shape.description} onClose={() => setActive(null)} /> : null}
+      {pin ? <MapPopup at={screen(pin.at)} size={size} color={colorOf(pin)} title={pin.title} description={pin.description} image={pin.image} link={pin.link} wiki={pin.wiki} onError={setTileError} onClose={() => setActive(null)} />
+        : shape && shapeCenter ? <MapPopup at={screen(shapeCenter)} size={size} color={KIND_COLOR[shape.kind]} title={shape.title} description={shape.description} onError={setTileError} onClose={() => setActive(null)} /> : null}
       <div data-map-ui="" className="absolute top-2 right-2 flex flex-col overflow-hidden rounded-md border border-border-hairline bg-background shadow-[2px_2px_0_var(--border)]">
         {control("Zoom in", Plus, () => zoomBy(1), view.zoom >= MAX_ZOOM)}
         {control("Zoom out", Minus, () => zoomBy(-1), view.zoom <= MIN_ZOOM)}
@@ -337,22 +383,23 @@ function MapBody({ markers, areas, center, zoom }: { markers: unknown[]; areas: 
       </div>
     </div>
     {pins.length + shapes.length > 0 ? <ul className="m-0 flex list-none flex-wrap gap-x-4 gap-y-0.5 p-0 text-sm">
-      {pins.map((p) => <li key={p.key}><button type="button" onClick={() => show(p.key, p.at)} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-sm border-0 bg-transparent p-0 text-left text-foreground hover:underline ${focusRing}`}>
-        <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: KIND_COLOR[p.kind] }} /><span className="tabular-nums text-muted-foreground">{p.n}</span>{p.title}
+      {order.map((p) => <li key={p.key}><button type="button" onClick={() => show(p.key, p.at)} onPointerEnter={() => setHover(p.key)} onPointerLeave={() => setHover(null)} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-sm border-0 bg-transparent p-0 text-left text-foreground hover:underline ${active === p.key || hover === p.key ? "underline" : ""} ${focusRing}`}>
+        <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: colorOf(p) }} /><span className="tabular-nums text-muted-foreground">{p.n}</span>{p.title}
       </button></li>)}
       {shapes.map((s) => <li key={s.key}><button type="button" onClick={() => { const c = centroid(s.points); if (c) show(s.key, c); }} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-sm border-0 bg-transparent p-0 text-left text-foreground hover:underline ${focusRing}`}>
         <span aria-hidden className="size-2.5 shrink-0 rounded-[2px] opacity-60" style={{ background: KIND_COLOR[s.kind] }} />{s.title}
       </button></li>)}
     </ul> : null}
+    {route ? <p className="m-0 text-xs text-muted-foreground">Stops are connected in trip order, not street directions.</p> : null}
     {notes.length ? <p role="status" className="m-0 text-sm text-muted-foreground">{notes.join(" ")}</p> : null}
   </div>;
 }
 
 const MapView = defineComponent({
   name: "Map",
-  props: z.object({ markers: z.array(Marker.ref), areas: z.array(Area.ref).optional(), center: position.optional(), zoom: z.number().optional() }),
-  description: 'A map of numbered places (Marker) and shaded regions (Area), with a key below. A position is [lat, lng] or a place name Pages looks up, like "Belém Tower, Lisbon"; give coordinates when you know them. center and zoom (1 world to 18 street, default 13 with a center) fix the view; without them the map fits everything. Readers drag to pan, use ⌘/Ctrl+scroll or the buttons to zoom, and click a place for its popup.',
-  component: ({ props }) => <MapBody markers={props.markers ?? []} areas={props.areas ?? []} center={props.center} zoom={props.zoom} />,
+  props: z.object({ markers: z.array(z.union([Marker.ref, z.string(), z.record(z.string(), z.any())])), areas: z.union([z.array(Area.ref), z.object({ route: z.boolean().optional(), tour: z.boolean().optional() })]).optional(), center: position.optional(), zoom: z.number().optional() }),
+  description: 'Numbered Marker parts, place names, or trip records {name,lat?,lng?,note?,day?,wiki?}. Existing Area lists, center, zoom, panning, and popups work unchanged. As the second argument, {route:true,tour:true} joins stops by day and drops pins in sequence without moving the camera. Days inherit from the preceding stop. A Wikipedia lead photo is looked up only when its place opens and must include reusable attribution. Tours pause in hidden pages and respect motion preferences.',
+  component: ({ props }) => <MapBody markers={props.markers ?? []} areas={Array.isArray(props.areas) ? props.areas : []} center={props.center} zoom={props.zoom} route={!Array.isArray(props.areas) ? props.areas?.route : false} tour={!Array.isArray(props.areas) ? props.areas?.tour : false} />,
 });
 
 // --- Pictures. ---
@@ -446,6 +493,7 @@ const Hotspots = defineComponent({
     const { Markdown } = useHost();
     const [picked, setPicked] = useState<number | null>(null);
     const [hover, setHover] = useState<number | null>(null);
+    const [preview, setPreview] = useState(false);
     const spots = (props.points ?? []).map((node) => childProps<HotspotProps>(node));
     const lit = hover ?? picked;
     const pick = (i: number) => setPicked((p) => p === i ? null : i);
@@ -453,6 +501,7 @@ const Hotspots = defineComponent({
     return <div className="flex min-w-0 flex-col gap-3">
       <div className="relative w-fit max-w-full">
         <Picture src={props.image} alt={props.alt ?? ""} className="block h-auto max-h-[28rem] w-auto max-w-full rounded-md" box="aspect-[3/2] w-[40rem] max-w-full rounded-md" />
+        <button type="button" aria-label="Expand image" onClick={() => setPreview(true)} className={`absolute top-2 right-2 grid size-8 place-items-center rounded-md border border-border bg-background/90 text-foreground ${focusRing}`}><Maximize2 aria-hidden className="size-4" /></button>
         {spots.map((s, i) => {
           const x = pinPercent(s?.x), y = pinPercent(s?.y);
           if (x === null || y === null) return null;
@@ -469,19 +518,20 @@ const Hotspots = defineComponent({
           {picked === i && s.text ? <div className="pb-2 pl-7.5 text-muted-foreground"><Markdown content={s.text} /></div> : null}
         </li> : null)}
       </ol>
+      <Lightbox open={preview} onClose={() => setPreview(false)} label={props.alt || "Image preview"}><Picture src={props.image} alt={props.alt ?? ""} className={lightboxImage} /></Lightbox>
     </div>;
   },
 });
 
-type Found = { url: string; width: number; height: number; title: string; creator: string; license: string; licenseUrl?: string; sourceUrl: string };
+type Found = { url: string; width: number; height: number; title: string; creator: string; license: string; licenseUrl?: string | null; sourceUrl: string };
 const aspects = { wide: "aspect-video", square: "aspect-square", tall: "aspect-[3/4]" } as const;
 
 function Credit({ image }: { image: Found }) {
   const { openUrl } = useHost();
   const license = webHref(image.licenseUrl), source = webHref(image.sourceUrl);
   const link = `rounded-sm text-muted-foreground underline underline-offset-2 hover:text-foreground ${focusRing}`;
-  return <p className="m-0 truncate text-xs text-muted-foreground" title={`${image.title} — ${image.creator}, ${image.license}`}>
-    {image.title} — {image.creator} · {license ? <a href={license} onClick={openWith(openUrl, license)} className={link}>{image.license}</a> : image.license}
+  return <p className="m-0 break-words text-xs text-muted-foreground" title={`${image.title} · ${image.creator}, ${image.license}`}>
+    {image.title} · {image.creator} · {license ? <a href={license} onClick={openWith(openUrl, license)} className={link}>{image.license}</a> : image.license}
     {source ? <> · <a href={source} onClick={openWith(openUrl, source)} className={link}>Commons</a></> : null}
   </p>;
 }
@@ -538,6 +588,7 @@ export const group: Group = {
       { name: "Trip plan", code: `root = Map([Marker("Belém Tower", [38.6916, -9.216], "daytrip", "16th-century fort on the Tagus. Go early.", "${belem}", "https://en.wikipedia.org/wiki/Bel%C3%A9m_Tower"), Marker("Guesthouse", [38.7118, -9.1300], "stay", "Two nights in Alfama."), Marker("Tram 28 stop", [38.7107, -9.1336], "general", "Ride it uphill, not at noon.", "${tram}"), Marker("Rua Augusta at noon", [38.7101, -9.1366], "avoid", "Packed with tour groups.")], [Area("Alfama", [[38.7148, -9.1345], [38.7152, -9.1262], [38.7098, -9.1250], [38.7090, -9.1322]], "stay", "Old quarter: steep lanes, good rooms.")])` },
       { name: "Places by name", code: `root = Map([Marker("Lisbon", "Lisbon, Portugal"), Marker("Sintra", "Sintra, Portugal", "daytrip", "Pena Palace and the Moorish Castle."), Marker("Cascais", "Cascais, Portugal", "daytrip", "Beach town at the end of the train line.")])` },
       { name: "Fixed view", code: `root = Map([Marker("Time Out Market", [38.7069, -9.1459], "general", "Food hall by Cais do Sodré.")], null, [38.7069, -9.1459], 16)` },
+      { name: "Days and routes", code: 'root = Map([{name:"Belém Tower",lat:38.6916,lng:-9.216,day:1,wiki:"Belém Tower",note:"Go early."},{name:"Jerónimos Monastery",lat:38.6979,lng:-9.2067},{name:"Pena Palace",lat:38.7876,lng:-9.3906,day:2,wiki:"Pena Palace"},{name:"Moorish Castle",lat:38.7924,lng:-9.3894}], {route:true,tour:true})' },
     ] },
     { component: Marker, summary: "one place on a Map", part: true, examples: [] },
     { component: Area, summary: "shaded region on a Map", part: true, examples: [] },

@@ -12,12 +12,16 @@ import { group as manage } from "./groups/manage.js";
 import { group as media } from "./groups/media.js";
 import { group as project } from "./groups/project.js";
 import { group as widgets } from "./groups/widgets.js";
+import { group as gpu } from "./groups/gpu.js";
+import { mathFunctions } from "./math.js";
+import { group as apps } from "./groups/apps.js";
 
-export const GROUPS: Group[] = [layout, content, data, charts, inputs, media, dev, project, manage, evidence, widgets];
+export const GROUPS: Group[] = [layout, content, data, charts, inputs, media, gpu, apps, dev, project, manage, evidence, widgets];
 
 export const specLibrary = createLibrary({
   id: "bb-pages",
   root: "Stack",
   components: GROUPS.flatMap((group) => group.entries.map((entry) => entry.component)),
+  functions: mathFunctions,
   componentGroups: GROUPS.filter((group) => group.entries.length > 0).map((group) => ({ name: group.name, components: group.entries.map((entry) => entry.component.name), ...(group.notes ? { notes: group.notes } : {}) })),
 });

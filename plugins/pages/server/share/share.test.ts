@@ -4,6 +4,7 @@ import type { Share } from "../../contract.js";
 import { PAGE_MIGRATIONS } from "../../migrations.js";
 import { createPageStore } from "../store.js";
 import { pagesHost, storageOf } from "../test-fakes.js";
+import { definePageSettings } from "../settings.js";
 import { FakeHereNow, type FakeEvent } from "./fake-here-now.js";
 import { registerShare } from "./index.js";
 import { createShareStore } from "./store.js";
@@ -147,7 +148,7 @@ describe("folder reconciliation", () => {
       getPublishBundle: () => null,
       publishChanged: () => undefined,
       getRemoteFolder: async () => "Test Project / Reports",
-    });
+    }, definePageSettings(bb));
     await vi.waitFor(() => expect(fake.sites.get("existing-site")?.folder).toBe("Test Project / Reports"));
     await harness.lifecycle.dispose();
   });
@@ -323,7 +324,7 @@ describe("onPageDeleted", () => {
       getPublishBundle: (versionId) => ({ files: [{ path: "index.html", contentType: "text/html", bytes: Buffer.from(`<p>${versionId}</p>`) }] }),
       publishChanged: () => undefined,
       getRemoteFolder: async () => undefined,
-    });
+    }, definePageSettings(bb));
     const { pageId } = store.createPage(
       { title: "Doomed", kind: "file", projectId: null, sourceKey: null, producer: null, producerKey: null },
       { label: null, html: "<p>x</p>", sha256: "x", hasCharts: false, document: null, provenance: null, sourcePath: null, threadId: null },

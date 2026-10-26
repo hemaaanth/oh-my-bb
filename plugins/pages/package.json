@@ -1,8 +1,24 @@
 {
   "name": "bb-plugin-pages",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Publish and share pages, with the same live UI in chat and on pages.",
   "license": "MIT",
+  "files": [
+    "dist/*.js",
+    "dist/*.css",
+    "dist/*.json",
+    "assets",
+    "skills",
+    "licenses",
+    "library",
+    "app",
+    "server",
+    "render",
+    "*.ts",
+    "*.tsx",
+    "*.md",
+    "tsconfig.json"
+  ],
   "author": "Hemanth Soni",
   "homepage": "https://github.com/hemaaanth/oh-my-bb/tree/main/plugins/pages",
   "repository": {
@@ -30,7 +46,10 @@
     "name": "Pages",
     "description": "Publish and share pages, with the same live UI in chat and on pages.",
     "branding": {
-      "icon": "FileText"
+      "icon": "./assets/pages.svg",
+      "experimental_icons": {
+        "pages": "./assets/pages.svg"
+      }
     },
     "server": "./server.ts",
     "app": "./app.tsx",
@@ -41,16 +60,19 @@
   "scripts": {
     "build:charts": "node render/charts-runtime/build.mjs",
     "build:spec": "node render/spec-runtime/build.mjs",
-    "build": "bb plugin build && node render/spec-runtime/build.mjs",
+    "build": "node render/spec-runtime/contracts.mjs && bb plugin build && node render/spec-runtime/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build:icons": "node render/icons/build.mjs"
+    "build:icons": "node render/icons/build.mjs",
+    "build:contracts": "node render/spec-runtime/contracts.mjs"
   },
   "dependencies": {
     "@openuidev/lang-core": "1.0.1",
     "@openuidev/react-lang": "1.0.1",
+    "@shaderfrog/glsl-parser": "^7.0.1",
     "highcharts": "13.0.0",
     "markdown-it": "^14.1.0",
+    "three": "^0.186.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -64,6 +86,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
     "bb-app": "0.46.1",
     "better-sqlite3": "12.11.1",
     "cron-parser": "^5.5.0",

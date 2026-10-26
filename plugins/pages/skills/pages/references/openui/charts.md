@@ -2,9 +2,9 @@
 
 ## Chart
 
-`Chart(type: "bar" | "line" | "area" | "stackedBar" | "horizontalBar" | "pie" | "donut" | "radar" | "radial" | "scatter" | "funnel", labels: (string | number)[], series: Series[], title?: string, xLabel?: string, yLabel?: string)`
+`Chart(type: "bar" | "line" | "area" | "stackedBar" | "horizontalBar" | "pie" | "donut" | "radar" | "radial" | "scatter" | "funnel" | "histogram" | "box" | "heatmap", labels: (string | number)[], series: Series[], title?: string, xLabel?: string, yLabel?: string, source?: string)`
 
-A small chart. labels name the x axis points; each Series gives one value per label. bar, line, area, stackedBar, horizontalBar, and radar (labels are the spokes, 3 or more) take several series. pie, donut, radial, and funnel draw the first series only. scatter reads labels as numeric x values and each series as the y for each x. Values are 0 or more, except in scatter. xLabel and yLabel title the bottom and left axes. For anything bigger, publish a page.
+A chart of Series. Ordinal types use one value per label. Histogram and box use raw observations: histogram labels are increasing numeric bin edges, or [] for shared automatic bins; box draws quartiles, 1.5 IQR whiskers and outliers. Heatmap uses labels as columns and Series as rows. scatter reads numeric labels as x values. source identifies where the numbers came from. xLabel and yLabel name the axes.
 
 Bar:
 
@@ -72,8 +72,26 @@ Funnel:
 root = Chart("funnel", ["Visited", "Signed up", "Activated", "Paid"], [Series("Users", [5000, 1200, 640, 180])], "Signup funnel")
 ```
 
+Histogram:
+
+```openui-lang
+root = Chart("histogram", [], [Series("Before", [11, 12, 12, 15, 16, 20, 31]), Series("After", [8, 9, 10, 11, 11, 13])], "Request latency", "Milliseconds", "Requests", "Illustrative")
+```
+
+Box plot:
+
+```openui-lang
+root = Chart("box", [], [Series("Before", [11, 12, 13, 14, 15, 16, 45]), Series("After", [7, 8, 9, 10, 11, 12])], "Latency distribution", "Milliseconds")
+```
+
+Heatmap:
+
+```openui-lang
+root = Chart("heatmap", ["Mon", "Tue", "Wed"], [Series("API", [8, 2, 5]), Series("Worker", [1, 9, 4])], "Failures by day")
+```
+
 ## Series
 
-`Series(name: string, values: number[])`
+`Series(name: string, values: (number | string | any)[], tone?: "neutral" | "info" | "success" | "warning" | "danger")`
 
-One named series of a Chart: one number per label. null leaves a gap.
+One named series of a Chart. Ordinal charts take one value per label; histogram and box take raw observations and leave out non-numeric values. null leaves a gap. Optional tone: neutral, info, success, warning, danger.

@@ -8,6 +8,10 @@ import { z } from "zod";
 import type { WEB_METHODS } from "../../contract.js";
 import { SpecError } from "./errors.js";
 import { declaresImage, safeGet, sniffImage, type GetOptions } from "./webNet.js";
+import { https, plain, record } from "./web-format.js";
+import { findWikiPhoto, wikiPhotoSchema } from "./wiki.js";
+import type { WikiPhoto } from "./wiki.js";
+const wikiResultSchema = z.object({ photo: wikiPhotoSchema.nullable() });
 
 export type WebMethod = (typeof WEB_METHODS)[number];
 
@@ -24,6 +28,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAPBOX = new Set(["api.mapbox.com"]);
 const PHOTON = new Set(["photon.komoot.io"]);
 const COMMONS = new Set(["commons.wikimedia.org"]);
+const WIKI = new Set(["en.wikipedia.org", "commons.wikimedia.org"]);
 const json = (hosts: ReadonlySet<string>): GetOptions => ({ accept: "application/json", maxBytes: 2 * 1024 * 1024, timeoutMs: 15_000, hosts });
 
 const lat = z.number().min(-90).max(90);
@@ -34,6 +39,7 @@ const inputs = {
   geocode: z.object({ name: text, near: z.object({ lat, lng }).strict().optional() }).strict(),
   search: z.object({ query: text, count: z.number().int().min(1).max(8).default(1) }).strict(),
   image: z.object({ url: z.string().trim().min(1).max(2000) }).strict(),
+  wiki: z.object({ title: text }).strict(),
 };
 
 export type Located = { lat: number; lng: number };
@@ -178,17 +184,6 @@ export function searchUrl(query: string): string {
   })}`;
 }
 
-const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", nbsp: " " };
-const plain = (html: unknown) => typeof html === "string" ? html.replace(/<[^>]*>/g, " ").replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (_, name: string) => ENTITIES[name]).replace(/\s+/g, " ").trim() : "";
-const record = (value: unknown): Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
-function https(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  try {
-    const url = new URL(value, "https://commons.wikimedia.org");
-    for (const key of [...url.searchParams.keys()]) if (key.startsWith("utm_")) url.searchParams.delete(key);
-    return url.protocol === "https:" ? url.href : null;
-  } catch { return null; }
-}
 
 /**
  * Up to `count` photos from a Commons search response, in search order with JPEGs first
@@ -260,6 +255,15 @@ async function search(bb: BbPluginApi, input: unknown): Promise<{ images: FoundI
   return { images: images.slice(0, count) };
 }
 
+async function wiki(bb: BbPluginApi, input: unknown) {
+  const { title } = parse(inputs.wiki, input);
+  return lookup(bb, `wiki:${title.replace(/\s+/g, " ")}`, async () => {
+    const found = await findWikiPhoto(title, url => limits.api(() => safeGet(url, json(WIKI))));
+    if (!found.ok) throw new SpecError(`Place photo: ${found.error}.`);
+    return { value: { photo: found.photo }, ttl: found.photo ? TTL.found : TTL.miss };
+  }, (value): value is { photo: WikiPhoto | null } => wikiResultSchema.safeParse(value).success);
+}
+
 async function image(bb: BbPluginApi, input: unknown) {
   const { url: raw } = parse(inputs.image, input);
   let url: string;
@@ -278,5 +282,6 @@ export async function runWeb(bb: BbPluginApi, method: WebMethod, input: Record<s
     case "geocode": return geocode(bb, input);
     case "search": return search(bb, input);
     case "image": return image(bb, input);
+    case "wiki": return wiki(bb, input);
   }
 }

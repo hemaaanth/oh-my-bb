@@ -1,15 +1,16 @@
-// The skill reference for spec fences, generated from the catalog and checked by a test.
+// The skill reference for spec fences, generated from the catalog during the package build.
 // Two layers, so the always-read part stays small as the library grows:
 //   references/openui.md            Pages rules, OpenUI syntax, and a one-line index of every component
 //   references/openui/<group>.md    exact signatures and examples for one group, read only when used
 import { GROUPS, specLibrary } from "./catalog.js";
 import { specTools } from "./tools.js";
+import { mathFunctions } from "./math.js";
 
 const intro = `# Live UI in a reply (openui-lang)
 
 Write a fenced \`openui-lang\` block in a reply. BB renders it in place, live, while it streams. Text outside the fence stays chat.
 
-Use it for UI that belongs to this reply: numbers, a table or chart, tabs, code or a diff, a map, a plan, or a choice or form for the user to answer. Use \`page_publish\` for anything long, anything to keep or share, or custom HTML.
+Use it for UI that belongs to this reply: numbers, a table or chart, tabs, code or a diff, a map, a plan, or a choice or form for the user to answer. Use \`page_publish\` for anything long, anything to keep or share. For a small custom HTML/JavaScript app in a reply, read \`references/openui/apps.md\` and use a \`pages-app\` fence.
 
 ## Pages rules
 
@@ -20,6 +21,8 @@ Use it for UI that belongs to this reply: numbers, a table or chart, tabs, code 
 - Only http(s) links open.
 ${specTools.length ? "- Query reads data with the tools listed below. Mutation is not available. Otherwise put the data in the program." : "- There are no tools, Query, or Mutation. Put the data in the program."}
 - A fence that does not parse shows as code, so check it before you send.
+- Use \`page_examples\` or \`bb pages examples <component>\` for signatures and examples. \`page_check\` and \`bb pages check <file>\` check programs and app HTML without publishing. Checks are static, not browser or security proofs.
+- App answers are selected for review, not sent automatically. Existing Buttons and Forms keep their direct-send behavior. App frames block fetch and remote resource loads, but self-navigation can still make a network request. Never put secrets in an app.
 - The same programs work on a published page: a fence in a Markdown page, or \`<script type="text/openui-lang">\` in an HTML page. Buttons and Forms there are read-only. Query and map answers are saved when you publish, so publish again to refresh them.
 
 Example:
@@ -43,7 +46,7 @@ export function specReference(): Record<string, string> {
   const groups = GROUPS.filter((group) => group.entries.length > 0);
   const index = groups.map((group) => `### ${group.name} (references/openui/${group.id}.md)\n\n${group.entries.map((entry) => `- ${entry.component.name}: ${entry.summary}`).join("\n")}`);
   const files: Record<string, string> = {
-    "openui.md": `${intro}\n${kept.join("\n").trim()}\n\n## Components\n\n${signatureNotes}\n\n${index.join("\n\n")}\n`,
+    "openui.md": `${intro}\n${kept.join("\n").trim()}\n\n## Math functions\n\n${mathFunctions.map((fn) => `- \`@${fn.name}(${Object.keys(fn.params.shape).join(", ")})\`: ${fn.description}`).join("\n")}\n\n## Components\n\n${signatureNotes}\n\n${index.join("\n\n")}\n`,
   };
   const components = specLibrary.toSpec().components;
   for (const group of groups) {

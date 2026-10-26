@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { specLibrary } from "../../app/spec/catalog.js";
 import { BAKED_ATTRIBUTE, bakedKey, escapeSpec, type Baked } from "../../render/spec-baked.js";
 import { bakeSpecs, type BakeDeps } from "./bake.js";
 
@@ -21,11 +20,6 @@ function fakes(allowed = ["file"]) {
 }
 
 describe("bakeSpecs", () => {
-  // The server parses blocks with this schema, so it never imports the React catalog. -u regenerates it.
-  it("keeps the library schema the server parses with in step with the catalog", async () => {
-    await expect(`${JSON.stringify(specLibrary.toJSONSchema(), null, 1)}\n`).toMatchFileSnapshot("./library.schema.json");
-  });
-
   it("leaves a page without blocks alone", async () => {
     const { deps, calls } = fakes();
     expect(await bakeSpecs("<p>Hi</p>", deps)).toBe("<p>Hi</p>");

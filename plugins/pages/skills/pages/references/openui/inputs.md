@@ -215,9 +215,9 @@ root = Select("tz", [{label: "London", value: "Europe/London"}, {label: "New Yor
 
 ## OptionCards
 
-`OptionCards(name: string, options: (string | {label: string, value?: string, detail?: string, icon?: string})[], label?: string, multiple?: boolean, value?: $binding<string | string[]>)`
+`OptionCards(name: string, options: (string | {label: string, value?: string, detail?: string, icon?: string, image?: string})[], label?: string, multiple?: boolean, value?: $binding<string | string[]>)`
 
-Pick one of a few rich options shown as cards side by side, or several with multiple true. options are {label, value?, detail?, icon?}; value defaults to label. icon is one of: arrowdown, arrowleft, arrowright, arrowup, bell, bookmark, bug, calendar, check, chevrondown, chevronleft, chevronright, chevronup, help, clock, code, copy, download, more, external, eye, file, filter, folder, branch, heart, home, info, idea, link, lock, mail, minus, pause, edit, play, plus, refresh, rocket, search, send, settings, share, sparkles, star, thumbsdown, thumbsup, trash, warning, upload, user, close, zap.
+Pick one of a few rich options shown as cards side by side, or several with multiple true. options are {label, value?, detail?, icon?, image?}; value defaults to label. image is a scoped file or https picture; its separate expand button does not change the choice. icon is one of: arrowdown, arrowleft, arrowright, arrowup, bell, bookmark, bug, calendar, check, chevrondown, chevronleft, chevronright, chevronup, help, clock, code, copy, download, more, external, eye, file, filter, folder, branch, heart, home, info, idea, link, lock, mail, minus, pause, edit, play, plus, refresh, rocket, search, send, settings, share, sparkles, star, thumbsdown, thumbsup, trash, warning, upload, user, close, zap.
 
 One:
 
@@ -229,6 +229,12 @@ Several:
 
 ```openui-lang
 root = OptionCards("extras", [{label: "Dark mode"}, {label: "Export to CSV", detail: "From any table"}, {label: "Slack alerts", icon: "bell"}], "Add to the next release", true)
+```
+
+Visual choices:
+
+```openui-lang
+root = OptionCards("layout", [{"label":"List","image":"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22240%22%20height%3D%22120%22%3E%3Crect%20width%3D%22240%22%20height%3D%22120%22%20fill%3D%22%23f4f4f5%22%2F%3E%3Cpath%20d%3D%22M24%2028h192M24%2060h192M24%2092h192%22%20stroke%3D%22%232563eb%22%20stroke-width%3D%2216%22%2F%3E%3C%2Fsvg%3E"},{"label":"Columns","image":"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22240%22%20height%3D%22120%22%3E%3Crect%20width%3D%22240%22%20height%3D%22120%22%20fill%3D%22%23f4f4f5%22%2F%3E%3Cpath%20d%3D%22M52%2020v80M120%2020v80M188%2020v80%22%20stroke%3D%22%232563eb%22%20stroke-width%3D%2240%22%2F%3E%3C%2Fsvg%3E"}], "Choose a layout")
 ```
 
 ## Swatches

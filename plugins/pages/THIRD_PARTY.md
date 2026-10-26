@@ -31,8 +31,9 @@ SIL Open Font License 1.1.
 ## MingCute
 
 Pages draws MingCute icons. The glyph paths are copied, with colours
-removed, into `assets/icons.json` (icons on pages) and
-`app/spec/icons.generated.tsx` (chat components). They come from the
+removed, into `assets/icons.json` (icons on pages),
+`app/spec/icons.generated.tsx` (chat components), and `assets/pages.svg`
+(the canonical document mark used by BB's plugin surfaces). They come from the
 `mingcute_icon` 2.9.72 npm package, by Richard9394 (MingCute Design), under
 the Apache License 2.0.
 The project has no NOTICE file.
@@ -54,12 +55,34 @@ Copyright (c) 2011-2024 Thesys Inc. MIT License.
 ## Generative UI (bb-plugin-genui)
 
 Parts of the component logic are ported from Generative UI by ComicBit, under
-the Apache License 2.0. Each ported part is marked in the source with
-"Ported from GenUI <file> (Apache-2.0)" and was changed for Pages. They are in
-`app/spec/groups/` and `server/spec/`. The project has no NOTICE file.
+the Apache License 2.0. Source headers mark the adapted parts. These include
+`app/spec/groups/`, `app/spec/gpu/`, `app/spec/reports/`, viewer gesture
+geometry, map tours, app documents and previews in `app/apps/`, source/excerpt
+helpers, and `server/spec/` including credited Wikipedia-photo extraction.
+The feature ports use upstream 0.3.1, commit
+`c9700a34a9cc24961d17771590274e0703dc481c`.
+The project has no NOTICE file.
 
 - Source: https://github.com/ComicBit/bb-plugin-genui
 - License: `licenses/GenUI-Apache-2.0.txt`
+
+## Three.js
+
+Scene rendering includes Three.js 0.186.1 and its GLTF/HDR loaders.
+Copyright © 2010-2026 three.js authors. MIT License.
+
+- Source: https://github.com/mrdoob/three.js
+- License: `licenses/Three-MIT.txt`
+
+## ShaderFrog GLSL Parser
+
+Server-side shader checks use `@shaderfrog/glsl-parser` 7.0.1 and its generated
+parser. The npm package credits Andrew Ray and declares ISC. Its npm archive
+does not include a LICENSE file; `licenses/GLSL-parser-ISC.txt` records that
+attribution and the standard ISC terms.
+
+- Source: https://github.com/ShaderFrog/glsl-parser
+
 
 ## Board drag (bb-plugins)
 

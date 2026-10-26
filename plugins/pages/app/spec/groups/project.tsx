@@ -4,7 +4,8 @@ import { defineComponent } from "@openuidev/react-lang";
 import { z } from "zod";
 import { useHost } from "../host.js";
 import { Chevron, Reveal, focusRing, type Group } from "../kit.js";
-import { formatMs, groupTests, jsonChildren, jsonPreview, jsonScalar, readTests, relativeTime, testCounts, type TestStatus } from "./project-logic.js";
+import { jsonChildren, jsonPreview, jsonScalar, relativeTime } from "./project-logic.js";
+import { TestsView } from "../reports/ResultsView.js";
 
 /** Rows that have their main field yet: while a reply streams, the last one may be half written. */
 const ready = <T,>(items: unknown, key: keyof T): T[] => Array.isArray(items) ? items.filter((item) => item && typeof item === "object" && typeof item[key] === "string" && item[key] !== "") : [];
@@ -159,49 +160,12 @@ const PullRequest = defineComponent({
   },
 });
 
-const MARK: Record<TestStatus, [string, string]> = { passed: ["✓", "text-success"], failed: ["✕", "text-destructive"], skipped: ["○", "text-muted-foreground"] };
-
-function Suite({ suite: name, cases, failed }: ReturnType<typeof groupTests>[number]) {
-  const [open, setOpen] = useState(failed > 0);
-  const counts = testCounts(cases);
-  return <li className={row}>
-    <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className={toggle}>
-      <Chevron open={open} />
-      <span className="min-w-0 flex-1 truncate text-foreground">{name || "Tests"}</span>
-      <span className={`shrink-0 tabular-nums ${failed ? "text-destructive" : "text-muted-foreground"}`}>{failed ? `${failed} failed` : `${counts.passed}/${cases.length}`}</span>
-    </button>
-    <Reveal open={open}><ul className={`${list} mt-1 pl-5`}>{cases.map((test, i) => <li key={i} className="flex min-w-0 flex-col py-0.5">
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span role="img" aria-label={test.status} title={test.status} className={`w-3 shrink-0 text-center ${MARK[test.status][1]}`}>{MARK[test.status][0]}</span>
-        <span className="min-w-0 flex-1 text-foreground">{test.name}</span>
-        {test.ms !== undefined ? <span className="shrink-0 tabular-nums text-muted-foreground">{formatMs(test.ms)}</span> : null}
-      </span>
-      {test.message && test.status === "failed" ? <pre className="m-0 mt-1 ml-5 max-h-60 overflow-auto whitespace-pre-wrap font-mono text-[0.85em] text-muted-foreground">{test.message}</pre> : null}
-    </li>)}</ul></Reveal>
-  </li>;
-}
 
 const Tests = defineComponent({
   name: "Tests",
   props: z.object({ results: z.union([z.array(z.any()), z.string(), z.record(z.string(), z.any())]), title: z.string().optional() }),
-  description: 'Test results by suite, failures first with their messages. results is a list of cases {name, status, suite?, file?, ms?, message?}, a vitest or jest JSON report (`--reporter=json`), or JUnit XML text. status is passed, failed, or skipped (common words like pass, error, todo also work). Load a report with Query("file").',
-  component: ({ props }) => {
-    const cases = readTests(props.results);
-    const counts = testCounts(cases);
-    const total = cases.length;
-    const ms = cases.reduce((sum, test) => sum + (test.ms ?? 0), 0);
-    return <div className="flex min-w-0 flex-col gap-2">
-      <Title text={props.title} />
-      <p role="status" className="m-0 flex flex-wrap gap-x-3">
-        {counts.failed ? <span className="font-semibold text-destructive">{counts.failed} failed</span> : total ? <span className="font-semibold text-success">All passed</span> : null}
-        <span className="text-foreground">{counts.passed} passed</span>
-        {counts.skipped ? <span className="text-muted-foreground">{counts.skipped} skipped</span> : null}
-        {ms ? <span className="text-muted-foreground">{formatMs(ms)}</span> : null}
-      </p>
-      {total ? <div aria-hidden className="flex h-1.5 overflow-hidden rounded-full bg-muted">{(["passed", "failed", "skipped"] as const).map((status) => <div key={status} className={status === "passed" ? "bg-success" : status === "failed" ? "bg-destructive" : "bg-muted-foreground/40"} style={{ width: `${(counts[status] / total) * 100}%` }} />)}</div> : null}
-      {total ? <ul className={list}>{groupTests(cases).map((suite) => <Suite key={suite.suite} {...suite} />)}</ul> : <Empty text="No test results." />}
-    </div>;
-  },
+  description: 'Test results from existing case lists, vitest/Jest JSON, or JUnit XML. Failures sort first, with source locations, messages, and captured output behind disclosures. Search by name, suite, or file. Skips, pending tests, and expected failures stay distinct from passing tests. Load a report with Query("file").',
+  component: ({ props }) => <TestsView results={props.results} title={props.title} />,
 });
 
 const thread = z.object({ title: z.string(), status: z.string().optional(), updatedAt: z.union([z.string(), z.number()]).optional(), branch: z.string().nullable().optional(), waiting: z.boolean().optional(), current: z.boolean().optional() });

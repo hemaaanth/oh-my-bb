@@ -4,9 +4,9 @@ Map tiles, place names, ImageSearch, and remote pictures come through Pages' web
 
 ## Map
 
-`Map(markers: Marker[], areas?: Area[], center?: string | number[], zoom?: number)`
+`Map(markers: (Marker | string | Record<string, any>)[], areas?: Area[] | {route?: boolean, tour?: boolean}, center?: string | number[], zoom?: number)`
 
-A map of numbered places (Marker) and shaded regions (Area), with a key below. A position is [lat, lng] or a place name Pages looks up, like "Belém Tower, Lisbon"; give coordinates when you know them. center and zoom (1 world to 18 street, default 13 with a center) fix the view; without them the map fits everything. Readers drag to pan, use ⌘/Ctrl+scroll or the buttons to zoom, and click a place for its popup.
+Numbered Marker parts, place names, or trip records {name,lat?,lng?,note?,day?,wiki?}. Existing Area lists, center, zoom, panning, and popups work unchanged. As the second argument, {route:true,tour:true} joins stops by day and drops pins in sequence without moving the camera. Days inherit from the preceding stop. A Wikipedia lead photo is looked up only when its place opens and must include reusable attribution. Tours pause in hidden pages and respect motion preferences.
 
 Trip plan:
 
@@ -26,11 +26,17 @@ Fixed view:
 root = Map([Marker("Time Out Market", [38.7069, -9.1459], "general", "Food hall by Cais do Sodré.")], null, [38.7069, -9.1459], 16)
 ```
 
+Days and routes:
+
+```openui-lang
+root = Map([{name:"Belém Tower",lat:38.6916,lng:-9.216,day:1,wiki:"Belém Tower",note:"Go early."},{name:"Jerónimos Monastery",lat:38.6979,lng:-9.2067},{name:"Pena Palace",lat:38.7876,lng:-9.3906,day:2,wiki:"Pena Palace"},{name:"Moorish Castle",lat:38.7924,lng:-9.3894}], {route:true,tour:true})
+```
+
 ## Marker
 
-`Marker(title: string, at: string | number[], kind?: "general" | "stay" | "daytrip" | "avoid", description?: string, image?: string, link?: string)`
+`Marker(title: string, at: string | number[], kind?: "general" | "stay" | "daytrip" | "avoid", description?: string, image?: string, link?: string, day?: string | number, wiki?: string)`
 
-One numbered place of Map. at is [lat, lng] or a place name. kind "general" (default, indigo), "stay" (green), "daytrip" (amber), or "avoid" (red). description, image (an http(s) URL), and link (an http(s) URL) fill the popup that opens when it is clicked.
+One numbered place of Map. at is [lat, lng] or a place name. kind "general" (default, indigo), "stay" (green), "daytrip" (amber), or "avoid" (red). description, image, and link fill its click popup. day groups a trip's stops; later stops inherit it. wiki names an English Wikipedia article whose credited lead photo is looked up only when this place opens.
 
 ## Area
 
