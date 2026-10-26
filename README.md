@@ -47,6 +47,9 @@ as `fx-acp/v0.1.0`.
   deliveries.
 - [`plugins/workspace-scripts`](plugins/workspace-scripts) runs `bb.json` commands
   and tracks workspace services through BB's native thread-actions menu.
+- [`plugins/status-sidebar`](plugins/status-sidebar) groups BB threads by working
+  status with nested thread summaries and saved ordering. Agents, Projects, and
+  Tasks are optional explicit integrations; the base sidebar runs alone.
 - [`agents/fx-acp`](agents/fx-acp) is an optional standalone ACP adapter for FX.
 - [`agents/nanocodex-acp`](agents/nanocodex-acp) is an optional standalone ACP
   adapter for nanocodex.

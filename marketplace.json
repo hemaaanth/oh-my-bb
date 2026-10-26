@@ -171,6 +171,22 @@
           "ref": "main"
         }
       }
+    },
+    {
+      "id": "status-sidebar",
+      "displayName": "Status Sidebar",
+      "description": "Group BB threads by working status with nested thread summaries and saved ordering.",
+      "icon": { "url": "plugins/status-sidebar/icons/status-sidebar.svg" },
+      "overview": "# Status Sidebar\n\nGroup BB threads by working status with nested thread summaries and saved ordering.\n\n## See what needs attention\n\nGroup threads by status, workspace, or project. Combine a subgroup with recent, status, or manual ordering. Needs input, active work, drafting, unread, idle, and Later have distinct meanings. Parent summaries include the neediest child. Expand children without leaving the thread list.\n\nBB keeps its navigation rail, footer, split navigation, keyboard targets, and native thread action menus. Status Sidebar adds a private Later marker. It does not replace BB's project or thread lifecycle controls. The sidebar stays narrow; the dedicated setup guide uses the standard app-page frame.\n\n## Works alone\n\nNative BB thread, project, draft, host, and navigation data power the base sidebar. Saved local groups, manual order, and collapse preferences remain available. No account, API key, or sibling package is required. Private state stays on the BB server or in the current client's browser storage.\n\n## Optional integrations\n\nExplicit Oh My BB switches in plugin settings enable Agents, Projects, or Tasks. Agents adds Bots and Channels. Projects supplies shared project groups and project order. Tasks adds query-driven attachment to an existing task. Install and configure each owner separately. All opt-ins default to off. Status Sidebar never installs, enables, or probes siblings at startup. Disabling an integration retains saved state. Previously saved native flags import once; one explicit reload finishes moving their controls to Oh My BB without duplicate editors.\n\n## Requirements\n\nBB 0.46.1 or later. Choose Status Sidebar under Settings → Appearance → Sidebar. Open Setup guide from the sidebar or More in plugin settings. Native Thread list preferences are not rewritten.\n",
+      "tags": ["sidebar", "status", "threads", "navigation"],
+      "author": { "name": "Hemanth Soni", "github": "hemaaanth", "url": "https://github.com/hemaaanth" },
+      "source": {
+        "git": {
+          "url": "https://github.com/hemaaanth/oh-my-bb.git",
+          "subdir": "plugins/status-sidebar",
+          "ref": "main"
+        }
+      }
     }
   ]
 }
