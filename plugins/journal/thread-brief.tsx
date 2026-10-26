@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
-import type { PluginThreadHeaderActionProps } from "@get-bb/plugin-sdk/app";
+import { useBbContext, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import * as Dialog from "@radix-ui/react-dialog";
 import type { rpcContract, ThreadBrief } from "./server";
 import { Button } from "@/components/ui/button";
@@ -12,6 +11,7 @@ import { CHANGE_CHANNEL } from "./calendar";
 // Must match BRIEF_CHANGED and JOURNAL_CHANGED in server.ts (the app bundle cannot import server values).
 const BRIEF_CHANGED = "journal-brief";
 const JOURNAL_CHANGED = "journal-changed";
+const OPEN = "journal:open-thread-brief";
 const errorMessage = (cause: unknown) => cause instanceof Error ? cause.message : String(cause);
 
 function ago(at: number, now: number) {
@@ -22,17 +22,42 @@ function ago(at: number, now: number) {
   return hours < 48 ? `${hours} h ago` : new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-/** Thread header button: opens the saved six-section briefing. It only reads stored data; it never starts a model call. */
-export function ThreadBriefAction({ threadId, isCompactViewport }: PluginThreadHeaderActionProps) {
+export function openThreadBrief(threadId: string) {
+  // Let the native menu close before the dialog takes focus.
+  setTimeout(() => window.dispatchEvent(new CustomEvent(OPEN, { detail: threadId })), 0);
+}
+
+/** Opens the selected thread's saved briefing; never starts a model call. */
+export function ThreadBriefOverlay() {
   const rpc = useRpc<typeof rpcContract>();
   const portalScope = usePortalScopeProps();
+  const context = useBbContext();
+  const opener = useRef<HTMLElement | null>(null);
+  const [threadId, setThreadId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const id: unknown = (event as CustomEvent).detail;
+      if (typeof id !== "string" || !id) return;
+      const active = document.activeElement;
+      // A closing menu can retain focus until its exit animation ends.
+      const triggerId = active?.closest('[role="menu"]')?.getAttribute("aria-labelledby");
+      opener.current = (triggerId ? document.getElementById(triggerId) : null)
+        ?? (active instanceof HTMLElement ? active : null);
+      setThreadId(id);
+      setOpen(true);
+    };
+    window.addEventListener(OPEN, handler);
+    return () => window.removeEventListener(OPEN, handler);
+  }, []);
+  useEffect(() => { setOpen(false); }, [context.threadId]);
   const [data, setData] = useState<ThreadBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   // Only the newest request may write state: an older thread's late answer or failure is dropped.
   const latest = useRef(0);
   const load = useCallback(() => {
+    if (!threadId) return;
     const request = ++latest.current;
     setLoading(true);
     rpc.call("journal_thread_brief", { threadId }).then(
@@ -40,8 +65,11 @@ export function ThreadBriefAction({ threadId, isCompactViewport }: PluginThreadH
       (cause: unknown) => { if (request === latest.current) setError(errorMessage(cause)); },
     ).finally(() => { if (request === latest.current) setLoading(false); });
   }, [rpc, threadId]);
-  // A different thread in the same header slot must not show the previous thread's briefing.
-  useEffect(() => { latest.current += 1; setData(null); setError(null); setLoading(false); }, [threadId]);
+  // Drop the previous selection's late answer, including after unmount.
+  useEffect(() => {
+    latest.current += 1; setData(null); setError(null); setLoading(false);
+    return () => { latest.current += 1; };
+  }, [threadId]);
   useEffect(() => { if (open) load(); }, [open, load]);
   const reloadIfOpen = () => { if (open) load(); };
   useRealtime(BRIEF_CHANGED, (payload) => {
@@ -52,15 +80,9 @@ export function ThreadBriefAction({ threadId, isCompactViewport }: PluginThreadH
   useRealtime(JOURNAL_CHANGED, reloadIfOpen);
   useRealtime(CHANGE_CHANNEL, reloadIfOpen);
   return <Dialog.Root open={open} onOpenChange={setOpen}>
-    <Dialog.Trigger asChild>
-      <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
-        aria-label="Catch up on this thread">
-        <Icon name="Note" aria-hidden />{!isCompactViewport && <span>Catch up</span>}
-      </Button>
-    </Dialog.Trigger>
     <Dialog.Portal>
       <Dialog.Overlay {...portalScope} className="fixed inset-0 z-50 bg-black/60" />
-      <Dialog.Content {...portalScope} className="journal-dialog fixed left-1/2 top-1/2 z-50 flex max-h-[min(85dvh,760px)] w-[calc(100vw-1.5rem)] max-w-lg flex-col overflow-hidden rounded-md border border-border bg-background shadow-2xl">
+      <Dialog.Content {...portalScope} onCloseAutoFocus={(event) => { if (opener.current?.isConnected) { event.preventDefault(); opener.current.focus(); } }} className="journal-dialog fixed left-1/2 top-1/2 z-50 flex max-h-[min(85dvh,760px)] w-[calc(100vw-1.5rem)] max-w-lg flex-col overflow-hidden rounded-md border border-border bg-background shadow-2xl">
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-3">
           <div className="min-w-0">
             <Dialog.Title className="text-base font-semibold">Catch up on this thread</Dialog.Title>

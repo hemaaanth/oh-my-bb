@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { definePluginApp, ThreadChat, ThreadTitle, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
+import { definePluginApp, experimental_THREAD_ACTION_GROUPS, ThreadChat, ThreadTitle, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import * as Dialog from "@radix-ui/react-dialog";
 import { toast } from "sonner";
 import type { CalendarActivity, rpcContract } from "./server";
@@ -9,7 +9,7 @@ import { CalendarEmpty, CalendarLegend, CalendarStats, CalendarView, filterActiv
 import { TimesheetView } from "./timesheet-view";
 import { TracesView } from "./traces-view";
 import { CatchUpOverlay } from "./catch-up";
-import { ThreadBriefAction } from "./thread-brief";
+import { openThreadBrief, ThreadBriefOverlay } from "./thread-brief";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
@@ -444,6 +444,17 @@ export default definePluginApp((app) => {
     onActivate: () => { window.dispatchEvent(new Event("journal:open-catch-up")); },
   });
   app.slots.experimental_appOverlay({ id: "catch-up", component: CatchUpOverlay });
-  app.slots.experimental_threadHeaderAction({ id: "thread-brief", title: "Journal briefing", component: ThreadBriefAction });
+  app.slots.experimental_appOverlay({ id: "thread-brief", component: ThreadBriefOverlay });
+  app.slots.experimental_threadAction({
+    id: "thread-brief",
+    title: "Catch up",
+    icon: "journal/journal",
+    group: experimental_THREAD_ACTION_GROUPS.open,
+    item: ({ thread }) => ({
+      label: "Catch up",
+      icon: "journal/journal",
+      run: () => openThreadBrief(thread.id),
+    }),
+  });
   app.slots.navPanel({ id: "journal", title: "Journal", icon: "journal/journal", path: "journal", component: ({ subPath }) => subPath === "setup" ? <JournalSetup /> : <JournalPanel />, headerContent: PanelHeader });
 });

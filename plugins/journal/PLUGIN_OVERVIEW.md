@@ -6,7 +6,7 @@ Journal records thread creation, archival, restoration, and deletion without tre
 
 ## Catch up on any thread
 
-A Catch up button in each thread header opens a saved briefing: the original goal, what is done, what remains, where it stopped, and which decisions are made or still open, with live status and freshness. Opening it never calls a model. With the optional subscription backend, Journal refreshes briefings in the background after a thread goes idle, through the Model Gateway's ChatGPT subscription accounts with no paid fallback.
+Catch up in each thread's native three-dot menu opens a saved briefing: the original goal, what is done, what remains, where it stopped, and which decisions are made or still open, with live status and freshness. The action uses the Journal icon and is also available in native sidebar thread menus. Opening it never calls a model. With the optional subscription backend, Journal refreshes briefings in the background after a thread goes idle, through the Model Gateway's ChatGPT subscription accounts with no paid fallback.
 
 ## Designed for a real archive
 

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Move Catch up from the thread top bar into the native three-dot menu and sidebar thread menus, with the canonical Journal icon. Keep saved briefing reads, reload, and background refresh unchanged.
 - Shorten settings descriptions and remove the backend-details disclosure and Test button. Keep readiness CLI and inference RPC behavior unchanged; setup details remain in the dedicated guide.
 - Follow the current SDK's `olderCursor` for full history and briefing coverage. Regression checks cover older work days and a newest-page briefing that cannot claim full-history coverage.
 - Move Journal into an independently installable Oh My BB package. Keep its plugin ID, OpenRouter secret ID and storage, SQLite history, category overrides, summary budgets, calendar, and time sheet.
