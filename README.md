@@ -59,6 +59,8 @@ as `fx-acp/v0.1.0`.
   Review holds guest feedback for owner release.
 - [`plugins/pinpoint`](plugins/pinpoint) turns live-page selections into reviewable
   agent feedback, with screenshots, text edits, and explicit approvals.
+- [`plugins/projects`](plugins/projects) organizes native projects, groups and
+  routing profiles. Explicit assignment handoffs preserve one source of truth.
 - [`agents/fx-acp`](agents/fx-acp) is an optional standalone ACP adapter for FX.
 - [`agents/nanocodex-acp`](agents/nanocodex-acp) is an optional standalone ACP
   adapter for nanocodex.
@@ -104,6 +106,11 @@ Browser runs without another plugin for local native and paired-profile relay us
 Managed sandbox viewing and routing require the separately installed Sandboxes
 plugin and explicit opt-in. Home routing, login sharing and fast-model tasks are
 off on fresh installations.
+
+Projects' native organization works without sibling plugins. Catalog, Credentials,
+Agents, Status Sidebar and Task Workspaces are optional sources. Existing assignment
+state stays blocked rather than appearing empty before a verified import. See
+[Projects migration](docs/migrations/projects.md) before moving an existing installation.
 
 ## Validate the repository
 
