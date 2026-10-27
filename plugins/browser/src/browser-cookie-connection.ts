@@ -5,7 +5,6 @@ import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { browserExtensionZip, browserExtensionOrigin } from "./browser-extension-download.js";
 import { cookieState } from "./browser-cookies.js";
-import { syncBrowserCookies } from "./browser-sync.js";
 import type { TrustedBrowserSettings } from "./trusted-browser.js";
 
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -28,7 +27,7 @@ export const browserCookieRpcContract = defineRpcContract({
 export class BrowserCookieConnection {
   readonly stateFile: string;
   private pending: Promise<unknown> = Promise.resolve();
-  constructor(private bb: BbPluginApi, private directory: string, private importLocal = syncBrowserCookies) {
+  constructor(private bb: BbPluginApi, private directory: string) {
     this.stateFile = join(directory, "state.json");
   }
   private serial<T>(action: () => Promise<T>): Promise<T> {
@@ -119,10 +118,8 @@ export class BrowserCookieConnection {
         await chmod(temporary, 0o600);
         await rename(temporary, this.stateFile);
       }
-      // Export and sandbox delivery work even when the local CLI is older or absent.
-      const local = await this.importLocal(text, AbortSignal.timeout(5000)).catch(() => ({ ok: false }));
       await this.bb.storage.kv.set(CONNECTION, { ...record, lastSyncAt: Date.now(), cookies: state.cookies.length,
-        skippedPartitioned: state.skippedPartitioned, localImported: local.ok });
+        skippedPartitioned: state.skippedPartitioned, localImported: null });
       this.bb.realtime.publish("browser-cookies", {});
       return { ok: true, cookies: state.cookies.length, skippedPartitioned: state.skippedPartitioned };
     });

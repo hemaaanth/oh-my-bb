@@ -52,7 +52,7 @@ function Row({ name, value, disabled, change }: { name: keyof BrowserPreferences
     <div className={toggle ? 'flex items-center justify-between gap-4' : 'flex flex-col gap-2.5 @md:flex-row @md:items-center @md:justify-between @md:gap-5'}>
       <div className="min-w-0 flex-1"><label htmlFor={id} className="text-sm">{descriptor.label}</label>{help && <p id={helpId} className="mt-0.5 text-xs leading-snug text-muted-foreground">{help}</p>}</div>
       <div className={toggle ? 'shrink-0' : 'w-full min-w-0 @md:w-72 @md:shrink-0'}>
-        {toggle ? <Toggle id={id} describedBy={helpId} checked={value} disabled={disabled} change={change} /> : <Input id={id} aria-describedby={helpId} value={value} disabled={disabled} onChange={event => change(event.target.value)} autoComplete="off" spellCheck={false} />}
+        {toggle ? <Toggle id={id} describedBy={helpId} checked={value} disabled={disabled} change={change} /> : <Input id={id} aria-describedby={helpId} value={value} placeholder={name === "browserUserAgent" ? "Automatic — browser default" : undefined} disabled={disabled} onChange={event => change(event.target.value)} autoComplete="off" spellCheck={false} />}
       </div>
     </div>
   </div>;
@@ -69,14 +69,12 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function BrowserPreferencesSettings() {
   const { data, error, saving, load, save } = useBrowserPreferences();
   const [draft, setDraft] = useState<BrowserPreferencesPatch>({});
-  const row = (name: keyof BrowserPreferences) => <Row key={name} name={name} value={draft[name] ?? data!.values[name]} disabled={saving} change={value => setDraft(previous => ({ ...previous, [name]: value }))} />;
+  const row = (name: keyof BrowserPreferences) => <Row key={name} name={name} value={name === 'fastRunner' && !data!.fastApiKeyConfigured ? false : draft[name] ?? data!.values[name]} disabled={saving || (["fastRunner", "fastEndpoint", "fastModel"].includes(name) && !data!.fastApiKeyConfigured)} change={value => setDraft(previous => ({ ...previous, [name]: value }))} />;
   return <Section title="Preferences">
     {!data ? <Loading error={error} retry={load} /> : data.migrationPending ? <div className={BOX}><p role="status" className="text-sm text-muted-foreground">Saved preferences are preserved. Reload Browser once to finish moving them out of Configuration.</p></div> : <form className="space-y-3" onSubmit={event => {
       event.preventDefault(); void save(draft).then(saved => { if (saved) setDraft({}); });
     }}>
-      <div className={GROUP}>{row('homeRouting')}{row('browserExitNode')}{row('browserHomeEgressIp')}{row('sharePersonalLogins')}</div>
-      <details className={BOX}><summary className="cursor-pointer text-sm">Fast tasks</summary><div className="mt-3 divide-y divide-border/60 border-t border-border">{row('fastRunner')}{row('fastEndpoint')}{row('fastModel')}</div></details>
-      <details className={BOX}><summary className="cursor-pointer text-sm">Advanced</summary><div className="mt-3 divide-y divide-border/60 border-t border-border">{row('browserUserAgent')}{row('legacyLiveSync')}</div></details>
+      <div className={GROUP}>{row('homeRouting')}{row('browserExitNode')}{row('browserHomeEgressIp')}{row('sharePersonalLogins')}{row('browserUserAgent')}{row('fastRunner')}{row('fastEndpoint')}{row('fastModel')}{!data.fastApiKeyConfigured && <p className="py-3 text-xs text-muted-foreground">Add a fast-task API key in Configuration to enable these options.</p>}</div>
       <div className="flex justify-end"><Button type="submit" size="sm" variant="outline" disabled={saving || !Object.keys(draft).length}>{saving ? 'Saving…' : 'Save changes'}</Button></div>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </form>}

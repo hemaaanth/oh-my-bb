@@ -23,7 +23,6 @@ export function BrowserCookieSettings() {
     <p className="text-sm text-muted-foreground">Uses your paired profile’s shared logins.</p>
     <p className="text-sm" role="status">{status ? status.paired ? status.lastSyncAt ? `${status.cookies} cookies synced ${new Date(status.lastSyncAt).toLocaleString()}` : "Paired. No cookie sync yet." : "No browser connected." : "Reading browser connection."}</p>
     {status?.skippedPartitioned ? <p className="text-sm text-muted-foreground">{status.skippedPartitioned} partitioned cookies skipped.</p> : null}
-    {status?.localImported === false ? <p className="text-sm text-muted-foreground">Update the local bb-browser command to receive cookies.</p> : null}
     <div className="flex flex-wrap gap-2">
       <Button disabled={busy} onClick={async () => {
         setBusy(true); setError("");

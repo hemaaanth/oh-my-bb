@@ -15,8 +15,7 @@ async function setup() {
   disposers.push(() => rm(directory, { recursive: true, force: true }));
   const fake = createFakePluginHost({ pluginId: "sandboxes", loopbackBaseUrl: "http://127.0.0.1:38886" });
   disposers.push(() => fake.harness.lifecycle.dispose());
-  const local = vi.fn(async () => ({ ok: true }));
-  const connection = new BrowserCookieConnection(fake.bb, directory, local);
+  const connection = new BrowserCookieConnection(fake.bb, directory);
   await connection.register();
   const origin = await browserExtensionOrigin();
   const post = (path: string, body: unknown, token?: string, overrideOrigin = origin) => fake.harness.behavior.fetchHttp("POST", `/cookie-sync/${path}`, {
@@ -28,7 +27,7 @@ async function setup() {
     expect(response.status).toBe(200);
     return { ...(await response.json()) as { token: string }, ...pairing };
   };
-  return { ...fake, connection, local, post, pair, directory, origin };
+  return { ...fake, connection, post, pair, directory, origin };
 }
 it("pairs once with an expiring code and persists only token hashes", async () => {
   const { connection, pair, post, harness, bb } = await setup();
@@ -48,7 +47,7 @@ it("rejects expired codes, foreign origins, and unauthenticated snapshots", asyn
   expect((await post("snapshot", { cookies: [] })).status).toBe(401);
 });
 it("stores private snapshots, hides values, handles deletion, and selects the managed source automatically", async () => {
-  const { pair, post, connection, harness, local } = await setup();
+  const { pair, post, connection, harness } = await setup();
   const { token } = await pair();
   const cookie = { name: "sid", value: "cookie-SECRET", domain: "example.test", path: "/", secure: true, httpOnly: true, session: true };
   const response = await post("snapshot", { cookies: [cookie] }, token);
@@ -56,17 +55,15 @@ it("stores private snapshots, hides values, handles deletion, and selects the ma
   expect((await stat(connection.stateFile)).mode & 0o777).toBe(0o600);
   expect(await readFile(connection.stateFile, "utf8")).toContain("cookie-SECRET");
   expect((await connection.settings(NO_TRUSTED_BROWSER)).browserStateFile).toBe(connection.stateFile);
-  expect(local).toHaveBeenCalledTimes(1);
   expect(JSON.stringify(harness.logEntries)).not.toContain("cookie-SECRET");
   await post("snapshot", { cookies: [] }, token);
   expect(JSON.parse(await readFile(connection.stateFile, "utf8")).cookies).toEqual([]);
 });
 it("exports without depending on a local CLI and revokes a replaced or disconnected browser", async () => {
-  const { pair, post, connection, local } = await setup();
-  local.mockResolvedValue({ ok: false });
+  const { pair, post, connection } = await setup();
   const first = await pair();
   expect((await post("snapshot", { cookies: [] }, first.token)).status).toBe(200);
-  expect((await connection.status()).localImported).toBe(false);
+  expect((await connection.status()).localImported).toBe(null);
   const next = await pair();
   expect((await post("snapshot", { cookies: [] }, first.token)).status).toBe(401);
   expect((await post("snapshot", { cookies: [] }, next.token)).status).toBe(200);

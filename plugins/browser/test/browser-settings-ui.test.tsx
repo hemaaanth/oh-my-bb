@@ -5,10 +5,10 @@ import { expect, it } from 'vitest';
 import type { BrowserPreferencesView } from '../src/preferences.js';
 const app = await loadPluginApp(() => import('../app'));
 
-const initial: BrowserPreferencesView = { migrationPending: false, values: {
+const initial: BrowserPreferencesView = { migrationPending: false, fastApiKeyConfigured: false, values: {
   homeRouting: true, sharePersonalLogins: true, sandboxesIntegration: false,
   browserUserAgent: '', browserExitNode: 'saved-home', browserHomeEgressIp: '',
-  legacyLiveSync: false, fastRunner: false, fastEndpoint: '', fastModel: '',
+  fastRunner: false, fastEndpoint: '', fastModel: '',
 } };
 
 it('preserves saved choices during loading and unsaved edits during realtime refresh', async () => {
@@ -39,5 +39,17 @@ it('preserves saved choices during loading and unsaved edits during realtime ref
     fireEvent.click(slot.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(incoming.values).toMatchObject({ homeRouting: false, browserExitNode: 'draft-home', sharePersonalLogins: true }));
     await waitFor(() => expect((slot.getByRole('button', { name: 'Save changes' }) as HTMLButtonElement).disabled).toBe(true));
+  } finally { slot.lifecycle.unmount(); }
+});
+
+it('places controls in Preferences and locks fast options until a key is configured', async () => {
+  const slot = renderSlot(app.settingsSections.find(section => section.id === 'preferences')!, {}, { rpc: { browserPreferences: () => initial } });
+  try {
+    const endpoint = await slot.findByLabelText('Fast runner OpenAI-compatible HTTPS endpoint');
+    expect((endpoint as HTMLInputElement).disabled).toBe(true);
+    expect((slot.getByLabelText('Allow bounded fast tasks') as HTMLButtonElement).disabled).toBe(true);
+    expect(slot.getByPlaceholderText('Automatic — browser default')).toBeTruthy();
+    expect(slot.queryByText('Advanced')).toBeNull();
+    expect(slot.queryByText('Legacy continuous cookie sync')).toBeNull();
   } finally { slot.lifecycle.unmount(); }
 });

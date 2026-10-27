@@ -50,7 +50,7 @@ Open the page first. Call `browser_handoff` with the exact action the person nee
 
 ## Authentication seeds and home egress
 
-New sessions own their login state. There is no default continuous profile sync. New extension pairings leave cookie export off. Legacy grants and marked live-sync settings survive migration and remain visible in Browser settings.
+New sessions own their login state. There is no default continuous profile sync. New extension pairings leave cookie export off. Continuous sync into already-open legacy sessions has been removed.
 
 Explicit scoped refresh: pause the session, then `bb-browser identity seed <saved-name> <domain,domain>`, then resume. State is copied once; there is no automatic write-back. `bb-browser state save <saved-name>` explicitly saves cookies and current-origin localStorage privately. Isolated sessions also accept `--indexed-db <database,database>` to include only named login databases. Storage import blocks site requests, bypasses service workers in the import page, and verifies the copied values before continuing. It does not stop other already-open pages; pause work and close other tabs on those origins before explicitly refreshing a seed.
 

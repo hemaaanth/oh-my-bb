@@ -151,3 +151,11 @@ preparation, provisioning, sync and viewer/network acquisition. It does not
 silently rewrite an existing runtime to direct egress, erase logins or revoke an
 in-flight browser action. Cleanup can still release old network references and
 revoke a viewer. Missing Sandboxes leaves local native and paired relay use intact.
+
+### Preferences and credential readiness
+
+Browser user-agent and fast-task controls are ordinary Preferences rows. An empty user-agent override shows **Automatic — browser default**: its exact value depends on the browser version and execution machine. It does not set a synthetic user agent.
+
+Fast-task options are disabled until the private API key is set in Configuration. Only a configured/not-configured boolean reaches the app. A credential change refreshes the controls. The backend also refuses enabling fast tasks or configuring a model/endpoint without a key. No paid model request runs to display settings.
+
+The retired continuous-cookie-sync toggle, scheduled fan-out, host sync handler and local active-session import have been removed. Pairing and authentication snapshots for new sessions remain supported. Existing paired records and private snapshots are preserved; old compatibility routes are only transport for the retained pairing, not continuous sync into active sessions.

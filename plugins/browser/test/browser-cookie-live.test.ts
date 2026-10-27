@@ -28,7 +28,7 @@ it.runIf(process.env.BB_TEST_REAL_BROWSER === "1")("pairs and syncs live Brave c
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   const { bb, harness } = createFakePluginHost({ pluginId: "browser", loopbackBaseUrl: address });
-  const connection = new BrowserCookieConnection(bb, join(directory, "state"), async () => ({ ok: true }));
+  const connection = new BrowserCookieConnection(bb, join(directory, "state"));
   await connection.register();
   dispatch = (path, init) => harness.behavior.fetchHttp(init.method!, path, init);
   const launcher = join(directory, "brave-test");

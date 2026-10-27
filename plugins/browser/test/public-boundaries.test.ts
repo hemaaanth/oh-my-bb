@@ -10,7 +10,7 @@ it('keeps fresh installs inert and refuses sandbox preparation without consent',
   dispose.push(() => fake.harness.lifecycle.dispose());
   await plugin(fake.bb);
   await fake.harness.behavior.runSchedule('browser-settings');
-  await fake.harness.behavior.runSchedule('browser-cookie-sync');
+  await expect(fake.harness.behavior.runSchedule('browser-cookie-sync')).rejects.toThrow('no schedule');
   await expect(fake.harness.behavior.callRpc('prepareSandboxV1', { hostId: 'sandbox_fixture' }, {
     experimental_caller: { kind: 'plugin', pluginId: 'sandboxes' },
   })).rejects.toThrow('Enable Sandboxes integration');

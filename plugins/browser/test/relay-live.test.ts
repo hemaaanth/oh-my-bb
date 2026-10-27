@@ -18,7 +18,7 @@ it.runIf(process.env.BB_TEST_REAL_BROWSER === '1')('drives the actual paired ext
  const root=await mkdtemp(join(tmpdir(),'browser-relay-real-'));let handler:ExperimentalPluginWebSocketHandler|undefined,viewerOffline=false;
  const fake=createFakePluginHost({pluginId:'browser',experimental_hostEntry:true,experimental_callHostRpc:async({input})=>{const request=input as {threadId:string,action:unknown};if(viewerOffline)return {ok:false,data:''};try{return {ok:true,data:await run(['thread','viewer',JSON.stringify(request.action)],request.threadId,'')};}catch{return {ok:false,data:''};}},sdk:{threads:{get:async({threadId})=>({title:'Fixture '+threadId}) as never}}});
  const viewer=registerViewer(fake.bb);
- const settings=fake.bb.settings.define(browserSettingDescriptors),cookies=new BrowserCookieConnection(fake.bb,join(root,'cookies'),async()=>({ok:true}));await cookies.register();
+ const settings=fake.bb.settings.define(browserSettingDescriptors),cookies=new BrowserCookieConnection(fake.bb,join(root,'cookies'));await cookies.register();
  vi.spyOn(fake.bb.http,'experimental_websocket').mockImplementation((_path,callback)=>{handler=callback;});registerRelay(fake.bb,cookies,()=>settings.get());
  const server=createServer(async(req,res)=>{
   try{const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));

@@ -81,7 +81,7 @@ it('applies the two global browser policies to every sandbox without sharing see
  expect(await prepare()).toMatchObject({egress:'home',exitNode:'home-fixture',requiredState:'default',access:'isolated'});
  expect((await prepare()).state).toContain('private-fixture');
  await fake.harness.behavior.setSettings({sharePersonalLogins:false});
- expect(await prepare()).toMatchObject({egress:'home',state:null,requiredState:'',legacyLiveSync:false});
+ expect(await prepare()).toMatchObject({egress:'home',state:null,requiredState:''});
  await fake.harness.behavior.runSchedule('browser-settings');
  const calls=fake.harness.experimental_hostRpcCalls;
  expect(new Set(calls.map(call=>call.hostId))).toEqual(new Set(['sandbox_a','sandbox_b']));

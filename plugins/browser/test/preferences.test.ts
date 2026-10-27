@@ -62,3 +62,18 @@ it('rejects credential writes and invalid preference patches without changing sa
   expect(await fake.harness.behavior.callRpc('browserPreferences', null)).toEqual(before);
   expect(parse.parse(await fake.harness.behavior.callRpc('updateBrowserPreferences', { browserExitNode: 'fixture-recovered' })).values.browserExitNode).toBe('fixture-recovered');
 });
+
+it('refuses fast-task configuration without a private key and exposes only readiness', async () => {
+  const fake = createFakePluginHost({ pluginId: 'browser', experimental_hostEntry: true });
+  close.push(() => fake.harness.lifecycle.dispose());
+  await plugin(fake.bb);
+  expect(await fake.harness.behavior.callRpc('browserPreferences', null)).toMatchObject({ fastApiKeyConfigured: false });
+  for (const patch of [{ fastRunner: true }, { fastModel: 'fixture-model' }, { fastEndpoint: 'https://fixture.invalid' }]) {
+    await expect(fake.harness.behavior.callRpc('updateBrowserPreferences', patch)).rejects.toThrow('API key');
+  }
+  await fake.harness.behavior.setSettings({ fastApiKey: 'fixture-private-key' });
+  const view = await fake.harness.behavior.callRpc('browserPreferences', null);
+  expect(view).toMatchObject({ fastApiKeyConfigured: true });
+  expect(JSON.stringify(view)).not.toContain('fixture-private-key');
+  await expect(fake.harness.behavior.callRpc('updateBrowserPreferences', { fastRunner: true })).resolves.toMatchObject({ values: { fastRunner: true } });
+});

@@ -6,7 +6,7 @@ import { BrowserCookieConnection } from "./browser-cookie-connection.js";
 import { browserExtensionOrigin } from "./browser-extension-download.js";
 import { loadBrowserSettings } from "./preferences.js";
 import { registerBrowserHandoff, BROWSER_AGENT_INSTRUCTIONS } from "./browser-handoff.js";
-import { registerBrowserCookieSync, syncBrowserCookies, registerBrowserProvisioning } from "./browser-sync.js";
+import { registerBrowserProvisioning } from "./browser-sync.js";
 import { trustedBrowserPayload } from "./trusted-browser.js";
 import {browserViewerHostContract} from "./viewer-contract.js";
 import { registerRelay } from "./relay.js";
@@ -17,10 +17,7 @@ export default async function plugin(bb: BbPluginApi) {
     if (!(await settings.get()).sandboxesIntegration) throw new Error("Enable Sandboxes integration in Browser settings first");
   };
   const directory = join(dirname(bb.storage.database().name), "browser-cookies");
-  const cookies = new BrowserCookieConnection(bb, directory, async (state, signal) => {
-    if (!(await settings.get()).legacyLiveSync || !(await settings.get()).sharePersonalLogins) return { ok: false };
-    return syncBrowserCookies(state, signal);
-  });
+  const cookies = new BrowserCookieConnection(bb, directory);
   // Migration is private, resumable and never rewrites legacy state or profile paths.
   const migrate = async () => {
     if (await bb.storage.kv.get("migration-v1")) return;
@@ -33,22 +30,17 @@ export default async function plugin(bb: BbPluginApi) {
       const current = await settings.get();
       const imported = Object.fromEntries(Object.entries(legacy.settings).filter(([key, value]) => value && !current[key as keyof typeof current]));
       if (Object.keys(imported).length) await settings.set(imported);
-      if (legacy.connection) await settings.set({ legacyLiveSync: true });
     }
     await bb.storage.kv.set("migration-v1", true);
   };
   await cookies.register();
-  registerBrowserCookieSync(bb, async () => {
-    const current = await settings.get();
-    return { ...current, ...(current.sandboxesIntegration && current.sharePersonalLogins ? await cookies.settings(current) : {}), syncEnabled: current.sandboxesIntegration === true && current.legacyLiveSync && current.sharePersonalLogins };
-  });
   const sandboxPayload = async () => {
     const current = await settings.get();
     await requireSandboxes();
     const source = current.sharePersonalLogins ? await cookies.settings(current) : current;
     const {payload,warnings} = await trustedBrowserPayload(source);
     for (const warning of warnings) bb.log.warn(warning);
-    return {...payload,tailscaleAuthKey:'',networkService:'sandboxes-v1',access:'isolated',legacyLiveSync:current.sharePersonalLogins && current.legacyLiveSync};
+    return {...payload,tailscaleAuthKey:'',networkService:'sandboxes-v1',access:'isolated'};
   };
   const reconcile = registerBrowserProvisioning(bb, async () => (await settings.get()).sandboxesIntegration ? sandboxPayload() : null);
   settings.onChange(() => { void reconcile(); });

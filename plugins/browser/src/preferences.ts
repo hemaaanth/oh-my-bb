@@ -12,7 +12,6 @@ export const preferencesSchema = z.object({
   browserUserAgent: z.string(),
   browserExitNode: z.string(),
   browserHomeEgressIp: z.string(),
-  legacyLiveSync: z.boolean(),
   fastRunner: z.boolean(),
   fastEndpoint: z.string(),
   fastModel: z.string(),
@@ -20,10 +19,10 @@ export const preferencesSchema = z.object({
 const patchSchema = preferencesSchema.partial().strict();
 export type BrowserPreferences = z.infer<typeof preferencesSchema>;
 export type BrowserPreferencesPatch = z.infer<typeof patchSchema>;
-export type BrowserPreferencesView = { values: BrowserPreferences; migrationPending: boolean };
+export type BrowserPreferencesView = { values: BrowserPreferences; migrationPending: boolean; fastApiKeyConfigured: boolean };
 export const preferencesContract = defineRpcContract({
-  browserPreferences: { input: z.null(), output: z.object({ values: preferencesSchema, migrationPending: z.boolean() }) },
-  updateBrowserPreferences: { input: patchSchema, output: z.object({ values: preferencesSchema, migrationPending: z.boolean() }) },
+  browserPreferences: { input: z.null(), output: z.object({ values: preferencesSchema, migrationPending: z.boolean(), fastApiKeyConfigured: z.boolean() }) },
+  updateBrowserPreferences: { input: patchSchema, output: z.object({ values: preferencesSchema, migrationPending: z.boolean(), fastApiKeyConfigured: z.boolean() }) },
 });
 export interface BrowserSettingsStore {
   migrationPending: boolean;
@@ -41,7 +40,7 @@ export async function loadBrowserSettings(bb: BbPluginApi): Promise<BrowserSetti
   const legacy = migrationPending ? bb.settings.define(legacyDescriptors) : null;
   if (legacy) {
     const saved = await legacy.get();
-    stored = preferencesSchema.parse({ ...saved, sandboxesIntegration: saved.sandboxesIntegration ?? (saved.homeRouting || saved.sharePersonalLogins || saved.legacyLiveSync || !!await bb.storage.kv.get('migration-v1')) });
+    stored = preferencesSchema.parse({ ...saved, sandboxesIntegration: saved.sandboxesIntegration ?? (saved.homeRouting || saved.sharePersonalLogins || !!await bb.storage.kv.get('migration-v1')) });
     await bb.storage.kv.set(KEY, stored);
   }
   let current = preferencesSchema.parse(stored);
@@ -51,6 +50,7 @@ export async function loadBrowserSettings(bb: BbPluginApi): Promise<BrowserSetti
   const update = (input: BrowserPreferencesPatch) => {
     const patch = patchSchema.parse(input);
     const task = pending.then(async () => {
+      if ((patch.fastRunner === true || patch.fastEndpoint?.trim() || patch.fastModel?.trim()) && !(await credentials.get()).fastApiKey.trim()) throw new Error("Add a fast-task API key in Configuration first");
       const next = preferencesSchema.parse({ ...current, ...patch });
       await bb.storage.kv.set(KEY, next);
       current = next;
@@ -65,9 +65,9 @@ export async function loadBrowserSettings(bb: BbPluginApi): Promise<BrowserSetti
     const patch = Object.fromEntries(Object.entries(next).filter(([key, value]) => Object.hasOwn(preferencesSchema.shape, key) && value !== undefined && value !== previous[key as keyof typeof previous]));
     if (Object.keys(patch).length) void update(patch).catch(() => bb.log.error('Browser could not save migrated preferences. Retry before reloading.'));
   });
-  credentials.onChange(changed);
+  credentials.onChange(() => { changed(); bb.realtime.publish(PREFERENCES_CHANGED, null); });
   bb.onDispose(() => pending.then(() => {}));
-  const view = (): BrowserPreferencesView => ({ values: current, migrationPending });
+  const view = async (): Promise<BrowserPreferencesView> => ({ values: current, migrationPending, fastApiKeyConfigured: !!(await credentials.get()).fastApiKey.trim() });
   bb.rpc.register(preferencesContract, {
     browserPreferences: view,
     updateBrowserPreferences: async patch => { await update(patch); return view(); },
