@@ -31,13 +31,13 @@ function settings(overrides: Partial<SandboxSettings> = {}): SandboxSettings {
     freestyleStorage: "20",
     freestylePersistence: "sticky",
     freestyleSnapshotId: "",
-    nirvanaApiKey: "",
-    nirvanaApiEndpoint: "",
-    nirvanaGatewayEndpoint: "",
-    nirvanaImageUri: "node:22-bookworm-slim",
-    nirvanaCpu: "4",
-    nirvanaMemory: "8Gi",
-    nirvanaStorage: "50Gi",
+
+
+
+
+
+
+
     idleSleepAfter: "15 minutes",
     defaultSizeTier: "M",
     copyGitHubCliAuth: true,
@@ -102,9 +102,9 @@ describe("loadSandboxRuntimeConfig", () => {
         freestyleCpu: "not-a-number",
         freestylePersistence: "persistent",
         freestyleSnapshotId: "snapshot",
-        nirvanaApiKey: "nirvana",
-        nirvanaApiEndpoint: "https://api.example.com",
-        nirvanaGatewayEndpoint: "https://gateway.example.com",
+
+
+
       }),
       {},
     );
@@ -114,7 +114,7 @@ describe("loadSandboxRuntimeConfig", () => {
       persistence: "persistent",
       snapshotId: "snapshot",
     });
-    expect(config.nirvana?.gatewayEndpoint).toBe("https://gateway.example.com");
+
   });
 
   it("allows Daytona and E2B automatic sleep to be disabled", () => {
@@ -131,22 +131,6 @@ describe("loadSandboxRuntimeConfig", () => {
       { daytona: "managed" },
     );
     expect(config.daytona?.snapshot).toBe("managed");
-  });
-
-  it("points Nirvana at the registered image reference", () => {
-    const config = loadSandboxRuntimeConfig(
-      settings({
-        nirvanaApiKey: "nirvana",
-        nirvanaApiEndpoint: "https://api.example.com",
-        nirvanaGatewayEndpoint: "https://gateway.example.com",
-        nirvanaImageUri: "node:22-bookworm-slim",
-      }),
-      {},
-      { nirvana: "ghcr.io/acme/bb-sandbox@sha256:abc" },
-    );
-    expect(config.nirvana?.imageUri).toBe(
-      "ghcr.io/acme/bb-sandbox@sha256:abc",
-    );
   });
 
   it("opts Modal into its VM runtime from settings or the environment", () => {

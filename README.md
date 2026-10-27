@@ -61,7 +61,7 @@ as `fx-acp/v0.1.0`.
   routing profiles. Explicit assignment handoffs preserve one source of truth.
 - [`plugins/demo-mode`](plugins/demo-mode) hides names and conversation content
   for presentations while keeping sidebar structure, counts, and status visible.
-- [`plugins/sandboxes`](plugins/sandboxes) supplies native runtime adapters for six
+- [`plugins/sandboxes`](plugins/sandboxes) supplies native runtime adapters for five
   providers. BB owns machine lifecycle; optional integrations keep their own authority.
 - [`plugins/catalog`](plugins/catalog), displayed as Executor, connects agents to
   assigned remote toolkits and approved versioned skills. The `catalog` identity stays stable.

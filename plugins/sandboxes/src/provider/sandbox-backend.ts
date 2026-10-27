@@ -2,7 +2,7 @@
  * Internal backend contract for the BB 0.43 machine/environment provider model.
  *
  * This is the shape each vendor backend (daytona, modal, e2b, box, freestyle,
- * nirvana) implements so that {@link registerSandboxBackend} can expose it as a
+ * freestyle) implements so that {@link registerSandboxBackend} can expose it as a
  * native environment + machine provider. It is deliberately close to BB's own
  * `environment-modal-sandbox` reference plugin: the backend owns vendor
  * allocation, storage semantics, cleanup, and conversion to a `MachineExecutor`,

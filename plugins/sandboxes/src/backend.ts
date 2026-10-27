@@ -6,7 +6,6 @@ export const sandboxProviderValues = [
   "e2b",
   "box",
   "freestyle",
-  "nirvana",
 ] as const;
 export type SandboxProvider = (typeof sandboxProviderValues)[number];
 

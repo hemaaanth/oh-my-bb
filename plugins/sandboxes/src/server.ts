@@ -24,7 +24,6 @@ import { createModalMachineBackend } from "./provider/backends/modal.js";
 import { createFreestyleMachineBackend } from "./provider/backends/freestyle.js";
 import { createBoxMachineBackend } from "./provider/backends/box.js";
 import { createE2bMachineBackend } from "./provider/backends/e2b.js";
-import { createNirvanaMachineBackend } from "./provider/backends/nirvana.js";
 import { registerNativeProjectEnvironmentSync } from "./provider/project-env.js";
 import { registerNativeIdleSuspend } from "./provider/idle-suspend.js";
 import { LegacySandboxCleanup } from "./legacy-cleanup.js";
@@ -242,7 +241,7 @@ export default async function plugin(bb: BbPluginApi) {
     const combinedSettings = async () => {
       const [
         shared, providers, daytonaApiKey, modalTokenId, modalTokenSecret,
-        e2bApiKey, boxApiKey, freestyleApiKey, nirvanaApiKey,
+        e2bApiKey, boxApiKey, freestyleApiKey,
         imageRegistryUsername, imageRegistryToken,
       ] =
         await Promise.all([
@@ -254,7 +253,6 @@ export default async function plugin(bb: BbPluginApi) {
           providerConfiguration.getSecret("e2bApiKey"),
           providerConfiguration.getSecret("boxApiKey"),
           providerConfiguration.getSecret("freestyleApiKey"),
-          providerConfiguration.getSecret("nirvanaApiKey"),
           providerConfiguration.getSecret("imageRegistryUsername"),
           providerConfiguration.getSecret("imageRegistryToken"),
         ]);
@@ -281,13 +279,6 @@ export default async function plugin(bb: BbPluginApi) {
         freestyleStorage: providers.freestyle.storage,
         freestylePersistence: providers.freestyle.persistence,
         freestyleSnapshotId: providers.freestyle.snapshotId,
-        nirvanaApiKey: shared.nirvanaApiKey ?? nirvanaApiKey,
-        nirvanaApiEndpoint: providers.nirvana.apiEndpoint,
-        nirvanaGatewayEndpoint: providers.nirvana.gatewayEndpoint,
-        nirvanaImageUri: providers.nirvana.imageUri,
-        nirvanaCpu: providers.nirvana.cpu,
-        nirvanaMemory: providers.nirvana.memory,
-        nirvanaStorage: providers.nirvana.storage,
         imageRegistry: providers.image.repository,
         imageRegistryUsername: shared.imageRegistryUsername ?? imageRegistryUsername,
         imageRegistryToken: shared.imageRegistryToken ?? imageRegistryToken,
@@ -557,11 +548,6 @@ export default async function plugin(bb: BbPluginApi) {
       legacyBackends.set("e2b", backend);
       registerSandboxBackend(bb, backend, optionsFor("e2b"));
     }
-    if (config.nirvana !== null) {
-      const backend = createNirvanaMachineBackend(config.nirvana);
-      legacyBackends.set("nirvana", backend);
-      registerSandboxBackend(bb, backend, optionsFor("nirvana"));
-    }
     let reconfigureChain = Promise.resolve();
     const pendingArtifacts: Partial<Record<SandboxProvider, string>> = {};
     const reconfigure = (activated?: {
@@ -674,17 +660,6 @@ export default async function plugin(bb: BbPluginApi) {
       new URL("../scripts/register-e2b-template.mjs", import.meta.url),
     );
     const activateImage = async (provider: SandboxProvider, name: string) => {
-      if (provider === "nirvana") {
-        const current = await providerConfiguration.getConfiguration();
-        await providerConfiguration.updateConfiguration("nirvana", {
-          apiEndpoint: current.nirvana.apiEndpoint,
-          gatewayEndpoint: current.nirvana.gatewayEndpoint,
-          imageUri: name,
-          cpu: current.nirvana.cpu,
-          memory: current.nirvana.memory,
-          storage: current.nirvana.storage,
-        });
-      }
       await reconfigure({ provider, name });
     };
     const imageManager = new SandboxImageManager({
@@ -792,8 +767,7 @@ export default async function plugin(bb: BbPluginApi) {
         configured: config[provider] !== null,
         credentialsConfigured: credentials[provider],
         apiUrl:
-          provider === "daytona" ? providerConfig.daytona.apiUrl
-          : provider === "nirvana" ? providerConfig.nirvana.apiEndpoint : "",
+          provider === "daytona" ? providerConfig.daytona.apiUrl : "",
         target: provider === "daytona" ? providerConfig.daytona.target : "",
         sandboxClass:
           provider === "daytona" ? providerConfig.daytona.sandboxClass : "",
@@ -802,20 +776,17 @@ export default async function plugin(bb: BbPluginApi) {
         machineClass: provider === "box" ? providerConfig.box.machineClass : "",
         environment: provider === "box" ? providerConfig.box.environment : "",
         cpu:
-          provider === "freestyle" ? providerConfig.freestyle.cpu
-          : provider === "nirvana" ? providerConfig.nirvana.cpu : "",
+          provider === "freestyle" ? providerConfig.freestyle.cpu : "",
         memory:
-          provider === "freestyle" ? providerConfig.freestyle.memory
-          : provider === "nirvana" ? providerConfig.nirvana.memory : "",
+          provider === "freestyle" ? providerConfig.freestyle.memory : "",
         storage:
-          provider === "freestyle" ? providerConfig.freestyle.storage
-          : provider === "nirvana" ? providerConfig.nirvana.storage : "",
+          provider === "freestyle" ? providerConfig.freestyle.storage : "",
         persistence:
           provider === "freestyle" ? providerConfig.freestyle.persistence : "",
         snapshotId:
           provider === "freestyle" ? providerConfig.freestyle.snapshotId : "",
-        gatewayEndpoint: provider === "nirvana" ? providerConfig.nirvana.gatewayEndpoint : "",
-        imageUri: provider === "nirvana" ? providerConfig.nirvana.imageUri : "",
+        gatewayEndpoint: "",
+        imageUri: "",
         supportsImages: sandboxImageProviders.some(
           (candidate) => candidate === provider,
         ),
@@ -1151,18 +1122,6 @@ export default async function plugin(bb: BbPluginApi) {
           });
           await providerConfiguration.setSecrets({
             ...(input.apiKey === undefined ? {} : { freestyleApiKey: input.apiKey }),
-          });
-        } else {
-          await providerConfiguration.updateConfiguration("nirvana", {
-            apiEndpoint: input.apiUrl,
-            gatewayEndpoint: input.gatewayEndpoint,
-            imageUri: input.imageUri,
-            cpu: input.cpu,
-            memory: input.memory,
-            storage: input.storage,
-          });
-          await providerConfiguration.setSecrets({
-            ...(input.apiKey === undefined ? {} : { nirvanaApiKey: input.apiKey }),
           });
         }
         await reconfigure();

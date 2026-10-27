@@ -36,7 +36,7 @@ const observationFor = (outcome: SourceOutcome): Observation => ({
   state: outcome.state === "complete" ? outcome.ready ? "ready" : "not-ready" : outcome.state,
   jobId: outcome.jobId, reason: outcomeReasons[outcome.reason], retryable: outcome.retryable, sourceVersion: 1,
 });
-const vendorLabels = { daytona: "Daytona", modal: "Modal", e2b: "E2B", box: "Box", freestyle: "Freestyle", nirvana: "Nirvana" } as const;
+const vendorLabels = { daytona: "Daytona", modal: "Modal", e2b: "E2B", box: "Box", freestyle: "Freestyle", } as const;
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 interface Target {
   environment: { id: string; projectId: string; hostId: string; path: string | null; status: string };

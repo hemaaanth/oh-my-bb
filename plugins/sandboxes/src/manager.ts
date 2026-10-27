@@ -336,7 +336,7 @@ function providerDisplayName(provider: SandboxProvider): string {
     e2b: "E2B",
     box: "Box",
     freestyle: "Freestyle",
-    nirvana: "Nirvana",
+
   };
   return names[provider];
 }

@@ -11,24 +11,27 @@ export const sandboxPreferencesSchema = z.object({
   browserUserAgent: z.string(),
   browserExitNode: z.string(),
   browserHomeEgressIp: z.string(),
+  gitUsername: z.string(),
+  browserTailscaleAuthKeyFile: z.string(),
+  browserStateFile: z.string(),
 }).strict();
 export type SandboxPreferences = z.infer<typeof sandboxPreferencesSchema>;
 export const sandboxPreferencesPatchSchema = z.object({ expectedRevision: z.number().int().nonnegative(), values: sandboxPreferencesSchema.partial() }).strict();
 export const sandboxPreferencesViewSchema = z.object({ values: sandboxPreferencesSchema, revision: z.number().int().nonnegative(), migrationPending: z.boolean() });
 export type SandboxPreferencesView = z.infer<typeof sandboxPreferencesViewSchema>;
-const storedSchema = z.object({ values: sandboxPreferencesSchema.partial(), revision: z.number().int().nonnegative().default(0), receipt: z.object({ schemaVersion: z.literal(1), source: z.literal("native-settings"), completedAt: z.number() }).optional() });
+const storedSchema = z.object({ values: sandboxPreferencesSchema.partial(), revision: z.number().int().nonnegative().default(0), layoutVersion: z.literal(2).optional(), receipt: z.object({ schemaVersion: z.literal(1), source: z.literal("native-settings"), completedAt: z.number() }).optional() });
 
 /** Same-plugin one-generation migration; native secret identities stay native. */
 export async function loadSandboxSettings(bb: BbPluginApi) {
-  const { sshEnabled, idleSleepAfter, defaultSizeTier, copyGitHubCliAuth, browserUserAgent, browserExitNode, browserHomeEgressIp, ...staticDescriptors } = sandboxSettingDescriptors;
+  const { sshEnabled, idleSleepAfter, defaultSizeTier, copyGitHubCliAuth, browserUserAgent, browserExitNode, browserHomeEgressIp, gitUsername, browserTailscaleAuthKeyFile, browserStateFile, ...staticDescriptors } = sandboxSettingDescriptors;
   const credentials = bb.settings.define({ ...staticDescriptors, ...sandboxCredentialDescriptors });
-  const legacyDescriptors = { sshEnabled, idleSleepAfter, defaultSizeTier, copyGitHubCliAuth, browserUserAgent, browserExitNode, browserHomeEgressIp };
+  const legacyDescriptors = { sshEnabled, idleSleepAfter, defaultSizeTier, copyGitHubCliAuth, browserUserAgent, browserExitNode, browserHomeEgressIp, gitUsername, browserTailscaleAuthKeyFile, browserStateFile };
   const key = "preferences:v1";
   let stored = storedSchema.parse(await bb.storage.kv.get(key) ?? { values: {} });
-  const migrationPending = stored.receipt === undefined;
+  const migrationPending = stored.layoutVersion !== 2;
   const legacy = migrationPending ? bb.settings.define(legacyDescriptors) : null;
   if (legacy) {
-    stored = { values: sandboxPreferencesSchema.parse({ ...await legacy.get(), ...stored.values }), revision: stored.revision, receipt: { schemaVersion: 1, source: "native-settings", completedAt: Date.now() } };
+    stored = { values: sandboxPreferencesSchema.parse({ ...await legacy.get(), ...stored.values }), revision: stored.revision + (stored.receipt ? 1 : 0), layoutVersion: 2, receipt: stored.receipt ?? { schemaVersion: 1, source: "native-settings", completedAt: Date.now() } };
     await bb.storage.kv.set(key, stored);
   }
   let current = sandboxPreferencesSchema.parse(stored.values);
@@ -44,7 +47,7 @@ export async function loadSandboxSettings(bb: BbPluginApi) {
       if (!legacyWrite && patch.expectedRevision !== revision) throw new Error("Sandboxes preferences changed; reload before saving this draft");
       const next = sandboxPreferencesSchema.parse({ ...current, ...patch.values });
       if (Object.entries(patch.values).every(([name, value]) => current[name as keyof SandboxPreferences] === value)) return view();
-      await bb.storage.kv.set(key, { values: next, revision: revision + 1, receipt });
+      await bb.storage.kv.set(key, { values: next, revision: revision + 1, receipt, layoutVersion: 2 });
       current = next; revision++;
       changed(); bb.realtime.publish("sandbox-preferences", null);
       return view();

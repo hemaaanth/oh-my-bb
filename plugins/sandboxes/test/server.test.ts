@@ -20,7 +20,7 @@ describe("sandboxes plugin server", () => {
       { provider: "e2b", configured: false, enabled: true },
       { provider: "box", configured: false, enabled: true },
       { provider: "freestyle", configured: false, enabled: true },
-      { provider: "nirvana", configured: false, enabled: true },
+
     ]);
     await expect(harness.callRpc("providerSettings")).resolves.toMatchObject({
       providers: [
@@ -35,7 +35,7 @@ describe("sandboxes plugin server", () => {
         { provider: "e2b", enabled: true },
         { provider: "box", enabled: true },
         { provider: "freestyle", enabled: true },
-        { provider: "nirvana", enabled: true },
+
       ],
     });
     await expect(harness.callRpc("imageSettings")).resolves.toMatchObject({
@@ -51,7 +51,7 @@ describe("sandboxes plugin server", () => {
         { provider: "daytona", credentialsConfigured: false, activeName: null },
         { provider: "modal", credentialsConfigured: false, activeName: null },
         { provider: "e2b", credentialsConfigured: false, activeName: null },
-        { provider: "nirvana", credentialsConfigured: false, activeName: null },
+
       ],
     });
     await expect(

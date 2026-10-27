@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-sandboxes",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Run BB sandboxes and give agents one trusted Brave browser across local and remote machines.",
   "type": "module",
   "license": "MIT",
@@ -12,9 +12,24 @@
   },
   "homepage": "https://github.com/hemaaanth/oh-my-bb/tree/main/plugins/sandboxes",
   "files": [
-    "app.tsx", "src/", "components/", "lib/", "docker/", "scripts/",
-    "skills/", "dist/", "*.svg", "tsconfig.json", "test/", "vitest.config.ts",
-    "THIRD-PARTY-NOTICES", "PLUGIN_OVERVIEW.md", "CONTRACTS.md", "RECONCILIATION.md", "CHANGELOG.md"
+    "app.tsx",
+    "src/",
+    "components/",
+    "lib/",
+    "docker/",
+    "scripts/",
+    "skills/",
+    "dist/",
+    "*.svg",
+    "tsconfig.json",
+    "test/",
+    "vitest.config.ts",
+    "THIRD-PARTY-NOTICES",
+    "PLUGIN_OVERVIEW.md",
+    "CONTRACTS.md",
+    "RECONCILIATION.md",
+    "CHANGELOG.md",
+    "hooks/"
   ],
   "engines": {
     "bb": ">=0.46.1",
@@ -22,9 +37,9 @@
   },
   "bb": {
     "name": "Sandboxes",
-    "description": "Run BB sandboxes and one trusted Brave browser across local and remote machines.",
+    "description": "Run isolated project workspaces on cloud machines.",
     "branding": {
-      "icon": "Container"
+      "icon": "./sandboxes.svg"
     },
     "server": "./src/server.ts",
     "app": "./app.tsx",
@@ -41,7 +56,6 @@
     "e2b",
     "box",
     "freestyle",
-    "nirvana",
     "browser",
     "brave",
     "tailscale"

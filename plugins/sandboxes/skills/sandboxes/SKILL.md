@@ -1,12 +1,12 @@
 ---
 name: sandboxes
-description: Provision, inspect, size, and destroy provider-hosted bb sandbox machines with Daytona, Modal, E2B, Box, Freestyle, or Nirvana; launch durable HTTP previews; and use the unified bb-browser for local or remote browser work that needs signed-in cookies, an exact browser identity, or home egress. Use for sandbox work, sandbox dev servers, or trusted Brave automation on any machine.
+description: Provision, inspect, size, and destroy provider-hosted bb sandbox machines with Daytona, Modal, E2B, Box, Freestyle,; launch durable HTTP previews; and use the unified bb-browser for local or remote browser work that needs signed-in cookies, an exact browser identity, or home egress. Use for sandbox work, sandbox dev servers, or trusted Brave automation on any machine.
 ---
 
 # Sandboxes
 
 The Sandboxes plugin contributes native BB machine and environment providers.
-Create a sandbox by selecting Daytona, Modal, E2B, Box, Freestyle, or Nirvana
+Create a sandbox by selecting Daytona, Modal, E2B, Box, Freestyle,
 as the environment when starting a thread. BB core owns native thread creation,
 host enrollment, checkout, suspension/resume, and retirement.
 
@@ -14,7 +14,7 @@ Inspect and configure providers:
 
 ```bash
 bb sandbox providers
-bb sandbox provider <daytona|modal|e2b|box|freestyle|nirvana> <enable|disable>
+bb sandbox provider <daytona|modal|e2b|box|freestyle> <enable|disable>
 bb sandbox capacity
 bb sandbox doctor
 ```

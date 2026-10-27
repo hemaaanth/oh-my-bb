@@ -47,3 +47,19 @@ it("preserves successive old native writes during the finishing-reload generatio
   expect(settings.view().values).toMatchObject({ defaultSizeTier: "XL", copyGitHubCliAuth: false });
   await fake.harness.dispose();
 });
+
+it("finishes an already-imported layout without losing advanced paths or false values", async () => {
+  let fake = createFakePluginHost({ pluginId: "sandboxes", settings: { gitUsername: "fixture-user", browserTailscaleAuthKeyFile: "/fixture/enroll.env", browserStateFile: "/fixture/browser.json", sshEnabled: true } });
+  const receipt = { schemaVersion: 1, source: "native-settings", completedAt: 123 };
+  await fake.bb.storage.kv.set("preferences:v1", { values: { sshEnabled: false, idleSleepAfter: "Never", defaultSizeTier: "S", copyGitHubCliAuth: false, browserUserAgent: "", browserExitNode: "", browserHomeEgressIp: "" }, revision: 7, receipt });
+  let settings = await loadSandboxSettings(fake.bb);
+  expect(settings.view()).toMatchObject({ revision: 8, values: { sshEnabled: false, copyGitHubCliAuth: false, gitUsername: "fixture-user", browserTailscaleAuthKeyFile: "/fixture/enroll.env", browserStateFile: "/fixture/browser.json" } });
+  const stored = await fake.bb.storage.kv.get("preferences:v1");
+  expect(stored).toMatchObject({ receipt, layoutVersion: 2 });
+  fake = await fake.harness.lifecycle.reload(async bb => { settings = await loadSandboxSettings(bb); });
+  expect(await fake.bb.storage.kv.get("preferences:v1")).toEqual(stored);
+  expect(settings.view().migrationPending).toBe(false);
+  expect(Object.values(fake.harness.inspection.registrations.settingsDescriptors).every(descriptor => "secret" in descriptor && descriptor.secret === true)).toBe(true);
+  expect(fake.harness.inspection.sdk.calls).toEqual([]);
+  await fake.harness.dispose();
+});

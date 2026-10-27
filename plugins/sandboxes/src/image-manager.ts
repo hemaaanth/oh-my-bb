@@ -121,8 +121,6 @@ function providerImageName(
   regionId?: string,
 ): string {
   if (provider === "modal") return `bb-sandbox:${version}`;
-  // Nirvana takes the registry reference itself as its image setting.
-  if (provider === "nirvana") return pinnedReference;
   // Providers sized by their image carry the tier in the name, so the
   // snapshot list reads as one build at several sizes. Snapshot names are
   // unique per organization, so a copy registered into a second region
@@ -422,7 +420,7 @@ export class SandboxImageManager {
     if (registrable.length === 0) {
       throw new Error(
         requested === undefined
-          ? "Configure credentials for at least one image-backed provider (Daytona, Modal, E2B, or Nirvana) first"
+          ? "Configure credentials for at least one image-backed provider (Daytona, Modal, or E2B) first"
           : `Configure the ${requested} credentials first`,
       );
     }
@@ -676,8 +674,7 @@ export class SandboxImageManager {
       sizeTier,
       target.regionId,
     );
-    // Nirvana's name is the pinned reference, which a local build only knows
-    // after the push, so the row opened up front is corrected here.
+    // Keep the pre-created image row aligned with its registered name.
     if (this.deps.store.requireImage(imageId).name !== name) {
       this.deps.store.renameImage(imageId, name);
     }

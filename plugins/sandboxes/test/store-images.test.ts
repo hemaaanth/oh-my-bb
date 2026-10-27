@@ -57,7 +57,7 @@ describe("sandbox provider and image settings", () => {
     await fake.harness.dispose();
   });
 
-  it("keeps a pinned registry reference as a Nirvana image name", async () => {
+  it("keeps a pinned registry reference as a Modal image name", async () => {
     const fake = createFakePluginHost({ pluginId: "sandboxes" });
     const db = fake.bb.storage.database();
     fake.bb.storage.migrate(db, [...sandboxMigrations]);
@@ -65,14 +65,14 @@ describe("sandbox provider and image settings", () => {
     const reference = `ghcr.io/acme/bb-sandbox@sha256:${"d".repeat(64)}`;
 
     const image = store.beginImageBuild({
-      id: "img_nirvana",
-      provider: "nirvana",
+      id: "img_modal",
+      provider: "modal",
       name: reference,
       extraPackages: [],
     });
     store.finishImageBuild(image.id);
 
-    expect(store.getDefaultImage("nirvana")).toMatchObject({
+    expect(store.getDefaultImage("modal")).toMatchObject({
       name: reference,
       isDefault: true,
       status: "ready",

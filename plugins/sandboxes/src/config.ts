@@ -31,7 +31,6 @@ export const sandboxCredentialDescriptors = {
   e2bApiKey: { type: "string", label: "E2B API key", secret: true },
   boxApiKey: { type: "string", label: "Box API key", secret: true },
   freestyleApiKey: { type: "string", label: "Freestyle API key", secret: true },
-  nirvanaApiKey: { type: "string", label: "Nirvana API key", secret: true },
   imageRegistryUsername: { type: "string", label: "Image registry username", secret: true },
   imageRegistryToken: { type: "string", label: "Image registry token", secret: true },
 } as const;
@@ -46,17 +45,17 @@ export const sandboxSettingDescriptors = {
   },
   sshAuthKey: {
     type: "string",
-    label: "Sandbox Tailscale enrollment key",
+    label: "Tailscale enrollment key",
     description:
-      "Reusable auth key shared by SSH and Browser enrollment unless Browser supplies an override. Use tags and pre-approval when your tailnet policy requires them. Ephemeral keys remove offline devices automatically.",
+      "Enroll sandbox machines in your tailnet.",
     secret: true,
     default: "",
   },
   sshApiKey: {
     type: "string",
-    label: "Sandbox SSH Tailscale cleanup API key",
+    label: "Tailscale cleanup API key",
     description:
-      "Tailscale API access token used to delete this plugin's devices when sandboxes retire. Required alongside the enrollment key. Kept only on the BB server.",
+      "Remove retired sandbox devices from Tailscale.",
     secret: true,
     default: "",
   },
@@ -129,9 +128,9 @@ export const sandboxSettingDescriptors = {
   },
   browserTailscaleAuthKey: {
     type: "string",
-    label: "Trusted browser Tailscale auth key",
+    label: "Browser enrollment key",
     description:
-      "Reusable, pre-approved Tailscale auth key the sandbox's userspace tailscaled joins the tailnet with.",
+      "Optional browser enrollment override.",
     secret: true,
     default: "",
   },
@@ -176,13 +175,6 @@ export type SandboxSettings = PluginSettingsValues<
   freestyleStorage: string;
   freestylePersistence: string;
   freestyleSnapshotId: string;
-  nirvanaApiKey: string;
-  nirvanaApiEndpoint: string;
-  nirvanaGatewayEndpoint: string;
-  nirvanaImageUri: string;
-  nirvanaCpu: string;
-  nirvanaMemory: string;
-  nirvanaStorage: string;
   imageRegistry: string;
   imageRegistryUsername: string;
   imageRegistryToken: string;
@@ -197,7 +189,6 @@ export const sandboxImageProviders = [
   "daytona",
   "modal",
   "e2b",
-  "nirvana",
 ] as const satisfies readonly SandboxProvider[];
 
 export type SandboxImageProvider = (typeof sandboxImageProviders)[number];
@@ -243,15 +234,6 @@ export interface SandboxRuntimeConfig {
     storageGb: number;
     persistence: "sticky" | "persistent";
     snapshotId: string | null;
-  } | null;
-  nirvana: {
-    apiKey: string;
-    apiEndpoint: string;
-    gatewayEndpoint: string;
-    imageUri: string;
-    cpu: string;
-    memory: string;
-    storage: string;
   } | null;
   idleSleepMs: number | null;
   /** Size for projects without a size profile of their own. */
@@ -303,15 +285,6 @@ export function loadSandboxRuntimeConfig(
   );
   const boxApiKey = first(settings.boxApiKey, env.BOX_API_KEY);
   const freestyleApiKey = first(settings.freestyleApiKey, env.FREESTYLE_API_KEY);
-  const nirvanaApiKey = first(settings.nirvanaApiKey, env.NIRVANA_SANDBOX_API_KEY);
-  const nirvanaApiEndpoint = first(
-    settings.nirvanaApiEndpoint,
-    env.NIRVANA_SANDBOX_API_ENDPOINT,
-  );
-  const nirvanaGatewayEndpoint = first(
-    settings.nirvanaGatewayEndpoint,
-    env.NIRVANA_SANDBOX_GATEWAY_ENDPOINT,
-  );
   const modalVmRuntimeOverride =
     env.BB_SANDBOX_MODAL_VM_RUNTIME?.trim().toLowerCase();
   const sandboxEnv: Record<string, string> = {};
@@ -405,22 +378,6 @@ export function loadSandboxRuntimeConfig(
                 : "sticky",
             snapshotId: first(settings.freestyleSnapshotId) ?? null,
           },
-    nirvana:
-      nirvanaApiKey === undefined ||
-      nirvanaApiEndpoint === undefined ||
-      nirvanaGatewayEndpoint === undefined
-        ? null
-        : {
-            apiKey: nirvanaApiKey,
-            apiEndpoint: nirvanaApiEndpoint.replace(/\/$/u, ""),
-            gatewayEndpoint: nirvanaGatewayEndpoint.replace(/\/$/u, ""),
-            imageUri:
-              first(artifacts.nirvana, settings.nirvanaImageUri) ??
-              "node:22-bookworm-slim",
-            cpu: first(settings.nirvanaCpu) ?? "4",
-            memory: first(settings.nirvanaMemory) ?? "8Gi",
-            storage: first(settings.nirvanaStorage) ?? "50Gi",
-          },
     idleSleepMs: sandboxIdleSleepMs(settings.idleSleepAfter),
     defaultSizeTier: isSandboxSizeTier(settings.defaultSizeTier)
       ? settings.defaultSizeTier
@@ -466,9 +423,5 @@ export function sandboxProviderCredentialStatus(
     e2b: first(settings.e2bApiKey, env.E2B_API_KEY) !== undefined,
     box: first(settings.boxApiKey, env.BOX_API_KEY) !== undefined,
     freestyle: first(settings.freestyleApiKey, env.FREESTYLE_API_KEY) !== undefined,
-    nirvana:
-      first(settings.nirvanaApiKey, env.NIRVANA_SANDBOX_API_KEY) !== undefined &&
-      first(settings.nirvanaApiEndpoint, env.NIRVANA_SANDBOX_API_ENDPOINT) !== undefined &&
-      first(settings.nirvanaGatewayEndpoint, env.NIRVANA_SANDBOX_GATEWAY_ENDPOINT) !== undefined,
   };
 }

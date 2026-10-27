@@ -21,7 +21,7 @@ function runtimeConfig(): SandboxRuntimeConfig {
     e2b: null,
     box: null,
     freestyle: null,
-    nirvana: null,
+
     idleSleepMs: null,
     defaultSizeTier: "M",
     copyGitHubCliAuth: false,
@@ -249,7 +249,7 @@ describe("bb sandbox build-image", () => {
     ).resolves.toMatchObject({
       exitCode: 1,
       stderr: expect.stringContaining(
-        "--provider must be one of daytona, modal, e2b, nirvana",
+        "--provider must be one of daytona, modal, e2b",
       ),
     });
     await fake.harness.dispose();

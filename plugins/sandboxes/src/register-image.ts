@@ -453,14 +453,7 @@ export async function registerSandboxImage(
     });
     return { name, placement: null };
   }
-  // Nirvana pulls the reference straight from its sandbox spec, so the pinned
-  // reference is the registration. Like Daytona it has no per-request auth.
-  if (privateRegistry) {
-    input.onLog?.(
-      "Nirvana pulls images with cluster credentials; a private repository must be configured on the Nirvana side",
-    );
-  }
-  return { name: input.pinnedReference, placement: null };
+  throw new Error(`Unsupported image provider: ${input.provider}`);
 }
 
 const digestPattern = /^sha256:[0-9a-f]{64}$/u;

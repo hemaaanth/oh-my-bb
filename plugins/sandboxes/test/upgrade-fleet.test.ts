@@ -19,7 +19,7 @@ function runtimeConfig(): SandboxRuntimeConfig {
     e2b: null,
     box: null,
     freestyle: null,
-    nirvana: null,
+
     idleSleepMs: null,
     defaultSizeTier: "M",
     copyGitHubCliAuth: false,

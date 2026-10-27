@@ -1057,8 +1057,7 @@ export class SandboxStore {
 
   /**
    * A row is opened before the image reference is known so the build is
-   * visible while it runs. Nirvana's provider name is that reference, so its
-   * row is corrected once the digest resolves.
+   * visible while it runs. Update its name once registration resolves.
    */
   renameImage(id: string, name: string): SandboxImageRecord {
     this.requireImage(id);

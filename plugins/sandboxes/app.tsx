@@ -13,8 +13,9 @@ import {
   type PluginThreadHeaderActionProps,
   type PluginMachineProviderInputsProps,
 } from "@get-bb/plugin-sdk/app";
+import { SettingsDialog } from "./components/settings-dialog.js";
 import { Button } from "./components/ui/button";
-import { SandboxPreferencesSettings, SandboxIntegrationSettings, SandboxPreparationStatus } from "./components/sandbox-settings.js";
+import { SandboxPreferencesSettings, SandboxImageBuilderSettings, SandboxIntegrationSettings, SandboxPreparationStatus } from "./components/sandbox-settings.js";
 import { Input } from "./components/ui/input";
 import { Switch } from "./components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
@@ -43,7 +44,7 @@ import type { ModelRoute } from "./src/model-route.js";
 function providerLabel(provider: SandboxProvider): string {
   return ({
     daytona: "Daytona", modal: "Modal", e2b: "E2B",
-    box: "Box by ASCII", freestyle: "Freestyle", nirvana: "Nirvana",
+    box: "Box by ASCII", freestyle: "Freestyle",
   } satisfies Record<SandboxProvider, string>)[provider];
 }
 
@@ -112,7 +113,7 @@ interface ImageComponentGroup {
   items: string[];
 }
 
-type SandboxImageProvider = "daytona" | "modal" | "e2b" | "nirvana";
+type SandboxImageProvider = "daytona" | "modal" | "e2b";
 
 interface ImageSettingsView {
   repository: string;
@@ -142,8 +143,7 @@ function isImageBuildProgress(value: unknown): value is {
     (provider === null ||
       provider === "daytona" ||
       provider === "modal" ||
-      provider === "e2b" ||
-      provider === "nirvana") &&
+      provider === "e2b") &&
     (phase === "building" || phase === "ready" || phase === "error") &&
     typeof message === "string"
   );
@@ -151,14 +151,13 @@ function isImageBuildProgress(value: unknown): value is {
 
 function providerLifecycleNote(provider: SandboxProvider): string {
   if (provider === "modal") {
-    return "Modal runs continuously for its fixed 24-hour lifetime.";
+    return "Runs for up to 24 hours; idle sleep does not apply.";
   }
-  if (provider === "box") return "Box archives on idle and resumes with its persistent machine state.";
-  if (provider === "freestyle") return "Freestyle pauses on idle. Sticky uses plan retention; persistent requires no auto-delete cap or deletion deadline.";
-  if (provider === "nirvana") return "Nirvana pauses compute while retaining the persistent workspace.";
+  if (provider === "box") return "Archives on idle and resumes with saved machine state.";
+  if (provider === "freestyle") return "Pauses on idle. Disk retention depends on the selected persistence mode.";
   return provider === "daytona"
-    ? "Daytona can stop after the configured idle period and wake on the next message."
-    : "E2B can pause after the configured idle period and resume on demand.";
+    ? "Sleeps on idle and wakes on the next message."
+    : "Pauses on idle and resumes on demand.";
 }
 
 function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
@@ -178,8 +177,6 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
   const [storageDraft, setStorageDraft] = useState("20");
   const [persistenceDraft, setPersistenceDraft] = useState<"sticky" | "persistent">("sticky");
   const [snapshotIdDraft, setSnapshotIdDraft] = useState("");
-  const [gatewayEndpointDraft, setGatewayEndpointDraft] = useState("");
-  const [imageUriDraft, setImageUriDraft] = useState("node:22-bookworm-slim");
   const [savingConfiguration, setSavingConfiguration] = useState(false);
   const [capacity, setCapacity] = useState<DaytonaCapacityView | null>(null);
   const [loadingCapacity, setLoadingCapacity] = useState(false);
@@ -215,8 +212,6 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
     setStorageDraft(next.storage || "20");
     setPersistenceDraft(next.persistence === "persistent" ? "persistent" : "sticky");
     setSnapshotIdDraft(next.snapshotId);
-    setGatewayEndpointDraft(next.gatewayEndpoint);
-    setImageUriDraft(next.imageUri || "node:22-bookworm-slim");
   }, [provider, rpc]);
   const refreshCapacity = useCallback(async () => {
     if (provider !== "daytona") return;
@@ -284,20 +279,10 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
                     machineClass: machineClassDraft === "small" || machineClassDraft === "large" ? machineClassDraft : "default",
                     environment: environmentDraft,
                   })
-                : provider === "freestyle"
-                  ? await rpc.call("updateProviderConfiguration", {
-                      provider,
-                      cpu: cpuDraft, memory: memoryDraft, storage: storageDraft,
-                      persistence: persistenceDraft,
-                      snapshotId: snapshotIdDraft,
-                    })
-                  : await rpc.call("updateProviderConfiguration", {
-                      provider,
-                      apiUrl: apiUrlDraft,
-                      gatewayEndpoint: gatewayEndpointDraft,
-                      imageUri: imageUriDraft,
-                      cpu: cpuDraft, memory: memoryDraft, storage: storageDraft,
-                    });
+                : await rpc.call("updateProviderConfiguration", {
+                    provider, cpu: cpuDraft, memory: memoryDraft, storage: storageDraft,
+                    persistence: persistenceDraft, snapshotId: snapshotIdDraft,
+                  });
       setView(next);
       dirty.current = false;
     } catch (failure) {
@@ -315,32 +300,9 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
 
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-card">
-      <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
-        <span className={`min-w-0 text-sm ${view.configured ? "text-muted-foreground" : "text-destructive"}`}>
-          {view.configured ? "Configured" : "Configure provider credentials in Configuration"}
-        </span>
-        <Switch
-          checked={view.enabled}
-          disabled={savingConfiguration}
-          aria-label={`Enable ${providerLabel(provider)}`}
-          onCheckedChange={(enabled) => {
-            const id = ++request.current;
-            setView({ ...view, enabled });
-            void rpc
-              .call("setProviderEnabled", { provider, enabled })
-              .then(next => { if (id === request.current) setView(next); }, (failure: unknown) => {
-                if (id !== request.current) return;
-                setView(view);
-                setError(errorText(failure));
-              });
-          }}
-        />
-      </div>
-
-      <fieldset disabled={savingConfiguration} onChange={() => { dirty.current = true; }} className="min-w-0 space-y-4 px-4 py-3">
-      {view.enabled ? (
-        <>
+    <section className="min-w-0">
+      <fieldset disabled={savingConfiguration} onChange={() => { dirty.current = true; }} className="min-w-0 space-y-4 py-1">
+      <>
           <div className="space-y-3">
             <div className="@container grid min-w-0 grid-cols-1 gap-3 @md:grid-cols-2">
               {provider === "box" ? (
@@ -355,18 +317,18 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
                   </label>
                 </>
               ) : null}
-              {provider === "freestyle" || provider === "nirvana" ? (
+              {provider === "freestyle" ? (
                 <>
                   <label className="space-y-1 text-xs text-muted-foreground">
-                    <span>CPU {provider === "freestyle" ? "cores" : "limit"}</span>
+                    <span>CPU {"cores"}</span>
                     <Input value={cpuDraft} onChange={(event) => setCpuDraft(event.target.value)} />
                   </label>
                   <label className="space-y-1 text-xs text-muted-foreground">
-                    <span>Memory {provider === "freestyle" ? "(GB)" : "limit"}</span>
+                    <span>Memory {"(GB)"}</span>
                     <Input value={memoryDraft} onChange={(event) => setMemoryDraft(event.target.value)} />
                   </label>
                   <label className="space-y-1 text-xs text-muted-foreground">
-                    <span>Storage {provider === "freestyle" ? "(GB)" : "size"}</span>
+                    <span>Storage {"(GB)"}</span>
                     <Input value={storageDraft} onChange={(event) => setStorageDraft(event.target.value)} />
                   </label>
                 </>
@@ -389,22 +351,6 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
                   <label className="space-y-1 text-xs text-muted-foreground @md:col-span-2">
                     <span>Bootstrap snapshot <span className="opacity-70">(recommended)</span></span>
                     <Input value={snapshotIdDraft} placeholder="Freestyle snapshot ID" onChange={(event) => setSnapshotIdDraft(event.target.value)} />
-                  </label>
-                </>
-              ) : null}
-              {provider === "nirvana" ? (
-                <>
-                  <label className="space-y-1 text-xs text-muted-foreground">
-                    <span>API endpoint</span>
-                    <Input value={apiUrlDraft} onChange={(event) => setApiUrlDraft(event.target.value)} />
-                  </label>
-                  <label className="space-y-1 text-xs text-muted-foreground">
-                    <span>Gateway endpoint</span>
-                    <Input value={gatewayEndpointDraft} onChange={(event) => setGatewayEndpointDraft(event.target.value)} />
-                  </label>
-                  <label className="space-y-1 text-xs text-muted-foreground @md:col-span-2">
-                    <span>Container image</span>
-                    <Input value={imageUriDraft} onChange={(event) => setImageUriDraft(event.target.value)} />
                   </label>
                 </>
               ) : null}
@@ -564,13 +510,7 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
             </div>
           </div>
 
-        </>
-      ) : (
-        <p className="text-xs text-muted-foreground">
-          Disabled providers remain available for cleanup of existing threads,
-          but cannot create new sandboxes.
-        </p>
-      )}
+      </>
 
       {error !== null ? (
         <p role="alert" className="text-xs text-destructive">
@@ -1058,31 +998,38 @@ function SandboxUpgradesCard() {
 }
 
 function ProviderSettings() {
-  return (
-    <div className="@container mx-auto w-full max-w-[760px] space-y-6 px-4">
-      <SandboxPreferencesSettings />
-      <section className="min-w-0 space-y-3">
-        <h2 className="text-sm font-medium">Providers</h2>
-        {sandboxProviderValues.map(provider => <details key={provider} className="min-w-0 rounded-md border border-border bg-card">
-          <summary className="cursor-pointer px-4 py-3 text-sm">{providerLabel(provider)}</summary>
-          <ProviderSettingsCard provider={provider} />
-        </details>)}
-      </section>
-      <details className="min-w-0 rounded-md border border-border bg-card">
-        <summary className="cursor-pointer px-4 py-3 text-sm">Image configuration</summary>
-        <SandboxImageCard />
-      </details>
-      <SandboxIntegrationSettings />
-      <details className="min-w-0 rounded-md border border-border bg-card">
-        <summary className="cursor-pointer px-4 py-3 text-sm">More</summary>
-        <div className="min-w-0 space-y-4 p-4">
-          <p className="text-sm text-muted-foreground">Managed models require Model Gateway. Browser owns its Sandboxes opt-in. Native BB owns machine creation and retirement.</p>
-          <details><summary className="cursor-pointer text-sm">Provider lifecycle</summary><ul className="mt-2 space-y-2 text-xs text-muted-foreground">{sandboxProviderValues.map(provider => <li key={provider}>{providerLifecycleNote(provider)}</li>)}</ul></details>
-          <SandboxUpgradesCard />
-        </div>
-      </details>
+  const rpc = useRpc<typeof sandboxRpcContract>();
+  const [views, setViews] = useState<ProviderSettingsView[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const load = useCallback(() => { void rpc.call("providerSettings", null).then(result => setViews(result.providers), failure => setError(errorText(failure))); }, [rpc]);
+  useEffect(load, [load]);
+  useRealtime("sandbox-provider-settings", load);
+  return <section className="min-w-0 space-y-3" aria-label="Providers">
+    <h2 className="text-sm font-medium">Providers</h2>
+    <div className="rounded-lg border border-border bg-surface-recessed/70 px-3 divide-y divide-border">
+      {sandboxProviderValues.map(provider => {
+        const view = views.find(item => item.provider === provider);
+        return <div key={provider} className="flex min-w-0 items-center gap-3 py-3">
+          <div className="min-w-0 flex-1"><div className="text-sm font-medium">{providerLabel(provider)}</div><p className="text-xs text-muted-foreground">{!view ? "Loading…" : !view.configured ? "API key required" : view.enabled ? "Enabled" : "Disabled"}</p></div>
+          <Switch checked={view?.enabled ?? false} disabled={!view || busy} aria-label={`Enable ${providerLabel(provider)}`} onCheckedChange={async enabled => { setBusy(true); setError(""); try { const next = await rpc.call("setProviderEnabled", { provider, enabled }); setViews(previous => previous.map(item => item.provider === provider ? next : item)); } catch (failure) { setError(errorText(failure)); } finally { setBusy(false); } }} />
+          <SettingsDialog title={providerLabel(provider)} description={providerLifecycleNote(provider)} buttonLabel={`${providerLabel(provider)} options`} icon><ProviderSettingsCard provider={provider} /></SettingsDialog>
+        </div>;
+      })}
     </div>
-  );
+    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+  </section>;
+}
+function RuntimeSettings() {
+  return <section className="min-w-0 space-y-3"><h2 className="text-sm font-medium">Runtime images</h2>
+    <div className="rounded-lg border border-border bg-surface-recessed/70 px-3 divide-y divide-border">
+      <div className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="text-sm">Image builder</p><p className="text-xs text-muted-foreground">Configure packages and build new images.</p></div><SettingsDialog title="Image builder" description="Changes apply to future machines. Builds may incur provider costs." buttonLabel="Configure"><SandboxImageBuilderSettings /><SandboxImageCard /></SettingsDialog></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="text-sm">Updates</p><p className="text-xs text-muted-foreground">Review runtime versions before upgrading.</p></div><SettingsDialog title="Runtime updates" description="Review the affected images and machines before starting an update." buttonLabel="Review updates"><SandboxUpgradesCard /></SettingsDialog></div>
+    </div>
+  </section>;
+}
+function MoreSettings() {
+  return <section className="min-w-0 space-y-3"><h2 className="text-sm font-medium">More</h2><div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-recessed/70 px-3 py-3"><div><p className="text-sm">Setup guide</p><p className="text-xs text-muted-foreground">Setup and usage.</p></div><SettingsDialog title="Sandboxes setup guide" description="Run a project on a cloud machine." buttonLabel="Open setup guide"><ol className="space-y-4 text-sm list-decimal pl-5"><li>Add your provider credentials in Configuration, then enable that provider in Providers.</li><li>Choose a default size and idle timeout in Preferences.</li><li>Start a thread and choose a Sandboxes machine. BB manages its lifetime.</li></ol><p className="mt-4 text-sm text-muted-foreground">Modal machines run for up to 24 hours. Other providers can sleep on idle. Freestyle retention depends on your plan and persistence setting.</p><p className="mt-3 text-sm text-muted-foreground">Use Runtime images to configure builds or review updates. Existing machines keep their current image until you update them.</p></SettingsDialog></div></section>;
 }
 
 
@@ -1622,10 +1569,10 @@ function SandboxSizeInputs({ value, onChange }: PluginMachineProviderInputsProps
 }
 
 export default definePluginApp((app) => {
-  app.slots.settingsSection({
-    id: "providers",
-    component: ProviderSettings,
-  });
+  for (const [id, component] of [
+    ["preferences", SandboxPreferencesSettings], ["providers", ProviderSettings],
+    ["runtime-images", RuntimeSettings], ["oh-my-bb", SandboxIntegrationSettings], ["more", MoreSettings],
+  ] as const) app.slots.settingsSection({ id, component });
   app.slots.experimental_threadHeaderAction({
     id: "sandbox-resources",
     title: "Machine and model",

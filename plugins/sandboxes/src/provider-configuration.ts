@@ -19,14 +19,6 @@ export interface SandboxProviderConfiguration {
     persistence: "sticky" | "persistent";
     snapshotId: string;
   };
-  nirvana: {
-    apiEndpoint: string;
-    gatewayEndpoint: string;
-    imageUri: string;
-    cpu: string;
-    memory: string;
-    storage: string;
-  };
   image: { repository: string; platform: string };
 }
 
@@ -42,14 +34,6 @@ const defaults: SandboxProviderConfiguration = {
     persistence: "sticky",
     snapshotId: "",
   },
-  nirvana: {
-    apiEndpoint: "",
-    gatewayEndpoint: "",
-    imageUri: "node:22-bookworm-slim",
-    cpu: "4",
-    memory: "8Gi",
-    storage: "50Gi",
-  },
   // An empty platform defers to BB_SANDBOX_IMAGE_PLATFORM, then linux/amd64.
   image: { repository: "", platform: "" },
 };
@@ -60,7 +44,6 @@ const secretKeys = {
   e2b: ["e2bApiKey"],
   box: ["boxApiKey"],
   freestyle: ["freestyleApiKey"],
-  nirvana: ["nirvanaApiKey"],
 } as const;
 
 const imageSecretKeys = [
@@ -102,10 +85,6 @@ export class SandboxProviderConfigurationStore {
           persistence?: unknown;
           snapshotId?: unknown;
         };
-        nirvana?: {
-          apiEndpoint?: unknown; gatewayEndpoint?: unknown; imageUri?: unknown;
-          cpu?: unknown; memory?: unknown; storage?: unknown;
-        };
         image?: { repository?: unknown; platform?: unknown };
       };
       return {
@@ -133,14 +112,6 @@ export class SandboxProviderConfigurationStore {
               ? "persistent"
               : "sticky",
           snapshotId: clean(parsed.freestyle?.snapshotId),
-        },
-        nirvana: {
-          apiEndpoint: clean(parsed.nirvana?.apiEndpoint),
-          gatewayEndpoint: clean(parsed.nirvana?.gatewayEndpoint),
-          imageUri: clean(parsed.nirvana?.imageUri) || defaults.nirvana.imageUri,
-          cpu: clean(parsed.nirvana?.cpu) || defaults.nirvana.cpu,
-          memory: clean(parsed.nirvana?.memory) || defaults.nirvana.memory,
-          storage: clean(parsed.nirvana?.storage) || defaults.nirvana.storage,
         },
         image: {
           repository: clean(parsed.image?.repository),
@@ -184,15 +155,6 @@ export class SandboxProviderConfigurationStore {
           clean(values.persistence) === "persistent" ? "persistent" : "sticky",
         snapshotId: clean(values.snapshotId),
       };
-    } else if (provider === "nirvana") {
-      next.nirvana = {
-        apiEndpoint: clean(values.apiEndpoint),
-        gatewayEndpoint: clean(values.gatewayEndpoint),
-        imageUri: clean(values.imageUri) || defaults.nirvana.imageUri,
-        cpu: clean(values.cpu) || defaults.nirvana.cpu,
-        memory: clean(values.memory) || defaults.nirvana.memory,
-        storage: clean(values.storage) || defaults.nirvana.storage,
-      };
     }
     return this.write(next);
   }
@@ -220,7 +182,6 @@ export class SandboxProviderConfigurationStore {
       e2b: {},
       box: { ...current.box },
       freestyle: { ...current.freestyle },
-      nirvana: { ...current.nirvana },
       image: { ...current.image },
     };
   }

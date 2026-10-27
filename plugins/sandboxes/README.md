@@ -1,7 +1,7 @@
 # Sandboxes plugin
 
 This built-in, opt-in plugin contributes native BB machine and environment
-providers backed by Daytona, Modal, E2B, Box by ASCII, Freestyle, and Nirvana.
+providers backed by Daytona, Modal, E2B, Box by ASCII, Freestyle,.
 BB core owns current thread creation, host enrollment, checkout, and machine
 retirement; the plugin owns vendor allocation/removal and retains compatibility
 cleanup data for sandboxes created before the BB 0.43 migration.
@@ -70,12 +70,12 @@ See [auth keys](https://tailscale.com/kb/1085/auth-keys),
 
 ## Providers
 
-Configure each provider in its card under **Settings → Sandboxes → Providers**.
+Add keys in **Settings → Sandboxes → Configuration**, then enable providers in **Providers**. Open a provider’s options for region, capacity or runtime settings.
 Credentials are write-only, stored as mode-`0600` files in the plugin's private
-secrets directory, and never returned to the browser. Each card owns its
+secrets directory, and never returned to the browser. Each provider owns its
 provider endpoint/app options plus the provider's own image controls; the image
 registry and its credentials are shared settings on the same page. The Modal
-card also exposes the **Modal VM runtime** toggle. A card's toggle controls
+card also exposes the **Modal VM runtime** toggle. A provider’s toggle controls
 whether the provider is offered for new cloud threads. Disabling a provider
 never removes its backend while existing sandboxes may still need wake,
 teardown, or cleanup.
@@ -83,8 +83,8 @@ teardown, or cleanup.
 `idleSleepAfter` controls automatic idle sleep for providers with durable
 pause/stop support: 5, 15, or
 30 minutes, 1 hour, or Never. It updates live when saved. Daytona, Box, and
-Freestyle stop while preserving provider-supported disk state; E2B and Nirvana
-pause and can resume. Modal does not use this setting because its idle timeout
+Freestyle stop while preserving provider-supported disk state; E2B
+pauses and can resume. Modal does not use this setting because its idle timeout
 terminates the sandbox rather than pausing it. The machine popover in a thread
 provides an **Always on** switch for a single suspendable sandbox machine.
 It skips BB idle suspension while any threads remain on that machine. Provider
@@ -102,9 +102,8 @@ Environment fallbacks are supported for existing installs:
 `DAYTONA_API_KEY`, `BB_SANDBOX_DAYTONA_SNAPSHOT`, `MODAL_TOKEN_ID`,
 `MODAL_TOKEN_SECRET`, `BB_SANDBOX_MODAL_IMAGE_NAME`,
 `BB_SANDBOX_MODAL_VM_RUNTIME`, `E2B_API_KEY`, and
-`BB_SANDBOX_E2B_TEMPLATE`, `BOX_API_KEY`, `FREESTYLE_API_KEY`,
-`NIRVANA_SANDBOX_API_KEY`, `NIRVANA_SANDBOX_API_ENDPOINT`, and
-`NIRVANA_SANDBOX_GATEWAY_ENDPOINT`.
+`BB_SANDBOX_E2B_TEMPLATE`, `BOX_API_KEY`, and `FREESTYLE_API_KEY`.
+
 
 Freestyle uses the [v5 VM API](https://api.freestyle.sh/openapi.json) through
 the `freestyle` 0.2 SDK. The existing `sticky` choice now uses the plan's
@@ -139,7 +138,6 @@ reference with each provider that can consume it:
 | Daytona | snapshot created from the registry reference |
 | Modal | image created from the registry reference, then published |
 | E2B | template built `fromImage` on the reference |
-| Nirvana | reference written into the provider's image URI setting |
 
 Box and Freestyle have no custom-image API. They install the same pinned
 toolchain through the portable runtime bootstrap on first boot.
@@ -168,9 +166,6 @@ reaches one without publishing anything:
   absent, and `PATCH`es it when the stored credentials differ. Rotating the
   token in settings and rebuilding is enough; nothing needs doing in Daytona's
   dashboard.
-- **Nirvana** pulls with cluster credentials, which the plugin cannot set. A
-  private reference there needs an image pull secret configured on the Nirvana
-  side; the build logs say so rather than failing silently.
 
 GHCR needs a token with `write:packages` (and `read:packages` to pull) —
 `gh auth refresh -h github.com -s write:packages,read:packages`, or a classic
@@ -208,7 +203,7 @@ backend maps it onto what its API accepts:
 | L | 8 | 16 GiB | 40 GiB |
 | XL | 16 | 32 GiB | 100 GiB |
 
-Modal and Nirvana take the size on the create call; Box rounds it
+Modal takes the size on the create call; Box rounds it
 to the nearest machine class; E2B sizes by template and ignores it. Freestyle
 starts at its base image or snapshot size, then grows dimensions to at least the
 requested tier. Its v5 resize API uses MiB and cannot shrink any dimension, so
@@ -451,7 +446,7 @@ It merges that setting into `/root/.codex/config.toml` without replacing other
 Codex configuration, so new images and existing sandboxes repaired with
 `bb sandbox upgrade` use the same setting as the bb server machine.
 
-Daytona, Modal, E2B, and Nirvana reference this image directly. Box and
+Daytona, Modal, E2B, reference this image directly. Box and
 Freestyle install the same layers through the portable bootstrap, which embeds
 the same installer scripts and skips any layer the provider will not let it
 install as root.
@@ -627,10 +622,10 @@ launch command once or recreate the sandbox using a current provider artifact.
 
 ```bash
 bb sandbox providers
-bb sandbox provider <daytona|modal|e2b|box|freestyle|nirvana> <enable|disable>
-bb sandbox images [--provider <daytona|modal|e2b|nirvana>]
-bb sandbox build-image [--provider <daytona|modal|e2b|nirvana>] [--name <version>] [--tier <S|M|L|XL>] [--region <id>]
-bb sandbox register-image [--reference <tag>] [--provider <daytona|modal|e2b|nirvana>] [--tier <S|M|L|XL>] [--region <id>]
+bb sandbox provider <daytona|modal|e2b|box|freestyle> <enable|disable>
+bb sandbox images [--provider <daytona|modal|e2b>]
+bb sandbox build-image [--provider <daytona|modal|e2b>] [--name <version>] [--tier <S|M|L|XL>] [--region <id>]
+bb sandbox register-image [--reference <tag>] [--provider <daytona|modal|e2b>] [--tier <S|M|L|XL>] [--region <id>]
 bb sandbox tiers
 bb sandbox size [--project <id>]
 bb sandbox set-size --provider <provider> [--project <id>] (--tier <S|M|L|XL> | --cpu/--memory/--disk) [--region <id>]
@@ -662,7 +657,7 @@ workload or treating a single compilation spike as representative capacity.
 
 ## Lifecycle and cleanup
 
-Daytona, E2B, Box, Freestyle, and Nirvana native machines suspend through BB
+Daytona, E2B, Box, Freestyle, native machines suspend through BB
 core after the configured idle interval and resume on the next turn. The plugin
 reconstructs idle deadlines at startup, so a reload cannot silently leave an
 already-idle machine running. A shared host is suspended only when every
@@ -689,3 +684,9 @@ The host verifies application/display process identities and the private Xauthor
 Each active desktop grant holds its machine awake independently of browser and maintenance holds. Closing the grant releases that hold, withdraws its shared port and stops only its gateway and any VNC adapter it started. The consumer still owns the app and X display. Expiry or a dead owner also closes access. A reload revokes active viewers; drain pending handoffs before deployment. The image needs tigervnc-standalone-server, x11vnc, Xvfb and Xauthority tooling (included in the managed Linux image). The bundled noVNC source and license information is in THIRD-PARTY-NOTICES and the viewer's `/licenses` endpoint.
 
 Sandbox agent environments receive `HOME` from the execution host user account. This applies to all catalog providers on native Sandboxes hosts, including Agents, Codex, and OMP. It also covers existing sandboxes on their next turn. Local and manually enrolled machines are unchanged. This avoids relative config and cache paths when provider launch APIs omit `HOME`.
+
+## Settings layout
+
+Configuration contains write-only credentials. Preferences save on change; optional Git and browser file paths live in Connection options. Providers share one compact list. Runtime images opens image configuration and update review only on demand. More contains the setup guide. Sandboxes has no navigation-rail page.
+
+Nirvana support has been removed. Historical migration records remain unchanged; no machine or image history is deleted.

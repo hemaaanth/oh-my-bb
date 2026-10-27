@@ -65,13 +65,13 @@ function settings(overrides: Partial<SandboxSettings> = {}): SandboxSettings {
     freestyleStorage: "20",
     freestylePersistence: "sticky",
     freestyleSnapshotId: "",
-    nirvanaApiKey: "",
-    nirvanaApiEndpoint: "",
-    nirvanaGatewayEndpoint: "",
-    nirvanaImageUri: "",
-    nirvanaCpu: "4",
-    nirvanaMemory: "8Gi",
-    nirvanaStorage: "50Gi",
+
+
+
+
+
+
+
     idleSleepAfter: "15 minutes",
     defaultSizeTier: "M",
     copyGitHubCliAuth: true,
@@ -159,9 +159,9 @@ const allCredentials = {
   modalTokenId: "m",
   modalTokenSecret: "s",
   e2bApiKey: "e",
-  nirvanaApiKey: "n",
-  nirvanaApiEndpoint: "https://api.example.com",
-  nirvanaGatewayEndpoint: "https://gateway.example.com",
+
+
+
 };
 
 describe("SandboxImageManager", () => {
@@ -204,17 +204,12 @@ describe("SandboxImageManager", () => {
         name: "bb-sandbox-v1",
         pinnedReference: `ghcr.io/acme/bb-sandbox@${digest}`,
       },
-      {
-        provider: "nirvana",
-        name: `ghcr.io/acme/bb-sandbox@${digest}`,
-        pinnedReference: `ghcr.io/acme/bb-sandbox@${digest}`,
-      },
     ]);
     expect(activations).toEqual(
       registrations.map(({ provider, name }) => ({ provider, name })),
     );
     expect(build.registrations.map(({ status }) => status)).toEqual(
-      new Array(7).fill("registered"),
+      new Array(6).fill("registered"),
     );
     expect(store.getDefaultImage("daytona")?.name).toBe("bb-sandbox-v1-m");
     expect(store.getDefaultImage("daytona", "XL")).toMatchObject({
@@ -223,7 +218,7 @@ describe("SandboxImageManager", () => {
       imageVersion: "v1",
       isDefault: true,
     });
-    expect(store.getDefaultImage("nirvana")?.status).toBe("ready");
+
     await fake.harness.dispose();
   });
 
@@ -312,7 +307,7 @@ describe("SandboxImageManager", () => {
       "daytona:skipped",
       "modal:skipped",
       "e2b:registered",
-      "nirvana:skipped",
+
     ]);
     await fake.harness.dispose();
   });
@@ -358,7 +353,7 @@ describe("SandboxImageManager", () => {
       "daytona:registered",
       "modal:error",
       "e2b:registered",
-      "nirvana:registered",
+
     ]);
     expect(store.listImages("modal")[0]).toMatchObject({
       status: "error",

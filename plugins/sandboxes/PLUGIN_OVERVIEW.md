@@ -1,6 +1,6 @@
 # Sandboxes
 
-Native BB machine and environment adapters for Daytona, Modal, E2B, Box, Freestyle and Nirvana. BB owns enrollment, checkout, suspension, resume and retirement. Sandboxes owns each provider adapter and retains legacy cleanup records until removal is confirmed.
+Native BB machine and environment adapters for Daytona, Modal, E2B, Box, Freestyle. BB owns enrollment, checkout, suspension, resume and retirement. Sandboxes owns each provider adapter and retains legacy cleanup records until removal is confirmed.
 
 Configure static credentials in native Configuration. Preferences controls defaults and local-editor behavior. Optional Credentials, Catalog, Agents and Projects call paths are off on new installs. Browser owns its separate Sandboxes opt-in. This package's managed-model runtime requires Model Gateway; it does not provide a local-login fallback.
 

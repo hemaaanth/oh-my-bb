@@ -9,7 +9,7 @@ import { registerNativeProjectEnvironmentSync } from "../src/provider/project-en
 import { SandboxPreparationStatus } from "../components/sandbox-settings.js";
 const app = await loadPluginApp(() => import("../app.js"));
 afterEach(cleanup);
-const values = { sshEnabled: false, idleSleepAfter: "15 minutes", defaultSizeTier: "M", copyGitHubCliAuth: false, browserUserAgent: "", browserExitNode: "", browserHomeEgressIp: "" };
+const values = { sshEnabled: false, idleSleepAfter: "15 minutes", defaultSizeTier: "M", copyGitHubCliAuth: false, browserUserAgent: "", browserExitNode: "", browserHomeEgressIp: "", gitUsername: "", browserTailscaleAuthKeyFile: "", browserStateFile: "" };
 const provider = { provider: "freestyle", enabled: true, configured: true, credentialsConfigured: true, apiUrl: "", target: "", sandboxClass: "", appName: "", vmRuntime: false, machineClass: "", environment: "", cpu: "4", memory: "8", storage: "20", persistence: "sticky", snapshotId: "snapshot-original", gatewayEndpoint: "", imageUri: "", supportsImages: false, artifactName: null };
 const baseRpc = {
   preferences: () => ({ values, revision: 0, migrationPending: false }),
@@ -26,12 +26,12 @@ it("keeps an unsent preferences draft across realtime refresh and failed save", 
   fireEvent.click(toggle);
   await slot.behavior.emitRealtime("sandbox-preferences", null);
   expect(toggle.getAttribute("aria-checked")).toBe("true");
-  fireEvent.click(slot.getByRole("button", { name: "Save preferences" }));
   await slot.findByText("fixture save failed");
   expect(toggle.getAttribute("aria-checked")).toBe("true");
 });
 it("keeps a provider snapshot draft when metadata refreshes, without view-time capacity or setup", async () => {
-  const slot = renderSlot(app.settingsSections[0]!, {}, { rpc: baseRpc as never });
+  const slot = renderSlot(app.settingsSections.find(section => section.id === "providers")!, {}, { rpc: baseRpc as never });
+  fireEvent.click(await slot.findByRole("button", { name: "Freestyle options" }));
   const input = await slot.findByPlaceholderText("Freestyle snapshot ID");
   fireEvent.change(input, { target: { value: "snapshot-unsent" } });
   await slot.behavior.emitRealtime("sandbox-provider-settings", { type: "changed" });
@@ -52,11 +52,11 @@ it("does not restore another client's revoked integration when a stale settings 
       integrations: () => state.read(),
       updateIntegrations: (input: unknown) => state.update(input as Parameters<typeof state.update>[0]),
     };
-    const a = renderSlot(app.settingsSections[0]!, {}, { rpc: sharedRpc as never });
-    const b = renderSlot(app.settingsSections[0]!, {}, { rpc: sharedRpc as never });
-    const aCredentials = await within(a.container).findByRole("switch", { name: "Enable Credentials integration" });
-    const aCatalog = await within(a.container).findByRole("switch", { name: "Enable Catalog integration" });
-    const bCredentials = await within(b.container).findByRole("switch", { name: "Enable Credentials integration" });
+    const a = renderSlot(app.settingsSections.find(section => section.id === "oh-my-bb")!, {}, { rpc: sharedRpc as never });
+    const b = renderSlot(app.settingsSections.find(section => section.id === "oh-my-bb")!, {}, { rpc: sharedRpc as never });
+    const aCredentials = await within(a.container).findByRole("switch", { name: "Enable Project environments integration" });
+    const aCatalog = await within(a.container).findByRole("switch", { name: "Enable Executor integration" });
+    const bCredentials = await within(b.container).findByRole("switch", { name: "Enable Project environments integration" });
     fireEvent.click(bCredentials);
     await waitFor(() => expect(bCredentials.getAttribute("aria-checked")).toBe("false"));
     expect(aCredentials.getAttribute("aria-checked")).toBe("true");
@@ -104,4 +104,16 @@ it("removes stale retry eligibility when the real observer re-reads an expired s
     expect(slot.getByRole("button", { name: "Refresh job status" })).toBeTruthy();
     expect(starts).toBe(1);
   } finally { await host.harness.dispose(); }
+});
+
+it("registers settings without a rail page and loads only local metadata on view", async () => {
+  expect(app.settingsSections.map(section => section.id)).toEqual(["preferences", "providers", "runtime-images", "oh-my-bb", "more"]);
+  const slots = app.settingsSections.map(section => renderSlot(section, {}, { rpc: baseRpc as never }));
+  await slots[0]!.findByRole("switch", { name: "Copy GitHub CLI login" });
+  await slots[1]!.findByRole("button", { name: "Daytona options" });
+  expect(slots.flatMap(slot => slot.inspection.rpcCalls.map(call => call.method)).every(method => ["preferences", "providerSettings", "integrations"].includes(method))).toBe(true);
+  expect(slots[0]!.queryByRole("button", { name: "Save preferences" })).toBeNull();
+  expect(slots[1]!.queryByText("Nirvana")).toBeNull();
+  fireEvent.click(slots[4]!.getByRole("button", { name: "Open setup guide" }));
+  expect(await slots[4]!.findByRole("heading", { name: "Sandboxes setup guide" })).toBeTruthy();
 });

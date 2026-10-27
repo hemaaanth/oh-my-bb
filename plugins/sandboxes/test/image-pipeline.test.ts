@@ -72,13 +72,13 @@ function settings(overrides: Partial<SandboxSettings> = {}): SandboxSettings {
     freestyleStorage: "20",
     freestylePersistence: "sticky",
     freestyleSnapshotId: "",
-    nirvanaApiKey: "",
-    nirvanaApiEndpoint: "",
-    nirvanaGatewayEndpoint: "",
-    nirvanaImageUri: "",
-    nirvanaCpu: "4",
-    nirvanaMemory: "8Gi",
-    nirvanaStorage: "50Gi",
+
+
+
+
+
+
+
     idleSleepAfter: "15 minutes",
     defaultSizeTier: "M",
     copyGitHubCliAuth: true,
@@ -298,11 +298,9 @@ describe("bb sandbox register-image", () => {
         pinnedReference: `ghcr.io/fixture-owner/sandbox-image@${digest}`,
       },
     ]);
-    // Nirvana has no credentials in this harness, so only the three others run;
     // Daytona runs once per size.
     expect(status.build?.registrations.map((entry) => entry.status)).toEqual([
       ...new Array(6).fill("registered"),
-      "skipped",
     ]);
     expect(store.getDefaultImage("daytona")).toMatchObject({
       name: "bb-sandbox-20260820t031500z-m",
@@ -347,7 +345,7 @@ function runtimeConfig(): SandboxRuntimeConfig {
     e2b: null,
     box: null,
     freestyle: null,
-    nirvana: null,
+
     idleSleepMs: null,
     defaultSizeTier: "M",
     copyGitHubCliAuth: false,

@@ -5,12 +5,13 @@ import type { SandboxPreferences, SandboxPreferencesView } from "../src/settings
 import { sandboxIdleSleepOptions } from "../src/config.js";
 import { formatSizeTier, sandboxSizeTierValues } from "../src/size-tiers.js";
 import type { SandboxIntegration } from "../src/preferences.js";
+import { SettingsDialog } from "./settings-dialog.js";
 import { Button } from "./ui/button.js";
 import { Input } from "./ui/input.js";
 import { Switch } from "./ui/switch.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.js";
 
-const BOX = "min-w-0 rounded-md border border-border bg-card p-3";
+const BOX = "min-w-0 rounded-md border border-border bg-surface-recessed/70 px-3";
 const ROW = "flex min-w-0 items-center justify-between gap-4 py-3";
 interface BuilderView { repository: string | null; savedRepository: string | null; source: "environment" | "preference" | "import" | "unconfigured"; imported: boolean }
 const failureText = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -19,80 +20,65 @@ export function SandboxPreferencesSettings() {
   const rpc = useRpc<typeof sandboxRpcContract>();
   const id = useId();
   const [data, setData] = useState<SandboxPreferencesView | null>(null);
-  const [builder, setBuilder] = useState<BuilderView | null>(null);
   const [draft, setDraft] = useState<Partial<SandboxPreferences>>({});
-  const [repositoryDraft, setRepositoryDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const request = useRef(0);
-  const savingRef = useRef(false);
+  const savingRef = useRef(false), dirty = useRef(false), request = useRef(0);
   const load = useCallback(async () => {
-    if (savingRef.current) return;
-    const id = ++request.current;
-    try {
-      const [preferences, repository] = await Promise.all([rpc.call("preferences", null), rpc.call("imageBuildRepository", null)]);
-      if (id === request.current) { setData(preferences); setBuilder(repository); setError(""); }
-    } catch (failure) { if (id === request.current) setError(failureText(failure)); }
+    if (savingRef.current || dirty.current) return;
+    const current = ++request.current;
+    try { const next = await rpc.call("preferences", null); if (current === request.current) { setData(next); setError(""); } }
+    catch (failure) { if (current === request.current) setError(failureText(failure)); }
   }, [rpc]);
   useEffect(() => { void load(); return () => { request.current++; }; }, [load]);
   useRealtime("sandbox-preferences", useCallback(() => { void load(); }, [load]));
-  const save = async (kind: "preferences" | "builder") => {
-    savingRef.current = true; setSaving(true); setError(""); request.current++;
-    try {
-      if (kind === "preferences" && data) {
-        const next = await rpc.call("updatePreferences", { expectedRevision: data.revision, values: draft });
-        setData(next); setDraft({});
-      } else {
-        setBuilder(await rpc.call("saveImageBuildRepository", { repository: repositoryDraft ?? builder?.savedRepository ?? "" }));
-        setRepositoryDraft(null);
-      }
-    } catch (failure) { setError(failureText(failure)); }
+  const save = async (values: Partial<SandboxPreferences>) => {
+    if (!data || savingRef.current) return;
+    const patch = { ...draft, ...values };
+    dirty.current = true; setDraft(patch); savingRef.current = true; setSaving(true); setError(""); request.current++;
+    try { const next = await rpc.call("updatePreferences", { expectedRevision: data.revision, values: patch }); setData(next); setDraft({}); dirty.current = false; }
+    catch (failure) { setError(failureText(failure)); }
     finally { savingRef.current = false; setSaving(false); }
   };
   const values = data ? { ...data.values, ...draft } : null;
-  return <section className="min-w-0 space-y-3" aria-label="Sandboxes preferences">
-    <h2 className="text-sm font-medium">Preferences</h2>
+  const textFields = [
+    ["gitUsername", "Git HTTPS username", "Username for the Git token in Configuration."],
+    ["browserUserAgent", "Browser user agent", "Leave empty to use Brave’s default."],
+    ["browserExitNode", "Browser exit node", "Tailscale name or IP for home egress."],
+    ["browserHomeEgressIp", "Expected home IP", "Optional public IPs, separated by commas."],
+    ["browserTailscaleAuthKeyFile", "Browser enrollment file", "Optional server-side dotenv file; the key in Configuration takes precedence."],
+    ["browserStateFile", "Browser auth state file", "Optional server-side export; paired Browser state takes precedence."],
+  ] as const;
+  return <section className="min-w-0 space-y-3" aria-label="Sandboxes preferences"><h2 className="text-sm font-medium">Preferences</h2>
     {!values ? <div className={BOX}><p role={error ? "alert" : "status"} className="text-sm">{error || "Loading preferences…"}</p>{error && <Button variant="outline" size="sm" onClick={() => void load()}>Retry</Button>}</div> : <div className={BOX}>
-      {data?.migrationPending && <p role="status" className="mb-3 text-sm text-muted-foreground">Saved preferences are preserved. Reload Sandboxes once to finish moving them out of Configuration.</p>}
       <fieldset disabled={saving || data?.migrationPending} className="min-w-0 divide-y divide-border">
-        <div className="@container flex min-w-0 flex-col gap-2 py-3 @md:flex-row @md:items-center @md:justify-between">
-          <label htmlFor={`${id}-idle`} className="text-sm">Auto-sleep after</label>
-          <Select value={values.idleSleepAfter} onValueChange={value => setDraft(previous => ({ ...previous, idleSleepAfter: value as SandboxPreferences["idleSleepAfter"] }))}>
-            <SelectTrigger id={`${id}-idle`} className="w-full min-w-0 @md:w-64"><SelectValue /></SelectTrigger>
-            <SelectContent>{sandboxIdleSleepOptions.map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
-        <div className="@container flex min-w-0 flex-col gap-2 py-3 @md:flex-row @md:items-center @md:justify-between">
-          <label htmlFor={`${id}-size`} className="text-sm">Default size</label>
-          <Select value={values.defaultSizeTier} onValueChange={value => setDraft(previous => ({ ...previous, defaultSizeTier: value as SandboxPreferences["defaultSizeTier"] }))}>
-            <SelectTrigger id={`${id}-size`} className="w-full min-w-0 @md:w-64"><SelectValue /></SelectTrigger>
-            <SelectContent>{sandboxSizeTierValues.map(value => <SelectItem key={value} value={value}>{formatSizeTier(value)}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
-        <label className={ROW}><span className="min-w-0 text-sm">Copy this server’s GitHub CLI login</span><Switch checked={values.copyGitHubCliAuth} aria-label="Copy GitHub CLI login" onCheckedChange={value => setDraft(previous => ({ ...previous, copyGitHubCliAuth: value }))} /></label>
-        <label className={ROW}><span className="min-w-0 text-sm">Open sandbox files in local editors</span><Switch checked={values.sshEnabled} aria-label="Open sandbox files in local editors" onCheckedChange={value => setDraft(previous => ({ ...previous, sshEnabled: value }))} /></label>
-        <div className="flex justify-end pt-3"><Button size="sm" variant="outline" disabled={saving || !Object.keys(draft).length} onClick={() => void save("preferences")}>{saving ? "Saving…" : "Save preferences"}</Button></div>
+        <div className="@container flex min-w-0 flex-col gap-2 py-3 @md:flex-row @md:items-center @md:justify-between"><label htmlFor={`${id}-idle`} className="text-sm">Auto-sleep after</label><Select value={values.idleSleepAfter} onValueChange={value => void save({ idleSleepAfter: value as SandboxPreferences["idleSleepAfter"] })}><SelectTrigger id={`${id}-idle`} className="w-full min-w-0 @md:w-56"><SelectValue /></SelectTrigger><SelectContent>{sandboxIdleSleepOptions.map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
+        <div className="@container flex min-w-0 flex-col gap-2 py-3 @md:flex-row @md:items-center @md:justify-between"><label htmlFor={`${id}-size`} className="text-sm">Default size</label><Select value={values.defaultSizeTier} onValueChange={value => void save({ defaultSizeTier: value as SandboxPreferences["defaultSizeTier"] })}><SelectTrigger id={`${id}-size`} className="w-full min-w-0 @md:w-56"><SelectValue /></SelectTrigger><SelectContent>{sandboxSizeTierValues.map(value => <SelectItem key={value} value={value}>{formatSizeTier(value)}</SelectItem>)}</SelectContent></Select></div>
+        <label className={ROW}><span className="min-w-0"><span className="block text-sm">Copy GitHub CLI login</span><span className="block text-xs text-muted-foreground">Use this server’s GitHub access in new machines.</span></span><Switch checked={values.copyGitHubCliAuth} aria-label="Copy GitHub CLI login" onCheckedChange={value => void save({ copyGitHubCliAuth: value })} /></label>
+        <label className={ROW}><span className="min-w-0"><span className="block text-sm">Open files in local editors</span><span className="block text-xs text-muted-foreground">Connect through Tailscale SSH from this server.</span></span><Switch checked={values.sshEnabled} aria-label="Open sandbox files in local editors" onCheckedChange={value => void save({ sshEnabled: value })} /></label>
       </fieldset>
-      <fieldset disabled={saving} className="mt-4 min-w-0 space-y-2 border-t border-border pt-4">
-        <label htmlFor={`${id}-builder`} className="text-sm">Image build repository</label>
-        <Input id={`${id}-builder`} value={repositoryDraft ?? builder?.savedRepository ?? ""} placeholder="owner/repository" autoComplete="off" spellCheck={false} onChange={event => setRepositoryDraft(event.target.value)} />
-        {builder?.source === "environment" && <p className="break-words text-xs text-muted-foreground">Runtime environment override is active: {builder.repository}. It takes precedence over this saved preference.</p>}
-        {builder?.source === "unconfigured" && <p className="text-xs text-muted-foreground">No image builder configured. Select a repository with a supported sandbox-image.yml before upgrading images.</p>}
-        <div className="flex justify-end"><Button size="sm" variant="outline" disabled={saving || repositoryDraft === null} onClick={() => void save("builder")}>Save image builder</Button></div>
-      </fieldset>
-      <p role={error ? "alert" : undefined} className="min-h-5 break-words pt-2 text-xs text-destructive">{error}</p>
+      <div className="flex justify-end py-2"><SettingsDialog title="Connection options" description="Optional Git and browser settings for new machines." buttonLabel="Connection options"><fieldset disabled={saving || data?.migrationPending} className="space-y-4">{textFields.map(([key, label, help]) => <label key={key} className="block space-y-1"><span className="text-sm">{label}</span><Input aria-label={label} value={values[key]} autoComplete="off" spellCheck={false} onChange={event => { dirty.current = true; setDraft(previous => ({ ...previous, [key]: event.target.value })); }} onBlur={() => { if (values[key] !== data?.values[key]) void save({ [key]: values[key] }); }} /><span className="block text-xs text-muted-foreground">{help}</span></label>)}</fieldset>{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</SettingsDialog></div>
+      {saving && <p role="status" className="text-xs text-muted-foreground">Saving…</p>}
+      {error && <div role="alert" className="space-y-2 text-xs text-destructive"><p>{error}</p><Button size="sm" variant="outline" onClick={() => { dirty.current = false; setDraft({}); void load(); }}>Reload saved preferences</Button></div>}
     </div>}
   </section>;
 }
+export function SandboxImageBuilderSettings() {
+  const rpc = useRpc<typeof sandboxRpcContract>();
+  const [data, setData] = useState<BuilderView | null>(null), [draft, setDraft] = useState<string | null>(null), [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { let active = true; void rpc.call("imageBuildRepository", null).then(next => { if (active) setData(next); }, failure => { if (active) setError(failureText(failure)); }); return () => { active = false; }; }, [rpc]);
+  return <div className="min-w-0 space-y-2"><label className="block space-y-1"><span className="text-sm">Build repository</span><Input aria-label="Image build repository" disabled={!data || saving} value={draft ?? data?.savedRepository ?? ""} placeholder="owner/repository" onChange={event => setDraft(event.target.value)} /></label>{data?.source === "environment" && <p className="text-xs text-muted-foreground">An environment override takes precedence.</p>}<div className="flex justify-end"><Button size="sm" variant="outline" disabled={!data || draft === null || saving} onClick={async () => { setSaving(true); setError(""); try { setData(await rpc.call("saveImageBuildRepository", { repository: draft ?? "" })); setDraft(null); } catch (failure) { setError(failureText(failure)); } finally { setSaving(false); } }}>Save repository</Button></div>{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</div>;
+}
 
 const integrationLabels: Record<SandboxIntegration, string> = {
-  projectEnvironments: "Credentials", catalog: "Catalog", agents: "Agents", projects: "Projects",
+  projectEnvironments: "Project environments", catalog: "Executor", agents: "Agents", projects: "Projects",
 };
 const integrationHelp: Record<SandboxIntegration, string> = {
-  projectEnvironments: "Stage the existing project application configuration for its exact sandbox workspace.",
-  catalog: "Read saved skills and retain legacy scoped selections. This does not approve new skills.",
-  agents: "Read saved agents and retain legacy scoped selections. This does not grant agent access.",
-  projects: "Read native project context and existing assignment IDs. This does not enable automatic routing.",
+  projectEnvironments: "Prepare the project’s environment and setup scripts before a turn.",
+  catalog: "Read saved skills in launch previews and existing thread attachments.",
+  agents: "Read saved agents in launch previews and existing thread attachments.",
+  projects: "Read project configuration in launch previews and existing thread attachments.",
 };
 export function SandboxIntegrationSettings() {
   const rpc = useRpc<typeof sandboxRpcContract>();
@@ -114,7 +100,7 @@ export function SandboxIntegrationSettings() {
           void rpc.call("updateIntegrations", { name, enabled: checked }).then(setValues, failure => setError(failureText(failure))).finally(() => setSaving(false));
         }} />
       </label>)}</div>}
-      {values && <p role={error ? "alert" : undefined} className="min-h-5 break-words pt-2 text-xs text-destructive">{error}</p>}
+      {error && <p role="alert" className="break-words py-2 text-xs text-destructive">{error}</p>}
     </div>
   </section>;
 }
