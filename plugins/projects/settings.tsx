@@ -13,7 +13,7 @@ export const integrationRows = [
     "catalogIntegration",
     "Executor",
     "bundles",
-    "Share this project’s skill choices with Executor.",
+    "Load skill choices and notify Executor when assignments change.",
   ],
   [
     "agentsIntegration",
@@ -25,7 +25,7 @@ export const integrationRows = [
     "sidebarIntegration",
     "Status Sidebar",
     null,
-    "Keep sidebar project groups in sync with changes here.",
+    "Notify Status Sidebar when project groups change.",
   ],
   [
     "tasksIntegration",

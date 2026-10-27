@@ -128,7 +128,7 @@ describe("Projects settings consolidation", () => {
   it("keeps a group-name draft on unrelated realtime reads and saves it on blur", async () => {
     let saved: unknown;
     const v = await section("groups", {
-      saveGroup: (input: unknown) => {
+      patchGroup: (input: unknown) => {
         saved = input;
         return native.groups[0];
       },
@@ -144,7 +144,6 @@ describe("Projects settings consolidation", () => {
       expect(saved).toMatchObject({
         id: work,
         name: "New name",
-        color: "blue",
       }),
     );
     v.lifecycle.unmount();
@@ -212,7 +211,7 @@ describe("Projects settings consolidation", () => {
       ).toBe("true"),
     );
     expect(v.getByText(/skill choices/)).toBeTruthy();
-    expect(v.getByText(/sidebar project groups/)).toBeTruthy();
+    expect(v.getByText(/Status Sidebar when project groups/)).toBeTruthy();
     fireEvent.click(v.getByRole("switch", { name: "Executor" }));
     expect(await v.findByRole("alert")).toBeTruthy();
     expect(

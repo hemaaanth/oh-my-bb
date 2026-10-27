@@ -186,6 +186,10 @@ export const rpcContract = defineRpcContract({
     }).strict(),
     output: groupSchema,
   },
+  patchGroup: {
+    input: z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(80).optional(), color: projectGroupColorSchema.optional() }).strict().refine(value => value.name !== undefined || value.color !== undefined, "Choose a group field to change"),
+    output: groupSchema,
+  },
   deleteGroup: {
     input: z.object({ id: z.string().uuid() }).strict(),
     output: z.object({ ok: z.literal(true) }),

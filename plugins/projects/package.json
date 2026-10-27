@@ -1,7 +1,7 @@
 {
   "name": "bb-plugin-projects",
   "version": "0.4.0",
-  "description": "Organize BB projects and their 1Password application environments.",
+  "description": "Manage project settings, application environments, scripts and services.",
   "license": "MIT",
   "files": [
     "dist",
@@ -22,7 +22,7 @@
   },
   "bb": {
     "name": "Projects",
-    "description": "Organize projects and their application environments.",
+    "description": "Manage project settings, application environments, scripts and services.",
     "branding": {
       "icon": "./icons/projects.svg",
       "experimental_icons": {

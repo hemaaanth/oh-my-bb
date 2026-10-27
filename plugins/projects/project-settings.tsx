@@ -22,6 +22,7 @@ import {
   DialogTrigger,
 } from "./components/ui/dialog";
 import { Icon } from "./components/ui/icon";
+import { Button } from "./components/ui/button";
 import {
   Select,
   SelectTrigger,
@@ -210,7 +211,7 @@ function GroupRow({
 }: {
   group: Group;
   busy: boolean;
-  save: (name: string, color: ProjectGroupColor) => Promise<boolean>;
+  save: (patch: { name?: string; color?: ProjectGroupColor }) => Promise<boolean>;
   remove: () => void;
 }) {
   const [name, setName] = useState(group.name);
@@ -222,10 +223,10 @@ function GroupRow({
       draft.current = group.name;
     }
   }, [group.name]);
-  async function commit(color: ProjectGroupColor) {
+  async function commitName() {
     const sent = draft.current.trim();
     if (!sent) return;
-    const ok = await save(sent, color);
+    const ok = await save({ name: sent });
     if (ok && draft.current.trim() === sent) dirty.current = false;
   }
   return (
@@ -233,8 +234,7 @@ function GroupRow({
       <ColourPicker
         value={group.color}
         label={`Colour for ${group.name}`}
-        disabled={busy}
-        onChange={(color) => void commit(color)}
+        onChange={(color) => void save({ color })}
       />
       <input
         aria-label={`Group name: ${group.name}`}
@@ -246,7 +246,7 @@ function GroupRow({
           setName(e.target.value);
         }}
         onBlur={() => {
-          if (draft.current.trim() !== group.name) void commit(group.color);
+          if (draft.current.trim() !== group.name) void commitName();
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") e.currentTarget.blur();
@@ -262,7 +262,7 @@ function GroupRow({
         }
         disabled={busy || group.isDefault}
         onClick={remove}
-        className={`${control} !px-2 text-destructive`}
+        className={`${control} !px-2 text-destructive disabled:text-muted-foreground`}
       >
         <Icon name="Trash2" className="size-4" aria-hidden />
       </button>
@@ -283,8 +283,8 @@ export function GroupsSettings() {
             key={g.id}
             group={g}
             busy={busy}
-            save={(name, color) =>
-              run(() => rpc.call("saveGroup", { id: g.id, name, color }))
+            save={(patch) =>
+              run(() => rpc.call("patchGroup", { id: g.id, ...patch }))
             }
             remove={() => void run(() => rpc.call("deleteGroup", { id: g.id }))}
           />
@@ -498,6 +498,7 @@ function ProjectDetails({
 }
 export function ProjectsSettings() {
   const { rpc, data, error, busy, run } = useOrganization();
+  const [search, setSearch] = useState("");
   const [assignmentText, setAssignmentText] = useState<string | null>(null);
   const [assignments, setAssignments] = useState<Assignments | null>(null);
   async function choices() {
@@ -524,64 +525,76 @@ export function ProjectsSettings() {
   }
   return (
     <section className="min-w-0 space-y-4 [overflow-wrap:anywhere]">
-      <h2 className="text-sm font-medium">Projects</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-sm font-medium">Projects</h2>
+        <input
+          type="search"
+          aria-label="Search projects"
+          placeholder="Search projects"
+          className={`${control} w-full sm:w-60`}
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      </div>
       <Notice data={data} error={error} />
-      <div className="divide-y divide-border rounded-md border border-border bg-surface-recessed/70 px-3">
-        {data?.projects.map((p) => (
-          <div
-            key={p.id}
-            className="flex min-w-0 items-center justify-between gap-3 py-3"
-          >
-            <span className="flex min-w-0 items-center gap-3">
-              {p.icon ? (
-                <span aria-hidden className="w-4 shrink-0 text-center">
-                  {p.icon}
-                </span>
-              ) : (
-                <Icon
-                  name="Folder"
-                  className="size-4 shrink-0 text-muted-foreground"
-                  aria-hidden
-                />
-              )}
-              <span className="min-w-0 truncate text-sm">{p.name}</span>
-            </span>
-            <Modal
-              title={p.name}
-              description="Project environment and routing configuration."
-              trigger={
-                <button
-                  className={`${control} !px-2`}
-                  aria-label={`Edit ${p.name}`}
-                >
-                  <Icon name="Pencil" className="size-4" aria-hidden />
-                </button>
-              }
+      <div className="max-h-96 overflow-y-auto divide-y divide-border rounded-md border border-border bg-surface-recessed/70 px-3">
+        {data?.projects
+          .filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
+          .map((p) => (
+            <div
+              key={p.id}
+              className="flex min-w-0 items-center justify-between gap-3 py-3"
             >
-              <ProjectDetails
-                project={p}
-                groups={data.groups}
-                busy={busy}
-                configured={data.routingConfigured}
-                run={run}
-                rpc={rpc}
-                assignments={assignments}
-                refreshAssignments={async () => {
-                  const next = await rpc.call("snapshot");
-                  setAssignments((previous) =>
-                    previous
-                      ? {
-                          ...next,
-                          agents: previous.agents,
-                          bundles: previous.bundles,
-                        }
-                      : next,
-                  );
-                }}
-              />
-            </Modal>
-          </div>
-        ))}
+              <span className="flex min-w-0 items-center gap-3">
+                {p.icon ? (
+                  <span aria-hidden className="w-4 shrink-0 text-center">
+                    {p.icon}
+                  </span>
+                ) : (
+                  <Icon
+                    name="Folder"
+                    className="size-4 shrink-0 text-muted-foreground"
+                    aria-hidden
+                  />
+                )}
+                <span className="min-w-0 truncate text-sm">{p.name}</span>
+              </span>
+              <Modal
+                title={p.name}
+                description="Project environment and routing configuration."
+                trigger={
+                  <button
+                    className={`${control} !px-2`}
+                    aria-label={`Edit ${p.name}`}
+                  >
+                    <Icon name="Pencil" className="size-4" aria-hidden />
+                  </button>
+                }
+              >
+                <ProjectDetails
+                  project={p}
+                  groups={data.groups}
+                  busy={busy}
+                  configured={data.routingConfigured}
+                  run={run}
+                  rpc={rpc}
+                  assignments={assignments}
+                  refreshAssignments={async () => {
+                    const next = await rpc.call("snapshot");
+                    setAssignments((previous) =>
+                      previous
+                        ? {
+                            ...next,
+                            agents: previous.agents,
+                            bundles: previous.bundles,
+                          }
+                        : next,
+                    );
+                  }}
+                />
+              </Modal>
+            </div>
+          ))}
       </div>
       <div className="flex flex-wrap gap-2">
         <button
@@ -643,7 +656,9 @@ export function MoreSettings() {
           title="Set up Projects"
           description="Project configuration, application environments and commands."
           trigger={
-            <button className={`${control} shrink-0`}>Open setup guide</button>
+            <Button size="sm" variant="outline" className="shrink-0">
+              Open setup guide
+            </Button>
           }
         >
           <div className="space-y-4 text-sm">

@@ -63,3 +63,17 @@ describe("Scripts consolidated in Projects", () => {
     }
   });
 });
+
+describe("independent group field updates", () => {
+ it("keeps another client's rename when a stale colour editor saves", async () => {
+  const h=createFakePluginHost({pluginId:"projects",sdk:{subscribe:()=>()=>{}}});
+  await projects(h.bb);
+  try {
+   const group=await h.harness.behavior.callRpc("saveGroup",{name:"Original",color:"blue"}) as {id:string};
+   await h.harness.behavior.callRpc("patchGroup",{id:group.id,name:"Renamed elsewhere"});
+   const saved=await h.harness.behavior.callRpc("patchGroup",{id:group.id,color:"green"});
+   expect(saved).toMatchObject({name:"Renamed elsewhere",color:"green"});
+   await expect(h.harness.behavior.callRpc("patchGroup",{id:group.id,color:"rose"},{experimental_caller:{kind:"plugin",pluginId:"foreign"}})).rejects.toThrow("owner-client-required");
+  } finally {await h.harness.lifecycle.dispose();}
+ });
+});

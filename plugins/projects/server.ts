@@ -773,6 +773,15 @@ export default async function plugin(bb: BbPluginApi) {
       return reconcileRoutingProfiles();
     },
     saveGroup: (input) => { const group = store.saveGroup(input); preserveNativeOrganization = true; publish("group-saved"); void notifySidebar(); return group; },
+    patchGroup: (input, context) => {
+      requireOwnerClient(context);
+      const group = db.transaction(() => {
+        const current = store.listGroups().find(group => group.id === input.id);
+        if (!current) throw new Error("Group no longer exists");
+        return store.saveGroup({ id: current.id, name: input.name ?? current.name, color: input.color ?? current.color });
+      })();
+      preserveNativeOrganization = true; publish("group-saved"); void notifySidebar(); return group;
+    },
     deleteGroup: ({ id }) => { store.deleteGroup(id); preserveNativeOrganization = true; publish("group-deleted"); void notifySidebar(); return { ok: true as const }; },
     setGroupOrder: ({ groupIds }) => { store.setGroupOrder(groupIds); preserveNativeOrganization = true; publish("group-order-changed"); void notifySidebar(); return { ok: true as const }; },
     setProjectGroup: ({ projectId, groupId }) => { store.setProjectGroup(projectId, groupId); preserveNativeOrganization = true; publish("project-group-changed"); void notifySidebar(); return { ok: true as const }; },
@@ -817,7 +826,7 @@ export default async function plugin(bb: BbPluginApi) {
   const scriptsCli = await registerScripts(bb);
   bb.cli.register({
     name: "projects",
-    summary: "Inspect and refresh intelligent project routing profiles",
+    summary: "Manage project scripts, services and routing profiles",
     commands: [
       { name: "scripts", summary: "Inspect and run project commands and approved setup", usage: "bb projects scripts <list|run|prepare|setup|teardown|stop|agent-setup>" },
       { name: "status", summary: "Show profile coverage", usage: "bb projects routing status" },
