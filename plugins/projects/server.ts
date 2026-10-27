@@ -826,6 +826,7 @@ export default async function plugin(bb: BbPluginApi) {
   const scriptsCli = await registerScripts(bb);
   bb.cli.register({
     name: "projects",
+    rendersHelp: true,
     summary: "Manage project scripts, services and routing profiles",
     commands: [
       { name: "routing", summary: "Inspect or explicitly refresh routing profiles", usage: "bb projects routing <status|backfill|regenerate|history|learn>" },
@@ -837,6 +838,11 @@ export default async function plugin(bb: BbPluginApi) {
       { name: "learn", summary: "Learn routing guidance from routing history now", usage: "bb projects routing learn" },
     ],
     async run(argv, context) {
+      if (argv.includes("--help") || argv.includes("-h")) {
+        return { exitCode: 0, stdout: argv[0] === "scripts"
+          ? (scriptsCli.commands ?? []).map(command => `${command.usage}\n  ${command.summary}`).join("\n") + "\n"
+          : "Usage: bb projects scripts <list|run|prepare|setup|teardown|stop|agent-setup>\n       bb projects routing <status|backfill|regenerate|history|learn>\n" };
+      }
       if (argv[0] === "scripts") return scriptsCli.run(argv.slice(1), context);
       if (argv[0] === "routing") argv = argv.slice(1);
       const command = argv[0] ?? "status";
