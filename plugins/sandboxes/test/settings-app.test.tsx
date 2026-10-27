@@ -113,6 +113,9 @@ it("registers settings without a rail page and loads only local metadata on view
   await slots[1]!.findByRole("button", { name: "Daytona options" });
   expect(slots.flatMap(slot => slot.inspection.rpcCalls.map(call => call.method)).every(method => ["preferences", "providerSettings", "integrations"].includes(method))).toBe(true);
   expect(slots[0]!.queryByRole("button", { name: "Save preferences" })).toBeNull();
+  expect(slots[0]!.queryByRole("button", { name: "Connection options" })).toBeNull();
+  expect(slots[0]!.getByRole("textbox", { name: /Git HTTPS username/ })).toBeTruthy();
+  expect(slots[0]!.getByRole("textbox", { name: /Browser auth state file/ })).toBeTruthy();
   expect(slots[1]!.queryByText("Nirvana")).toBeNull();
   fireEvent.click(slots[4]!.getByRole("button", { name: "Open setup guide" }));
   expect(await slots[4]!.findByRole("heading", { name: "Sandboxes setup guide" })).toBeTruthy();

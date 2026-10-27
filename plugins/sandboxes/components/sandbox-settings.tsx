@@ -5,7 +5,6 @@ import type { SandboxPreferences, SandboxPreferencesView } from "../src/settings
 import { sandboxIdleSleepOptions } from "../src/config.js";
 import { formatSizeTier, sizeTierUnits, sandboxSizeTierValues } from "../src/size-tiers.js";
 import type { SandboxIntegration } from "../src/preferences.js";
-import { SettingsDialog } from "./settings-dialog.js";
 import { Button } from "./ui/button.js";
 import { Input } from "./ui/input.js";
 import { Switch } from "./ui/switch.js";
@@ -56,8 +55,18 @@ export function SandboxPreferencesSettings() {
         <div className="@container flex min-w-0 flex-col gap-2 py-3 @md:flex-row @md:items-center @md:justify-between"><label htmlFor={`${id}-size`} className="text-sm">Default size</label><Select value={values.defaultSizeTier} onValueChange={value => void save({ defaultSizeTier: value as SandboxPreferences["defaultSizeTier"] })}><SelectTrigger id={`${id}-size`} className="w-full min-w-0 @md:w-56"><SelectValue>{values.defaultSizeTier} · {sizeTierUnits(values.defaultSizeTier).cpu} cores · {sizeTierUnits(values.defaultSizeTier).memoryGiB} GiB</SelectValue></SelectTrigger><SelectContent>{sandboxSizeTierValues.map(value => <SelectItem key={value} value={value}>{formatSizeTier(value)}</SelectItem>)}</SelectContent></Select></div>
         <label className={ROW}><span className="min-w-0"><span className="block text-sm">Copy GitHub CLI login</span><span className="block text-xs text-muted-foreground">Use this server’s GitHub access in new machines.</span></span><Switch checked={values.copyGitHubCliAuth} aria-label="Copy GitHub CLI login" onCheckedChange={value => void save({ copyGitHubCliAuth: value })} /></label>
         <label className={ROW}><span className="min-w-0"><span className="block text-sm">Open files in local editors</span><span className="block text-xs text-muted-foreground">Connect through Tailscale SSH from this server.</span></span><Switch checked={values.sshEnabled} aria-label="Open sandbox files in local editors" onCheckedChange={value => void save({ sshEnabled: value })} /></label>
+        {textFields.map(([key, label, help]) => (
+          <div key={key} className="@container flex min-w-0 flex-col gap-2 py-3 @md:flex-row @md:items-center @md:justify-between">
+            <label htmlFor={`${id}-${key}`} className="min-w-0 @md:flex-1">
+              <span className="block text-sm">{label}</span>
+              <span className="block text-xs text-muted-foreground">{help}</span>
+            </label>
+            <Input id={`${id}-${key}`} className="w-full min-w-0 @md:w-64 @md:shrink-0" value={values[key]} autoComplete="off" spellCheck={false}
+              onChange={event => { dirty.current = true; setDraft(previous => ({ ...previous, [key]: event.target.value })); }}
+              onBlur={() => { if (values[key] !== data?.values[key]) void save({ [key]: values[key] }); }} />
+          </div>
+        ))}
       </fieldset>
-      <div className="flex justify-end py-2"><SettingsDialog title="Connection options" description="Optional Git and browser settings for new machines." buttonLabel="Connection options"><fieldset disabled={saving || data?.migrationPending} className="space-y-4">{textFields.map(([key, label, help]) => <label key={key} className="block space-y-1"><span className="text-sm">{label}</span><Input aria-label={label} value={values[key]} autoComplete="off" spellCheck={false} onChange={event => { dirty.current = true; setDraft(previous => ({ ...previous, [key]: event.target.value })); }} onBlur={() => { if (values[key] !== data?.values[key]) void save({ [key]: values[key] }); }} /><span className="block text-xs text-muted-foreground">{help}</span></label>)}</fieldset>{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</SettingsDialog></div>
       {saving && <p role="status" className="text-xs text-muted-foreground">Saving…</p>}
       {error && <div role="alert" className="space-y-2 text-xs text-destructive"><p>{error}</p><Button size="sm" variant="outline" onClick={() => { dirty.current = false; setDraft({}); void load(); }}>Reload saved preferences</Button></div>}
     </div>}

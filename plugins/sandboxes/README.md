@@ -687,6 +687,6 @@ Sandbox agent environments receive `HOME` from the execution host user account. 
 
 ## Settings layout
 
-Configuration contains write-only credentials. Preferences save on change; optional Git and browser file paths live in Connection options. Providers share one compact list. Runtime images opens image configuration and update review only on demand. More contains the setup guide. Sandboxes has no navigation-rail page.
+Configuration contains write-only credentials. Preferences save on change; Git and browser options are shown inline in the same section. Providers share one compact list. Runtime images opens image configuration and update review only on demand. More contains the setup guide. Sandboxes has no navigation-rail page.
 
 Nirvana support has been removed. Historical migration records remain unchanged; no machine or image history is deleted.
