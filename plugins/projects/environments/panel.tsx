@@ -120,7 +120,7 @@ export function EnvironmentEditor({
             });
           }}
         >
-          <div className="divide-y divide-border rounded-lg border border-border px-3">
+          <div className="space-y-2">
             {(
               [
                 ["name", "Name"],
@@ -132,7 +132,7 @@ export function EnvironmentEditor({
             ).map(([key, label]) => (
               <div
                 key={key}
-                className="grid min-w-0 gap-2 py-3 @md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+                className="grid min-w-0 grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)] items-center gap-3"
               >
                 <label htmlFor={`environment-${key}`} className="text-sm">
                   {label}
@@ -149,7 +149,7 @@ export function EnvironmentEditor({
               </div>
             ))}
             {profile && (
-              <div className="grid min-w-0 gap-2 py-3">
+              <div className="grid min-w-0 grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)] items-center gap-3">
                 <label className="text-sm" htmlFor="environment-token">
                   Service-account token{" "}
                   <span className="text-xs text-muted-foreground">
@@ -171,6 +171,7 @@ export function EnvironmentEditor({
                   />
                   <button
                     type="button"
+                    aria-label="Save token"
                     className="h-9 shrink-0 whitespace-nowrap rounded-md border border-border px-3 text-xs disabled:opacity-50"
                     disabled={busy || !token.trim()}
                     onClick={() =>
@@ -188,7 +189,7 @@ export function EnvironmentEditor({
                       })
                     }
                   >
-                    Save token
+                    Save
                   </button>
                 </div>
               </div>

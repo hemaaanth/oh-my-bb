@@ -110,7 +110,8 @@ export function PreferencesSettings() {
                     Project description model
                   </label>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    Used by “Generate description” in a project’s Suggestions tab.
+                    Used by “Generate description” in a project’s Suggestions
+                    tab.
                   </p>
                 </div>
                 <input
@@ -129,13 +130,11 @@ export function PreferencesSettings() {
             </div>
             <ScriptsPreference />
           </div>
-          <p role="status" className="text-xs text-muted-foreground">
-            {saving
-              ? "Saving…"
-              : error
-                ? "Could not save. Your draft is kept."
-                : "Changes save automatically."}
-          </p>
+          {saving && (
+            <p role="status" className="text-xs text-muted-foreground">
+              Saving…
+            </p>
+          )}
           {error && (
             <p role="alert" className="text-sm text-destructive">
               {error}

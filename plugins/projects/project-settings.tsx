@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -12,6 +14,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import * as Popover from "@radix-ui/react-popover";
 import { HexColorPicker } from "react-colorful";
+import { EmojiStyle, Theme } from "emoji-picker-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 import "./settings.css";
 import type { rpcContract, ProjectGroupColor } from "./contract";
@@ -375,6 +378,93 @@ export function GroupsSettings() {
   );
 }
 type Assignments = PluginRpcResult<(typeof rpcContract)["snapshot"]>;
+const EmojiPicker = lazy(() => import("emoji-picker-react"));
+
+function ProjectIcon({
+  icon,
+  busy,
+  save,
+}: {
+  icon: string;
+  busy: boolean;
+  save(value: string): Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const scope = usePortalScopeProps();
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span>Icon</span>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">
+          {icon ? "Custom emoji" : "Default folder"}
+        </span>
+        <Popover.Root open={open} onOpenChange={setOpen}>
+          <Popover.Trigger asChild>
+            <button
+              type="button"
+              disabled={busy}
+              aria-label="Choose project emoji"
+              className="inline-flex !size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border !p-0 text-xl hover:bg-secondary"
+            >
+              {icon || (
+                <Icon
+                  name="Folder"
+                  className="size-4 text-muted-foreground"
+                  aria-hidden
+                />
+              )}
+            </button>
+          </Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Content
+              {...scope}
+              align="end"
+              sideOffset={6}
+              collisionPadding={12}
+              aria-label="Project emoji"
+              className="z-[70] w-80 max-w-[calc(100vw-24px)] overflow-hidden rounded-lg border border-border bg-popover shadow-md"
+            >
+              {open && (
+                <Suspense
+                  fallback={
+                    <p role="status" className="p-3 text-sm">
+                      Loading emoji…
+                    </p>
+                  }
+                >
+                  <EmojiPicker
+                    width="100%"
+                    height={360}
+                    emojiStyle={EmojiStyle.NATIVE}
+                    theme={Theme.AUTO}
+                    previewConfig={{ showPreview: false }}
+                    lazyLoadEmojis
+                    onEmojiClick={(data) => {
+                      setOpen(false);
+                      void save(data.emoji);
+                    }}
+                  />
+                </Suspense>
+              )}
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
+        {icon && (
+          <button
+            type="button"
+            disabled={busy}
+            aria-label="Reset project icon"
+            className="inline-flex size-7 items-center justify-center rounded hover:bg-secondary"
+            onClick={() => void save("")}
+          >
+            <Icon name="X" className="size-3" aria-hidden />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ProjectDetails({
   project,
   groups,
@@ -390,30 +480,15 @@ function ProjectDetails({
   run: ReturnType<typeof useOrganization>["run"];
   rpc: ReturnType<typeof useOrganization>["rpc"];
 }) {
-  const [iconDraft, setIconDraft] = useState<string | null>(null);
   return (
     <>
-      <label className="grid gap-2 text-sm">
-        Icon
-        <input
-          className={control}
-          value={iconDraft ?? project.icon}
-          onChange={(event) => setIconDraft(event.target.value)}
-          aria-label="Project icon"
-          onBlur={(e) => {
-            const icon = e.target.value.trim();
-            if (iconDraft !== null && icon !== project.icon)
-              void run(() =>
-                rpc.call("updateProject", { projectId: project.id, icon }),
-              ).then((ok) => {
-                if (ok)
-                  setIconDraft((current) =>
-                    current?.trim() === icon ? null : current,
-                  );
-              });
-          }}
-        />
-      </label>
+      <ProjectIcon
+        icon={project.icon}
+        busy={busy}
+        save={(icon) =>
+          run(() => rpc.call("updateProject", { projectId: project.id, icon }))
+        }
+      />
       <label className="flex min-w-0 flex-wrap items-center justify-between gap-3 text-sm">
         Group
         <Select

@@ -1,3 +1,9 @@
+## 0.4.2
+
+- Remove the persistent autosave note.
+- Use compact environment label/input rows without dividers.
+- Replace the free-text icon field with a square emoji picker and clear default/reset states.
+
 ## 0.4.1
 
 - Put Groups first and use freeform colour controls with full swatch buttons.

@@ -1,7 +1,20 @@
 // @vitest-environment jsdom
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("emoji-picker-react", () => ({
+  EmojiStyle: { NATIVE: "native" },
+  Theme: { AUTO: "auto" },
+  default: ({
+    onEmojiClick,
+  }: {
+    onEmojiClick(data: { emoji: string }): void;
+  }) => (
+    <button onClick={() => onEmojiClick({ emoji: "🚀" })}>
+      Choose rocket emoji
+    </button>
+  ),
+}));
 const work = "11111111-1111-4111-8111-111111111111",
   personal = "22222222-2222-4222-8222-222222222222";
 const prefs = {
@@ -151,6 +164,7 @@ describe("Projects settings consolidation", () => {
       "Project description model",
     )) as HTMLInputElement;
     expect(v.queryByRole("button", { name: "Save changes" })).toBeNull();
+    expect(v.queryByText("Changes save automatically.")).toBeNull();
     fireEvent.change(input, { target: { value: "model/first" } });
     fireEvent.blur(input);
     await waitFor(() => expect(calls).toBe(1));
@@ -204,6 +218,47 @@ describe("Projects settings consolidation", () => {
     fireEvent.change(hex, { target: { value: "#123abc" } });
     fireEvent.blur(hex);
     await waitFor(() => expect(saved).toEqual({ id: work, color: "#123abc" }));
+    v.lifecycle.unmount();
+  });
+  it("chooses and resets an emoji without accepting freeform icon text", async () => {
+    let current = {
+      ...native,
+      projects: native.projects.map((p) => ({ ...p })),
+    };
+    const patches: unknown[] = [];
+    const v = await section("projects", {
+      organizationSnapshot: () => current,
+      environment_snapshot: () => ({ profiles: [], projects: [] }),
+      updateProject: (input: { projectId: string; icon: string }) => {
+        patches.push(input);
+        current = {
+          ...current,
+          projects: current.projects.map((p) => ({ ...p, icon: input.icon })),
+        };
+        return { ok: true };
+      },
+    });
+    fireEvent.click(
+      await v.findByRole("button", { name: "Edit Synthetic project" }),
+    );
+    expect(await v.findByText("Default folder")).toBeTruthy();
+    expect(v.queryByRole("textbox", { name: "Project icon" })).toBeNull();
+    fireEvent.click(v.getByRole("button", { name: "Choose project emoji" }));
+    fireEvent.click(
+      await v.findByRole("button", { name: "Choose rocket emoji" }),
+    );
+    await waitFor(() =>
+      expect(patches).toEqual([{ projectId: "project", icon: "🚀" }]),
+    );
+    fireEvent.click(
+      await v.findByRole("button", { name: "Reset project icon" }),
+    );
+    await waitFor(() =>
+      expect(patches).toEqual([
+        { projectId: "project", icon: "🚀" },
+        { projectId: "project", icon: "" },
+      ]),
+    );
     v.lifecycle.unmount();
   });
   it("keeps only the standard setup-guide row in More and opens it without navigating", async () => {
