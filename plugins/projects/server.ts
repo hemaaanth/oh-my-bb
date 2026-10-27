@@ -77,7 +77,7 @@ export default async function plugin(bb: BbPluginApi) {
     openRouterApiKey: {
       type: "string",
       label: "OpenRouter API key",
-      description: "For explicit profile generation and learning.",
+      description: "Used when you generate a project description with AI.",
       secret: true,
     },
     jevApiKey: {

@@ -5,9 +5,17 @@ description: Organize BB projects and inspect assignment readiness. Use for Proj
 
 # Projects
 
-Use More in native Projects settings for bounded group, icon and routing-profile management. These work without assignment readiness or sibling plugins. More and its management/maintenance disclosures start collapsed and keep unsent drafts when closed.
+Manage groups in **Settings → Projects → Groups** and edit projects from **Settings → Projects → Projects**. Groups precede Projects. Project rows show repository, group, machine count and description source. Environment, Suggestions and Skills are tabs in a fixed-size settings dialog. More contains only the setup guide. Projects adds no rail page.
 
-Authentication stays in host-owned Configuration. Behavior has a separate native Preferences section. Oh My BB has real opt-in switches: Executor uses catalog, Tasks uses task-workspaces, and Credentials retains its legacy name. Keys and IDs do not change. Sources stay off without saved consent. Enable a source, then explicitly load choices under More → Assignments and migration. Missing definitions must not clear stored IDs.
+Preferences autosave. Configuration stores the OpenRouter and Jev keys. There is no integration switchboard. Projects never loads agent choices, manages agent availability or fetches task titles. Old agent membership is inert history; membership writes and new handoffs fail with `membership-retired`. Do not use those APIs to configure agents.
+
+Projects works without Executor. Opening a project's Skills tab loads skill sets from Executor. If unavailable, preserve saved assignments and report that the chooser is unavailable. After a skill change, installed Executor receives only a project-ID refresh hint. Installed Status Sidebar receives automatic group-refresh hints. Sidebar owns its group-source preference.
+
+## Project suggestions
+
+When the user types a new-thread prompt, the composer can suggest a project by comparing the prompt with saved project descriptions through Jev. Exact repository references can match locally. This does not assign tasks or run an agent.
+
+**Generate description** in the Suggestions tab explicitly asks the saved OpenRouter model to write a description and tags from repository README/package metadata. It may incur cost and replaces that project's description and tags. No Tasks data is read. The user can write and save descriptions directly. Never generate as a configuration check.
 
 ## Readiness
 
@@ -17,7 +25,7 @@ Import only on an explicit operator request. `importLegacyFromSourcesV1(null)` r
 
 ## Handoff
 
-Read the package's `ASSIGNMENT_HANDOFF.md` before changing authority. Freeze one assignment kind, export its exact generation, validate a staged receipt from its fixed authenticated destination, then commit source authority. The destination stays read-only until Projects reports matching `destination-owned`. No receipt uploaded by an arbitrary caller can activate ownership.
+Read the package's `ASSIGNMENT_HANDOFF.md` before changing authority. Only skill bundles and application bindings have active ownership handoffs. Do not start an agent-membership handoff. Freeze one active assignment kind, export its exact generation, validate a staged receipt from its fixed authenticated destination, then commit source authority. The destination stays read-only until Projects reports matching `destination-owned`. No receipt uploaded by an arbitrary caller can activate ownership.
 
 Existing setters forward one way only after commit. Reject destination bounce-back and stop on unavailable owners. Never restore source authority by downgrading code. Freeze and reverse-export every destination edit, reconcile its digest and only then resume source writes.
 
@@ -27,7 +35,7 @@ Do not run a real transfer, reload or source switch without the operator's cutov
 
 `bb projects routing status`, `backfill`, `regenerate --project <id>`, `history`, and `learn` inspect or operate the existing routing feature. Generation and learning may use configured paid services; they are not harmless migration checks.
 
-Profile generation and learning run only through explicit actions. Startup, reload, project changes, key/model changes, periodic time and trace collection preserve stored profiles and learned guidance. “Refresh stale generated profiles” and `backfill` create missing profiles and replace stale generated profiles; manual profiles stay unchanged. `regenerate` may replace the selected manual profile. These actions use the saved model, may incur cost and do not restore earlier values.
+Profile generation and learning run only through explicit actions. Startup, reload, project changes, key/model changes, periodic time and trace collection preserve stored profiles and learned guidance. The explicit CLI `backfill` create missing profiles and replace stale generated profiles; manual profiles stay unchanged. `regenerate` may replace the selected manual profile. These actions use the saved model, may incur cost and do not restore earlier values.
 
 Generation RPCs require an SDK client caller; plugin-origin calls are denied. SDK client access includes UI, CLI and agents, not proof of human approval. No plugin initiating contract is approved. Learning is available only through the explicit `learn` command.
 
@@ -35,7 +43,7 @@ Generation RPCs require an SDK client caller; plugin-origin calls are denied. SD
 
 Projects owns each project's 1Password application environment, private service-account token, preparation records and guarded `query_clickhouse` tool. Remote Executor credentials are separate.
 
-Use **Project environments** or **Settings → Projects → More → Manage project environments** to edit the selected project's configuration. Metadata and token saves in this editor do not run setup. Existing shared configurations are marked and require confirmation before edits.
+Use **Settings → Projects → Projects → Edit → Environment** to edit a project's configuration. Metadata and token saves in this editor do not run setup. Existing shared configurations are marked and require confirmation before edits.
 
 `bb project-env list` and the existing `prepare`, `run`, `import-credential`, `bind`, `unbind` and `cleanup` commands remain available through the stateless `project-environments` adapter. They execute in Projects. Preparation and run can execute project setup; do not use them just to inspect configuration. Run application commands through `bb-project-env-run`. Never print injected secrets or replay preparation after an unknown outcome.
 
