@@ -4,7 +4,7 @@ import { basename, dirname, join } from "node:path";
 import { verifiedBrowserArtifact } from "./browser-artifact.js";
 
 export { imageTools } from "./image-tools.js";
-import { defaultImageTools, imageTools, normalizeImageTools } from "./image-tools.js";
+import { defaultImageTools, imageTools, normalizeImageTools, imageDockerfileSchema } from "./image-tools.js";
 export const sandboxRequiredImageComponents = ["Node.js 22", "BB host daemon", "Git + GitHub CLI + SSH", "Brave + bb-browser + Tailscale", "Virtual desktop + FFmpeg + ImageMagick", "BB preview and connection helpers"];
 export function imageComponentsFor(selected: readonly string[]) {
   return [
@@ -71,8 +71,10 @@ export async function prepareImageBuildContext(input: {
   dockerfilePath: string;
   extraPackages: string[];
   tools?: string[];
+  dockerfile?: string;
 }): Promise<SandboxImageBuildContext> {
   const extraPackages = normalizeExtraPackages(input.extraPackages);
+  const extension = imageDockerfileSchema.parse(input.dockerfile ?? "");
   const sourceDirectory = dirname(input.dockerfilePath);
   verifiedBrowserArtifact(sourceDirectory);
   const tools = normalizeImageTools(input.tools ?? defaultImageTools);
@@ -105,7 +107,7 @@ export async function prepareImageBuildContext(input: {
         ]),
   );
   const dockerfilePath = join(targetDirectory, basename(input.dockerfilePath));
-  await writeFile(dockerfilePath, lines.join("\n"));
+  await writeFile(dockerfilePath, lines.join("\n") + (extension ? `\n# Custom image instructions\n${extension}\n` : ""));
   return {
     contextDir: targetDirectory,
     dockerfilePath,

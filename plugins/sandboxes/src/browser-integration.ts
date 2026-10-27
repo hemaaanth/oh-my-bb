@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type { SandboxSettings } from "./config.js";
@@ -31,7 +31,10 @@ export function registerBrowserIntegration(bb: BbPluginApi, settings: () => Prom
     },
     browserLegacyV1: async (_, context) => {
       if (context.experimental_caller.kind !== "plugin" || context.experimental_caller.pluginId !== "browser") throw new Error("Browser plugin required");
-      const current = await settings();
+      const current = { ...await settings() };
+      // Keep the retired native secret readable only for Browser's existing migration.
+      try { current.browserTailscaleAuthKey = await readFile(join(dirname(directory), "secrets", "browserTailscaleAuthKey"), "utf8"); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       let state = null; try { state = await readFile(join(directory, "state.json"), "utf8"); } catch {}
       return { settings: Object.fromEntries(keys.map(key => [key, current[key]])), connection: await bb.storage.kv.get("browser-cookie-connection") ?? null,
         pairing: await bb.storage.kv.get("browser-cookie-pairing") ?? null, state };

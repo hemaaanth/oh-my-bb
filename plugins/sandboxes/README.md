@@ -697,3 +697,11 @@ The required runtime includes Node.js, BB host daemon, Git/GitHub CLI/SSH, basic
 The former GitHub build-repository setting, import command and workflow dispatcher are retired. Their historical KV receipt is retained but no longer read. The image registry repository is still needed: it is the container destination, not a source-code repository.
 
 Box and Freestyle bootstrap at launch and do not use the custom-image builder.
+
+### Custom image instructions and Browser settings
+
+The image builder has an inline **Custom Dockerfile instructions** editor. Its instructions extend the shipped BB runtime after the selected tools are installed. Use `RUN` to install custom tools or versions; `ENV`, `ARG`, `LABEL`, `WORKDIR`, `USER` and `SHELL` are also supported. Multiline commands use backslash continuation. `FROM`, `COPY`, `ADD`, Dockerfile heredocs and replacing the runtime entrypoint are not supported by this extension editor. Save stores the draft recipe; **Build and register image** executes it. Never put credentials in image instructions. Additional Debian packages remain available as tags. The included-tools list is collapsed initially. FX and Prime Agent each include their BB ACP adapter when selected.
+
+Tool versions come from the shipped installers unless custom instructions replace them. Some optional installers track `latest`; selections alone do not promise reproducible package versions. The saved tool selection and custom instructions are captured together when a build starts. Custom recipes are not treated as equivalent to the standard image during update reuse checks.
+
+Browser owns sandbox browsing, home routing, public-IP verification and personal login sharing. Sandboxes links to Browser settings and does not display duplicate controls. Retired values and the old native key remain untouched for Browser's verified migration endpoint. Browser is optional: machine creation and coding agents continue without it; managed browser identity provisioning is skipped when Browser is absent or its integration is disabled. The supported managed browser remains Brave.

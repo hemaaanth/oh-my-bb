@@ -115,7 +115,7 @@ it("registers settings without a rail page and loads only local metadata on view
   expect(slots[0]!.queryByRole("button", { name: "Save preferences" })).toBeNull();
   expect(slots[0]!.queryByRole("button", { name: "Connection options" })).toBeNull();
   expect(slots[0]!.getByRole("textbox", { name: /Git HTTPS username/ })).toBeTruthy();
-  expect(slots[0]!.getByRole("textbox", { name: /Browser auth state file/ })).toBeTruthy();
+  expect(slots[0]!.queryByRole("textbox", { name: /Browser auth state file/ })).toBeNull();
   expect(slots[1]!.queryByText("Nirvana")).toBeNull();
   fireEvent.click(slots[4]!.getByRole("button", { name: "Open setup guide" }));
   expect(await slots[4]!.findByRole("heading", { name: "Sandboxes setup guide" })).toBeTruthy();
@@ -144,4 +144,12 @@ it("observes a saved build job on reopen and never starts a replacement", async 
   expect(slot.inspection.rpcCalls.filter(call => call.method === "imageBuildStatus")).toHaveLength(1);
   expect(slot.inspection.rpcCalls.some(call => ["buildImage", "startImageBuild"].includes(call.method))).toBe(false);
   expect(window.sessionStorage.getItem("sandboxes:image-build")).toBeNull();
+});
+
+it("keeps Browser-owned connection fields out of Sandboxes preferences", async () => {
+  const slot = renderSlot(app.settingsSections[0]!, {}, { rpc: baseRpc as never });
+  await slot.findByRole("switch", { name: "Copy GitHub CLI login" });
+  expect(slot.queryByText("Expected home IP")).toBeNull();
+  expect(slot.queryByText("Browser enrollment file")).toBeNull();
+  expect(slot.queryByText("Browser auth state file")).toBeNull();
 });

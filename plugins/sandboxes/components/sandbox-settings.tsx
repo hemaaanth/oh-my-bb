@@ -41,11 +41,6 @@ export function SandboxPreferencesSettings() {
   const values = data ? { ...data.values, ...draft } : null;
   const textFields = [
     ["gitUsername", "Git HTTPS username", "Username for the Git token in Configuration."],
-    ["browserUserAgent", "Browser user agent", "Leave empty to use Brave’s default."],
-    ["browserExitNode", "Browser exit node", "Tailscale name or IP for home egress."],
-    ["browserHomeEgressIp", "Expected home IP", "Optional public IPs, separated by commas."],
-    ["browserTailscaleAuthKeyFile", "Browser enrollment file", "Optional server-side dotenv file; the key in Configuration takes precedence."],
-    ["browserStateFile", "Browser auth state file", "Optional server-side export; paired Browser state takes precedence."],
   ] as const;
   return <section className="min-w-0 space-y-3" aria-label="Sandboxes preferences"><h2 className="text-sm font-medium">Preferences</h2>
     {!values ? <div className={BOX}><p role={error ? "alert" : "status"} className="text-sm">{error || "Loading preferences…"}</p>{error && <Button variant="outline" size="sm" onClick={() => void load()}>Retry</Button>}</div> : <div className={BOX}>
@@ -94,6 +89,7 @@ export function SandboxIntegrationSettings() {
   return <section className="min-w-0 space-y-3" aria-label="Oh My BB integrations">
     <h2 className="text-sm font-medium">Oh My BB</h2>
     <div className={BOX}>
+      <div className="py-3"><span className="block text-sm">Browser</span><p className="text-xs text-muted-foreground">Manage sandbox browsing, home routing and shared logins in <a className="underline underline-offset-2" href="/settings/plugins/browser">Browser settings</a>. Sandbox machines work without Browser.</p></div>
       {!values ? <p role={error ? "alert" : "status"} className="text-sm">{error || "Loading integrations…"}</p> : <div className="divide-y divide-border">{(Object.keys(integrationLabels) as SandboxIntegration[]).map(name => <label key={name} className={ROW}>
         <span className="min-w-0"><span className="block text-sm">{integrationLabels[name]}</span><span className="mt-1 block text-xs text-muted-foreground">{integrationHelp[name]}</span></span>
         <Switch checked={values[name]} disabled={saving} aria-label={`Enable ${integrationLabels[name]} integration`} onCheckedChange={checked => {

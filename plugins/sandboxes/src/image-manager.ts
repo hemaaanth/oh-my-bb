@@ -65,7 +65,7 @@ export interface SandboxImageManagerDeps {
   bb: BbPluginApi;
   store: SandboxStore;
   getSettings: () => Promise<SandboxSettings>;
-  getImageTools?: () => Promise<string[]>;
+  getImageRecipe?: () => Promise<{ tools: string[]; dockerfile?: string }>;
   dockerfilePath: string;
   verifyBrowserImage?: (registry: SandboxImageRegistryConfig, pinnedReference: string) => Promise<BrowserArtifact>;
   bbAppVersion: () => Promise<string>;
@@ -218,6 +218,7 @@ interface PreparedImageJob {
   registrable: SandboxImageProvider[];
   extraPackages: string[];
   tools: string[];
+  dockerfile?: string;
   harness?: HarnessVersions;
   /** Target key to the image row opened for it, absent when it was skipped. */
   rows: Map<string, string>;
@@ -409,7 +410,8 @@ export class SandboxImageManager {
       }
       requested = request.provider;
     }
-    const tools = normalizeImageTools(await this.deps.getImageTools?.() ?? defaultImageTools);
+    const recipe = await this.deps.getImageRecipe?.();
+    const tools = normalizeImageTools(recipe?.tools ?? defaultImageTools);
     const settings = await this.deps.getSettings();
     const registry = sandboxImageRegistryConfig(settings);
     if (registry.repository.length === 0) {
@@ -515,6 +517,7 @@ export class SandboxImageManager {
       extraPackages,
       rows,
       tools,
+      dockerfile: recipe?.dockerfile,
       harness: kind === "build" ? (request as SandboxImageBuildRequest).harness : undefined,
     };
   }
@@ -619,6 +622,7 @@ export class SandboxImageManager {
         dockerfilePath: this.deps.dockerfilePath,
         extraPackages: prepared.extraPackages,
         tools: prepared.tools,
+        dockerfile: prepared.dockerfile,
       });
       return await this.deps.buildAndPush({
         contextDir: context.contextDir,

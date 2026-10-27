@@ -1,3 +1,6 @@
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createFakePluginHost, makeHostResponse } from "@get-bb/plugin-sdk/testing";
 import { afterEach, expect, it } from "vitest";
 import { registerBrowserIntegration } from "../src/browser-integration.js";
@@ -35,4 +38,17 @@ it('shares the Sandboxes enrollment key unless Browser explicitly overrides it',
  await fake.harness.behavior.callRpc('browserNetworkV1',{...input,held:false,generation:'a'.repeat(32)},caller);
  expect(releases).toEqual([{threadId:input.threadId,generation:'a'.repeat(32)}]);
  await expect(fake.harness.behavior.callRpc('browserNetworkV1',input)).rejects.toThrow('Browser plugin required');expect(enrollments).toHaveLength(2);
+});
+
+it("keeps the retired native Browser key available only to the verified migration caller", async () => {
+ const directory=await mkdtemp(join(tmpdir(), 'sandbox-browser-migration-'));
+ const fake=createFakePluginHost({pluginId:'sandboxes'});
+ try {
+  await mkdir(join(directory,'secrets'));
+  await writeFile(join(directory,'secrets','browserTailscaleAuthKey'),'fixture-retained-key',{mode:0o600});
+  registerBrowserIntegration(fake.bb,async()=>({browserUserAgent:'',browserExitNode:'',browserHomeEgressIp:'',browserTailscaleAuthKey:'',browserTailscaleAuthKeyFile:'',browserStateFile:''}),join(directory,'browser-cookies'),()=>undefined);
+  await expect(fake.harness.behavior.callRpc('browserLegacyV1',null)).rejects.toThrow('Browser plugin required');
+  const result=await fake.harness.behavior.callRpc('browserLegacyV1',null,{experimental_caller:{kind:'plugin',pluginId:'browser'}}) as {settings:Record<string,string>};
+  expect(result.settings.browserTailscaleAuthKey).toBe('fixture-retained-key');
+ } finally {await fake.harness.dispose();await rm(directory,{recursive:true,force:true});}
 });

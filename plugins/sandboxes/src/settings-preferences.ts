@@ -23,7 +23,7 @@ const storedSchema = z.object({ values: sandboxPreferencesSchema.partial(), revi
 
 /** Same-plugin one-generation migration; native secret identities stay native. */
 export async function loadSandboxSettings(bb: BbPluginApi) {
-  const { sshEnabled, idleSleepAfter, defaultSizeTier, copyGitHubCliAuth, browserUserAgent, browserExitNode, browserHomeEgressIp, gitUsername, browserTailscaleAuthKeyFile, browserStateFile, ...staticDescriptors } = sandboxSettingDescriptors;
+  const { sshEnabled, idleSleepAfter, defaultSizeTier, copyGitHubCliAuth, browserUserAgent, browserExitNode, browserHomeEgressIp, gitUsername, browserTailscaleAuthKeyFile, browserStateFile, browserTailscaleAuthKey, ...staticDescriptors } = sandboxSettingDescriptors;
   const credentials = bb.settings.define({ ...staticDescriptors, ...sandboxCredentialDescriptors });
   const legacyDescriptors = { sshEnabled, idleSleepAfter, defaultSizeTier, copyGitHubCliAuth, browserUserAgent, browserExitNode, browserHomeEgressIp, gitUsername, browserTailscaleAuthKeyFile, browserStateFile };
   const key = "preferences:v1";
@@ -62,7 +62,7 @@ export async function loadSandboxSettings(bb: BbPluginApi) {
   credentials.onChange(changed);
   bb.onDispose(async () => { await pending; });
   return {
-    get: async (): Promise<PluginSettingsValues<typeof sandboxSettingDescriptors> & PluginSettingsValues<typeof sandboxCredentialDescriptors>> => ({ ...await credentials.get(), ...current }),
+    get: async (): Promise<PluginSettingsValues<typeof sandboxSettingDescriptors> & PluginSettingsValues<typeof sandboxCredentialDescriptors>> => ({ ...await credentials.get(), browserTailscaleAuthKey: "", ...current }),
     onChange: (listener: () => void) => { listeners.add(listener); },
     view,
     update,

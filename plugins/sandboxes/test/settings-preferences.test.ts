@@ -63,3 +63,11 @@ it("finishes an already-imported layout without losing advanced paths or false v
   expect(fake.harness.inspection.sdk.calls).toEqual([]);
   await fake.harness.dispose();
 });
+
+it("does not register retired Browser configuration fields", async () => {
+ const fake = createFakePluginHost({ pluginId: "sandboxes" });
+ try {
+  await loadSandboxSettings(fake.bb);
+  expect(fake.harness.registrations.settingsDescriptors).not.toHaveProperty("browserTailscaleAuthKey");
+ } finally { await fake.harness.dispose(); }
+});

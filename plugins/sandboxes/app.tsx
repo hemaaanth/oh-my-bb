@@ -526,6 +526,7 @@ function SandboxImageCard() {
   const [packages, setPackages] = useState<string[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [filter, setFilter] = useState("");
+  const [dockerfile, setDockerfile] = useState("");
   const [saving, setSaving] = useState(false);
   const [jobId, setJobId] = useState<string | null>(() => window.sessionStorage.getItem("sandboxes:image-build"));
   const [building, setBuilding] = useState(false);
@@ -537,7 +538,7 @@ function SandboxImageCard() {
     try {
       const next = await rpc.call("imageSettings", null);
       if (id !== request.current || dirty.current) return;
-      setView(next); setRepository(next.repository); setPlatform(next.platform || "linux/amd64"); setPackages(next.extraPackages); setSelected(next.recipe.tools); setError("");
+      setView(next); setRepository(next.repository); setPlatform(next.platform || "linux/amd64"); setPackages(next.extraPackages); setSelected(next.recipe.tools); setDockerfile(next.recipe.dockerfile ?? ""); setError("");
     } catch (failure) { if (id === request.current) setError(errorText(failure)); }
   }, [rpc]);
   useEffect(() => { void load(); return () => { request.current++; }; }, [load]);
@@ -550,7 +551,7 @@ function SandboxImageCard() {
     if (!view) return;
     setSaving(true); setError(""); request.current++;
     try {
-      const next = await rpc.call("updateImageConfiguration", { repository, platform, packages, recipe: { revision: view.recipe.revision, tools: selected as ImageRecipe["tools"] } });
+      const next = await rpc.call("updateImageConfiguration", { repository, platform, packages, recipe: { revision: view.recipe.revision, tools: selected as ImageRecipe["tools"], dockerfile } });
       setView(next); setSelected(next.recipe.tools); setPackages(next.extraPackages); dirty.current = false; setMessage("Image settings saved.");
     } catch (failure) { setError(errorText(failure)); }
     finally { setSaving(false); }
@@ -592,13 +593,15 @@ function SandboxImageCard() {
         <label className="block min-w-0 space-y-1 text-sm"><span>Image registry repository</span><Input aria-label="Image registry repository" value={repository} placeholder="ghcr.io/your-account/bb-sandbox" onChange={event => edit(() => setRepository(event.target.value))} /><span className="block text-xs text-muted-foreground">Where the built image is stored. Add its credentials in Configuration.</span></label>
         <label className="block min-w-0 space-y-1 text-sm"><span>Platform</span><Select value={platform} onValueChange={value => edit(() => setPlatform(value))}><SelectTrigger aria-label="Image platform"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="linux/amd64">Linux · x86-64</SelectItem><SelectItem value="linux/arm64">Linux · ARM64</SelectItem></SelectContent></Select></label>
         <div className="space-y-2"><h3 className="text-sm font-medium">Image contents</h3><p className="text-xs text-muted-foreground">Required: Node.js, BB host, Git, SSH, the trusted browser and desktop, and connection helpers.</p><p className="text-xs text-muted-foreground">Choose the optional tools below. Existing machines keep their installed tools until replaced.</p></div>
-        <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => edit(() => setSelected([...defaultImageTools]))}>General defaults</Button><Button size="sm" variant="outline" onClick={() => edit(() => setSelected([]))}>Required only</Button></div>
+        <details className="min-w-0 space-y-3"><summary className="cursor-pointer text-sm">Included tools</summary><div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => edit(() => setSelected([...defaultImageTools]))}>General defaults</Button><Button size="sm" variant="outline" onClick={() => edit(() => setSelected([]))}>Required only</Button></div>
         <Input aria-label="Find image tools" placeholder="Find tools…" value={filter} onChange={event => setFilter(event.target.value)} />
-        {groups.filter(category => imageTools.some(tool => tool.category === category && `${tool.label} ${tool.category}`.toLowerCase().includes(filter.toLowerCase()))).map(category => <div key={category} className="min-w-0 space-y-2"><h4 className="text-xs font-medium text-muted-foreground">{category}</h4><div className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-2 @sm:grid-cols-2">{imageTools.filter(tool => tool.category === category && `${tool.label} ${tool.category}`.toLowerCase().includes(filter.toLowerCase())).map(tool => {
-          const neededBy = imageTools.filter(other => selected.includes(other.id) && (other.requires as readonly string[]).includes(tool.id));
+        {groups.filter(category => imageTools.some(tool => tool.category === category && `${tool.label} ${tool.category}`.toLowerCase().includes(filter.toLowerCase()))).map(category => <div key={category} className="min-w-0 space-y-2"><h4 className="text-xs font-medium text-muted-foreground">{category}</h4><div className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-2 @sm:grid-cols-2">{imageTools.filter(tool => !["fx-acp", "prime-agent-acp"].includes(tool.id) && tool.category === category && `${tool.label} ${tool.category}`.toLowerCase().includes(filter.toLowerCase())).map(tool => {
+          const neededBy = imageTools.filter(other => !["fx-acp", "prime-agent-acp"].includes(other.id) && selected.includes(other.id) && (other.requires as readonly string[]).includes(tool.id));
           const canBeRequired = imageTools.some(other => (other.requires as readonly string[]).includes(tool.id));
-          return <label key={tool.id} className="flex min-w-0 items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-current" aria-label={tool.label} checked={selected.includes(tool.id)} disabled={neededBy.length > 0} onChange={event => edit(() => { const next = new Set(selected); if (event.target.checked) { next.add(tool.id); for (const dependency of tool.requires) next.add(dependency); } else next.delete(tool.id); setSelected([...next]); })} /><span className="min-w-0 break-words">{tool.label}{canBeRequired && <span className={`ml-1 inline-block whitespace-nowrap text-[11px] text-muted-foreground ${neededBy.length === 0 ? "invisible" : ""}`} title={neededBy.length > 0 ? `Required by ${neededBy.map(other => other.label).join(", ")}` : undefined} aria-label={neededBy.length > 0 ? `Required by ${neededBy.map(other => other.label).join(", ")}` : undefined} aria-hidden={neededBy.length === 0} tabIndex={neededBy.length > 0 ? 0 : undefined}>(required)</span>}</span></label>;
+          return <label key={tool.id} className="flex min-w-0 items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-current" aria-label={tool.label} checked={selected.includes(tool.id)} disabled={neededBy.length > 0} onChange={event => edit(() => { const next = new Set(selected); if (event.target.checked) { next.add(tool.id); for (const dependency of tool.requires) next.add(dependency); } else next.delete(tool.id); const adapter = tool.id === "fx" ? "fx-acp" : tool.id === "prime-agent" ? "prime-agent-acp" : null; if (adapter) { if (event.target.checked) next.add(adapter); else next.delete(adapter); } setSelected([...next]); })} /><span className="min-w-0 break-words">{tool.label}{canBeRequired && <span className={`ml-1 inline-block whitespace-nowrap text-[11px] text-muted-foreground ${neededBy.length === 0 ? "invisible" : ""}`} title={neededBy.length > 0 ? `Required by ${neededBy.map(other => other.label).join(", ")}` : undefined} aria-label={neededBy.length > 0 ? `Required by ${neededBy.map(other => other.label).join(", ")}` : undefined} aria-hidden={neededBy.length === 0} tabIndex={neededBy.length > 0 ? 0 : undefined}>(required)</span>}</span></label>;
         })}</div></div>)}
+        </details>
+        <label className="block min-w-0 space-y-2 text-sm"><span>Custom Dockerfile instructions</span><textarea aria-label="Custom Dockerfile instructions" spellCheck={false} className="min-h-48 w-full min-w-0 resize-y rounded-md border border-border bg-background p-3 font-mono text-xs" value={dockerfile} placeholder={'# Runs after the BB runtime and included tools\nRUN npm install -g your-tool@1.0.0'} onChange={event => edit(() => setDockerfile(event.target.value))} /><span className="block text-xs text-muted-foreground">Extend the Debian + Node 22 image with RUN, ENV and other supported instructions. Choose tool versions here. Runs only when you build; never put credentials here.</span></label>
         <ImagePackageTags label="Additional Debian packages" values={packages} onChange={next => edit(() => setPackages(next))} max={100} length={100} />
         <div className="flex justify-end"><Button variant="outline" size="sm" disabled={!dirty.current} onClick={() => void save()}>{saving ? "Saving…" : "Save image settings"}</Button></div>
       </fieldset>

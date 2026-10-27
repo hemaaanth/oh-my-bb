@@ -369,7 +369,11 @@ export function normalizeImageTools(ids: readonly string[]): Array<(typeof image
   }
   return imageToolIds.filter(id => selected.has(id));
 }
-export const imageRecipeSchema = z.object({ revision: z.number().int().nonnegative(), tools: selectedImageToolsSchema });
+export const imageDockerfileSchema = z.string().max(65_536).refine(value => {
+  const lines = value.replace(/\\\r?\n/g, " ").split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith("#"));
+  return lines.every(line => /^(RUN|ENV|ARG|LABEL|WORKDIR|USER|SHELL)\s/i.test(line));
+}, "Use RUN, ENV, ARG, LABEL, WORKDIR, USER or SHELL instructions to extend the BB image");
+export const imageRecipeSchema = z.object({ revision: z.number().int().nonnegative(), tools: selectedImageToolsSchema, dockerfile: imageDockerfileSchema.optional() });
 export type ImageRecipe = z.infer<typeof imageRecipeSchema>;
 export function imageRecipePreference(bb: BbPluginApi) {
   const key = "image-recipe:v1";
@@ -384,8 +388,9 @@ export function imageRecipePreference(bb: BbPluginApi) {
       const current = await read();
       if (input.revision !== current.revision) throw new Error("Image contents changed; reload before saving this draft");
       const tools = normalizeImageTools(input.tools);
-      if (JSON.stringify(tools) === JSON.stringify(current.tools)) return current;
-      const next = { revision: current.revision + 1, tools };
+      const dockerfile = imageDockerfileSchema.parse(input.dockerfile ?? current.dockerfile ?? "");
+      if (JSON.stringify(tools) === JSON.stringify(current.tools) && dockerfile === (current.dockerfile ?? "")) return current;
+      const next = { revision: current.revision + 1, tools, ...(dockerfile ? { dockerfile } : {}) };
       await bb.storage.kv.set(key, next);
       return next;
     });

@@ -97,3 +97,14 @@ it("stamps selected contents and disabled harnesses into the real Docker recipe"
     expect(recipe).not.toContain('bb.harness.pi="${PI_VERSION}"');
   } finally { await context.cleanup(); }
 });
+
+it("appends custom instructions after the runtime without changing the shipped Dockerfile", async () => {
+  const original = 'FROM node:22-bookworm-slim\n# bb:extra-packages\nCMD ["bb-sandbox-entrypoint"]\n';
+  const source = await sourceContext(original);
+  const extension = "RUN npm install -g example@1.2.3\nENV EXAMPLE=yes";
+  const context = await prepareImageBuildContext({ dockerfilePath: join(source, "Dockerfile"), extraPackages: [], tools: [], dockerfile: extension });
+  try {
+    expect(await readFile(context.dockerfilePath, "utf8")).toContain(`# Custom image instructions\n${extension}\n`);
+    expect(await readFile(join(source, "Dockerfile"), "utf8")).toBe(original);
+  } finally { await context.cleanup(); }
+});

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
@@ -98,6 +98,7 @@ const digest = `sha256:${"a".repeat(64)}`;
 async function harness(
   overrides: {
     settings?: Partial<SandboxSettings>;
+    getImageRecipe?: SandboxImageManagerDeps["getImageRecipe"];
     register?: SandboxImageManagerDeps["register"];
     buildAndPush?: SandboxImageManagerDeps["buildAndPush"];
     resolveRegistryImage?: SandboxImageManagerDeps["resolveRegistryImage"];
@@ -116,6 +117,7 @@ async function harness(
     store,
     verifyBrowserImage: async () => syntheticBrowserArtifact,
     getSettings: async () => settings(overrides.settings),
+    getImageRecipe: overrides.getImageRecipe,
     dockerfilePath: await dockerContext(),
     bbAppVersion: async () => "0.38.0",
     buildAndPush:
@@ -416,4 +418,20 @@ describe("SandboxImageManager", () => {
     );
     await fake.harness.dispose();
   });
+});
+
+it("uses the saved recipe in the build context", async () => {
+  let dockerfile = "";
+  const fixture = await harness({
+    settings: allCredentials,
+    getImageRecipe: async () => ({ tools: ["go"], dockerfile: "RUN echo custom-recipe" }),
+    buildAndPush: async input => {
+      dockerfile = await readFile(input.dockerfilePath, "utf8");
+      return { reference: input.reference, digest, pinnedReference: `ghcr.io/acme/bb-sandbox@${digest}` };
+    },
+  });
+  try {
+    await fixture.manager.build({ name: "custom-recipe" });
+    expect(dockerfile).toContain("RUN echo custom-recipe");
+  } finally { await fixture.fake.harness.dispose(); }
 });

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { expect, it } from "vitest";
-import { defaultImageTools, imageRecipePreference, imageTools, normalizeImageTools } from "../src/image-tools.js";
+import { defaultImageTools, imageDockerfileSchema, imageRecipePreference, imageTools, normalizeImageTools } from "../src/image-tools.js";
 
 it("has general defaults, keeps project CLIs opt-in, and validates dependencies and names", () => {
   expect(defaultImageTools).not.toContain("goldsky");
@@ -62,4 +62,20 @@ it("direct Docker builds use the same public defaults as prepared contexts", () 
   const dockerfile = readFileSync(new URL("../docker/Dockerfile", import.meta.url), "utf8");
   const defaults = /^ARG BB_IMAGE_TOOLS=(.*)$/mu.exec(dockerfile)?.[1]?.split(",");
   expect(defaults).toEqual(defaultImageTools);
+});
+
+it("saves custom Dockerfile instructions with revision checks and supports clearing them", async () => {
+  const fake = createFakePluginHost({ pluginId: "sandboxes" });
+  try {
+    const recipes = imageRecipePreference(fake.bb);
+    const dockerfile = "RUN npm install -g example@1.2.3 \\\n  && echo installed\nENV EXAMPLE=yes";
+    expect(imageDockerfileSchema.parse(dockerfile)).toBe(dockerfile);
+    await recipes.save({ revision: 0, tools: [], dockerfile });
+    expect(await recipes.read()).toEqual({ revision: 1, tools: [], dockerfile });
+    await expect(recipes.save({ revision: 1, tools: [], dockerfile: "FROM alpine" })).rejects.toThrow("Use RUN");
+    await expect(recipes.save({ revision: 0, tools: [], dockerfile: "" })).rejects.toThrow("changed");
+    expect((await recipes.read()).dockerfile).toBe(dockerfile);
+    await recipes.save({ revision: 1, tools: [], dockerfile: "" });
+    expect(await recipes.read()).toEqual({ revision: 2, tools: [] });
+  } finally { await fake.harness.dispose(); }
 });

@@ -663,6 +663,7 @@ export default async function plugin(bb: BbPluginApi) {
     };
     const imageManager = new SandboxImageManager({
       bb,
+      getImageRecipe: () => recipe.read(),
       store,
       getSettings: combinedSettings,
       dockerfilePath,
@@ -700,7 +701,8 @@ export default async function plugin(bb: BbPluginApi) {
         const registry = sandboxImageRegistryConfig(await combinedSettings());
         if (registry.repository.length === 0) return null;
         const tools = await readRegistryImageLabel({ registry, reference: tag, label: "bb.image.tools", platform: registry.platform });
-        if (tools !== (await recipe.read()).tools.join(",")) return null;
+        const currentRecipe = await recipe.read();
+        if (currentRecipe.dockerfile || tools !== currentRecipe.tools.join(",")) return null;
         return { tag, versions: await readImageVersions({ registry, tag }) };
       },
       buildImage: async ({ tag, harness, onLog }) => {
