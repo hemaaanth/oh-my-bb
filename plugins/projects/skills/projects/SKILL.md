@@ -30,3 +30,13 @@ Do not run a real transfer, reload or source switch without the operator's cutov
 Profile generation and learning run only through explicit actions. Startup, reload, project changes, key/model changes, periodic time and trace collection preserve stored profiles and learned guidance. “Refresh stale generated profiles” and `backfill` create missing profiles and replace stale generated profiles; manual profiles stay unchanged. `regenerate` may replace the selected manual profile. These actions use the saved model, may incur cost and do not restore earlier values.
 
 Generation RPCs require an SDK client caller; plugin-origin calls are denied. SDK client access includes UI, CLI and agents, not proof of human approval. No plugin initiating contract is approved. Learning is available only through the explicit `learn` command.
+
+## Project application environments
+
+Projects owns each project's 1Password application environment, private service-account token, preparation records and guarded `query_clickhouse` tool. Remote Executor credentials are separate.
+
+Use **Project environments** or **Settings → Projects → More → Manage project environments** to edit the selected project's configuration. Metadata and token saves in this editor do not run setup. Existing shared configurations are marked and require confirmation before edits.
+
+`bb project-env list` and the existing `prepare`, `run`, `import-credential`, `bind`, `unbind` and `cleanup` commands remain available through the stateless `project-environments` adapter. They execute in Projects. Preparation and run can execute project setup; do not use them just to inspect configuration. Run application commands through `bb-project-env-run`. Never print injected secrets or replay preparation after an unknown outcome.
+
+Private machine and workspace setup source belongs in the project's `.bb/setup/machine.sh` and `.bb/setup/workspace.sh`. Existing project manifests are separate and must be preserved.
