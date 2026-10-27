@@ -26,3 +26,5 @@ Do not run a real transfer, reload or source switch without the operator's cutov
 ## Routing commands
 
 `bb project-routing status`, `backfill`, `regenerate --project <id>`, `history`, and `learn` inspect or operate the existing routing feature. Generation and learning may use configured paid services; they are not harmless migration checks.
+
+Profile generation and learning run only through explicit actions. Startup, reload, project changes, key/model changes, periodic time and trace collection preserve stored profiles and learned guidance. `backfill` may replace stale generated profiles; `regenerate` may replace the selected manual profile. Neither command restores an earlier profile after an accidental overwrite.

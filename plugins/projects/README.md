@@ -48,9 +48,9 @@ After a completed reverse, another forward handoff is unsupported. Projects keep
 
 ## Routing profiles
 
-Projects stores a description, keywords, aliases, repositories, a “Not for” list and learned guidance for each project. Manual fields remain editable without auth keys or assignment readiness. Manual profiles are not overwritten by automatic refreshes.
+Projects stores a description, keywords, aliases, repositories, a “Not for” list and learned guidance for each project. Manual fields remain editable without auth keys or assignment readiness. Existing generated and manual profiles are preserved until an explicit edit or generation action.
 
-The saved profile model and server-only OpenRouter key control profile generation. Existing automatic generation, native project-change refresh and periodic coverage behavior remain. Legacy import and assignment export do not trigger generation. Task-source evidence is read only when its optional integration is enabled.
+The saved profile model and server-only OpenRouter key control explicit profile generation. Startup, reload, periodic time, project notifications, key/model changes and routing trace collection do not generate profiles or learned guidance. Use the existing generation actions or commands below to refresh profiles; use `learn` to update learned guidance. Legacy import and assignment export do not trigger generation. Task-source evidence is read only when its optional integration is enabled.
 
 Jev suggestions remain in the native new-thread composer. Exact repository references can route without Jev; other suggestions require its configured key. Fork drafts retain their native project. The native project picker, agent avatars, menus and footer remain host-owned.
 

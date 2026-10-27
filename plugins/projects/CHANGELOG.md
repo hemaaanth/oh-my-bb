@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Require explicit routing generation and learning actions. Remove reload/periodic generation and learning services, project/key/model refresh queues and trace-triggered learning. Preserve stored generated/manual profiles and learned guidance when optional evidence changes.
 - Native projects, groups, icons and routing work before assignment import and without sibling plugins.
 - Remove automatic legacy import and startup retry probes. Assignment APIs fail explicitly on missing readiness; explicit owner import is transactional and resumable.
 - Add identifier-only frozen assignment export, version-bound staged receipts, one-way forwarding and reverse reconciliation. Preserve null, unresolved and conflicting records. No live transfer is automatic.

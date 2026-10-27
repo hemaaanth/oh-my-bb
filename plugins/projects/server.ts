@@ -118,10 +118,8 @@ export default async function plugin(bb: BbPluginApi) {
   function updatePreferences(patch: Partial<z.infer<typeof preferencesSchema>>) {
     const work = preferenceWrite.then(async () => {
       const next = preferencesSchema.parse({ ...preferences, ...patch });
-      const modelChanged = next.routingModel !== preferences.routingModel;
       await bb.storage.kv.set("projects.preferences.v1", next);
       preferences = next;
-      if (modelChanged) queueRoutingRefresh();
       publish("preferences-changed");
       return next;
     });
@@ -284,7 +282,6 @@ export default async function plugin(bb: BbPluginApi) {
   const jevRouting = createJevRouting(bb, {
     apiKey: async () => (await settings.get()).jevApiKey,
     loadCatalog: routingCatalog,
-    onTrace: () => queueRoutingLearning(),
   });
 
   const profileGeneration = new Map<string, Promise<{ changed: boolean }>>();
@@ -334,21 +331,20 @@ export default async function plugin(bb: BbPluginApi) {
     return work;
   }
 
-  async function reconcileRoutingProfiles(projectId?: string): Promise<{ generated: number; skipped: number; failed: number }> {
+  async function reconcileRoutingProfiles(): Promise<{ generated: number; skipped: number; failed: number }> {
     const currentSettings = await settings.get();
     if (!currentSettings.openRouterApiKey?.trim()) {
-      const count = projectId ? 1 : (await projectRows()).length;
+      const count = (await projectRows()).length;
       return { generated: 0, skipped: count, failed: 0 };
     }
     const [projects, taskEvidence] = await Promise.all([projectRows(), taskRoutingEvidence()]);
-    const wanted = projectId ? projects.filter((project) => project.id === projectId) : projects;
     let next = 0;
     let generated = 0;
     let skipped = 0;
     let failed = 0;
-    await Promise.all(Array.from({ length: Math.min(2, wanted.length) }, async () => {
-      while (next < wanted.length) {
-        const project = wanted[next++];
+    await Promise.all(Array.from({ length: Math.min(2, projects.length) }, async () => {
+      while (next < projects.length) {
+        const project = projects[next++];
         if (!project) continue;
         try {
           const result = await generateProjectRoutingProfile(project, { force: false, taskEvidence });
@@ -894,70 +890,14 @@ export default async function plugin(bb: BbPluginApi) {
     publish("suite-migrated");
   }
 
-  let routingRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-  const queuedProjectIds = new Set<string>();
-  function queueRoutingRefresh(projectId?: string) {
-    if (projectId) queuedProjectIds.add(projectId);
-    if (routingRefreshTimer) clearTimeout(routingRefreshTimer);
-    routingRefreshTimer = setTimeout(() => {
-      routingRefreshTimer = null;
-      const ids = [...queuedProjectIds];
-      queuedProjectIds.clear();
-      const work = ids.length
-        ? Promise.all(ids.map((id) => reconcileRoutingProfiles(id)))
-        : reconcileRoutingProfiles();
-      void work.catch((error) => bb.log.warn(`Routing profile refresh failed: ${error instanceof Error ? error.message : String(error)}`));
-    }, 1_500);
-  }
-
-  let routingLearningTimer: ReturnType<typeof setTimeout> | null = null;
-  function queueRoutingLearning() {
-    if (routingLearningTimer) clearTimeout(routingLearningTimer);
-    routingLearningTimer = setTimeout(() => {
-      routingLearningTimer = null;
-      void learnFromRoutingHistory().catch((error) => bb.log.warn(`Routing learning failed: ${error instanceof Error ? error.message : String(error)}`));
-    }, 60_000);
-  }
-
   const unsubscribeProjects = bb.sdk.subscribe({
     event: "project:changed",
-    callback(event) {
-      if (event.changes.some((change) => change === "project-created" || change === "project-sources-changed" || change === "project-updated")) {
-        queueRoutingRefresh(event.id);
-      }
+    callback() {
       jevRouting.resetCatalog();
     },
   });
-  settings.onChange((next, previous) => {
-    if (next.openRouterApiKey !== previous.openRouterApiKey) queueRoutingRefresh();
-  });
   bb.onDispose(async () => {
     unsubscribeProjects();
-    if (routingRefreshTimer) clearTimeout(routingRefreshTimer);
-    if (routingLearningTimer) clearTimeout(routingLearningTimer);
     await preferenceWrite;
-  });
-
-  bb.background.service("routing-profile-coverage", {
-    async start(signal) {
-      while (!signal.aborted) {
-        await reconcileRoutingProfiles().catch((error) => {
-          bb.log.warn(`Routing profile coverage check failed: ${error instanceof Error ? error.message : String(error)}`);
-        });
-        await delay(15 * 60_000, undefined, { signal }).catch(() => undefined);
-      }
-    },
-  });
-
-  bb.background.service("routing-learning", {
-    async start(signal) {
-      while (!signal.aborted) {
-        await delay(6 * 60 * 60_000, undefined, { signal }).catch(() => undefined);
-        if (signal.aborted) break;
-        await learnFromRoutingHistory().catch((error) => {
-          bb.log.warn(`Routing learning failed: ${error instanceof Error ? error.message : String(error)}`);
-        });
-      }
-    },
   });
 }

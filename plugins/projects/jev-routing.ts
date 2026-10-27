@@ -66,7 +66,6 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
 export function createJevRouting(bb: BbPluginApi, deps: {
   apiKey: () => Promise<string | undefined>;
   loadCatalog: () => Promise<ProjectRoutingCandidate[]>;
-  onTrace: () => void;
 }) {
   let catalogCache: { expiresAt: number; projects: ProjectRoutingCandidate[] } | null = null;
   let catalogLoad: Promise<ProjectRoutingCandidate[]> | null = null;
@@ -219,7 +218,6 @@ export function createJevRouting(bb: BbPluginApi, deps: {
     });
     await bb.storage.kv.set(ROUTING_TRACES_KEY, { version: 1, traces: appendTrace(await readTraces(), trace) });
     bb.log.info(`Recorded a Jev routing ${trace.outcome} for thread ${threadId}`);
-    deps.onTrace();
     return true;
   }
 
