@@ -3,8 +3,8 @@
 Independent plugins and agent adapters for [BB](https://getbb.app).
 
 Every plugin in this repository owns its manifest, lockfile, tests, documentation,
-and runtime dependencies. Plugins may integrate with other tools, but they do not
-require another plugin or a repository-level package to build or run.
+and runtime dependencies. No repository-level package is required to build one.
+Features that require another plugin name that runtime dependency below.
 
 ## Add the marketplace
 
@@ -67,6 +67,8 @@ as `fx-acp/v0.1.0`.
   providers. BB owns machine lifecycle; optional integrations keep their own authority.
 - [`plugins/catalog`](plugins/catalog), displayed as Executor, connects agents to
   assigned remote toolkits and approved versioned skills. The `catalog` identity stays stable.
+- [`plugins/agent-profiles`](plugins/agent-profiles), displayed as Agents, provides
+  portable saved personalities, permanent DMs, channels and delegated tasks.
 - [`agents/fx-acp`](agents/fx-acp) is an optional standalone ACP adapter for FX.
 - [`agents/nanocodex-acp`](agents/nanocodex-acp) is an optional standalone ACP
   adapter for nanocodex.
@@ -129,6 +131,13 @@ without remote Executor configuration. Optional Agents profile scopes start off.
 The display rename changes no plugin, tool, command, storage or secret identity.
 See [Executor migration](docs/migrations/catalog.md) for existing assignment
 handoffs and the distinction between a native approval and an SDK client call.
+
+Agents installs and builds independently. Managed turns require separately
+configured Model Gateway and Pi on the execution host; native Pi authentication
+is not a fallback. Project and environment choices are launch defaults, not
+membership or capability grants. Tasks continues to use native BB threads.
+Existing installations need the [Agents migration checks](docs/migrations/agent-profiles.md);
+publication is not permission to move DMs, rewrite memory, or activate an unfinished transfer.
 
 ## Validate the repository
 

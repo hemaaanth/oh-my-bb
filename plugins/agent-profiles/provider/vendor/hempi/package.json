@@ -1,0 +1,40 @@
+{
+  "name": "hempi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "bin": {
+    "hempi": "./bin/hempi.mjs"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && npm run test:profiles && npm run test:runtime && npm run test:optchat",
+    "test:profiles": "node --test tests/profiles.test.mjs",
+    "test:runtime": "timeout 45 pi --mode rpc --no-session --no-extensions --no-skills -e ./tests/runtime.ts </dev/null",
+    "test:optchat": "node --test --test-timeout=90000 tests/optchat.test.mjs"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "^1.0.0",
+    "@earendil-works/pi-ai": "^1.0.0",
+    "@earendil-works/pi-coding-agent": "^1.0.0",
+    "@earendil-works/pi-tui": "^1.0.0",
+    "@types/node": "^26.6.4",
+    "typebox": "^1.3.34",
+    "typescript": "^7.0.2"
+  }
+}

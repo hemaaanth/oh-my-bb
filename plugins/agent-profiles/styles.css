@@ -1,0 +1,419 @@
+.bot-page {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  margin: 0 auto;
+  overflow: auto;
+  box-sizing: border-box;
+}
+.bot-page h1,
+.bot-detail h1 {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.bot-route {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+}
+.bot-detail {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.bot-detail-header {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+.bot-detail-title-row,
+.bot-detail-tabs-row {
+  width: 100%;
+  max-width: 48rem;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+.bot-detail-title-row {
+  display: flex;
+  min-width: 0;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px 8px;
+}
+.bot-detail-avatar {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--surface-recessed);
+  font-size: 18px;
+  line-height: 1;
+}
+.bot-detail-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+.bot-tabs {
+  display: flex;
+  min-width: 0;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.bot-tabs button {
+  position: relative;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+}
+.bot-tabs button[aria-current] {
+  color: var(--foreground);
+}
+.bot-tabs button[aria-current]::after {
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+  height: 2px;
+  background: var(--foreground);
+  content: "";
+}
+.bot-section {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+.bot-config-content {
+  width: 100%;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+  box-sizing: border-box;
+}
+.bot-create-page .bot-config-content {
+  padding-top: 20px;
+}
+.bot-profile-layout {
+  display: flex;
+  flex-direction: column;
+}
+.bot-profile-layout > * {
+  padding: 24px 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+.bot-profile-layout > :first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.bot-profile-layout > :last-child {
+  padding-bottom: 0;
+}
+.bot-config-form {
+  container-type: inline-size;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+.bot-config-row {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 12px;
+}
+.bot-config-row > label,
+.bot-config-label {
+  padding-top: 9px;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+.bot-error {
+  width: 100%;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 12px 20px 0;
+  box-sizing: border-box;
+}
+@container (max-width: 440px) {
+  .bot-config-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .bot-config-row > label,
+  .bot-config-label {
+    padding-top: 0;
+  }
+}
+@media (max-width: 767px) {
+  .bot-detail-title-row {
+    align-items: flex-start;
+    padding: 10px 16px 8px;
+  }
+  .bot-detail-tabs-row {
+    padding: 0 16px;
+  }
+  .bot-detail-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .bot-config-content {
+    padding: 20px 16px 32px;
+  }
+}
+.bot-document {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.bot-document-actions {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.bot-document-status {
+  text-align: right;
+}
+@media (max-width: 640px) {
+  .bot-document-actions {
+    grid-template-columns: 1fr auto;
+  }
+  .bot-document-actions > button:first-child {
+    justify-self: start;
+  }
+  .bot-document-actions > button:last-child {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  .bot-document-status {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+}
+.bot-markdown-editor {
+  --document-editor-height: clamp(360px, 50vh, 640px);
+  --document-toolbar-height: 39px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+}
+.bot-markdown-header,
+.bot-markdown-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.bot-markdown-header {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+}
+.bot-markdown-header {
+  background: color-mix(in srgb, var(--surface-recessed) 55%, transparent);
+}
+.bot-markdown-tools {
+  background: color-mix(in srgb, var(--surface-raised) 45%, transparent);
+}
+.bot-markdown-filename {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.bot-markdown-modes {
+  display: flex;
+  gap: 2px;
+}
+.bot-markdown-tools button {
+  width: 30px;
+  height: 30px;
+  color: var(--muted-foreground);
+}
+.bot-markdown-tools-spacer {
+  flex: 1;
+}
+.bot-markdown-source,
+.bot-markdown-preview {
+  height: var(--document-editor-height);
+}
+.bot-markdown-source {
+  display: block;
+  width: 100%;
+  height: calc(var(--document-editor-height) - var(--document-toolbar-height));
+  box-sizing: border-box;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  resize: none;
+  border: 0;
+  outline: none;
+  color: var(--foreground);
+  caret-color: var(--foreground);
+  background: transparent;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.8;
+  tab-size: 4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.bot-markdown-source::selection {
+  background: color-mix(in srgb, var(--ring) 28%, transparent);
+}
+.bot-markdown-source[hidden],
+.bot-markdown-tools[hidden] {
+  display: none;
+}
+.bot-markdown-editor:focus-within {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 1px var(--ring);
+}
+.bot-markdown-preview {
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: 24px;
+  box-sizing: border-box;
+  font-size: var(--text-sm);
+  line-height: 1.7;
+}
+@media (pointer: coarse) {
+  .bot-markdown-editor {
+    --document-toolbar-height: 45px;
+  }
+  .bot-markdown-tools button {
+    width: 36px;
+    height: 36px;
+  }
+  .bot-markdown-preview {
+    padding: 16px;
+  }
+}
+.bot-create-title {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.bot-create-title h1 {
+  font-size: var(--text-base);
+  font-weight: 500;
+}
+.channel-revisions {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  font-size: 12px;
+}
+.channel-revisions > p {
+  padding: 16px 12px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.channel-revisions details + details,
+.channel-revisions > button {
+  border-top: 1px solid var(--border);
+}
+.channel-revisions summary {
+  padding: 8px 12px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.channel-revisions summary:hover {
+  background: var(--state-hover);
+  color: var(--foreground);
+}
+.channel-revisions details[open] summary {
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+}
+.channel-revisions pre {
+  max-height: 260px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  background: color-mix(in srgb, var(--surface-recessed) 70%, transparent);
+  white-space: pre-wrap;
+  font-size: 12px;
+}
+.channel-revisions details > button {
+  margin: 8px 12px 12px;
+}
+.channel-revisions > button {
+  border-radius: 0;
+}
+
+
+.channel-reaction-picker {
+  width: min(22rem, calc(100vw - 1rem));
+  height: 25rem;
+  overflow: hidden;
+  padding: 0;
+}
+
+.delegation-reply[data-expanded="false"] {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+/* Agent @mentions render as BB's mention pill (the SDK Markdown has no mention hook). */
+.channel-mentions a[href^="/plugins/agent-profiles/agents/"] {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: baseline;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  padding: 2px 6px 2px 4px;
+  background: color-mix(in srgb, var(--surface-raised) 50%, transparent);
+  color: inherit;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  text-decoration: none;
+  vertical-align: baseline;
+}
+.channel-mentions a[href^="/plugins/agent-profiles/agents/"]:hover {
+  background: var(--state-hover);
+  text-decoration: none;
+}
+
+/* The delegated instruction is reference text: keep its headings at body size. */
+.delegation-task :is(h1, h2, h3, h4, h5, h6) {
+  margin: 0.75em 0 0.25em;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+}
+.delegation-task > :first-child {
+  margin-top: 0;
+}
