@@ -141,9 +141,9 @@ describe("explicit legacy import", () => {
     });
     await loaded.harness.behavior.callRpc("importLegacyFromSourcesV1", null);
     await loaded.harness.behavior.callRpc("importLegacyFromSourcesV1", null);
-    expect(sourceReads).toBe(4);
+    expect(sourceReads).toBe(3);
     expect(new ProjectsStore(loaded.bb.storage.database()).listGroups()).toEqual(groupBefore);
-    expect(await loaded.harness.behavior.callRpc("projectContext", { projectId: "native/project" })).toMatchObject({ credentialId: "opaque/profile", agentIds: ["paid/profile/unchanged"] });
+    expect(await loaded.harness.behavior.callRpc("projectContext", { projectId: "native/project" })).toMatchObject({ credentialId: "opaque/profile", agentIds: [] });
     expect(new AssignmentStore(loaded.bb.storage.database()).records("bundles")).toContainEqual({ type: "legacyBundle", bundleId: "unknown/bundle", kind: "project-environment", targetId: "unknown/profile" });
     expect(new AssignmentStore(loaded.bb.storage.database()).records("applicationBindings")).toContainEqual({ type: "binding", projectId: "explicit/null", credentialId: null });
     await loaded.harness.lifecycle.dispose();

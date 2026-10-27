@@ -1,0 +1,4 @@
+.projects-colour-picker .react-colorful { width: 100%; height: 160px; }
+.projects-colour-picker .react-colorful__saturation { border-radius: 6px 6px 0 0; }
+.projects-colour-picker .react-colorful__hue { height: 14px; border-radius: 0 0 6px 6px; }
+.projects-colour-picker .react-colorful__pointer { width: 18px; height: 18px; }

@@ -59,7 +59,7 @@ describe("explicit setup destination authority", () => {
 
   it.each([
     { id: "project-environments", state: "staged" },
-    { id: "agent-profiles", state: "reverse-frozen" },
+
   ])("blocks $state ownership in $id, not only Catalog", async ({ id, state }) => {
     const host = await fixture([running(id)], { ...uninitialized, state });
     await expectBlocked(host, actions[0], "Destination-first adoption is unsupported");

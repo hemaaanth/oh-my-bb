@@ -71,22 +71,22 @@ describe("Projects settings consolidation", () => {
     expect(app.navPanels).toEqual([]);
     expect(app.settingsSections.map((x) => x.id)).toEqual([
       "preferences",
-      "projects",
       "groups",
+      "projects",
       "more",
-      "oh-my-bb",
     ]);
   });
-  it("shows compact project rows and direct assignment/refresh buttons without project creation or a navigation link", async () => {
+  it("shows project metadata without confusing global assignment/refresh buttons without project creation or a navigation link", async () => {
     const v = await section("projects");
     await v.findByText("Synthetic project");
     expect(
       v.getByRole("button", { name: "Edit Synthetic project" }),
     ).toBeTruthy();
     expect(
-      v.getByRole("button", { name: "Load assignment choices" }),
-    ).toBeTruthy();
-    expect(v.getByRole("button", { name: "Refresh profiles" })).toBeTruthy();
+      v.queryByRole("button", { name: "Load assignment choices" }),
+    ).toBeNull();
+    expect(v.queryByRole("button", { name: "Refresh profiles" })).toBeNull();
+    expect(v.getByText("No repository")).toBeTruthy();
     expect(
       v.queryByRole("button", {
         name: /Add project|Manage project environments/,
@@ -94,19 +94,6 @@ describe("Projects settings consolidation", () => {
     ).toBeNull();
     expect(
       v.inspection.rpcCalls.some((x) => x.method.includes("generate")),
-    ).toBe(false);
-    v.lifecycle.unmount();
-  });
-  it("keeps the paid action behind its explanatory confirmation", async () => {
-    const v = await section("projects");
-    await v.findByText("Synthetic project");
-    fireEvent.click(v.getByRole("button", { name: "Refresh profiles" }));
-    expect(await v.findByRole("dialog")).toBeTruthy();
-    expect(v.getByText(/may incur cost/)).toBeTruthy();
-    expect(
-      v.inspection.rpcCalls.some(
-        (x) => x.method === "generateMissingRoutingProfiles",
-      ),
     ).toBe(false);
     v.lifecycle.unmount();
   });
@@ -161,7 +148,7 @@ describe("Projects settings consolidation", () => {
       },
     });
     const input = (await v.findByLabelText(
-      "Project profile model",
+      "Project description model",
     )) as HTMLInputElement;
     expect(v.queryByRole("button", { name: "Save changes" })).toBeNull();
     fireEvent.change(input, { target: { value: "model/first" } });
@@ -183,7 +170,7 @@ describe("Projects settings consolidation", () => {
         return input;
       },
     });
-    await v.findByLabelText("Project profile model");
+    await v.findByLabelText("Project description model");
     const toggle = v.getByRole("switch", {
       name: "Start workspace services automatically",
     });
@@ -196,27 +183,27 @@ describe("Projects settings consolidation", () => {
     ).toBe(false);
     v.lifecycle.unmount();
   });
-  it("explains every integration and preserves saved choices when a save fails", async () => {
-    const v = await section("oh-my-bb", {
-      preferences: () => ({ ...prefs, catalogIntegration: true }),
-      updatePreferences: () => {
-        throw new Error("Synthetic refusal");
+  it("has no obsolete integration switchboard", async () => {
+    const app = await loadPluginApp(() => import("./app"));
+    expect(app.settingsSections.some((x) => x.id === "oh-my-bb")).toBe(false);
+  });
+  it("saves a custom hex colour and rejects invalid input without writing", async () => {
+    let saved: unknown;
+    const v = await section("groups", {
+      patchGroup: (input: unknown) => {
+        saved = input;
+        return native.groups[0];
       },
     });
-    await waitFor(() =>
-      expect(
-        v
-          .getByRole("switch", { name: "Executor" })
-          .getAttribute("aria-checked"),
-      ).toBe("true"),
-    );
-    expect(v.getByText(/skill choices/)).toBeTruthy();
-    expect(v.getByText(/Status Sidebar when project groups/)).toBeTruthy();
-    fireEvent.click(v.getByRole("switch", { name: "Executor" }));
+    fireEvent.click(await v.findByRole("button", { name: "Colour for work" }));
+    const hex = await v.findByLabelText("Hex colour");
+    fireEvent.change(hex, { target: { value: "#garbag" } });
+    fireEvent.blur(hex);
+    expect(saved).toBeUndefined();
     expect(await v.findByRole("alert")).toBeTruthy();
-    expect(
-      v.getByRole("switch", { name: "Executor" }).getAttribute("aria-checked"),
-    ).toBe("true");
+    fireEvent.change(hex, { target: { value: "#123abc" } });
+    fireEvent.blur(hex);
+    await waitFor(() => expect(saved).toEqual({ id: work, color: "#123abc" }));
     v.lifecycle.unmount();
   });
   it("keeps only the standard setup-guide row in More and opens it without navigating", async () => {

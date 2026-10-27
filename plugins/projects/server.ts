@@ -1,3 +1,4 @@
+import { projectGroupColorSchema } from "./contract.js";
 import { registerScripts } from "./scripts-runtime/feature.js";
 import { registerEnvironments } from "./environments/feature.js";
 import { setTimeout as delay } from "node:timers/promises";
@@ -35,13 +36,6 @@ const credentialDefinitionsSchema = z.object({
   credentials: z.array(z.object({ id: z.string(), name: z.string(), environmentName: z.string().optional() }).passthrough()),
 }).passthrough();
 
-const agentProfilesSchema = z.array(z.object({
-  id: z.string(),
-  name: z.string(),
-  slug: z.string(),
-  isDefault: z.boolean(),
-}).passthrough());
-
 const legacyAssignmentsSchema = z.object({
   assignments: z.array(z.object({
     bundleId: z.string(),
@@ -57,25 +51,11 @@ const bundleDefinitionsSchema = z.object({
 const okSchema = z.object({ ok: z.literal(true) });
 const remapLegacyGroupsSchema = z.object({ ok: z.literal(true) });
 
-const taskProjectMappingsSchema = z.object({
-  sources: z.array(z.object({
-    key: z.string(), label: z.string(), provider: z.enum(["akiflow", "linear", "github"]),
-    bbProjectId: z.string().nullable(), automatic: z.boolean(),
-  })),
-}).passthrough();
-
-const taskListSchema = z.object({
-  tasks: z.array(z.object({
-    title: z.string(),
-    projectId: z.string().nullable(),
-  }).passthrough()),
-}).passthrough();
-
 const sidebarWorkspaceSnapshotSchema = z.object({
   workspaces: z.array(z.object({
     id: z.string(),
     name: z.string(),
-    color: z.enum(["amber", "blue", "violet", "green", "rose", "gray"]),
+    color: projectGroupColorSchema,
     isDefault: z.boolean(),
     projectIds: z.array(z.string()),
   })),
@@ -89,6 +69,7 @@ interface ProjectRow {
   gitRemoteUrl: string | null;
   localPath: string | null;
   hostId: string | null;
+  machineCount: number;
 }
 
 export default async function plugin(bb: BbPluginApi) {
@@ -152,6 +133,7 @@ export default async function plugin(bb: BbPluginApi) {
         gitRemoteUrl: project.gitRemoteUrl,
         localPath: source?.path ?? null,
         hostId: source?.hostId ?? null,
+        machineCount: new Set(project.sources.filter(source => source.type === "local_path").map(source => source.hostId)).size,
       };
     });
   }
@@ -205,33 +187,7 @@ export default async function plugin(bb: BbPluginApi) {
     return null;
   }
 
-  async function taskRoutingEvidence(): Promise<{
-    sourcesByProject: Map<string, string[]>;
-    taskTitlesByProject: Map<string, string[]>;
-  }> {
-    const sourcesByProject = new Map<string, string[]>();
-    const taskTitlesByProject = new Map<string, string[]>();
-    if (!preferences.tasksIntegration) return { sourcesByProject, taskTitlesByProject };
-    try {
-      const [mappings, tasks] = await Promise.all([
-        bb.sdk.plugins.callRpc({ pluginId: "task-workspaces", method: "projectMappings", input: null, outputSchema: taskProjectMappingsSchema }),
-        bb.sdk.plugins.callRpc({ pluginId: "task-workspaces", method: "listTasks", input: null, outputSchema: taskListSchema }),
-      ]);
-      for (const source of mappings.sources) {
-        if (!source.bbProjectId) continue;
-        sourcesByProject.set(source.bbProjectId, [...(sourcesByProject.get(source.bbProjectId) ?? []), source.label]);
-      }
-      for (const task of tasks.tasks) {
-        if (!task.projectId) continue;
-        taskTitlesByProject.set(task.projectId, [...(taskTitlesByProject.get(task.projectId) ?? []), task.title]);
-      }
-    } catch (error) {
-      bb.log.debug(`Task routing evidence is unavailable: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    return { sourcesByProject, taskTitlesByProject };
-  }
-
-  async function routingEvidence(project: ProjectRow, taskEvidence: Awaited<ReturnType<typeof taskRoutingEvidence>>): Promise<RoutingProfileEvidence> {
+  async function routingEvidence(project: ProjectRow): Promise<RoutingProfileEvidence> {
     const [packageJson, readme] = await Promise.all([
       readProjectFile(project, ["package.json"]),
       readProjectFile(project, ["README.md", "README.mdx", "README"]),
@@ -241,8 +197,8 @@ export default async function plugin(bb: BbPluginApi) {
       gitRemoteUrl: project.gitRemoteUrl,
       packageJson,
       readme,
-      mappedSources: normalizedValues(taskEvidence.sourcesByProject.get(project.id) ?? [], 30),
-      taskTitles: normalizedValues(taskEvidence.taskTitlesByProject.get(project.id) ?? [], 20),
+      mappedSources: [],
+      taskTitles: [],
     };
   }
 
@@ -290,12 +246,11 @@ export default async function plugin(bb: BbPluginApi) {
 
   async function generateProjectRoutingProfile(project: ProjectRow, options: {
     force: boolean;
-    taskEvidence: Awaited<ReturnType<typeof taskRoutingEvidence>>;
   }): Promise<{ changed: boolean }> {
     const running = profileGeneration.get(project.id);
     if (running) return running;
     const work = (async () => {
-      const evidence = await routingEvidence(project, options.taskEvidence);
+      const evidence = await routingEvidence(project);
       const fingerprint = routingEvidenceFingerprint(evidence);
       const current = store.getConfiguration(project.id).routingProfile;
       if (!options.force) {
@@ -311,15 +266,10 @@ export default async function plugin(bb: BbPluginApi) {
         evidence,
       }));
       const remoteRepository = repositoryLabel(project.gitRemoteUrl);
-      const mappedRepositories = evidence.mappedSources.flatMap((source) => {
-        const match = source.match(/^GitHub\s*·\s*(.+)$/iu);
-        return match?.[1] ? [match[1]] : [];
-      });
       store.saveRoutingProfile(project.id, {
         ...generated,
         repositories: normalizedValues([
           ...(remoteRepository ? [remoteRepository] : []),
-          ...mappedRepositories,
           ...generated.repositories,
         ], 16),
         source: "generated",
@@ -339,7 +289,7 @@ export default async function plugin(bb: BbPluginApi) {
       const count = (await projectRows()).length;
       return { generated: 0, skipped: count, failed: 0 };
     }
-    const [projects, taskEvidence] = await Promise.all([projectRows(), taskRoutingEvidence()]);
+    const projects = await projectRows();
     let next = 0;
     let generated = 0;
     let skipped = 0;
@@ -349,7 +299,7 @@ export default async function plugin(bb: BbPluginApi) {
         const project = projects[next++];
         if (!project) continue;
         try {
-          const result = await generateProjectRoutingProfile(project, { force: false, taskEvidence });
+          const result = await generateProjectRoutingProfile(project, { force: false });
           if (result.changed) generated += 1;
           else skipped += 1;
         } catch (error) {
@@ -457,21 +407,24 @@ export default async function plugin(bb: BbPluginApi) {
     bb.log.warn(`Could not refresh ${pluginId} after a Projects change: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
   }
 
-  const notifySidebar = () => preferences.sidebarIntegration ? notify("status-sidebar", "refreshProjectGroups", null) : Promise.resolve();
-  const notifyAgents = () => preferences.agentsIntegration ? notify("agent-profiles", "refreshAvailability", null) : Promise.resolve();
-  const notifyCatalog = (projectId: string | null) => preferences.catalogIntegration ? notify("catalog", "refreshAvailability", { projectId }) : Promise.resolve();
+  const notifySidebar = async () => {
+    try {
+      const { plugins } = await bb.sdk.plugins.list();
+      if (plugins.some(plugin => plugin.id === "status-sidebar" && plugin.enabled)) await notify("status-sidebar", "refreshProjectGroups", null);
+    } catch(error) { bb.log.debug(`Sidebar refresh unavailable: ${String(error)}`); }
+  };
+  const notifyCatalog = async (projectId: string | null) => {
+    try {
+      const { plugins } = await bb.sdk.plugins.list();
+      if (plugins.some(plugin => plugin.id === "catalog" && plugin.enabled)) await notify("catalog", "refreshAvailability", {projectId});
+    } catch(error) { bb.log.debug(`Executor refresh unavailable: ${String(error)}`); }
+  };
   const notifyCredentials = (projectId: string) => preferences.credentialsIntegration ? notify("project-environments", "refreshProject", { projectId }) : Promise.resolve();
 
   async function credentialDefinitions() {
     return bb.sdk.plugins.callRpc({
       pluginId: "project-environments", method: "listCredentials", input: null, outputSchema: credentialDefinitionsSchema,
     }).then(({ credentials }) => credentials.map((profile) => ({ id: profile.id, name: profile.name, detail: profile.environmentName ?? null })));
-  }
-
-  async function agentDefinitions() {
-    return bb.sdk.plugins.callRpc({
-      pluginId: "agent-profiles", method: "listProfiles", input: null, outputSchema: agentProfilesSchema,
-    }).then((profiles) => profiles.map((profile) => ({ id: profile.id, name: profile.name, detail: `@${profile.slug}` })));
   }
 
   async function bundleDefinitions() {
@@ -490,7 +443,7 @@ export default async function plugin(bb: BbPluginApi) {
       routingModel: preferences.routingModel,
       projects: projects.map((project) => {
         const config = configurations.get(project.id)!;
-        return { id: project.id, name: project.name, gitRemoteUrl: project.gitRemoteUrl, localPath: project.localPath,
+        return { id: project.id, name: project.name, gitRemoteUrl: project.gitRemoteUrl, localPath: project.localPath, machineCount: project.machineCount,
           groupId: config.groupId, position: config.position, icon: config.icon, routingProfile: publicRoutingProfile(config.routingProfile) };
       }).sort((left, right) => left.position - right.position || left.name.localeCompare(right.name)),
     };
@@ -588,7 +541,7 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   function applyLegacy(input: {
-    groups: Array<{ id: string; name: string; color: "amber" | "blue" | "violet" | "green" | "rose" | "gray"; isDefault: boolean; projectIds: string[] }>;
+    groups: Array<{ id: string; name: string; color: string; isDefault: boolean; projectIds: string[] }>;
     credentialBindings: Array<{ projectId: string; credentialId: string | null }>;
     catalogAssignments: Array<{ bundleId: string; kind: "global" | "project" | "project-environment" | "agent-profile"; targetId: string }>;
   }) {
@@ -709,6 +662,7 @@ export default async function plugin(bb: BbPluginApi) {
       return assignments.page(kind, generation, cursor);
     },
     assignmentHandoffV1: async (input, context) => {
+      if (input.kind === "agentPreferences" && input.phase === "freeze") { requireOwnerClient(context); throw new Error("membership-retired: Projects does not control agent availability."); }
       const result = await authority.handoff(input, context);
       publish("assignment-handoff");
       return result;
@@ -733,9 +687,8 @@ export default async function plugin(bb: BbPluginApi) {
     preferences: () => preferences,
     updatePreferences: (input, context) => { requireOwnerClient(context); return updatePreferences(input); },
     assignmentOptionsV1: async ({ kind }) => {
-      const enabled = kind === "bundles" ? preferences.catalogIntegration : kind === "applicationBindings" ? preferences.credentialsIntegration : preferences.agentsIntegration;
-      if (!enabled) throw new Error("Enable the source under Oh My BB before loading choices.");
-      return { references: await (kind === "bundles" ? bundleDefinitions() : kind === "applicationBindings" ? credentialDefinitions() : agentDefinitions()) };
+      if (kind === "agentPreferences") throw new Error("membership-retired: Projects does not control agent availability.");
+      return { references: await (kind === "bundles" ? bundleDefinitions() : credentialDefinitions()) };
     },
     groupsSnapshot,
     projectContext: ({ projectId }, context) => projectContext(projectId, context),
@@ -761,8 +714,7 @@ export default async function plugin(bb: BbPluginApi) {
       requireOwnerClient(context);
       const project = (await projectRows()).find((candidate) => candidate.id === projectId);
       if (!project) throw new Error(`Unknown project: ${projectId}`);
-      const taskEvidence = await taskRoutingEvidence();
-      await generateProjectRoutingProfile(project, { force: true, taskEvidence });
+      await generateProjectRoutingProfile(project, { force: true });
       return publicRoutingProfile(store.getConfiguration(projectId).routingProfile);
     },
     suggestProject: ({ prompt }) => jevRouting.suggestProject(prompt),
@@ -796,23 +748,14 @@ export default async function plugin(bb: BbPluginApi) {
       void notifySidebar();
       return { ok: true as const };
     },
-    setProjectAgent: (input, context) => authority.write("agentPreferences", "setProjectAgent", input, context, () => { store.toggleProjectReference("agent", input.projectId, input.targetId, input.enabled); publish("project-agent-changed"); void notifyAgents(); }),
-    setGlobalAgent: (input, context) => authority.write("agentPreferences", "setGlobalAgent", input, context, async () => {
-      if (!input.enabled) {
-        const profiles = await bb.sdk.plugins.callRpc({ pluginId: "agent-profiles", method: "listProfiles", input: null, outputSchema: agentProfilesSchema });
-        if (profiles.some((profile) => profile.id === input.targetId && profile.isDefault)) throw new Error("The default agent must be available in every project. Choose a different default first.");
-      }
-      assignments.requireWritable("agentPreferences");
-      store.toggleGlobalReference("agent", input.targetId, input.enabled);
-      publish("global-agent-changed");
-      void notifyAgents();
-    }),
+    setProjectAgent: () => { throw new Error("membership-retired: Projects does not control agent availability."); },
+    setGlobalAgent: () => { throw new Error("membership-retired: Projects does not control agent availability."); },
     setProjectBundle: (input, context) => authority.write("bundles", "setProjectBundle", input, context, () => { store.toggleProjectReference("bundle", input.projectId, input.targetId, input.enabled); publish("project-bundle-changed"); void notifyCatalog(input.projectId); }),
     setGlobalBundle: (input, context) => authority.write("bundles", "setGlobalBundle", input, context, () => { store.toggleGlobalReference("bundle", input.targetId, input.enabled); publish("global-bundle-changed"); void notifyCatalog(null); }),
     agentAssignments: (input, context) => authority.read("agentPreferences", "agentAssignments", input, rpcContract.agentAssignments.output, () => ({ global: store.globalAgentIds().includes(input.agentId), projectIds: store.assignments("agent", input.agentId) }), context),
     bundleAssignments: (input, context) => authority.read("bundles", "bundleAssignments", input, rpcContract.bundleAssignments.output, () => ({ global: store.globalBundleIds().includes(input.bundleId), projectIds: store.assignments("bundle", input.bundleId) }), context),
     credentialAssignments: (input, context) => authority.read("applicationBindings", "credentialAssignments", input, rpcContract.credentialAssignments.output, () => ({ projectIds: store.credentialAssignments(input.credentialId) }), context),
-    removeAgent: (input, context) => authority.write("agentPreferences", "removeAgent", input, context, () => { store.removeReference("agent", input.agentId); publish("agent-removed"); }),
+    removeAgent: () => { throw new Error("membership-retired: Projects does not control agent availability."); },
     removeBundle: (input, context) => authority.write("bundles", "removeBundle", input, context, () => { store.removeReference("bundle", input.bundleId); publish("bundle-removed"); }),
     removeCredential: (input, context) => authority.write("applicationBindings", "removeCredential", input, context, () => { store.removeReference("credential", input.credentialId); publish("credential-removed"); }),
     importLegacy,
@@ -863,7 +806,7 @@ export default async function plugin(bb: BbPluginApi) {
         if (!projectId) return { exitCode: 2, stderr: "Usage: bb projects routing regenerate --project <id>" };
         const project = (await projectRows()).find((candidate) => candidate.id === projectId);
         if (!project) return { exitCode: 2, stderr: `Unknown project: ${projectId}` };
-        await generateProjectRoutingProfile(project, { force: true, taskEvidence: await taskRoutingEvidence() });
+        await generateProjectRoutingProfile(project, { force: true });
         return { exitCode: 0, stdout: `${JSON.stringify(publicRoutingProfile(store.getConfiguration(project.id).routingProfile), null, 2)}\n` };
       }
       if (command === "history") {
@@ -883,11 +826,10 @@ export default async function plugin(bb: BbPluginApi) {
     if (store.hasMigration("suite-v1")) return;
     let saved = importReceipt("legacy-sources");
     if (!saved) {
-      const [sidebar, credentials, catalog, agents] = await Promise.all([
+      const [sidebar, credentials, catalog] = await Promise.all([
         bb.sdk.plugins.callRpc({ pluginId: "status-sidebar", method: "legacyWorkspaceSnapshot", input: null, outputSchema: sidebarWorkspaceSnapshotSchema }),
         bb.sdk.plugins.callRpc({ pluginId: "project-environments", method: "legacySnapshot", input: null, outputSchema: credentialSnapshotSchema }),
         bb.sdk.plugins.callRpc({ pluginId: "catalog", method: "legacyAssignments", input: null, outputSchema: legacyAssignmentsSchema }),
-        bb.sdk.plugins.callRpc({ pluginId: "agent-profiles", method: "listProfiles", input: null, outputSchema: agentProfilesSchema }),
       ]);
       const input = rpcContract.importLegacy.input.parse({
         groups: sidebar.workspaces,
@@ -896,8 +838,7 @@ export default async function plugin(bb: BbPluginApi) {
       });
       db.transaction(() => {
         const imported = applyLegacy(input);
-        for (const agent of agents) store.toggleGlobalReference("agent", agent.id, true);
-        saveImportReceipt("legacy-sources", input, imported, agents.map((agent) => agent.id), "imported-awaiting-remap");
+        saveImportReceipt("legacy-sources", input, imported, [], "imported-awaiting-remap");
       })();
       saved = importReceipt("legacy-sources")!;
     }

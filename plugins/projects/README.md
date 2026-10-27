@@ -2,19 +2,25 @@
 
 Organize native BB projects into groups. Edit project icons, order and routing profiles. These native controls work without Catalog, Credentials, Agents or Status Sidebar, including before assignment import.
 
-## Configuration and Preferences
+## Settings
 
-Keep OpenRouter and Jev authentication keys in host-owned **Configuration**. The saved profile model is a separate native **Preferences** section. The plugin adds no outer Projects heading or second content gutter. An upgrade imports its saved effective model once and retains the old native value. Reload Projects once to remove the old model editor from Configuration.
+Configuration holds the OpenRouter and Jev API keys. Preferences autosave the model used to generate project descriptions and the workspace-service preference.
 
-**Oh My BB** contains native-aligned opt-in switches: Executor (`catalog`), Credentials, Agents, Status Sidebar and Tasks (`task-workspaces`). Stored preference keys and plugin IDs do not change. Integrations are off when no saved consent exists; explicit saved values survive reload. Enabling a source does not contact it. Under **More → Assignments and migration**, use **Load assignment choices** to fetch definitions. An unavailable source leaves selected opaque IDs intact and shows an error. Opening settings never loads sibling definitions or starts migration.
+**Groups** comes before **Projects**. Colour buttons open the shared freeform hex picker. Existing named colours remain valid. Project rows show repository, group, configured-machine count and description source. The list initially shows eight projects; search or expand it to find the rest. Edit a project in its settings dialog. Environment metadata and its masked token control share one form. Suggestions use tag pills and preserve drafts across tabs. More contains only the standard setup guide.
 
-Status Sidebar integration sends group refresh notifications. Tasks integration adds task-source evidence only during routing operations. Neither is a startup dependency. Boxed **More** starts collapsed. It contains bounded group/project/profile management, assignment migration, maintenance and setup. Closing disclosures preserves drafts. Costly profile refresh stays under **More → Maintenance** with its replacement and cost consequence.
+There is no integration switchboard. Projects does not manage agent availability or read Tasks. Existing agent-membership rows are inert history; obsolete mutation calls fail with `membership-retired` instead of silently doing work. Projects works without Executor. The optional Skills tab loads skill sets from Executor on demand and reports an unavailable plugin without clearing saved assignments. After a skill edit Projects sends only a project ID (or null for a global change) as a refresh hint to installed Executor. Executor rereads assignments; no token, repository content or routing text is sent. Installed Status Sidebar receives automatic group-refresh hints; its choice of group source remains controlled by Sidebar.
+
+### What project suggestions do
+
+When you type a new-thread prompt, the composer can suggest a project by matching your prompt to saved project descriptions through Jev. Exact repository references can match locally. This does not assign tasks or run agents.
+
+In a project's **Suggestions** tab, **Generate description** explicitly asks the selected OpenRouter model to write a description and tags from that repository's README, package metadata, name and remote URL. It may cost money and replaces that project's description and tags. No task titles are fetched. Editing settings or opening a tab never generates a description. You can write and save the description yourself.
 
 ## Assignment readiness
 
 Existing marked `suite-v1` assignment state retains its read/write semantics. Without that marker, assignment APIs fail with `not-migrated`; they never return a successful empty projection. Native groups, project details and routing remain available.
 
-For an existing installation, request **Import legacy assignments**. This explicitly reads Status Sidebar groups/order, Credentials bindings, Catalog assignments and Agents profile IDs. All four sources must be available. The importer saves a local transaction and a durable receipt before requesting Sidebar remapping. If remapping fails or Projects reloads, retry resumes that receipt. It does not recreate groups or agent profiles. Readiness is recorded only after completion. Nulls, unresolved selections and conflicting legacy records are preserved.
+For an existing installation, request **Import legacy assignments**. This explicitly reads Status Sidebar groups/order, Credentials bindings, Catalog assignments. Those three sources must be available. The importer saves a local transaction and a durable receipt before requesting Sidebar remapping. If remapping fails or Projects reloads, retry resumes that receipt. It does not recreate groups or agent profiles. Readiness is recorded only after completion. Nulls, unresolved selections and conflicting legacy records are preserved.
 
 The existing `importLegacy` payload API stages its supplied data and preserves its result shape. It cannot certify omitted assignment kinds as empty. It does not mark readiness. Complete the explicit all-source import afterward. Missing source collections fail instead of becoming empty arrays. Existing native group membership, order, default and non-null credential selections win import conflicts; original legacy input remains in receipts/provenance.
 

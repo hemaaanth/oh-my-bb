@@ -66,3 +66,5 @@ The package has its own dependency manifest and lockfile. It has no sibling impo
 The package build normalizes absolute paths in generated source maps, including BB's virtual dependency source names. Use `npm run build` rather than calling the raw builder for distributable assets. `npm pack` runs that build again through `prepack`.
 
 A package-local build does not select or reload the live source. Owner review, public publication, source cutover, and private-source retirement are separate gates.
+
+Projects group colours accept both the original named palette and six-digit hex values. Saved groups and group-source preferences are unchanged.

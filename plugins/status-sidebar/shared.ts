@@ -20,7 +20,7 @@ export const workspaceColorValues = [
   "rose",
   "gray",
 ] as const;
-export type WorkspaceColor = (typeof workspaceColorValues)[number];
+export type WorkspaceColor = string;
 
 export interface SidebarWorkspace {
   id: string;

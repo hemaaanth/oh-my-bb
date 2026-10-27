@@ -101,13 +101,13 @@ const workspaceOrderScopeInput = z.union([z.null(), workspaceIdInput]);
 const workspaceSchema = z.object({
   id: z.string(),
   name: z.string(),
-  color: z.enum(workspaceColorValues),
+  color: z.union([z.enum(workspaceColorValues), z.string().regex(/^#[0-9a-fA-F]{6}$/)]),
   isDefault: z.boolean(),
   projectIds: z.array(z.string()),
   threadIds: z.array(z.string()),
 }).strict();
 const projectGroupSchema = z.object({
-  id: z.string().uuid(), name: z.string(), color: z.enum(workspaceColorValues),
+  id: z.string().uuid(), name: z.string(), color: z.union([z.enum(workspaceColorValues), z.string().regex(/^#[0-9a-fA-F]{6}$/)]),
   position: z.number().int().nonnegative(), isDefault: z.boolean(),
 });
 const projectGroupsSchema = z.object({
@@ -340,7 +340,7 @@ interface ProjectOrderRow {
 interface WorkspaceRow {
   id: string;
   name: string;
-  color: (typeof workspaceColorValues)[number];
+  color: string;
   is_default: number;
 }
 

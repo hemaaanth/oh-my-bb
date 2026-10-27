@@ -164,7 +164,7 @@ describe("assignment authority", () => {
     expect(await host.harness.behavior.callRpc("assignmentStatusV1", { kind: "bundles" })).toEqual(expected);
   });
 
-  it.each(["bundles", "applicationBindings", "agentPreferences"] as const)("freezes %s locally, rejects plugin-driven authority changes, and exports opaque IDs", async (kind) => {
+  it.each(["bundles", "applicationBindings"] as const)("freezes %s locally, rejects plugin-driven authority changes, and exports opaque IDs", async (kind) => {
     const host = await fixture();
     const store = new ProjectsStore(host.bb.storage.database());
     store.updateProject("unknown/project", { credentialId: "opaque/profile" });
@@ -177,7 +177,7 @@ describe("assignment authority", () => {
     const page = exportPageSchema.parse(await host.harness.behavior.callRpc("assignmentExportV1", { kind, generation: identity.generation }));
     expect(page.records).toEqual(before);
     expect(page.semanticDigest).toBe(assignmentDigest(before));
-    await expect(host.harness.behavior.callRpc(kind === "bundles" ? "setGlobalBundle" : kind === "agentPreferences" ? "setGlobalAgent" : "updateProject", kind === "applicationBindings" ? { projectId: "native/project", credentialId: null } : { targetId: "opaque/new", enabled: true })).rejects.toThrow("assignment-frozen");
+    await expect(host.harness.behavior.callRpc(kind === "bundles" ? "setGlobalBundle" : "updateProject", kind === "applicationBindings" ? { projectId: "native/project", credentialId: null } : { targetId: "opaque/new", enabled: true })).rejects.toThrow("assignment-frozen");
     expect(new AssignmentStore(host.bb.storage.database()).records(kind)).toEqual(before);
   });
 
@@ -327,7 +327,7 @@ describe("assignment authority", () => {
     expect(db.pragma("integrity_check", { simple: true })).toBe("ok");
     db.close();
   });
-  it.each(["applicationBindings", "agentPreferences"] as const)("forwards and reverse-reconciles %s without changing IDs or native configuration", async (kind) => {
+  it.each(["applicationBindings"] as const)("forwards and reverse-reconciles %s without changing IDs or native configuration", async (kind) => {
     const host = await fixture();
     const local = new ProjectsStore(host.bb.storage.database());
     local.updateProject("native/project", { icon: "kept", credentialId: "old/profile" });

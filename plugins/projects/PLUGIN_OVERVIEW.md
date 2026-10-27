@@ -1,33 +1,23 @@
 # Projects
 
-Organize native BB projects into groups. Keep project icons, ordering, routing profiles and 1Password application environments in one place.
+Manage native BB projects, groups, 1Password application environments, scripts and services in settings. Projects has no navigation rail page.
 
-## Native first
+## Groups and projects
 
-Projects and groups work without sibling plugins and before assignment migration. Existing assignment state is not treated as empty while an import is pending.
+Groups appear first, with freeform colour pickers and compact name controls. Project rows show repository, group, configured machines and description source. Search or expand the list, then edit a project in a fixed-size dialog. Environment, Suggestions and Skills are separate keyboard-accessible tabs. Preferences autosave. More contains the setup guide.
 
-## Optional sources
+## Project suggestions
 
-Enable Executor (`catalog`), Agents, Status Sidebar or Tasks (`task-workspaces`) only when needed. Native-aligned switches retain existing keys, IDs and saved consent. Integrations are off without consent. Load assignment choices explicitly in More; unavailable definitions retain their saved IDs.
+Saved project descriptions help the new-thread composer suggest a project from your prompt. You can write those descriptions yourself. Generate description explicitly asks your selected OpenRouter model to write one from repository metadata and README content. It may cost money and replaces the description and tags. Jev matches later prompts against saved descriptions. Projects does not read Tasks or manage which agents are allowed in a project.
 
-## Controlled assignment ownership
+## Skills and shared groups
 
-Explicit legacy import preserves existing selections. Bounded frozen exports and version-bound receipts support a single-writer handoff to each assignment owner. Forwarding starts only after activation. Rollback requires reverse reconciliation of destination edits. Destination adapters must be ready before a real handoff.
+Projects works without Executor. The optional Skills tab loads Executor skill sets when opened. Saved assignments stay intact if Executor is unavailable. Skill edits send Executor a project-ID refresh hint. Installed Status Sidebar receives group-refresh hints automatically; Sidebar owns its group-source preference. There is no integration switchboard in Projects.
 
-## Routing
+## Application environments
 
-Authentication stays in host-owned Configuration. Preferences contains behavior, and collapsed More contains bounded group/project/profile management, migration, maintenance and setup. Profile generation and learning remain explicit, potentially paid actions. Existing native composer controls, menus and agent avatars remain host-owned.
+Edit an environment and its masked service-account token together in project settings. Metadata saves check the project and environment revision and never run setup. Existing shared configurations remain clearly marked. Tokens, preparation records and guarded ClickHouse access stay in private installation storage. Remote Executor credentials are separate.
 
-## Project environments
+## Scripts and services
 
-Manage application environments from Settings → Projects → Projects, then edit a project. Each project gets its own configuration. Existing shared links are retained and clearly marked. Metadata saves check the saved project and environment revision. They do not run setup.
-
-Projects owns environment definitions, service-account token files, preparation records and the guarded ClickHouse tool. Agent service credentials remain in remote Executor. Configuration is resolved through the existing on-host `bb-project-env-run` wrapper.
-
-The old `project-environments` ID is a small compatibility adapter. It forwards existing RPCs and `bb project-env` commands to Projects and owns no second editor, data writer or preparation queue. A live merge requires a verified backup and a maintenance copy; it never imports secrets on startup. Project-specific setup sources belong in each project's `.bb/setup/` directory and are not bundled publicly.
-
-## Scripts are part of Projects
-
-Project commands and services remain declared in each checkout's bb.json (or legacy paseo.json). The native thread Scripts action, environment-scoped terminal tracking, service autostart preference and approved pre-prompt agent setup now run in Projects. Use `bb projects scripts …`. The separate Scripts package is retired and must be uninstalled after its saved state is migrated.
-
-Projects has no navigation rail page. Settings contains Preferences with autosave, compact Projects rows with environment/routing editors, Groups with swatch controls, a single standard More setup-guide row, and explained integration switches. Groups stay owned by Projects; Status Sidebar can consume them.
+Declare commands in each checkout's bb.json or legacy paseo.json. The native Scripts thread action runs them in the selected workspace. Projects retains service tracking, the autostart preference and approved pre-prompt setup. Use bb projects scripts. The separate Scripts plugin is retired.

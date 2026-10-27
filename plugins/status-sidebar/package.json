@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-status-sidebar",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Group BB threads by working status with nested thread summaries and saved ordering.",
   "license": "MIT",
   "repository": {

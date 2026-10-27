@@ -160,6 +160,16 @@ describe("explicit routing profile generation", () => {
     } finally { await host.harness.lifecycle.dispose(); }
   });
 
+  it("generates descriptions from repository evidence without touching Tasks even if its retired flag was saved", async () => {
+    const host = await fixture();
+    try {
+      await host.harness.behavior.callRpc("updatePreferences", {tasksIntegration: true});
+      await host.harness.behavior.callRpc("generateRoutingProfile", {projectId: projects[0]!.id});
+      expect(host.fetch).toHaveBeenCalledTimes(1);
+      expect(host.harness.inspection.sdk.callsTo("plugins.callRpc")).toEqual([]);
+    } finally {await host.harness.lifecycle.dispose();}
+  });
+
   it("records routing traces without queued learning and learns only on the explicit command", async () => {
     const host = await fixture();
     const prompt = "Fix github.com/example/synthetic-0";

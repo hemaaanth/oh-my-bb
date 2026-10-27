@@ -4,7 +4,7 @@ import { projectGroupColors } from "./group-colors.js";
 import { assignmentKindSchema, assignmentStatusSchema, exportPageSchema, handoffInputSchema } from "./assignments.js";
 
 export { projectGroupColors };
-export const projectGroupColorSchema = z.enum(projectGroupColors);
+export const projectGroupColorSchema = z.union([z.enum(projectGroupColors), z.string().regex(/^#[0-9a-fA-F]{6}$/)]);
 
 export const groupSchema = z.object({
   id: z.string().uuid(),
@@ -120,7 +120,7 @@ export const preferencesSchema = z.object({
   catalogIntegration: z.boolean(), credentialsIntegration: z.boolean(),
   agentsIntegration: z.boolean(), sidebarIntegration: z.boolean(), tasksIntegration: z.boolean(),
 }).strict();
-export const organizationProjectSchema = projectConfigurationSchema.omit({ credentialId: true, agentIds: true, bundleIds: true });
+export const organizationProjectSchema = projectConfigurationSchema.omit({ credentialId: true, agentIds: true, bundleIds: true }).extend({machineCount: z.number().int().nonnegative().default(0)});
 export const organizationSnapshotSchema = z.object({
   groups: z.array(groupSchema), projects: z.array(organizationProjectSchema),
   assignmentStatus: z.array(assignmentStatusSchema),

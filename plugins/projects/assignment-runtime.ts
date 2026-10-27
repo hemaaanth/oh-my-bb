@@ -25,7 +25,7 @@ export function createAssignmentRuntime(bb: BbPluginApi, store: AssignmentStore)
     } catch {
       throw new AssignmentError("not-migrated", "Native installed-plugin metadata is unavailable or unsupported. Destination absence is not established; setup changed no assignments.");
     }
-    for (const kind of assignmentKinds) {
+    for (const kind of assignmentKinds.filter(kind => kind !== "agentPreferences")) {
       const destination = destinations[kind];
       const plugin = installed.plugins.find((plugin) => plugin.id === destination);
       if (!plugin) continue;
@@ -42,6 +42,7 @@ export function createAssignmentRuntime(bb: BbPluginApi, store: AssignmentStore)
 
   async function read<T>(kind: AssignmentKind, method: string, input: JsonValue, schema: z.ZodType<T>, local: () => T | Promise<T>, context?: ExperimentalPluginRpcHandlerContext): Promise<T> {
     store.requireReady();
+    if (kind === "agentPreferences") return local(); // Retained history has no live agent owner.
     const status = store.status(kind);
     if (status.state === "reverse-frozen") throw new AssignmentError("assignment-frozen", "Reverse reconciliation is pending.");
     if (status.state !== "destination-owned") return local();

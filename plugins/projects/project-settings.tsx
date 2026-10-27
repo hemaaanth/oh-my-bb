@@ -11,6 +11,9 @@ import {
   type PluginRpcResult,
 } from "@get-bb/plugin-sdk/app";
 import * as Popover from "@radix-ui/react-popover";
+import { HexColorPicker } from "react-colorful";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
+import "./settings.css";
 import type { rpcContract, ProjectGroupColor } from "./contract";
 import { projectGroupColors } from "./group-colors";
 import {
@@ -41,7 +44,7 @@ type Project = Organization["projects"][number];
 type Group = Organization["groups"][number];
 export const control =
   "h-9 min-w-0 rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40";
-const colors: Record<ProjectGroupColor, string> = {
+const colors: Record<string, string> = {
   amber: "#fbbf24",
   blue: "#60a5fa",
   violet: "#a78bfa",
@@ -106,11 +109,13 @@ function Modal({
   description,
   trigger,
   children,
+  fixed = false,
 }: {
   title: string;
   description: string;
   trigger: ReactNode;
   children: ReactNode;
+  fixed?: boolean;
 }) {
   const [visited, setVisited] = useState(false);
   return (
@@ -121,12 +126,18 @@ function Modal({
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       {visited && (
-        <DialogContent className="max-h-[85dvh] min-w-0 overflow-y-auto sm:max-w-[680px]">
+        <DialogContent
+          className={`max-h-[85dvh] min-w-0 overflow-y-auto sm:max-w-[680px] ${fixed ? "h-[85dvh] !flex !flex-col" : ""}`}
+        >
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
-          <div className="min-w-0 space-y-4">{children}</div>
+          <div
+            className={`min-w-0 space-y-4 ${fixed ? "flex-1 min-h-0 overflow-y-auto pr-1" : ""}`}
+          >
+            {children}
+          </div>
         </DialogContent>
       )}
     </Dialog>
@@ -145,8 +156,19 @@ function ColourPicker({
 }) {
   const [open, setOpen] = useState(false);
   const scope = usePortalScopeProps();
-  // Same scoped Radix popover and swatch trigger as Dispatch's colour control.
-  // Groups retain their existing named palette, so sidebar colours remain compatible.
+  const [draft, setDraft] = useState(colors[value] ?? value);
+  const [invalid, setInvalid] = useState(false);
+  useEffect(() => {
+    setDraft(colors[value] ?? value);
+  }, [value]);
+  function commit(hex: string) {
+    if (!/^#[0-9a-f]{6}$/i.test(hex)) {
+      setInvalid(true);
+      return;
+    }
+    setInvalid(false);
+    if (hex !== (colors[value] ?? value)) onChange(hex.toLowerCase());
+  }
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
@@ -154,14 +176,9 @@ function ColourPicker({
           type="button"
           aria-label={label}
           disabled={disabled}
-          className="flex size-9 shrink-0 items-center justify-center gap-0.5 rounded-md border border-border hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
-        >
-          <span
-            className="size-5 rounded-full border border-border"
-            style={{ backgroundColor: colors[value] }}
-          />
-          <Icon name="ChevronDown" className="size-2.5" aria-hidden />
-        </button>
+          style={{ backgroundColor: colors[value] ?? value }}
+          className="size-8 shrink-0 cursor-pointer rounded-md border border-border shadow-sm focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
+        />
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
@@ -170,39 +187,63 @@ function ColourPicker({
           sideOffset={6}
           collisionPadding={12}
           aria-label="Group colour"
-          className="z-[70] flex max-w-[calc(100vw-24px)] flex-wrap gap-2 rounded-md border border-border bg-popover p-3 shadow-md"
+          className="projects-colour-picker z-[70] w-64 max-w-[calc(100vw-24px)] space-y-3 rounded-md border border-border bg-popover p-3 shadow-md"
         >
-          {projectGroupColors.map((c) => (
-            <button
-              key={c}
-              type="button"
-              aria-label={c}
-              aria-pressed={value === c}
-              className="flex size-9 items-center justify-center rounded-md border border-border focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => {
-                onChange(c);
-                setOpen(false);
-              }}
-            >
-              <span
-                className="flex size-6 items-center justify-center rounded-full"
+          <HexColorPicker
+            color={draft}
+            onChange={setDraft}
+            onChangeEnd={commit}
+            aria-label="Custom colour picker"
+          />
+          <div className="flex gap-2">
+            {projectGroupColors.map((c) => (
+              <button
+                key={c}
+                type="button"
+                aria-label={c}
+                className="size-7 rounded-md border border-border focus-visible:ring-2 focus-visible:ring-ring"
                 style={{ backgroundColor: colors[c] }}
-              >
-                {value === c && (
-                  <Icon
-                    name="Check"
-                    className="size-4 text-black"
-                    aria-hidden
-                  />
-                )}
-              </span>
-            </button>
-          ))}
+                onClick={() => {
+                  setDraft(colors[c]);
+                  onChange(c);
+                  setInvalid(false);
+                }}
+              />
+            ))}
+          </div>
+          <label className="grid gap-1 text-xs">
+            Hex colour
+            <input
+              aria-label="Hex colour"
+              aria-invalid={invalid}
+              value={draft}
+              maxLength={7}
+              spellCheck={false}
+              className={control}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                setInvalid(false);
+              }}
+              onBlur={() => commit(draft)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commit(draft);
+                }
+              }}
+            />
+          </label>
+          {invalid && (
+            <p role="alert" className="text-xs text-destructive">
+              Use # followed by six hex digits.
+            </p>
+          )}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
   );
 }
+
 function GroupRow({
   group,
   busy,
@@ -211,7 +252,10 @@ function GroupRow({
 }: {
   group: Group;
   busy: boolean;
-  save: (patch: { name?: string; color?: ProjectGroupColor }) => Promise<boolean>;
+  save: (patch: {
+    name?: string;
+    color?: ProjectGroupColor;
+  }) => Promise<boolean>;
   remove: () => void;
 }) {
   const [name, setName] = useState(group.name);
@@ -230,7 +274,7 @@ function GroupRow({
     if (ok && draft.current.trim() === sent) dirty.current = false;
   }
   return (
-    <div className="flex min-w-0 items-center gap-3 py-3">
+    <div className="flex min-w-0 items-center gap-3 py-2">
       <ColourPicker
         value={group.color}
         label={`Colour for ${group.name}`}
@@ -262,7 +306,7 @@ function GroupRow({
         }
         disabled={busy || group.isDefault}
         onClick={remove}
-        className={`${control} !px-2 text-destructive disabled:text-muted-foreground`}
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-destructive hover:bg-secondary disabled:text-muted-foreground disabled:opacity-30"
       >
         <Icon name="Trash2" className="size-4" aria-hidden />
       </button>
@@ -290,7 +334,7 @@ export function GroupsSettings() {
           />
         ))}
         <form
-          className="flex min-w-0 items-center gap-3 py-3"
+          className="flex min-w-0 items-center gap-3 py-2"
           onSubmit={(e) => {
             e.preventDefault();
             const value = name.trim();
@@ -321,7 +365,7 @@ export function GroupsSettings() {
           <button
             aria-label="Add group"
             disabled={busy || !data || !name.trim()}
-            className={`${control} !px-2`}
+            className="inline-flex !size-8 shrink-0 items-center justify-center rounded-md !p-0 hover:bg-secondary disabled:opacity-40"
           >
             <Icon name="Plus" className="size-4" aria-hidden />
           </button>
@@ -338,8 +382,6 @@ function ProjectDetails({
   configured,
   run,
   rpc,
-  assignments,
-  refreshAssignments,
 }: {
   project: Project;
   groups: Group[];
@@ -347,12 +389,8 @@ function ProjectDetails({
   configured: boolean;
   run: ReturnType<typeof useOrganization>["run"];
   rpc: ReturnType<typeof useOrganization>["rpc"];
-  assignments: Assignments | null;
-  refreshAssignments: () => Promise<void>;
 }) {
-  const [tab, setTab] = useState("environment");
   const [iconDraft, setIconDraft] = useState<string | null>(null);
-  const selected = assignments?.projects.find((p) => p.id === project.id);
   return (
     <>
       <label className="grid gap-2 text-sm">
@@ -399,130 +437,157 @@ function ProjectDetails({
           </SelectContent>
         </Select>
       </label>
-      <div
-        className="flex gap-2"
-        role="tablist"
-        aria-label="Project configuration"
-      >
-        {["environment", "routing"].map((id) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={id === tab}
-            className={control}
-            onClick={() => setTab(id)}
-          >
-            {id === "environment" ? "Environment" : "Routing"}
-          </button>
-        ))}
-      </div>
-      {selected && assignments && (
-        <div className="space-y-3">
-          {(
-            [
-              [
-                "Agents",
-                assignments.agents.filter(
-                  (x) => !assignments.globalAgentIds.includes(x.id),
-                ),
-                selected.agentIds,
-                "setProjectAgent",
-              ],
-              [
-                "Skills",
-                assignments.bundles.filter(
-                  (x) => !assignments.globalBundleIds.includes(x.id),
-                ),
-                selected.bundleIds,
-                "setProjectBundle",
-              ],
-            ] as const
-          ).map(
-            ([label, references, ids, method]) =>
-              references.length > 0 && (
-                <fieldset key={label} className="space-y-2">
-                  <legend className="text-sm font-medium">{label}</legend>
-                  {references.map((reference) => (
-                    <label
-                      key={reference.id}
-                      className="flex items-center gap-2 text-sm"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={ids.includes(reference.id)}
-                        disabled={busy}
-                        onChange={(e) => {
-                          const enabled = e.target.checked;
-                          void run(async () => {
-                            await rpc.call(method, {
-                              projectId: project.id,
-                              targetId: reference.id,
-                              enabled,
-                            });
-                            await refreshAssignments();
-                          });
-                        }}
-                      />
-                      {reference.name}
-                    </label>
-                  ))}
-                </fieldset>
-              ),
+      <Tabs defaultValue="environment" className="min-w-0">
+        <TabsList
+          aria-label="Project configuration"
+          className="w-full justify-start"
+        >
+          <TabsTrigger value="environment">Environment</TabsTrigger>
+          <TabsTrigger value="routing">Suggestions</TabsTrigger>
+          <TabsTrigger value="skills">Skills</TabsTrigger>
+        </TabsList>
+        <TabsContent
+          value="environment"
+          forceMount
+          className="data-[state=inactive]:hidden"
+        >
+          <EnvironmentEditor key={project.id} selectedProjectId={project.id} />
+        </TabsContent>
+        <TabsContent value="skills">
+          <ProjectSkills projectId={project.id} />
+        </TabsContent>
+        <TabsContent
+          value="routing"
+          forceMount
+          className="data-[state=inactive]:hidden"
+        >
+          <RoutingProfileEditor
+            project={project}
+            busy={busy}
+            configured={configured}
+            onSave={(profile) =>
+              run(() =>
+                rpc.call("updateRoutingProfile", {
+                  projectId: project.id,
+                  ...profile,
+                }),
+              )
+            }
+            onGenerate={() =>
+              run(() =>
+                rpc.call("generateRoutingProfile", { projectId: project.id }),
+              )
+            }
+          />
+        </TabsContent>
+      </Tabs>
+    </>
+  );
+}
+function ProjectSkills({ projectId }: { projectId: string }) {
+  const rpc = useRpc<typeof rpcContract>();
+  const [data, setData] = useState<Assignments | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function load() {
+    setBusy(true);
+    setError(null);
+    try {
+      const [snapshot, options] = await Promise.all([
+        rpc.call("snapshot"),
+        rpc.call("assignmentOptionsV1", { kind: "bundles" }),
+      ]);
+      setData({ ...snapshot, bundles: options.references });
+    } catch (e) {
+      setError(
+        "Executor is unavailable. Install or enable Executor to choose skill sets. Your saved assignments are unchanged.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  useEffect(() => {
+    void load();
+  }, [projectId]);
+  const project = data?.projects.find((p) => p.id === projectId);
+  return (
+    <div className="space-y-3 pt-2">
+      <p className="text-xs text-muted-foreground">
+        Choose the Executor skill sets available in this project. Global skill
+        sets already apply to every project. Changes take effect immediately.
+      </p>
+      {!data ? (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => void load()}
+        >
+          {busy ? "Loading skill sets…" : "Retry loading skill sets"}
+        </Button>
+      ) : (
+        <div className="space-y-2">
+          {data.bundles.map((bundle) => (
+            <label key={bundle.id} className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                disabled={busy || data.globalBundleIds.includes(bundle.id)}
+                checked={
+                  data.globalBundleIds.includes(bundle.id) ||
+                  !!project?.bundleIds.includes(bundle.id)
+                }
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  setBusy(true);
+                  setError(null);
+                  void rpc
+                    .call("setProjectBundle", {
+                      projectId,
+                      targetId: bundle.id,
+                      enabled,
+                    })
+                    .then(load)
+                    .catch((e) => {
+                      setError(String(e));
+                      setBusy(false);
+                    });
+                }}
+              />
+              <span>
+                {bundle.name}
+                {data.globalBundleIds.includes(bundle.id) && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    Global
+                  </span>
+                )}
+                {bundle.detail && (
+                  <span className="block text-xs text-muted-foreground">
+                    {bundle.detail}
+                  </span>
+                )}
+              </span>
+            </label>
+          ))}
+          {!data.bundles.length && (
+            <p className="text-sm text-muted-foreground">
+              No skill sets in Executor.
+            </p>
           )}
         </div>
       )}
-      {tab === "environment" ? (
-        <EnvironmentEditor key={project.id} selectedProjectId={project.id} />
-      ) : (
-        <RoutingProfileEditor
-          project={project}
-          busy={busy}
-          configured={configured}
-          onSave={(profile) =>
-            run(() =>
-              rpc.call("updateRoutingProfile", {
-                projectId: project.id,
-                ...profile,
-              }),
-            )
-          }
-          onGenerate={() =>
-            run(() =>
-              rpc.call("generateRoutingProfile", { projectId: project.id }),
-            )
-          }
-        />
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
       )}
-    </>
+    </div>
   );
 }
 export function ProjectsSettings() {
   const { rpc, data, error, busy, run } = useOrganization();
   const [search, setSearch] = useState("");
-  const [assignmentText, setAssignmentText] = useState<string | null>(null);
-  const [assignments, setAssignments] = useState<Assignments | null>(null);
-  async function choices() {
-    const preferences = await rpc.call("preferences");
-    const snapshot = await rpc.call("snapshot");
-    const result = [];
-    for (const [flag, kind] of [
-      [preferences.catalogIntegration, "bundles"],
-      [preferences.agentsIntegration, "agentPreferences"],
-    ] as const) {
-      if (flag) {
-        const value = await rpc.call("assignmentOptionsV1", { kind });
-        result.push(...value.references.map((x) => x.name));
-        if (kind === "bundles") snapshot.bundles = value.references;
-        else snapshot.agents = value.references;
-      }
-    }
-    setAssignments(snapshot);
-    setAssignmentText(
-      result.length
-        ? result.join(" · ")
-        : "No optional assignment choices enabled. Enable the integration below to load its choices.",
-    );
-  }
+  const [expanded, setExpanded] = useState(false);
   return (
     <section className="min-w-0 space-y-4 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -537,13 +602,18 @@ export function ProjectsSettings() {
         />
       </div>
       <Notice data={data} error={error} />
-      <div className="max-h-96 overflow-y-auto divide-y divide-border rounded-md border border-border bg-surface-recessed/70 px-3">
+      <div className="divide-y divide-border rounded-md border border-border bg-surface-recessed/70 px-3">
         {data?.projects
-          .filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
+          .filter((p) =>
+            `${p.name} ${p.gitRemoteUrl ?? ""}`
+              .toLowerCase()
+              .includes(search.toLowerCase()),
+          )
+          .slice(0, expanded || search ? undefined : 8)
           .map((p) => (
             <div
               key={p.id}
-              className="flex min-w-0 items-center justify-between gap-3 py-3"
+              className="flex min-w-0 items-center justify-between gap-3 py-2"
             >
               <span className="flex min-w-0 items-center gap-3">
                 {p.icon ? (
@@ -557,14 +627,41 @@ export function ProjectsSettings() {
                     aria-hidden
                   />
                 )}
-                <span className="min-w-0 truncate text-sm">{p.name}</span>
+                <span className="min-w-0 space-y-0.5">
+                  <span className="block truncate text-sm font-medium">
+                    {p.name}
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {p.gitRemoteUrl
+                      ?.replace(/^https?:\/\//, "")
+                      .replace(/^git@([^:]+):/, "$1/")
+                      .replace(/\.git$/, "") ??
+                      p.localPath ??
+                      "No repository"}
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {data.groups.find((g) => g.id === p.groupId)?.name ??
+                      "Ungrouped"}{" "}
+                    ·{" "}
+                    {p.machineCount
+                      ? `${p.machineCount} ${p.machineCount === 1 ? "machine" : "machines"}`
+                      : "No machine checkout"}{" "}
+                    ·{" "}
+                    {p.routingProfile.source === "none"
+                      ? "No description"
+                      : p.routingProfile.source === "manual"
+                        ? "Custom description"
+                        : "AI description"}
+                  </span>
+                </span>
               </span>
               <Modal
                 title={p.name}
-                description="Project environment and routing configuration."
+                fixed
+                description="Environment, skills and new-thread project suggestions."
                 trigger={
                   <button
-                    className={`${control} !px-2`}
+                    className="inline-flex !size-8 shrink-0 items-center justify-center rounded-md !p-0 hover:bg-secondary disabled:opacity-40"
                     aria-label={`Edit ${p.name}`}
                   >
                     <Icon name="projects/edit" className="size-4" aria-hidden />
@@ -578,66 +675,26 @@ export function ProjectsSettings() {
                   configured={data.routingConfigured}
                   run={run}
                   rpc={rpc}
-                  assignments={assignments}
-                  refreshAssignments={async () => {
-                    const next = await rpc.call("snapshot");
-                    setAssignments((previous) =>
-                      previous
-                        ? {
-                            ...next,
-                            agents: previous.agents,
-                            bundles: previous.bundles,
-                          }
-                        : next,
-                    );
-                  }}
                 />
               </Modal>
             </div>
           ))}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <button
-          className={control}
-          disabled={busy || !data}
-          onClick={() => void run(choices)}
-        >
-          <Icon name="projects/assignments" className="mr-2 inline size-4" aria-hidden />
-          Load assignment choices
-        </button>
-        <Modal
-          title="Refresh generated profiles"
-          description="Creates missing profiles and replaces stale generated profiles. Manual profiles stay unchanged. Uses the saved model and may incur cost."
-          trigger={
-            <button
-              className={control}
-              disabled={busy || !data?.routingConfigured}
-            >
-              <Icon
-                name="projects/refresh"
-                className="mr-2 inline size-4"
-                aria-hidden
-              />
-              Refresh profiles
-            </button>
-          }
-        >
+        {!search && data && data.projects.length > 8 && (
           <button
-            className={control}
-            disabled={busy}
-            onClick={() =>
-              void run(() => rpc.call("generateMissingRoutingProfiles"))
-            }
+            className="flex h-8 items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => setExpanded((value) => !value)}
           >
-            Refresh stale generated profiles
+            <Icon
+              name={expanded ? "ChevronUp" : "ChevronDown"}
+              className="size-3"
+              aria-hidden
+            />
+            {expanded
+              ? "Show fewer projects"
+              : `Show all ${data.projects.length} projects`}
           </button>
-        </Modal>
+        )}
       </div>
-      {assignmentText && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {assignmentText}
-        </p>
-      )}
     </section>
   );
 }
@@ -696,7 +753,8 @@ export function MoreSettings() {
               run these scripts. It is separate from saving settings.
             </p>
             <p>
-              Routing generation and learning are explicit operations and may
+              Project descriptions help the composer suggest a project for a new
+              thread. Generating a description is an explicit AI action and may
               incur cost. Opening settings does not call a model.
             </p>
           </div>

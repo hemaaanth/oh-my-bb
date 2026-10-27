@@ -43,11 +43,11 @@ describe("projects configuration", () => {
     await harness.behavior.callRpc("setGroupOrder", { groupIds: [work.id, personal.id] });
     await harness.behavior.callRpc("setProjectGroup", { projectId: "proj_cdp", groupId: work.id });
     await harness.behavior.callRpc("updateProject", { projectId: "proj_cdp", icon: "◈", credentialId });
-    await harness.behavior.callRpc("setGlobalAgent", { targetId: agentId, enabled: true });
+    await expect(harness.behavior.callRpc("setGlobalAgent", { targetId: agentId, enabled: true })).rejects.toThrow("membership-retired");
     await harness.behavior.callRpc("setProjectBundle", { projectId: "proj_cdp", targetId: bundleId, enabled: true });
 
     await expect(harness.behavior.callRpc("projectContext", { projectId: "proj_cdp" })).resolves.toEqual({
-      projectId: "proj_cdp", groupId: work.id, credentialId, agentIds: [agentId], bundleIds: [bundleId],
+      projectId: "proj_cdp", groupId: work.id, credentialId, agentIds: [], bundleIds: [bundleId],
     });
     const groups = await harness.behavior.callRpc("groupsSnapshot", null) as { groups: Array<{ name: string; projectIds: string[] }> };
     expect(groups.groups.map((group) => group.name)).toEqual(["Work", "Personal"]);
@@ -102,13 +102,13 @@ describe("projects configuration", () => {
 
     await expect(harness.behavior.callRpc("projectContext", { projectId: "proj_cdp" })).resolves.toEqual(expect.objectContaining({
       credentialId,
-      agentIds: [agentId],
+      agentIds: [],
       bundleIds: [bundleId],
     }));
     await harness.lifecycle.dispose();
   });
 
-  it("keeps the default agent available in every project", async () => {
+  it("rejects obsolete agent membership changes without contacting Agents", async () => {
     const agentId = "88888888-8888-4888-8888-888888888888";
     const callRpc = async ({ method }: { method: string }) => {
       if (method === "listProfiles") return [{ id: agentId, name: "Default", slug: "default", isDefault: true }];
@@ -122,7 +122,7 @@ describe("projects configuration", () => {
     await harness.behavior.callRpc("importLegacyFromSourcesV1", null);
 
     await expect(harness.behavior.callRpc("setGlobalAgent", { targetId: agentId, enabled: false }))
-      .rejects.toThrow("The default agent must be available in every project");
+      .rejects.toThrow("membership-retired");
     await harness.lifecycle.dispose();
   });
 
@@ -208,5 +208,36 @@ describe("projects configuration", () => {
     }));
     await expect(harness.behavior.callRpc("suggestProject", { prompt: "Write a short poem about autumn" })).rejects.toThrow("Jev API key missing");
     await harness.lifecycle.dispose();
+  });
+});
+
+describe("simplified project integrations", () => {
+  it("retains agent history but refuses obsolete writes and never calls Agents or Tasks even with old flags enabled", async () => {
+    const host = createFakePluginHost({ pluginId: "projects", sdk: {
+      subscribe: () => () => {}, projects: { list: async () => projects },
+      plugins: {list: async () => ({plugins: [{id:"agent-profiles",enabled:true,status:"running"}]}), callRpc: async () => {throw new Error("No sibling access expected");}},
+    }});
+    await plugin(host.bb);
+    const db=host.bb.storage.database(); const { ProjectsStore } = await import("./store.js"); const store=new ProjectsStore(db);
+    store.markMigration("suite-v1"); store.toggleGlobalReference("agent", "historical-agent", true);
+    await host.harness.behavior.callRpc("updatePreferences", {agentsIntegration:true,tasksIntegration:true,catalogIntegration:false,sidebarIntegration:false});
+    const before=db.prepare("SELECT * FROM global_agents").all();
+    for (const [method,input] of [
+      ["setProjectAgent",{projectId:"proj_cdp",targetId:"x",enabled:true}], ["setGlobalAgent",{targetId:"x",enabled:true}],
+      ["removeAgent",{agentId:"historical-agent"}], ["assignmentOptionsV1",{kind:"agentPreferences"}],
+    ] as const) await expect(host.harness.behavior.callRpc(method,input)).rejects.toThrow("membership-retired");
+    expect(db.prepare("SELECT * FROM global_agents").all()).toEqual(before);
+    expect(await host.harness.behavior.callRpc("organizationSnapshot",null)).toMatchObject({projects:expect.any(Array)});
+    expect(host.harness.inspection.sdk.callsTo("plugins.callRpc")).toEqual([]);
+    await host.harness.lifecycle.dispose();
+  });
+  it("accepts hex colours and refreshes an installed sidebar even when the old notification toggle is false", async () => {
+    const host=createFakePluginHost({pluginId:"projects", sdk:{subscribe:()=>()=>{}, projects:{list:async()=>[]}, plugins:{list:async()=>({plugins:[{id:"status-sidebar",enabled:true,status:"running"}]}),callRpc:async()=>({ok:true})}}});
+    await plugin(host.bb);
+    const group=await host.harness.behavior.callRpc("saveGroup",{name:"Custom",color:"#123abc"});
+    expect(group).toMatchObject({color:"#123abc"});
+    await new Promise(resolve=>setTimeout(resolve,0));
+    expect(host.harness.inspection.sdk.callsTo("plugins.callRpc")).toContainEqual([expect.objectContaining({pluginId:"status-sidebar",method:"refreshProjectGroups"})]);
+    await host.harness.lifecycle.dispose();
   });
 });

@@ -1,3 +1,13 @@
+## 0.4.1
+
+- Put Groups first and use freeform colour controls with full swatch buttons.
+- Show compact native-style project metadata, a bounded initial list and square edit actions.
+- Use stable-size dialogs and keyboard-accessible Environment, Suggestions and Skills tabs.
+- Place masked token editing with environment metadata. Use pills for description tags.
+- Remove confusing global assignment/refresh controls and the integration switchboard.
+- Retire agent-membership writes and Tasks enrichment; preserve historical rows and saved skills.
+- Refresh installed Executor and Status Sidebar automatically after relevant edits.
+
 # Changelog
 
 ## Unreleased

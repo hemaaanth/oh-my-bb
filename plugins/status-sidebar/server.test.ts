@@ -747,3 +747,10 @@ describe("sandbox statuses", () => {
     await harness.lifecycle.dispose();
   });
 });
+
+it("accepts freeform hex group colours from Projects without replacing saved groups", async () => {
+  const host=createFakePluginHost({pluginId:"status-sidebar",sdk:{...projectsSdk(),plugins:{callRpc:async()=>({groups:[{id:personalGroupId,name:"Custom",color:"#123abc",position:0,isDefault:true,projectIds:["proj_personal"]}]})}}});
+  await plugin(host.bb);
+  expect(await host.harness.behavior.callRpc("listWorkspaces",null)).toMatchObject({workspaces:[{id:personalGroupId,color:"#123abc",name:"Custom"}]});
+  await host.harness.lifecycle.dispose();
+});

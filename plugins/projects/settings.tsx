@@ -8,32 +8,6 @@ import type { rpcContract } from "./contract";
 import type { scriptsPreferencesContract } from "./scripts-runtime/feature";
 
 type Preferences = PluginRpcResult<(typeof rpcContract)["preferences"]>;
-export const integrationRows = [
-  [
-    "catalogIntegration",
-    "Executor",
-    "bundles",
-    "Load skill choices and notify Executor when assignments change.",
-  ],
-  [
-    "agentsIntegration",
-    "Agents",
-    "agentPreferences",
-    "Load agent choices and notify Agents when assignments change.",
-  ],
-  [
-    "sidebarIntegration",
-    "Status Sidebar",
-    null,
-    "Notify Status Sidebar when project groups change.",
-  ],
-  [
-    "tasksIntegration",
-    "Tasks",
-    null,
-    "Include linked tasks when explicitly generating routing profiles.",
-  ],
-] as const;
 const controlClass =
   "h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring";
 
@@ -133,10 +107,10 @@ export function PreferencesSettings() {
               <div className="flex flex-col gap-2.5 @md:flex-row @md:items-center @md:justify-between @md:gap-5">
                 <div className="min-w-0 flex-1">
                   <label htmlFor="projects-profile-model" className="text-sm">
-                    Project profile model
+                    Project description model
                   </label>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    For explicit profile generation and learning.
+                    Used by “Generate description” in a project’s Suggestions tab.
                   </p>
                 </div>
                 <input
@@ -229,56 +203,5 @@ function ScriptsPreference() {
         />
       </button>
     </div>
-  );
-}
-
-export function IntegrationSettings() {
-  const { data, error, saving, load, save } = useProjectPreferences();
-  return (
-    <section className="min-w-0 space-y-4 [overflow-wrap:anywhere]">
-      <h2 className="text-sm font-medium text-foreground">Oh My BB</h2>
-      <div className="divide-y divide-border/60 rounded-md border border-border bg-surface-recessed/70 px-3">
-        {integrationRows.map(([key, label, _kind, description]) => (
-          <div
-            key={key}
-            className="flex min-w-0 items-center justify-between gap-4 py-3"
-          >
-            <div className="min-w-0">
-              <label htmlFor={`projects-${key}`} className="text-sm">
-                {label}
-              </label>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {description}
-              </p>
-            </div>
-            <button
-              id={`projects-${key}`}
-              type="button"
-              role="switch"
-              aria-checked={data?.[key] ?? false}
-              disabled={saving || !data}
-              onClick={() => void save({ [key]: !data?.[key] })}
-              className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${data?.[key] ? "border-foreground bg-foreground" : "border-input bg-input"}`}
-            >
-              <span
-                className={`pointer-events-none block size-4 rounded-full transition-transform ${data?.[key] ? "translate-x-4 bg-background" : "translate-x-0 bg-foreground"}`}
-              />
-            </button>
-          </div>
-        ))}
-      </div>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-          <button
-            type="button"
-            className="ml-2 underline"
-            onClick={() => void load()}
-          >
-            Retry
-          </button>
-        </p>
-      )}
-    </section>
   );
 }

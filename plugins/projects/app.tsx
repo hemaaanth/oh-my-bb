@@ -1,6 +1,6 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import { ProjectRouterBanner } from "./project-router-ui";
-import { PreferencesSettings, IntegrationSettings } from "./settings";
+import { PreferencesSettings } from "./settings";
 import {
   ProjectsSettings,
   GroupsSettings,
@@ -23,9 +23,8 @@ export default definePluginApp((app) => {
     id: "preferences",
     component: PreferencesSettings,
   });
-  app.slots.settingsSection({ id: "projects", component: ProjectsSettings });
   app.slots.settingsSection({ id: "groups", component: GroupsSettings });
+  app.slots.settingsSection({ id: "projects", component: ProjectsSettings });
   app.slots.settingsSection({ id: "more", component: MoreSettings });
-  app.slots.settingsSection({ id: "oh-my-bb", component: IntegrationSettings });
   registerScriptsApp(app);
 });
