@@ -585,7 +585,7 @@ function SandboxImageCard() {
     catch (failure) { setError(errorText(failure)); setBuilding(false); }
   };
   const groups = [...new Set(imageTools.map(tool => tool.category))];
-  return <section className="min-w-0 space-y-4">
+  return <section className="@container min-w-0 space-y-4">
     {!view ? <p role={error ? "alert" : "status"} className="text-sm">{error || "Loading image settings…"}</p> : <>
       <p className="text-xs text-muted-foreground">Builds run with Docker on this BB server and push to your image registry. No GitHub repository is needed.</p>
       <fieldset disabled={saving || building} className="min-w-0 space-y-4">
