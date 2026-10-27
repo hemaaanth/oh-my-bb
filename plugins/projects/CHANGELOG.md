@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Use separate native Preferences and Oh My BB sections after host-owned Configuration. Remove the outer Projects heading, faux preference legend, duplicate gutters and empty status band. Keep group/project/profile management and costly refresh bounded and collapsed in boxed More. Preserve drafts, keys, IDs, caller guards and saved opt-ins; display Executor and Tasks over the existing catalog/task-workspaces IDs.
 - Require explicit routing generation and learning actions. Remove reload/periodic generation and learning services, project/key/model refresh queues and trace-triggered learning. Preserve stored generated/manual profiles and learned guidance when optional evidence changes.
 - Deny plugin-origin generation RPCs before any project/evidence reads or model calls using the existing SDK client guard. Clarify stale generated-profile replacement and cost in the refresh action and backfill help. Keep explicit-only learning.
 - Native projects, groups, icons and routing work before assignment import and without sibling plugins.

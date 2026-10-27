@@ -94,13 +94,13 @@ export default async function plugin(bb: BbPluginApi) {
     openRouterApiKey: {
       type: "string",
       label: "OpenRouter API key",
-      description: "Used server-side to write and refresh project routing profiles.",
+      description: "For explicit profile generation and learning.",
       secret: true,
     },
     jevApiKey: {
       type: "string",
       label: "Jev API key",
-      description: "Used to suggest a project for new threads from the composer.",
+      description: "For project suggestions in the composer.",
       secret: true,
     },
   });

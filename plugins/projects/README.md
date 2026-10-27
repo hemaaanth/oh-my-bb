@@ -4,11 +4,11 @@ Organize native BB projects into groups. Edit project icons, order and routing p
 
 ## Configuration and Preferences
 
-Keep OpenRouter and Jev authentication keys in native **Configuration**. The profile model lives in outlined **Preferences**. An upgrade imports its saved effective model once and retains the old native value. Reload Projects once to remove the old model editor from Configuration.
+Keep OpenRouter and Jev authentication keys in host-owned **Configuration**. The saved profile model is a separate native **Preferences** section. The plugin adds no outer Projects heading or second content gutter. An upgrade imports its saved effective model once and retains the old native value. Reload Projects once to remove the old model editor from Configuration.
 
-**Oh My BB** contains optional Catalog, Credentials, Agents, Status Sidebar and Task Workspaces integrations. They are off when no saved consent exists. Explicit saved values survive reload. Enabling a source does not contact it. Use **Load assignment choices** to fetch definitions. An unavailable source leaves its selected opaque IDs intact and shows an error. Opening settings never loads sibling definitions or starts migration.
+**Oh My BB** contains native-aligned opt-in switches: Executor (`catalog`), Credentials, Agents, Status Sidebar and Tasks (`task-workspaces`). Stored preference keys and plugin IDs do not change. Integrations are off when no saved consent exists; explicit saved values survive reload. Enabling a source does not contact it. Under **More → Assignments and migration**, use **Load assignment choices** to fetch definitions. An unavailable source leaves selected opaque IDs intact and shows an error. Opening settings never loads sibling definitions or starts migration.
 
-Status Sidebar integration sends group refresh notifications. Task Workspaces integration adds task-source evidence only during routing operations. Neither is a startup dependency. **More** contains setup and migration help.
+Status Sidebar integration sends group refresh notifications. Tasks integration adds task-source evidence only during routing operations. Neither is a startup dependency. Boxed **More** starts collapsed. It contains bounded group/project/profile management, assignment migration, maintenance and setup. Closing disclosures preserves drafts. Costly profile refresh stays under **More → Maintenance** with its replacement and cost consequence.
 
 ## Assignment readiness
 

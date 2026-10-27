@@ -5,9 +5,9 @@ description: Organize BB projects and inspect assignment readiness. Use for Proj
 
 # Projects
 
-Use native Projects settings for groups, icons and routing profiles. These work without assignment readiness or sibling plugins.
+Use More in native Projects settings for bounded group, icon and routing-profile management. These work without assignment readiness or sibling plugins. More and its management/maintenance disclosures start collapsed and keep unsent drafts when closed.
 
-Authentication stays in native Configuration. Behavior lives in Preferences. Oh My BB sources are optional and off without saved consent. Enable a source, then explicitly load assignment choices. Missing definitions must not clear stored IDs.
+Authentication stays in host-owned Configuration. Behavior has a separate native Preferences section. Oh My BB has real opt-in switches: Executor uses catalog, Tasks uses task-workspaces, and Credentials retains its legacy name. Keys and IDs do not change. Sources stay off without saved consent. Enable a source, then explicitly load choices under More → Assignments and migration. Missing definitions must not clear stored IDs.
 
 ## Readiness
 

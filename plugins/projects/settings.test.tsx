@@ -15,24 +15,40 @@ const native: Organization = {
 };
 const preferences = { routingModel: "saved/model", catalogIntegration: false, credentialsIntegration: false, agentsIntegration: false, sidebarIntegration: false, tasksIntegration: false };
 
-async function settings() {
+async function settings(id = "projects") {
   const app = await loadPluginApp(() => import("./app"));
-  return app.settingsSections.find(({ id }) => id === "projects")!;
+  return app.settingsSections.find((section) => section.id === id)!;
+}
+
+function expand(container: HTMLElement, title: string) {
+  const summary = [...container.querySelectorAll("summary")].find((element) => element.textContent === title)!;
+  if (!(summary.parentElement as HTMLDetailsElement).open) fireEvent.click(summary);
+}
+
+function projectEditor(container: HTMLElement) {
+  expand(container, "More");
+  expand(container, "Projects and routing profiles");
+  expand(container, "Synthetic project");
+  expand(container, "Routing profile");
 }
 
 describe("native Projects settings", () => {
   it("keeps organization useful with unimported assignments and does not load optional sources on view", async () => {
     const slot = renderSlot(await settings(), {}, { rpc: { organizationSnapshot: () => native, preferences: () => preferences } });
     expect(await slot.findByText("Synthetic project")).toBeTruthy();
+    expand(slot.container, "More");
+    expand(slot.container, "Project groups");
     expect(slot.getByLabelText("New group name")).toBeTruthy();
     expect(slot.queryByRole("button", { name: "Load assignment choices" })).toBeNull();
-    expect(slot.inspection.rpcCalls.map(({ method }) => method)).toEqual(["organizationSnapshot", "preferences"]);
+    expect(slot.inspection.rpcCalls.some(({ method }) => method === "snapshot" || method === "assignmentOptionsV1")).toBe(false);
     slot.lifecycle.unmount();
   });
 
   it("holds group actions until native data is ready while preserving a loading-time draft", async () => {
     const { promise, resolve } = Promise.withResolvers<Organization>();
     const slot = renderSlot(await settings(), {}, { rpc: { organizationSnapshot: () => promise, preferences: () => preferences } });
+    expand(slot.container, "More");
+    expand(slot.container, "Project groups");
     const color = slot.getByRole("combobox", { name: "New group color" });
     const add = slot.getByRole("button", { name: "Add group" });
     const input = slot.getByLabelText("New group name") as HTMLInputElement;
@@ -55,6 +71,8 @@ describe("native Projects settings", () => {
       preferences: () => preferences,
     } });
     await slot.findByText("Synthetic project");
+    expand(slot.container, "More");
+    expand(slot.container, "Project groups");
     const input = slot.getByLabelText("New group name") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Unsent group draft" } });
     await slot.behavior.emitRealtime("projects-configuration-changed", null);
@@ -73,6 +91,7 @@ describe("native Projects settings", () => {
       updateRoutingProfile: async () => { await pending; return native.projects[0]!.routingProfile; },
     } });
     await slot.findByText("Synthetic project");
+    projectEditor(slot.container);
     const input = slot.getByLabelText("What this project is for") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "First draft" } });
     fireEvent.click(slot.getByRole("button", { name: "Save profile", hidden: true }));
@@ -92,11 +111,48 @@ describe("native Projects settings", () => {
       assignmentOptionsV1: async () => { throw new Error("Credentials unavailable; keep saved selection"); },
     } });
     await slot.findByText("Synthetic project");
+    projectEditor(slot.container);
+    expand(slot.container, "Assignments and migration");
     expect(slot.inspection.rpcCalls.some(({ method }) => method === "assignmentOptionsV1")).toBe(false);
     fireEvent.click(slot.getByRole("button", { name: "Load assignment choices" }));
     await slot.findByText("missing/profile");
     expect(await slot.findByRole("alert")).toBeTruthy();
     expect(slot.inspection.rpcCalls.some(({ method }) => method === "updateProject")).toBe(false);
+    slot.lifecycle.unmount();
+  });
+});
+
+describe("native Projects preferences", () => {
+  it("preserves a newer model draft through a pending save and realtime refresh", async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    let saved = preferences;
+    const slot = renderSlot(await settings("preferences"), {}, { rpc: {
+      preferences: () => saved,
+      updatePreferences: async (patch: Partial<typeof preferences>) => { await promise; saved = { ...saved, ...patch }; return saved; },
+    } });
+    const input = await slot.findByLabelText("Project profile model") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "synthetic/first-model" } });
+    fireEvent.click(slot.getByRole("button", { name: "Save changes" }));
+    fireEvent.change(input, { target: { value: "synthetic/newer-unsent-model" } });
+    await slot.behavior.emitRealtime("projects-configuration-changed", null);
+    await act(async () => resolve());
+    await slot.behavior.emitRealtime("projects-configuration-changed", null);
+    expect(saved.routingModel).toBe("synthetic/first-model");
+    expect(input.value).toBe("synthetic/newer-unsent-model");
+    slot.lifecycle.unmount();
+  });
+
+  it("keeps saved opt-ins when saving a switch fails without probing sources", async () => {
+    const slot = renderSlot(await settings("oh-my-bb"), {}, { rpc: {
+      preferences: () => ({ ...preferences, catalogIntegration: true, tasksIntegration: true }),
+      updatePreferences: async () => { throw new Error("Synthetic save refused"); },
+    } });
+    await waitFor(() => expect(slot.getByRole("switch", { name: "Executor" }).getAttribute("aria-checked")).toBe("true"));
+    fireEvent.click(slot.getByRole("switch", { name: "Tasks" }));
+    expect(await slot.findByRole("alert")).toBeTruthy();
+    expect(slot.getByRole("switch", { name: "Tasks" }).getAttribute("aria-checked")).toBe("true");
+    expect(slot.getByRole("switch", { name: "Executor" }).getAttribute("aria-checked")).toBe("true");
+    expect(slot.inspection.rpcCalls.some(({ method }) => method === "snapshot" || method === "assignmentOptionsV1")).toBe(false);
     slot.lifecycle.unmount();
   });
 });

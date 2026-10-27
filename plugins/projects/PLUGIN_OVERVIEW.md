@@ -8,7 +8,7 @@ Projects and groups work without sibling plugins and before assignment migration
 
 ## Optional sources
 
-Enable Catalog, Credentials, Agents, Status Sidebar or Task Workspaces only when needed. Integrations are off without saved consent. Loading assignment choices is explicit; unavailable definitions retain their saved IDs.
+Enable Executor (`catalog`), Credentials, Agents, Status Sidebar or Tasks (`task-workspaces`) only when needed. Native-aligned switches retain existing keys, IDs and saved consent. Integrations are off without consent. Load assignment choices explicitly in More; unavailable definitions retain their saved IDs.
 
 ## Controlled assignment ownership
 
@@ -16,4 +16,4 @@ Explicit legacy import preserves existing selections. Bounded frozen exports and
 
 ## Routing
 
-Edit routing profiles without credentials. Configure authentication in native Configuration when using generation or Jev suggestions. Existing native composer controls, menus and agent avatars remain host-owned.
+Authentication stays in host-owned Configuration. Preferences contains behavior, and collapsed More contains bounded group/project/profile management, migration, maintenance and setup. Profile generation and learning remain explicit, potentially paid actions. Existing native composer controls, menus and agent avatars remain host-owned.

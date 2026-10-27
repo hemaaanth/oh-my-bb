@@ -6,19 +6,13 @@ import type { ProjectGroupColor, rpcContract } from "./contract";
 import { projectGroupColors } from "./group-colors";
 import { ProjectRouterBanner } from "./project-router-ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { IntegrationSettings, PreferencesSettings, integrationRows } from "./settings";
 
 type Snapshot = PluginRpcResult<(typeof rpcContract)["snapshot"]>;
 type Organization = PluginRpcResult<(typeof rpcContract)["organizationSnapshot"]>;
 type Preferences = PluginRpcResult<(typeof rpcContract)["preferences"]>;
 type Project = Organization["projects"][number];
 type Reference = Snapshot["agents"][number];
-const integrationRows = [
-  ["catalogIntegration", "Catalog", "bundles"],
-  ["credentialsIntegration", "Credentials", "applicationBindings"],
-  ["agentsIntegration", "Agents", "agentPreferences"],
-  ["sidebarIntegration", "Status Sidebar", null],
-  ["tasksIntegration", "Task Workspaces", null],
-] as const;
 const colors: readonly ProjectGroupColor[] = projectGroupColors;
 const groupColorClass: Record<ProjectGroupColor, string> = {
   amber: "bg-warning",
@@ -47,16 +41,21 @@ export function ProjectsPanel() {
   const [groupName, setGroupName] = useState("");
   const [groupColor, setGroupColor] = useState<ProjectGroupColor>("violet");
   const [freshConfirmed, setFreshConfirmed] = useState(false);
-  const [modelDraft, setModelDraft] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const sequence = useRef(0);
   const optionsSequence = useRef(0);
+  const preferencesRef = useRef<Preferences | null>(null);
 
   const load = useCallback(async () => {
     const request = ++sequence.current;
     const [next, nextPreferences] = await Promise.all([rpc.call("organizationSnapshot"), rpc.call("preferences")]);
     if (request !== sequence.current) return;
     setData(next);
+    if (preferencesRef.current && integrationRows.some(([key]) => preferencesRef.current![key] !== nextPreferences[key])) {
+      optionsSequence.current++;
+      setAssignmentData(null);
+    }
+    preferencesRef.current = nextPreferences;
     setPreferences(nextPreferences);
   }, [rpc]);
   useEffect(() => { void load().catch((cause) => setError(String(cause))); return () => { sequence.current++; optionsSequence.current++; }; }, [load]);
@@ -112,126 +111,124 @@ export function ProjectsPanel() {
     return state === "source-owned" || state === "destination-owned";
   };
 
-  return <div className="mx-auto w-full max-w-[760px] space-y-6 px-4 pb-6 [overflow-wrap:anywhere]">
-    <div className={`min-h-6 whitespace-pre-wrap text-sm ${error ? "text-destructive" : "text-muted-foreground"}`} role={error ? "alert" : "status"}>
-      {error ?? (!data ? "Loading projects…" : null)}
-      {error && <button type="button" className="ml-2 underline" onClick={() => void run(load)}>Retry</button>}
-    </div>
-    <section className="space-y-3">
-      <h2 className="text-base font-semibold">Project groups</h2>
-      {data?.groups.map((group) => <div key={group.id} className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-border p-3">
-        <span className={`size-2.5 shrink-0 rounded-full ${groupColorClass[group.color]}`} aria-hidden />
-        <input aria-label={`${group.name} group name`} className={`${controlClass} min-w-0 flex-1`} value={drafts[`group:${group.id}`] ?? group.name}
-          onChange={(event) => setDrafts((current) => ({ ...current, [`group:${group.id}`]: event.target.value }))}
-          onBlur={(event) => { const value = event.target.value; if (value.trim() && value !== group.name) void saveDraft(`group:${group.id}`, value, () => rpc.call("saveGroup", { id: group.id, name: value.trim(), color: group.color })); }} />
-        <Select value={group.color} disabled={busy} onValueChange={(color) => void run(() => rpc.call("saveGroup", { id: group.id, name: drafts[`group:${group.id}`]?.trim() || group.name, color: color as ProjectGroupColor }))}>
-          <SelectTrigger aria-label={`${group.name} group color`} className="w-28"><SelectValue /></SelectTrigger>
-          <SelectContent>{colors.map((color) => <SelectItem key={color} value={color}>{color}</SelectItem>)}</SelectContent>
-        </Select>
-        {!group.isDefault && <button className="text-sm text-destructive" disabled={busy} onClick={() => { if (window.confirm(`Delete ${group.name}? Its projects will move to the default group.`)) void run(() => rpc.call("deleteGroup", { id: group.id })); }}>Delete</button>}
-      </div>)}
-      <form className="flex flex-wrap gap-2" onSubmit={(event) => {
-        event.preventDefault();
-        const draft = groupName;
-        if (draft.trim()) void run(() => rpc.call("saveGroup", { name: draft.trim(), color: groupColor })).then((saved) => { if (saved) setGroupName((current) => current === draft ? "" : current); });
-      }}>
-        <input aria-label="New group name" className={`${controlClass} min-w-[10rem] flex-1`} placeholder="New group name" value={groupName} maxLength={80} onChange={(event) => setGroupName(event.target.value)} />
-        <Select value={groupColor} disabled={!data} onValueChange={(color) => setGroupColor(color as ProjectGroupColor)}>
-          <SelectTrigger aria-label="New group color" className="w-28"><SelectValue /></SelectTrigger>
-          <SelectContent>{colors.map((color) => <SelectItem key={color} value={color}>{color}</SelectItem>)}</SelectContent>
-        </Select>
-        <button className={primaryButtonClass} disabled={busy || !data || !groupName.trim()}>Add group</button>
-      </form>
-    </section>
-
-    <fieldset className="min-w-0 space-y-3 rounded-lg border border-border p-4">
-      <legend className="px-1 text-sm font-medium">Preferences</legend>
-      {preferences && <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); const value = modelDraft; if (value?.trim()) void run(() => rpc.call("updatePreferences", { routingModel: value.trim() })).then((saved) => { if (saved) setModelDraft((current) => current === value ? null : current); }); }}>
-        <label className="grid min-w-0 flex-1 gap-1 text-sm">Project profile model
-          <input className={`${controlClass} min-w-0 w-full`} value={modelDraft ?? preferences.routingModel} onChange={(event) => setModelDraft(event.target.value)} />
-        </label>
-        <button className={controlClass} disabled={busy || !modelDraft?.trim()}>Save</button>
-      </form>}
-    </fieldset>
-
-    <section className="space-y-3">
-      <h2 className="text-sm font-medium">Oh My BB</h2>
-      <div className="divide-y divide-border rounded-lg border border-border px-3">
-        {integrationRows.map(([key, label]) => <label key={key} className="flex items-center justify-between gap-3 py-3 text-sm">
-          <span className="min-w-0">{label}</span>
-          <input type="checkbox" checked={preferences?.[key] ?? false} disabled={busy || !preferences} onChange={(event) => {
-            optionsSequence.current++;
-            setAssignmentData(null);
-            void run(() => rpc.call("updatePreferences", { [key]: event.target.checked }));
-          }} />
-        </label>)}
-      </div>
-      {ready && integrationRows.some(([key, , kind]) => kind && preferences?.[key]) && <button className={controlClass} disabled={busy} onClick={() => void run(loadAssignments)}>Load assignment choices</button>}
-      {!ready && data && <div className="space-y-3 rounded-lg border border-border p-3">
-        <p role="status" className="text-sm">Assignments are not migrated. Projects and groups work without them. Import existing assignments before using Catalog, Credentials or Agents assignment readers.</p>
-        <button className={controlClass} disabled={busy} onClick={() => void run(() => rpc.call("importLegacyFromSourcesV1"), "Legacy assignments imported")}>Import legacy assignments</button>
-        <details className="text-sm">
-          <summary className="cursor-pointer">New installation with no legacy assignments</summary>
-          <label className="my-3 flex items-start gap-2"><input type="checkbox" checked={freshConfirmed} onChange={(event) => setFreshConfirmed(event.target.checked)} /><span>I verified that no sibling has legacy assignments to import. Unavailable or unknown data is not empty data.</span></label>
-          <button className={`${controlClass} h-auto min-h-9 py-2`} disabled={busy || !freshConfirmed} onClick={() => void run(() => rpc.call("initializeFreshV1", { confirmation: "no-legacy-assignments" }))}>Initialize without legacy assignments</button>
-        </details>
-      </div>}
-      {data?.assignmentStatus.filter(({ state }) => state !== "source-owned" && state !== "not-migrated").map(({ kind, state }) => <p key={kind} className="text-sm" role="status">{kind}: {state}. {state !== "destination-owned" && "Writes are frozen. Resume the recorded handoff."}</p>)}
-      {assignmentData && <div className="grid gap-4">
-        {preferences?.agentsIntegration && <ReferenceChecklist title="Agents available everywhere" references={assignmentData.agents} checked={new Set(assignmentData.globalAgentIds)} busy={busy || !writable("agentPreferences")} onToggle={(targetId, enabled) => run(async () => { await rpc.call("setGlobalAgent", { targetId, enabled }); await loadAssignments(); })} />}
-        {preferences?.catalogIntegration && <ReferenceChecklist title="Skills available everywhere" references={assignmentData.bundles} checked={new Set(assignmentData.globalBundleIds)} busy={busy || !writable("bundles")} onToggle={(targetId, enabled) => run(async () => { await rpc.call("setGlobalBundle", { targetId, enabled }); await loadAssignments(); })} />}
-      </div>}
-    </section>
-
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold">Projects</h2>
-        <button className={`${controlClass} h-auto min-h-9 py-2`} aria-describedby="routing-refresh-consequence" disabled={busy || !data?.routingConfigured} onClick={() => void run(() => rpc.call("generateMissingRoutingProfiles"))}>Refresh stale generated profiles</button>
-      </div>
-      <p id="routing-refresh-consequence" className="text-sm text-muted-foreground">Creates missing profiles and replaces stale generated profiles. Manual profiles stay unchanged. Uses the saved model and may incur cost.</p>
-      {data?.groups.map((group) => <div key={group.id} className="space-y-3">
-        <h3 className="text-sm font-medium">{group.name}</h3>
-        {(projectsByGroup.get(group.id) ?? []).map((project) => {
-          const assignment = assignmentData?.projects.find(({ id }) => id === project.id);
-          return <article key={project.id} className="min-w-0 rounded-lg border border-border p-3">
-            <h4 className="text-base font-semibold">{project.icon && `${project.icon} `}{project.name}</h4>
-            <p className="mt-1 break-all text-xs text-muted-foreground">{repositoryLabel(project)}</p>
-            <div className="mt-3 grid min-w-0 gap-3">
-              <label className="grid min-w-0 gap-1 text-sm">Group
-                <Select value={project.groupId ?? ""} disabled={busy} onValueChange={(groupId) => void run(() => rpc.call("setProjectGroup", { projectId: project.id, groupId }))}>
-                  <SelectTrigger className="w-full min-w-0"><SelectValue /></SelectTrigger>
-                  <SelectContent>{data.groups.map((candidate) => <SelectItem key={candidate.id} value={candidate.id}>{candidate.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </label>
-              <label className="grid min-w-0 gap-1 text-sm">Icon
-                <input className={`${controlClass} min-w-0 w-full`} value={drafts[`icon:${project.id}`] ?? project.icon} onChange={(event) => setDrafts((current) => ({ ...current, [`icon:${project.id}`]: event.target.value }))} onBlur={(event) => { const value = event.target.value; if (value !== project.icon) void saveDraft(`icon:${project.id}`, value, () => rpc.call("updateProject", { projectId: project.id, icon: value.trim() })); }} />
-              </label>
-              {assignment && preferences?.credentialsIntegration && <label className="grid min-w-0 gap-1 text-sm">Credentials
-                <Select value={assignment.credentialId === null ? "none" : `profile:${assignment.credentialId}`} disabled={busy || !writable("applicationBindings")} onValueChange={(selection) => void run(async () => { await rpc.call("updateProject", { projectId: project.id, credentialId: selection === "none" ? null : selection.slice("profile:".length) }); await loadAssignments(); })}>
-                  <SelectTrigger className="w-full min-w-0"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="none">No credentials</SelectItem>{assignmentData!.credentials.map((credential) => <SelectItem key={credential.id} value={`profile:${credential.id}`}>{credential.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </label>}
-              {assignment && preferences?.agentsIntegration && <ReferenceChecklist title="Additional agents" references={assignmentData!.agents.filter(({ id }) => !assignmentData!.globalAgentIds.includes(id))} checked={new Set(assignment.agentIds)} busy={busy || !writable("agentPreferences")} onToggle={(targetId, enabled) => run(async () => { await rpc.call("setProjectAgent", { projectId: project.id, targetId, enabled }); await loadAssignments(); })} />}
-              {assignment && preferences?.catalogIntegration && <ReferenceChecklist title="Additional skills" references={assignmentData!.bundles.filter(({ id }) => !assignmentData!.globalBundleIds.includes(id))} checked={new Set(assignment.bundleIds)} busy={busy || !writable("bundles")} onToggle={(targetId, enabled) => run(async () => { await rpc.call("setProjectBundle", { projectId: project.id, targetId, enabled }); await loadAssignments(); })} />}
+  return <section className="min-w-0 [overflow-wrap:anywhere]">
+    <details className="rounded-md border border-border bg-surface-recessed/70 p-3">
+      <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><h2 className="inline text-sm font-medium">More</h2></summary>
+      <div className="mt-3 space-y-3 border-t border-border pt-3">
+        {(error || !data) && <p className={`whitespace-pre-wrap text-sm ${error ? "text-destructive" : "text-muted-foreground"}`} role={error ? "alert" : "status"}>
+          {error ?? "Loading projects…"}
+          {error && <button type="button" className="ml-2 underline" onClick={() => void run(load)}>Retry</button>}
+        </p>}
+        <details className="min-w-0">
+          <summary className="cursor-pointer text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Project groups</summary>
+          <div className="mt-3 space-y-3">
+            <div className="max-h-72 space-y-3 overflow-y-auto">
+              {data?.groups.map((group) => <div key={group.id} className="flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-border p-3">
+                <span className={`size-2.5 shrink-0 rounded-full ${groupColorClass[group.color]}`} aria-hidden />
+                <input aria-label={`${group.name} group name`} className={`${controlClass} min-w-[10rem] flex-1`} value={drafts[`group:${group.id}`] ?? group.name}
+                  onChange={(event) => setDrafts((current) => ({ ...current, [`group:${group.id}`]: event.target.value }))}
+                  onBlur={(event) => { const value = event.target.value; if (value.trim() && value !== group.name) void saveDraft(`group:${group.id}`, value, () => rpc.call("saveGroup", { id: group.id, name: value.trim(), color: group.color })); }} />
+                <div className="flex shrink-0 items-center gap-2">
+                  <Select value={group.color} disabled={busy} onValueChange={(color) => void run(() => rpc.call("saveGroup", { id: group.id, name: drafts[`group:${group.id}`]?.trim() || group.name, color: color as ProjectGroupColor }))}>
+                    <SelectTrigger aria-label={`${group.name} group color`} className="w-28"><SelectValue /></SelectTrigger>
+                    <SelectContent>{colors.map((color) => <SelectItem key={color} value={color}>{color}</SelectItem>)}</SelectContent>
+                  </Select>
+                  {!group.isDefault && <button className="text-sm text-destructive" disabled={busy} onClick={() => { if (window.confirm(`Delete ${group.name}? Its projects will move to the default group.`)) void run(() => rpc.call("deleteGroup", { id: group.id })); }}>Delete</button>}
+                </div>
+              </div>)}
             </div>
-            <details className="mt-4"><summary className="cursor-pointer text-sm">Routing profile</summary>
-              <RoutingProfileEditor project={project} busy={busy} configured={data.routingConfigured} onSave={(profile) => run(() => rpc.call("updateRoutingProfile", { projectId: project.id, ...profile }))} onGenerate={() => run(() => rpc.call("generateRoutingProfile", { projectId: project.id }))} />
-            </details>
-          </article>;
-        })}
-      </div>)}
-      {data?.projects.length === 0 && <p className="text-sm text-muted-foreground">No native projects. Create one from BB's project menu.</p>}
-    </section>
-    <details className="rounded-lg border border-border p-3 text-sm">
-      <summary className="cursor-pointer font-medium">More</summary>
-      <div className="mt-3 space-y-2">
-        <p>Authentication keys stay in native Configuration. Reload Projects once after upgrading to finish moving the profile model to Preferences.</p>
-        <p>Legacy import contacts Status Sidebar, Credentials, Catalog and Agents only when you request it. If a source is unavailable, restore that source and retry. Do not initialize unknown legacy data as empty.</p>
-        <p>Optional sources are off until enabled. Load assignment choices explicitly. Missing choices retain their saved IDs.</p>
+            <form className="flex flex-wrap gap-2" onSubmit={(event) => {
+              event.preventDefault();
+              const draft = groupName;
+              if (draft.trim()) void run(() => rpc.call("saveGroup", { name: draft.trim(), color: groupColor })).then((saved) => { if (saved) setGroupName((current) => current === draft ? "" : current); });
+            }}>
+              <input aria-label="New group name" className={`${controlClass} min-w-[10rem] flex-1`} placeholder="New group name" value={groupName} maxLength={80} onChange={(event) => setGroupName(event.target.value)} />
+              <Select value={groupColor} disabled={!data} onValueChange={(color) => setGroupColor(color as ProjectGroupColor)}>
+                <SelectTrigger aria-label="New group color" className="w-28"><SelectValue /></SelectTrigger>
+                <SelectContent>{colors.map((color) => <SelectItem key={color} value={color}>{color}</SelectItem>)}</SelectContent>
+              </Select>
+              <button className={primaryButtonClass} disabled={busy || !data || !groupName.trim()}>Add group</button>
+            </form>
+          </div>
+        </details>
+        <details className="min-w-0 border-t border-border pt-3">
+          <summary className="cursor-pointer text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Projects and routing profiles</summary>
+          <div className="mt-3 max-h-[28rem] space-y-3 overflow-y-auto">
+            {data?.groups.map((group) => <div key={group.id} className="space-y-3">
+              <h3 className="text-sm font-medium">{group.name}</h3>
+              {(projectsByGroup.get(group.id) ?? []).map((project) => {
+                const assignment = assignmentData?.projects.find(({ id }) => id === project.id);
+                return <details key={project.id} className="min-w-0 rounded-md border border-border">
+                  <summary className="cursor-pointer p-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{project.icon && `${project.icon} `}{project.name}</summary>
+                  <div className="space-y-3 border-t border-border p-3">
+                    <p className="break-all text-xs text-muted-foreground">{repositoryLabel(project)}</p>
+                    <div className="grid min-w-0 gap-3">
+                      <label className="grid min-w-0 gap-1 text-sm">Group
+                        <Select value={project.groupId ?? ""} disabled={busy} onValueChange={(groupId) => void run(() => rpc.call("setProjectGroup", { projectId: project.id, groupId }))}>
+                          <SelectTrigger className="w-full min-w-0"><SelectValue /></SelectTrigger>
+                          <SelectContent>{data.groups.map((candidate) => <SelectItem key={candidate.id} value={candidate.id}>{candidate.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </label>
+                      <label className="grid min-w-0 gap-1 text-sm">Icon
+                        <input className={`${controlClass} min-w-0 w-full`} value={drafts[`icon:${project.id}`] ?? project.icon} onChange={(event) => setDrafts((current) => ({ ...current, [`icon:${project.id}`]: event.target.value }))} onBlur={(event) => { const value = event.target.value; if (value !== project.icon) void saveDraft(`icon:${project.id}`, value, () => rpc.call("updateProject", { projectId: project.id, icon: value.trim() })); }} />
+                      </label>
+                      {assignment && preferences?.credentialsIntegration && <label className="grid min-w-0 gap-1 text-sm">Credentials
+                        <Select value={assignment.credentialId === null ? "none" : `profile:${assignment.credentialId}`} disabled={busy || !writable("applicationBindings")} onValueChange={(selection) => void run(async () => { await rpc.call("updateProject", { projectId: project.id, credentialId: selection === "none" ? null : selection.slice("profile:".length) }); await loadAssignments(); })}>
+                          <SelectTrigger className="w-full min-w-0"><SelectValue /></SelectTrigger>
+                          <SelectContent><SelectItem value="none">No credentials</SelectItem>{assignmentData!.credentials.map((credential) => <SelectItem key={credential.id} value={`profile:${credential.id}`}>{credential.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </label>}
+                      {assignment && preferences?.agentsIntegration && <ReferenceChecklist title="Additional agents" references={assignmentData!.agents.filter(({ id }) => !assignmentData!.globalAgentIds.includes(id))} checked={new Set(assignment.agentIds)} busy={busy || !writable("agentPreferences")} onToggle={(targetId, enabled) => run(async () => { await rpc.call("setProjectAgent", { projectId: project.id, targetId, enabled }); await loadAssignments(); })} />}
+                      {assignment && preferences?.catalogIntegration && <ReferenceChecklist title="Additional skills" references={assignmentData!.bundles.filter(({ id }) => !assignmentData!.globalBundleIds.includes(id))} checked={new Set(assignment.bundleIds)} busy={busy || !writable("bundles")} onToggle={(targetId, enabled) => run(async () => { await rpc.call("setProjectBundle", { projectId: project.id, targetId, enabled }); await loadAssignments(); })} />}
+                    </div>
+                    <details><summary className="cursor-pointer text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Routing profile</summary>
+                      <RoutingProfileEditor project={project} busy={busy} configured={data.routingConfigured} onSave={(profile) => run(() => rpc.call("updateRoutingProfile", { projectId: project.id, ...profile }))} onGenerate={() => run(() => rpc.call("generateRoutingProfile", { projectId: project.id }))} />
+                    </details>
+                  </div>
+                </details>;
+              })}
+            </div>)}
+            {data?.projects.length === 0 && <p className="text-sm text-muted-foreground">No native projects. Create one from BB's project menu.</p>}
+          </div>
+        </details>
+        <details className="min-w-0 border-t border-border pt-3">
+          <summary className="cursor-pointer text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Assignments and migration</summary>
+          <div className="mt-3 space-y-3">
+            {ready && integrationRows.some(([key, , kind]) => kind && preferences?.[key]) && <button className={`${controlClass} h-auto min-h-9 py-2`} disabled={busy} onClick={() => void run(loadAssignments)}>Load assignment choices</button>}
+            {!ready && data && <div className="space-y-3 text-sm">
+              <p role="status">Assignments are not migrated. Projects and groups work without them. Import existing assignments before using Executor, Credentials or Agents assignment readers.</p>
+              <button className={`${controlClass} h-auto min-h-9 py-2`} disabled={busy} onClick={() => void run(() => rpc.call("importLegacyFromSourcesV1"), "Legacy assignments imported")}>Import legacy assignments</button>
+              <details>
+                <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">New installation with no legacy assignments</summary>
+                <label className="my-3 flex items-start gap-2"><input type="checkbox" checked={freshConfirmed} onChange={(event) => setFreshConfirmed(event.target.checked)} /><span>I verified that no sibling has legacy assignments to import. Unavailable or unknown data is not empty data.</span></label>
+                <button className={`${controlClass} h-auto min-h-9 py-2`} disabled={busy || !freshConfirmed} onClick={() => void run(() => rpc.call("initializeFreshV1", { confirmation: "no-legacy-assignments" }))}>Initialize without legacy assignments</button>
+              </details>
+            </div>}
+            {data?.assignmentStatus.filter(({ state }) => state !== "source-owned" && state !== "not-migrated").map(({ kind, state }) => <p key={kind} className="text-sm" role="status">{kind}: {state}. {state !== "destination-owned" && "Writes are frozen. Resume the recorded handoff."}</p>)}
+            {assignmentData && <div className="max-h-64 space-y-3 overflow-y-auto">
+              {preferences?.agentsIntegration && <ReferenceChecklist title="Agents available everywhere" references={assignmentData.agents} checked={new Set(assignmentData.globalAgentIds)} busy={busy || !writable("agentPreferences")} onToggle={(targetId, enabled) => run(async () => { await rpc.call("setGlobalAgent", { targetId, enabled }); await loadAssignments(); })} />}
+              {preferences?.catalogIntegration && <ReferenceChecklist title="Skills available everywhere" references={assignmentData.bundles} checked={new Set(assignmentData.globalBundleIds)} busy={busy || !writable("bundles")} onToggle={(targetId, enabled) => run(async () => { await rpc.call("setGlobalBundle", { targetId, enabled }); await loadAssignments(); })} />}
+            </div>}
+          </div>
+        </details>
+        <details className="min-w-0 border-t border-border pt-3">
+          <summary className="cursor-pointer text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Maintenance</summary>
+          <div className="mt-3 space-y-3">
+            <p id="routing-refresh-consequence" className="text-sm text-muted-foreground">Creates missing profiles and replaces stale generated profiles. Manual profiles stay unchanged. Uses the saved model and may incur cost.</p>
+            <button className={`${controlClass} h-auto min-h-9 max-w-full py-2`} aria-describedby="routing-refresh-consequence" disabled={busy || !data?.routingConfigured} onClick={() => void run(() => rpc.call("generateMissingRoutingProfiles"))}>Refresh stale generated profiles</button>
+          </div>
+        </details>
+        <details className="min-w-0 border-t border-border pt-3">
+          <summary className="cursor-pointer text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Setup guide</summary>
+          <div className="mt-3 space-y-3 text-sm text-muted-foreground">
+            <p>Authentication keys stay in Configuration. If the old profile-model field is still shown there, reload once to finish preserving it in Preferences.</p>
+            <p>Enable optional sources under Oh My BB, then explicitly load choices under Assignments and migration. Missing choices retain their saved IDs.</p>
+            <p>Legacy import contacts Status Sidebar, Credentials, Executor and Agents only when requested. Restore an unavailable source before retrying. Do not initialize unknown legacy data as empty.</p>
+          </div>
+        </details>
       </div>
     </details>
-  </div>;
+  </section>;
 }
 
 function lines(value: string): string[] {
@@ -266,14 +263,9 @@ function RoutingProfileEditor({ project, busy, configured, onSave, onGenerate }:
   return (
     <div className="mt-4 min-w-0 space-y-4" onChange={() => { dirty.current = true; draftRevision.current++; }}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h5 className="text-sm font-medium">Intelligent routing profile</h5>
-            <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">
-              {project.routingProfile.source === "none" ? "Not generated" : project.routingProfile.source === "manual" ? "Edited" : "Generated"}
-            </span>
-          </div>
-        </div>
+        <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">
+          {project.routingProfile.source === "none" ? "Not generated" : project.routingProfile.source === "manual" ? "Edited" : "Generated"}
+        </span>
         <div className="flex gap-2">
           <button className={`${controlClass} hover:bg-secondary disabled:opacity-50`} disabled={busy || !configured} onClick={() => void onGenerate()}>
             {project.routingProfile.source === "none" ? "Generate" : "Regenerate"}
@@ -346,9 +338,7 @@ export default definePluginApp((app) => {
     scopes: ["new-thread"],
     banners: [{ id: "project-suggestion", chrome: "bare", component: ProjectRouterBanner }],
   });
-  app.slots.settingsSection({
-    id: "projects",
-    title: "Projects",
-    component: ProjectsPanel,
-  });
+  app.slots.settingsSection({ id: "preferences", component: PreferencesSettings });
+  app.slots.settingsSection({ id: "oh-my-bb", component: IntegrationSettings });
+  app.slots.settingsSection({ id: "projects", component: ProjectsPanel });
 });
