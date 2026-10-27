@@ -302,14 +302,14 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
       <fieldset disabled={savingConfiguration} onChange={() => { dirty.current = true; }} className="min-w-0 space-y-4 py-1">
       <>
           <div className="space-y-3">
-            <div className="@container grid min-w-0 grid-cols-1 gap-3 @md:grid-cols-2">
+            <div className="@container grid min-w-0 grid-cols-1 gap-3">
               {provider === "box" ? (
                 <>
-                  <label className="space-y-1 text-xs text-muted-foreground">
+                  <label className="block min-w-0 space-y-1 text-xs text-muted-foreground">
                     <span>Machine class</span>
                     <Input value={machineClassDraft} placeholder="small, default, or large" onChange={(event) => setMachineClassDraft(event.target.value)} />
                   </label>
-                  <label className="space-y-1 text-xs text-muted-foreground">
+                  <label className="block min-w-0 space-y-1 text-xs text-muted-foreground">
                     <span>Environment</span>
                     <Input value={environmentDraft} onChange={(event) => setEnvironmentDraft(event.target.value)} />
                   </label>
@@ -317,15 +317,15 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
               ) : null}
               {provider === "freestyle" ? (
                 <>
-                  <label className="space-y-1 text-xs text-muted-foreground">
+                  <label className="block min-w-0 space-y-1 text-xs text-muted-foreground">
                     <span>CPU {"cores"}</span>
                     <Input value={cpuDraft} onChange={(event) => setCpuDraft(event.target.value)} />
                   </label>
-                  <label className="space-y-1 text-xs text-muted-foreground">
+                  <label className="block min-w-0 space-y-1 text-xs text-muted-foreground">
                     <span>Memory {"(GB)"}</span>
                     <Input value={memoryDraft} onChange={(event) => setMemoryDraft(event.target.value)} />
                   </label>
-                  <label className="space-y-1 text-xs text-muted-foreground">
+                  <label className="block min-w-0 space-y-1 text-xs text-muted-foreground">
                     <span>Storage {"(GB)"}</span>
                     <Input value={storageDraft} onChange={(event) => setStorageDraft(event.target.value)} />
                   </label>
@@ -333,7 +333,7 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
               ) : null}
               {provider === "freestyle" ? (
                 <>
-                  <label className="space-y-1 text-xs text-muted-foreground @md:col-span-2">
+                  <label className="block min-w-0 space-y-1 text-xs text-muted-foreground">
                     <span>Persistence mode</span>
                     <Select
                       value={persistenceDraft}
@@ -346,7 +346,7 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
                       </SelectContent>
                     </Select>
                   </label>
-                  <label className="space-y-1 text-xs text-muted-foreground @md:col-span-2">
+                  <label className="block min-w-0 space-y-1 text-xs text-muted-foreground">
                     <span>Bootstrap snapshot <span className="opacity-70">(recommended)</span></span>
                     <Input value={snapshotIdDraft} placeholder="Freestyle snapshot ID" onChange={(event) => setSnapshotIdDraft(event.target.value)} />
                   </label>
@@ -354,11 +354,11 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
               ) : null}
               {provider === "daytona" ? (
                 <>
-                  <label className="space-y-1 text-xs text-muted-foreground">
+                  <label className="block min-w-0 space-y-1 text-xs text-muted-foreground">
                     <span>API URL <span className="opacity-70">(optional)</span></span>
                     <Input value={apiUrlDraft} onChange={(event) => setApiUrlDraft(event.target.value)} />
                   </label>
-                  <label className="space-y-1 text-xs text-muted-foreground @md:col-span-2">
+                  <label className="block min-w-0 space-y-1 text-xs text-muted-foreground">
                     <span>Capacity pool</span>
                     <Select
                       value={
@@ -407,11 +407,11 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
               ) : null}
               {provider === "modal" ? (
                 <>
-                  <label className="space-y-1 text-xs text-muted-foreground">
+                  <label className="block min-w-0 space-y-1 text-xs text-muted-foreground">
                     <span>App name</span>
                     <Input value={appNameDraft} onChange={(event) => setAppNameDraft(event.target.value)} />
                   </label>
-                  <label className="flex items-start justify-between gap-3 text-xs text-muted-foreground @md:col-span-2">
+                  <label className="flex items-start justify-between gap-3 text-xs text-muted-foreground">
                     <span className="min-w-0">
                       <span className="block text-foreground">Modal VM runtime</span>
                       Modal's default gVisor runtime cannot run a Docker daemon. The full-VM runtime is Modal's recommended way to run Docker in a sandbox.
