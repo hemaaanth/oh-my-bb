@@ -417,3 +417,12 @@
 .delegation-task > :first-child {
   margin-top: 0;
 }
+
+/* Settings owns the outer gutters; the editor has one scroll container. */
+.agent-settings-editor .bot-detail-header { border-bottom: 0; }
+.agent-settings-editor .bot-detail-title-row { padding: 0 2rem 0 0; flex-wrap: wrap; }
+.agent-settings-editor .bot-detail-tabs-row { padding: 0; }
+.agent-settings-editor .bot-config-content { padding: 16px 0 0; max-width: none; }
+.agent-settings-editor .bot-section { overflow: visible; }
+.agent-settings-editor .bot-detail-title-row > div { min-width: 0; }
+.agent-settings-editor .bot-detail-actions { flex-wrap: wrap; }

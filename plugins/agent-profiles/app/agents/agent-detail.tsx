@@ -202,14 +202,17 @@ export function AgentDetail({
   profile,
   tab,
   onReload,
+  onBack,
+  onTab,
 }: {
   profile: Profile;
   tab: (typeof agentTabs)[number];
   onReload: () => void | Promise<void>;
+  onBack: () => void;
+  onTab: (tab: (typeof agentTabs)[number]) => void;
 }) {
   const rpc = useRpc<typeof rpcContract>();
   const sdk = useSdk();
-  const navigate = useBbNavigate();
   const [activity, setActivity] = useState<AgentActivity | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -272,7 +275,7 @@ export function AgentDetail({
       writeConfigDraft(`bb:agents:profile:${profile.id}`, null);
       setDeleteOpen(false);
       await onReload();
-      navigate.toPluginPanel("agents");
+      onBack();
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -290,7 +293,7 @@ export function AgentDetail({
       <header className="bot-detail-header">
         <div className="bot-detail-title-row">
           <div className="flex min-w-0 items-center gap-3">
-            <BackButton />
+            <BackButton onClick={onBack} />
             <span className="bot-detail-avatar" aria-hidden>{profile.avatar}</span>
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
@@ -408,11 +411,7 @@ export function AgentDetail({
             items={visibleTabs}
             selected={tab}
             label="Agent sections"
-            onSelect={(selected) =>
-              navigate.toPluginPanel("agents", {
-                subPath: `${profile.id}/${selected}`,
-              })
-            }
+            onSelect={selected => onTab(selected as (typeof agentTabs)[number])}
           />
         </div>
       </header>

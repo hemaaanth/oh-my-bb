@@ -31,7 +31,7 @@ bb plugin install .
 
 This command is documentation, not an instruction to switch a running installation during review. Keep its dependencies installed. Do not move a selected live package to a feature worktree.
 
-Open Agents to save profiles and defaults. Saving a profile does not grant project, runtime, application or toolkit access. A valid profile is portable within native access and independent capability consent. Old membership records remain history only. See [the retirement contract](ASSIGNMENT_HANDOFF.md).
+Open Settings → Agents to save profiles and defaults. Saving a profile does not grant project, runtime, application or toolkit access. A valid profile is portable within native access and independent capability consent. Old membership records remain history only. See [the retirement contract](ASSIGNMENT_HANDOFF.md).
 
 ## Required execution runtime
 

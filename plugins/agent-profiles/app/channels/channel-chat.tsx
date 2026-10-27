@@ -461,9 +461,6 @@ export function ChannelChat({ id, messageId }: { id: string; messageId?: string 
             paused={!!room.archived}
             reply={reply}
             onClearReply={() => setReply(null)}
-            onCreateAgent={() =>
-              navigate.toPluginPanel("agents", { subPath: "new" })
-            }
             onSent={() => {
               atBottom.current = true;
               void loadLatest();

@@ -28,7 +28,7 @@ import "./styles.css";
 
 // Startup surfaces (directive, composer banners and settings) stay
 // eager; the pages evaluate when first opened. See app/shared/lazy.tsx.
-const AgentsPage = deferred(() => import("./app/agents/agents-page").then((module) => module.AgentsPage));
+const AgentsSettings = deferred(() => import("./app/agents/agents-settings").then((module) => module.AgentsSettings));
 const ChannelsPage = deferred(() => import("./app/channels/channels-page").then((module) => module.ChannelsPage));
 const ChannelsHeader = deferred(() => import("./app/channels/channels-header").then((module) => module.ChannelsHeader));
 
@@ -36,7 +36,6 @@ const ChannelsHeader = deferred(() => import("./app/channels/channels-header").t
 type DelegationStatus = PluginRpcResult<(typeof rpcContract)["delegationStatus"]>;
 type ThreadMember = PluginRpcResult<(typeof rpcContract)["threadMembers"]>[number];
 
-const labelClass = "grid gap-1.5 text-sm";
 
 function delegationDisplayStatus(status: string) {
   if (status === "error")
@@ -230,9 +229,8 @@ function JoinedAgentsBanner() {
 
 
 
-function AgentsSettings() {
+function AgentsPreferences() {
   const rpc = useRpc<typeof rpcContract>();
-  const navigate = useBbNavigate();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -265,27 +263,16 @@ function AgentsSettings() {
   };
 
   const selected = profiles.find((profile) => profile.isDefault)?.id ?? "";
-  return (
-    <div className="space-y-4">
-      <label className={labelClass}>
-        Default agent
-        <Select disabled={busy || profiles.length === 0} value={selected} onValueChange={(value) => void selectDefault(value)}>
-          <SelectTrigger><SelectValue placeholder="No agents available" /></SelectTrigger>
-          <SelectContent>
-            {profiles.map((profile) => (
-              <SelectItem key={profile.id} value={profile.id}>{profile.name} (@{profile.slug})</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </label>
-      <p className="text-xs leading-5 text-muted-foreground">
-        Sandbox hosts can choose their available agents in the sandbox provider settings.
-      </p>
-      <Button type="button" variant="outline" onClick={() => navigate.toPluginPanel("agents")}>
-        Open Agents
-      </Button>
+  return <section className="min-w-0 space-y-3" aria-label="Agent preferences">
+    <h2 className="text-sm font-medium">Preferences</h2>
+    <div className="@container flex min-w-0 flex-col gap-2 rounded-md border border-border bg-surface-recessed/70 px-3 py-3 @md:flex-row @md:items-center @md:justify-between">
+      <label htmlFor="default-agent" className="text-sm">Default agent</label>
+      <Select disabled={busy || profiles.length === 0} value={selected} onValueChange={value => void selectDefault(value)}>
+        <SelectTrigger id="default-agent" className="w-full min-w-0 @md:w-72"><SelectValue placeholder={profiles.length ? "Choose an agent" : "Create an agent below"} /></SelectTrigger>
+        <SelectContent>{profiles.map(profile => <SelectItem key={profile.id} value={profile.id}>{profile.name} (@{profile.slug})</SelectItem>)}</SelectContent>
+      </Select>
     </div>
-  );
+  </section>;
 }
 
 function AgentDmSelection() {
@@ -421,13 +408,6 @@ export default definePluginApp((app) => {
     banners: [{ id: "agent-dm-selection", chrome: "bare", component: AgentDmSelection }],
   });
   app.slots.navPanel({
-    id: "agents",
-    title: "Agents",
-    icon: "Bot",
-    path: "agents",
-    component: AgentsPage,
-  });
-  app.slots.navPanel({
     id: "channels",
     title: "Channels",
     icon: "MessageSquare",
@@ -436,10 +416,6 @@ export default definePluginApp((app) => {
     headerContent: ChannelsHeader,
     fixedTabs: channelWorkbenchTabs,
   });
-  app.slots.settingsSection({
-    id: "agent-profiles",
-    title: "Agents",
-    description: "Configure the default agent and reusable profiles for delegation.",
-    component: AgentsSettings,
-  });
+  app.slots.settingsSection({ id: "preferences", component: AgentsPreferences });
+  app.slots.settingsSection({ id: "agents", component: AgentsSettings });
 });

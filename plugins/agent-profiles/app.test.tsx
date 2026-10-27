@@ -67,3 +67,33 @@ describe("canonical DM composer", () => {
     expect(slot.inspection.composer.submits).toEqual([]);
   });
 });
+
+
+describe("Agents settings", () => {
+  it("registers management in settings and removes the Agents rail page", async () => {
+    const app = await loadPluginApp(() => import("./app"));
+    expect(app.navPanels.some(panel => panel.id === "agents")).toBe(false);
+    expect(app.settingsSections.map(section => section.id)).toEqual(["preferences", "agents"]);
+    const slot = renderSlot(app.settingsSections[0]!, {}, { rpc: { listProfiles: () => [profile] } });
+    await slot.findByLabelText("Default agent");
+    expect(slot.queryByRole("button", { name: "Open Agents" })).toBeNull();
+  });
+
+  it("loads profiles without writes and opens the existing editor inside Settings", async () => {
+    const { AgentsSettings } = await import("./app/agents/agents-settings");
+    const slot = renderSlot({ component: AgentsSettings }, {}, {
+      rpc: {
+        listProfiles: () => [profile], agentActivity: () => ({ agent: null, jobs: [] }),
+        agentDetail: () => ({ profile, agent: null }), modelLevelPreview: () => null, models: () => [],
+      } as never,
+      sdk: { projects: { list: async () => [] } },
+    });
+    await slot.findByRole("button", { name: "Edit Reviewer profile" });
+    expect(slot.inspection.rpcCalls.map(call => call.method)).toEqual(["listProfiles"]);
+    fireEvent.click(slot.getByRole("button", { name: "Edit Reviewer profile" }));
+    await slot.findByRole("dialog");
+    expect(slot.inspection.rpcCalls.some(call => ["saveProfile", "run", "delegate"].includes(call.method))).toBe(false);
+    fireEvent.click(slot.getByRole("button", { name: "All agents" }));
+    await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
+  });
+});

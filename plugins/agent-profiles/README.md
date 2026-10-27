@@ -456,3 +456,7 @@ Execution hosts provide their own skills, credentials, and tools; profiles do no
 environment secrets or maintain a second preferred-skill/MCP list.
 
 Existing setup integrations can contribute `AGENT_SETUP_ERROR` and an absolute `AGENT_SETUP_SCRIPT` path. An unresolved setup error fails before dispatch. With a staged script, Agents can acknowledge and retain the turn while it awaits the Python recipe before forwarding the model prompt. Recipe failure or cancellation prevents forwarding. The DM placeholder is not setup readiness. This checkpoint adds no preparation service or native-thin execution path.
+
+### Agent settings
+
+Define agents in **Settings → Agents**. Preferences contains the default-agent choice. The Agents section has a searchable compact list and **New agent**. Select a row or its edit icon to open the profile, mission, persona, activity and usage in a settings dialog. Saved revision checks and local unsaved drafts are retained. There is no Agents rail page. Channel invitations link to Settings for agent management; channel conversations remain on their existing surface.

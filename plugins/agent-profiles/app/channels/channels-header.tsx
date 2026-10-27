@@ -329,8 +329,8 @@ function ChannelBar({ id, nameWidth }: { id: string; nameWidth: number | null })
             await rpc.call("member", { id, agentId: agent.id, present: true });
             setInviteOpen(false);
           })}
-          onCreate={() => navigate.toPluginPanel("agents", { subPath: "new" })}
         />
+        <a className="text-xs text-muted-foreground underline underline-offset-2" href="/settings/plugins/agent-profiles">Manage agents in Settings</a>
         <ErrorMessage error={failure} />
       </Modal>
     </div>

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { experimental_Icon as Icon, useBbNavigate } from "@get-bb/plugin-sdk/app";
+import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing";
 
@@ -9,15 +9,14 @@ export function ErrorMessage({ error }: { error: string | null }) {
   return error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null;
 }
 
-export function BackButton() {
-  const navigate = useBbNavigate();
+export function BackButton({ onClick }: { onClick: () => void }) {
   return (
     <Button
       variant="ghost"
       size="icon"
       className={COARSE_POINTER_HEADER_ICON_BUTTON_CLASS}
       aria-label="All agents"
-      onClick={() => navigate.toPluginPanel("agents")}
+      onClick={onClick}
     >
       <Icon name="ChevronLeft" className="size-4" />
     </Button>

@@ -58,12 +58,12 @@ export function registerChannelHooks(
     if (agent.retired)
       return {
         action: "reject",
-        message: "This agent is retired. Restore it from the Agents page.",
+        message: "This agent is retired. Restore it in Agents settings.",
       };
     if (agent.paused && conversation.kind !== "group")
       return {
         action: "wait",
-        reason: "This agent is paused. Resume it from the Agents page.",
+        reason: "This agent is paused. Resume it in Agents settings.",
       };
 
     const job =
