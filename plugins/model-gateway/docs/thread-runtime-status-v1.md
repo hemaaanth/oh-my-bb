@@ -112,6 +112,10 @@ route-write, KV, filesystem, or remote work during reads. Database bytes and
 `total_changes()` stay unchanged. Production-bundle smoke uses the same actual
 factory and registered handler with disposable stores.
 
-Package version remains 0.3.1. This source change does not publish or move any
-release ref. The lead owns the immutable compatible release/ref and registry
-update after integration. No live Gateway or native UI verification is claimed.
+Package version is 0.3.2. The current registry range is `^0.3.0` with tag prefix
+`model-gateway/`; the intended immutable release is `model-gateway/v0.3.2`.
+The package-local release build sanitizes source-map paths, and the runtime
+pack allowlist excludes tests and synthetic TLS fixtures. Public Git test
+sources and fixture bytes remain unchanged. The lead owns the fresh conflict
+check, immutable tag and publication. No live Gateway or native UI verification
+is claimed.

@@ -410,6 +410,27 @@ row directly from `bb.db`. Secrets live at
 After importing, disable the `account-pool` plugin. Until then the gateway
 routes nothing for `claude-code` and `codex`.
 
+## Building and packaging
+
+Use `npm run build` for release artifacts. The package-local build wrapper runs
+`bb plugin build`, then makes absolute source-map paths package/dependency-relative.
+It preserves mappings, names, and source content. Direct `bb plugin build`
+does not perform this release sanitation.
+
+The npm `files` allowlist includes the server bundle, map and metadata; app JS,
+CSS and metadata; the ESM package marker; the gateway icon; the operator skill;
+the standalone `scripts/apply-setup-files.mjs` helper; licenses; README,
+changelog and the V1 contract. The server bundles its setup helper import.
+The standalone copy remains available for its documented portable use.
+Npm packages load the prebuilt artifacts. Git/path builds keep their source
+files. Tests, synthetic TLS fixtures, development source, and local state are
+not in the runtime tar. Tests and fixtures remain unchanged in public Git.
+
+The current registry range is `^0.3.0` with tag prefix `model-gateway/`.
+Version 0.3.2 is intended for the new immutable `model-gateway/v0.3.2` tag.
+The lead owns the fresh conflict check, tag and publication. No existing release
+tag should move. Building or packing does not install or reload the plugin.
+
 ## Third-party code
 
 See `THIRD_PARTY.md`. The upstream ports (`src/upstreams/`, `src/hub.ts`,

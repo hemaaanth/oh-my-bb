@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-model-gateway",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Keep coding when a Claude or ChatGPT account reaches its limit.",
   "license": "MIT",
   "author": "Hemanth Soni",
@@ -21,6 +21,23 @@
     "model-routing"
   ],
   "type": "module",
+  "files": [
+    "dist/server.js",
+    "dist/server.js.map",
+    "dist/server.meta.json",
+    "dist/package.json",
+    "dist/app.js",
+    "dist/app.css",
+    "dist/app.meta.json",
+    "icons/gateway.svg",
+    "skills/model-gateway/SKILL.md",
+    "scripts/apply-setup-files.mjs",
+    "LICENSE",
+    "THIRD_PARTY.md",
+    "README.md",
+    "CHANGELOG.md",
+    "docs/thread-runtime-status-v1.md"
+  ],
   "engines": {
     "bb": ">=0.46.1",
     "bbPluginSdk": ">=0.6.49"
@@ -41,7 +58,7 @@
     ]
   },
   "scripts": {
-    "build": "bb plugin build",
+    "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
