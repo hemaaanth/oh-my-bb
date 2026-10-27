@@ -186,8 +186,9 @@ export function ProjectsPanel() {
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-base font-semibold">Projects</h2>
-        <button className={`${controlClass} h-auto min-h-9 py-2`} disabled={busy || !data?.routingConfigured} onClick={() => void run(() => rpc.call("generateMissingRoutingProfiles"))}>Fill missing profiles</button>
+        <button className={`${controlClass} h-auto min-h-9 py-2`} aria-describedby="routing-refresh-consequence" disabled={busy || !data?.routingConfigured} onClick={() => void run(() => rpc.call("generateMissingRoutingProfiles"))}>Refresh stale generated profiles</button>
       </div>
+      <p id="routing-refresh-consequence" className="text-sm text-muted-foreground">Creates missing profiles and replaces stale generated profiles. Manual profiles stay unchanged. Uses the saved model and may incur cost.</p>
       {data?.groups.map((group) => <div key={group.id} className="space-y-3">
         <h3 className="text-sm font-medium">{group.name}</h3>
         {(projectsByGroup.get(group.id) ?? []).map((project) => {

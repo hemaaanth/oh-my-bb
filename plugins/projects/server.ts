@@ -755,7 +755,8 @@ export default async function plugin(bb: BbPluginApi) {
       jevRouting.resetCatalog();
       return publicRoutingProfile(profile);
     },
-    generateRoutingProfile: async ({ projectId }) => {
+    generateRoutingProfile: async ({ projectId }, context) => {
+      requireOwnerClient(context);
       const project = (await projectRows()).find((candidate) => candidate.id === projectId);
       if (!project) throw new Error(`Unknown project: ${projectId}`);
       const taskEvidence = await taskRoutingEvidence();
@@ -763,7 +764,8 @@ export default async function plugin(bb: BbPluginApi) {
       return publicRoutingProfile(store.getConfiguration(projectId).routingProfile);
     },
     suggestProject: ({ prompt }) => jevRouting.suggestProject(prompt),
-    generateMissingRoutingProfiles: async () => {
+    generateMissingRoutingProfiles: async (_input, context) => {
+      requireOwnerClient(context);
       const currentSettings = await settings.get();
       if (!currentSettings.openRouterApiKey?.trim()) throw new Error("OpenRouter API key missing. Add it in Projects settings.");
       return reconcileRoutingProfiles();
@@ -810,7 +812,7 @@ export default async function plugin(bb: BbPluginApi) {
     summary: "Inspect and refresh intelligent project routing profiles",
     commands: [
       { name: "status", summary: "Show profile coverage", usage: "bb project-routing status" },
-      { name: "backfill", summary: "Generate every missing or stale automatic profile", usage: "bb project-routing backfill" },
+      { name: "backfill", summary: "Refresh stale generated profiles and create missing ones; replaces generated content", usage: "bb project-routing backfill" },
       { name: "regenerate", summary: "Regenerate one project profile", usage: "bb project-routing regenerate --project <id>" },
       { name: "history", summary: "Show Jev routing hits and misses from new threads", usage: "bb project-routing history" },
       { name: "learn", summary: "Learn routing guidance from routing history now", usage: "bb project-routing learn" },

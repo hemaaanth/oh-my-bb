@@ -56,7 +56,7 @@ export class AssignmentError extends Error {
 }
 
 export function requireOwnerClient(context: { experimental_caller: { kind: string } } | undefined) {
-  if (context?.experimental_caller.kind !== "client") throw new AssignmentError("owner-client-required", "Use the native Projects client for assignment migration.");
+  if (context?.experimental_caller.kind !== "client") throw new AssignmentError("owner-client-required", "Use the native Projects client for this action.");
 }
 
 export function validateRecords(kind: AssignmentKind, records: AssignmentRecord[]) {

@@ -52,6 +52,10 @@ Projects stores a description, keywords, aliases, repositories, a “Not for” 
 
 The saved profile model and server-only OpenRouter key control explicit profile generation. Startup, reload, periodic time, project notifications, key/model changes and routing trace collection do not generate profiles or learned guidance. Use the existing generation actions or commands below to refresh profiles; use `learn` to update learned guidance. Legacy import and assignment export do not trigger generation. Task-source evidence is read only when its optional integration is enabled.
 
+“Refresh stale generated profiles” and `backfill` create missing profiles and replace stale generated profiles, including their descriptions and routing terms. Manual profiles stay unchanged. These actions use the saved model and may incur cost; they do not restore earlier values.
+
+The generation RPCs accept SDK client callers only. Plugin-origin requests are rejected before project/evidence reads or model calls; no plugin initiating contract is approved. SDK client access includes UI, CLI and agents, not proof of human approval. Learning remains an explicit CLI action.
+
 Jev suggestions remain in the native new-thread composer. Exact repository references can route without Jev; other suggestions require its configured key. Fork drafts retain their native project. The native project picker, agent avatars, menus and footer remain host-owned.
 
 Routing history and learned guidance remain in Projects. No routing settings, history, model data or secrets enter assignment exports. Commands remain:

@@ -27,4 +27,6 @@ Do not run a real transfer, reload or source switch without the operator's cutov
 
 `bb project-routing status`, `backfill`, `regenerate --project <id>`, `history`, and `learn` inspect or operate the existing routing feature. Generation and learning may use configured paid services; they are not harmless migration checks.
 
-Profile generation and learning run only through explicit actions. Startup, reload, project changes, key/model changes, periodic time and trace collection preserve stored profiles and learned guidance. `backfill` may replace stale generated profiles; `regenerate` may replace the selected manual profile. Neither command restores an earlier profile after an accidental overwrite.
+Profile generation and learning run only through explicit actions. Startup, reload, project changes, key/model changes, periodic time and trace collection preserve stored profiles and learned guidance. “Refresh stale generated profiles” and `backfill` create missing profiles and replace stale generated profiles; manual profiles stay unchanged. `regenerate` may replace the selected manual profile. These actions use the saved model, may incur cost and do not restore earlier values.
+
+Generation RPCs require an SDK client caller; plugin-origin calls are denied. SDK client access includes UI, CLI and agents, not proof of human approval. No plugin initiating contract is approved. Learning is available only through the explicit `learn` command.

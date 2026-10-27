@@ -120,6 +120,25 @@ describe("explicit routing profile generation", () => {
     } finally { await host.harness.lifecycle.dispose(); }
   });
 
+  it.each([
+    ["generateRoutingProfile", { projectId: projects[0]!.id }],
+    ["generateMissingRoutingProfiles", null],
+  ] as const)("rejects plugin-origin %s before project reads, evidence, model calls or writes", async (method, input) => {
+    const host = await fixture();
+    try {
+      await host.harness.behavior.callRpc("updatePreferences", { tasksIntegration: true });
+      const before = host.rows();
+      await expect(host.harness.behavior.callRpc(method, input, {
+        experimental_caller: { kind: "plugin", pluginId: "task-workspaces" },
+      })).rejects.toThrow("owner-client-required");
+      expect(host.rows()).toEqual(before);
+      expect(host.fetch).not.toHaveBeenCalled();
+      expect(host.harness.inspection.sdk.callsTo("projects.list")).toEqual([]);
+      expect(host.harness.inspection.sdk.callsTo("projects.fileContent")).toEqual([]);
+      expect(host.harness.inspection.sdk.callsTo("plugins.callRpc")).toEqual([]);
+    } finally { await host.harness.lifecycle.dispose(); }
+  });
+
   it("retains explicit backfill and regenerate behavior without rewriting manual or learned fields implicitly", async () => {
     const host = await fixture();
     const manualBefore = host.store.getConfiguration(projects[20]!.id);
