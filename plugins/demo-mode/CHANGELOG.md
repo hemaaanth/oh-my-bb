@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- Show the marketplace screenshot in the GitHub README.
+- Mask workflow titles, phase and agent names, queue previews, and wait details. Keep progress counts visible.
+- Hide browser-rendered list markers without changing list layout. Leave BB's native plugin catalog uncovered.
+
 ## 0.1.0
 
 - Add the Demo Mode sidebar footer action and the `Mod+Shift+D` command `plugin:demo-mode/toggle`.

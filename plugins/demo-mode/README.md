@@ -1,5 +1,7 @@
 # Demo Mode
 
+![A BB thread with Demo Mode on: names and messages appear as blocks, while the sidebar, counts, and controls remain visible.](../../screenshots/demo-mode/thread.png)
+
 Demo Mode gives BB a quiet presentation state. Activate **Demo Mode** with the eye button in the sidebar footer, or press `Mod+Shift+D` (Command on macOS, Control elsewhere). The shortcut is the BB command `plugin:demo-mode/toggle`; rebind it in Settings → Keyboard or with `bb settings keyboard set plugin:demo-mode/toggle <shortcut>`. Each word of a thread or project name, the thread header, a message, a tool step, the "Working" status line, a running command, the uncommitted-files banner, or a draft becomes a solid block of the same length. The blocks are CSS highlights painted over the real text, so the layout does not move when the mode changes. Images keep their size and show a plain fill. Project, branch, and machine names in the composer footer are masked the same way, while the AI model and fallback remain visible. Sidebar rows, project and subagent structure, activity counts, and status indicators remain in place.
 
 Plugin pages are covered too, while the BB frame stays visible, unless the plugin marks its own sensitive parts (see below). Demo Mode has no settings. It does not install or control other plugins.

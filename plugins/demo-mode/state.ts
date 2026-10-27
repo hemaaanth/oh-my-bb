@@ -12,9 +12,11 @@ export function setEnabled(key: string, value: boolean): void {
   window.dispatchEvent(new Event(CHANGE));
 }
 
+export const isPluginPage = () => /^\/plugins\/[^/]+\/[^/]+/.test(location.pathname);
+
 export function applyMode(root: HTMLElement = document.body): void {
   root.toggleAttribute("data-bb-demo-mode", enabled(MODE_KEY));
-  root.toggleAttribute("data-bb-demo-plugin-page", enabled(MODE_KEY) && location.pathname.startsWith("/plugins/"));
+  root.toggleAttribute("data-bb-demo-plugin-page", enabled(MODE_KEY) && isPluginPage());
 }
 
 const LABELS = [
@@ -39,6 +41,9 @@ const LABELS = [
   '[data-promptbox] button[aria-label^="Remove "]',
   'button[aria-label$="Open model and machine details"]',
   '[class~="group/timeline-row"] span[title]',
+  '[aria-label="Workflow"] #thread-workflow-card-toggle[aria-label]',
+  '[aria-label="Workflow"] [title]',
+  '[aria-label="Queued messages"] [data-queued-message-row] [title]',
   '#thread-prompt-banner-git-toggle[aria-label]',
   ':is([data-bb-demo-sensitive], [data-bb-demo-sensitive] *):is([title], [aria-label])',
 ].join(", ");
@@ -65,6 +70,9 @@ const TEXT = [
   // Status line ("Working…"), running command bar, and the uncommitted-files banner sit outside the rows.
   '[class~="animate-shine"]',
   '[class~="group/timeline-row"]',
+  '[aria-label="Workflow"] #thread-workflow-card-toggle [title]',
+  '[aria-label="Workflow"] #thread-workflow-card-body :is([title], .font-medium)',
+  '[aria-label="Queued messages"] [data-queued-message-row] :is([title], [data-queued-message-wait])',
   '[data-promptbox-shell] section[aria-label="Thread context before sending"]',
   // Any plugin can mark its own sensitive elements; see README "For plugin authors".
   '[data-bb-demo-sensitive]',

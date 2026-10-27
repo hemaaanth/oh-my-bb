@@ -55,6 +55,15 @@ test("plugin pages are masked whenever Demo Mode is on", async () => {
 });
 
 
+test("the native plugin catalog is not covered", async () => {
+  vi.stubGlobal("location", { pathname: "/plugins/demo-mode" });
+  const app = await loadPluginApp(() => import("./app"));
+  const scripts = await mountPluginContentScripts(app, { pluginId: "demo-mode", generation: 1 });
+  setEnabled(MODE_KEY, true);
+  expect(document.body.hasAttribute("data-bb-demo-plugin-page")).toBe(false);
+  await scripts.lifecycle.dispose();
+});
+
 test("sidebar labels are concealed and restored without touching indicators", async () => {
   document.body.innerHTML = `<div data-sidebar="content"><a data-sidebar-thread-id="t" aria-label="Private thread"><span class="bb-thread-title" title="Private thread">Private thread</span><span data-status>●</span></a></div>`;
   const app = await loadPluginApp(() => import("./app"));
@@ -91,6 +100,25 @@ test("every masked word becomes one block and blocks follow draft edits", async 
   expect(highlights.has(HIGHLIGHT)).toBe(false);
   expect(branch.getAttribute("aria-label")).toBe("Thread details: private-branch");
   expect(branch.hasAttribute("data-bb-demo-identifier")).toBe(false);
+  await scripts.lifecycle.dispose();
+  document.body.innerHTML = "";
+});
+
+test("workflow titles and queued previews mask while counts remain visible", async () => {
+  document.body.innerHTML = `<section aria-label="Workflow"><button id="thread-workflow-card-toggle" aria-label="Workflow: Private launch"><span title="Private launch">Private launch</span><span>1/3 agents</span></button><div id="thread-workflow-card-body"><span class="font-medium">Research</span><span>2/3</span><span title="Review account">Review account</span></div></section><section aria-label="Queued messages"><header>Queue <span>1</span></header><li data-queued-message-row><div title="Send confidential update"><span>Send confidential update</span><code>secret</code></div><span data-queued-message-wait>Held on host private-machine</span></li></section>`;
+  const app = await loadPluginApp(() => import("./app"));
+  const scripts = await mountPluginContentScripts(app, { pluginId: "demo-mode", generation: 1 });
+  setEnabled(MODE_KEY, true);
+  expect(words()).toEqual(["Private", "launch", "Research", "Review", "account", "Send", "confidential", "update", "secret", "Held", "on", "host", "private-machine"]);
+  expect(words()).not.toContain("1/3");
+  expect(document.querySelector("#thread-workflow-card-toggle")!.getAttribute("aria-label")).toBe("Demo item");
+  expect(document.querySelector("[data-queued-message-row] [title]")!.getAttribute("title")).toBe("Demo item");
+  document.querySelector("[data-queued-message-row] [title] span")!.textContent = "Another private draft";
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(words()).toContain("Another");
+  setEnabled(MODE_KEY, false);
+  expect(document.querySelector("#thread-workflow-card-toggle")!.getAttribute("aria-label")).toBe("Workflow: Private launch");
+  expect(document.querySelector("[data-queued-message-row] [title]")!.getAttribute("title")).toBe("Send confidential update");
   await scripts.lifecycle.dispose();
   document.body.innerHTML = "";
 });

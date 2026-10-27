@@ -1,8 +1,8 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
-import { applyMode, createLabelMask, createTextMask, CHANGE, enabled, MODE_KEY, setEnabled } from "./state";
+import { applyMode, createLabelMask, createTextMask, CHANGE, enabled, isPluginPage, MODE_KEY, setEnabled } from "./state";
 import "./app.css";
 
-const REGIONS = "[data-sidebar=content], [data-sidebar=inset] header, [data-pane-header-focus-tab], [data-timeline-row-id], [data-message-column], [data-promptbox-shell], [class~=animate-shine], [class~='group/timeline-row'], [data-bb-demo-sensitive]";
+const REGIONS = "[data-sidebar=content], [data-sidebar=inset] header, [data-pane-header-focus-tab], [data-timeline-row-id], [data-message-column], [data-promptbox-shell], [class~=animate-shine], [class~='group/timeline-row'], [aria-label=Workflow], [aria-label='Queued messages'], [data-bb-demo-sensitive]";
 
 const toggle = () => setEnabled(MODE_KEY, !enabled(MODE_KEY));
 
@@ -21,7 +21,7 @@ export default definePluginApp((app) => {
       window.addEventListener("storage", update, { signal });
       // Navigation inside BB does not reload the page.
       const observer = new MutationObserver((changes) => {
-        const pluginPage = enabled(MODE_KEY) && location.pathname.startsWith("/plugins/");
+        const pluginPage = enabled(MODE_KEY) && isPluginPage();
         if (document.body.hasAttribute("data-bb-demo-plugin-page") !== pluginPage) applyMode();
         if (enabled(MODE_KEY) && changes.some(({ target, addedNodes, removedNodes }) =>
           (target instanceof Element ? target : target.parentElement)?.closest(REGIONS) ||
