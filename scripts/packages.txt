@@ -14,6 +14,7 @@ plugins/session-share
 plugins/pinpoint
 plugins/projects
 plugins/demo-mode
+plugins/sandboxes
 agents/fx-acp
 agents/nanocodex-acp
 agents/prime-agent-acp

@@ -63,6 +63,8 @@ as `fx-acp/v0.1.0`.
   routing profiles. Explicit assignment handoffs preserve one source of truth.
 - [`plugins/demo-mode`](plugins/demo-mode) hides names and conversation content
   for presentations while keeping sidebar structure, counts, and status visible.
+- [`plugins/sandboxes`](plugins/sandboxes) supplies native runtime adapters for six
+  providers. BB owns machine lifecycle; optional integrations keep their own authority.
 - [`agents/fx-acp`](agents/fx-acp) is an optional standalone ACP adapter for FX.
 - [`agents/nanocodex-acp`](agents/nanocodex-acp) is an optional standalone ACP
   adapter for nanocodex.
@@ -113,6 +115,11 @@ Projects' native organization works without sibling plugins. Catalog, Credential
 Agents, Status Sidebar and Task Workspaces are optional sources. Existing assignment
 state stays blocked rather than appearing empty before a verified import. See
 [Projects migration](docs/migrations/projects.md) before moving an existing installation.
+
+Sandboxes' managed-model runtime requires Model Gateway. Credentials, Catalog,
+Agents and Projects call paths are off for fresh installs; Browser owns its own
+Sandboxes opt-in. Existing image provenance and builder routes need explicit
+preservation checks before cutover. See [Sandboxes migration](docs/migrations/sandboxes.md).
 
 ## Validate the repository
 

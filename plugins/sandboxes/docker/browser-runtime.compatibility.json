@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "sandboxesBrowserContract": "sandboxes-v1",
+  "artifacts": [
+    {
+      "sourceCommit": "29ef6aa242b8d669b7f149a5da76610cacec4883",
+      "inputsSha256": "3179a7e80deb99c04ec34ca0a427579a7f9933c2b9d6243f9fc00209e93fd2d9",
+      "archiveSha256": "8a60cec1886c96af34bc9b3c4323dc9ab609420b0e64146798bfba62f567b7be"
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "packageName": "bb-plugin-browser",
+  "version": "0.3.0",
+  "sourceRepository": "https://github.com/hemaaanth/oh-my-bb",
+  "sourceCommit": "29ef6aa242b8d669b7f149a5da76610cacec4883",
+  "sourcePackageTree": "e30a3130e1b50b047086bf318b643aa35e6be3f2",
+  "buildRecipe": "gnu-tar-sort-name-mtime-0-owner-0-v1",
+  "inputsSha256": "3179a7e80deb99c04ec34ca0a427579a7f9933c2b9d6243f9fc00209e93fd2d9",
+  "archiveSha256": "8a60cec1886c96af34bc9b3c4323dc9ab609420b0e64146798bfba62f567b7be",
+  "inputs": {
+    "LICENSE": {
+      "mode": 420,
+      "sha256": "cf04cb0b1db86fceeb42d12ccbe4fca32ebc896006b7b9cb8ecf2decf9094d06"
+    },
+    "THIRD-PARTY-NOTICES": {
+      "mode": 420,
+      "sha256": "80775b87f26e7ec204856f0ed844b10373bc6ff56f62698b8d6e873720a78b40"
+    },
+    "browser-extension/Inter-OFL.txt": {
+      "mode": 420,
+      "sha256": "aa5d6ab194f340a1a315bbab4613188ef437b9c3e70981aac6c71e36085250df"
+    },
+    "browser-extension/background.js": {
+      "mode": 420,
+      "sha256": "4ae48723218db16d85e9d7f6302e488be88f0830c717be3122dc174ccc51b94a"
+    },
+    "browser-extension/bb.svg": {
+      "mode": 420,
+      "sha256": "6361470096f10305473d4d46880cd531e1e05952923707082eb4017a219d4d3e"
+    },
+    "browser-extension/extension.css": {
+      "mode": 420,
+      "sha256": "93473efe0773b8d0438eda772ebc7ea18b299a9711c799911773247323289113"
+    },
+    "browser-extension/icons/128.png": {
+      "mode": 420,
+      "sha256": "98f777108ae68210f30d3a7513781ecd4048fa2e396948076ab14879fdee1251"
+    },
+    "browser-extension/icons/16.png": {
+      "mode": 420,
+      "sha256": "fe8b879f054bb41839a033160da88cca8750d60a9468498907ec1e67839d5443"
+    },
+    "browser-extension/icons/32.png": {
+      "mode": 420,
+      "sha256": "91d2efc853c37dc93a0f4276b96ad50ba0afb769243b6312d57b0e25371ece24"
+    },
+    "browser-extension/icons/48.png": {
+      "mode": 420,
+      "sha256": "c64a1ac1db90cc08f6c92cdc7e9072e5288639fedf0f4ec1e4eabee27cb3182a"
+    },
+    "browser-extension/inter.woff2": {
+      "mode": 420,
+      "sha256": "498f3d591f4ed72aeff8aeb4f5b8f2a89d6ac59222758989275bf66a06f4d460"
+    },
+    "browser-extension/manifest.json": {
+      "mode": 420,
+      "sha256": "ece698c684d9f177a04b877ab037629ab18f62961ef4925c97580c4b256f47b4"
+    },
+    "browser-extension/options.html": {
+      "mode": 420,
+      "sha256": "ddf1247b6afd91f77f77d8f929e6e0470fcde7005fe19a8da43f54eb95565fc6"
+    },
+    "browser-extension/options.js": {
+      "mode": 420,
+      "sha256": "424819d64d03c8411004c12f372c6e065a822451f677d87950eeb48a668bed80"
+    },
+    "browser-extension/page-operations.js": {
+      "mode": 420,
+      "sha256": "feb0a62cc65c5eaf4b26a5686a4dae2f4d18758e404d2eb5aa5890f8e0cf1e9a"
+    },
+    "browser-extension/popup.html": {
+      "mode": 420,
+      "sha256": "378de24a3a93f9ebc367117c23a02db911c089085f6b7a887aabc16552f0ca67"
+    },
+    "browser-extension/popup.js": {
+      "mode": 420,
+      "sha256": "0ef3b8cb8e0c38fb91f20338f380bcdd1e9212544d3fbdcff67709ada2d55e6d"
+    },
+    "browser-extension/relay.js": {
+      "mode": 420,
+      "sha256": "1a42831ce9f42538e2132f260dc053508174ceaafe8f86c9510da4b0fb632d00"
+    },
+    "docker/auth-state.mjs": {
+      "mode": 420,
+      "sha256": "2d3104f10470918ffcbc00ead942c57282f4bab0285be16c9eadea6b00be4c21"
+    },
+    "docker/desktop.mjs": {
+      "mode": 420,
+      "sha256": "742778590595c7c0d78725f06d580d5afd7b277aa6a618a77c60bc3fa664140c"
+    },
+    "docker/node-runtime.mjs": {
+      "mode": 420,
+      "sha256": "fb0e808fcd8b1ca218d5fdfeed917d295aa2f6731c30046892d794fc078e3e14"
+    },
+    "docker/session-events.mjs": {
+      "mode": 420,
+      "sha256": "1b5f496f7c1e0ca0de8551b494445e3dd4a8830d2c1c8632b692bdb3664df43c"
+    },
+    "docker/session.mjs": {
+      "mode": 420,
+      "sha256": "23f8aa51f3a0742dea937113b20b791bd5aa32dd88e68b145d0426ed2f55a5bc"
+    },
+    "docker/trusted-browser.mjs": {
+      "mode": 493,
+      "sha256": "7db85bb9c2abba8ee27b8b7cb1eb31f33a49add05b77aa93e3bed1f727261a7b"
+    },
+    "package.json": {
+      "mode": 420,
+      "sha256": "774e7ad0ee146c275b876e2546bd7c0b326c78dfd0dac33fb8d84bb1286f2183"
+    }
+  }
+}
