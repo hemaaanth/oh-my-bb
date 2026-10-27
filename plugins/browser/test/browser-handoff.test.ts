@@ -110,3 +110,26 @@ it('expires live viewing and cleans an idle browser',async()=>{
   await vi.advanceTimersByTimeAsync(15*60_000+10_000);expect(closeDesktop).toHaveBeenCalledWith(thread.id);expect(actions()).toEqual(['close']);expect(await harness.behavior.callRpc('getBrowserView',{threadId:thread.id})).toEqual({kind:'closed'});
  }finally{vi.useRealTimers();}
 });
+
+it("returns a reply as user direction and preserves the session without claiming completion", async () => {
+  const { harness, start, actions } = setup();
+  const result = start();
+  await vi.waitFor(() => expect(harness.pendingInteractions).toHaveLength(1));
+  harness.behavior.submitInteraction(harness.pendingInteractions[0].id, { reply: "Use the other account instead; I have not signed in." });
+  const response = await result;
+  expect(response).toContain("Use the other account instead; I have not signed in.");
+  expect(response).toContain("not confirmed complete");
+  expect(response).not.toContain("Take a fresh bb-browser snapshot");
+  expect(actions()).toEqual(["pause", "resume"]);
+});
+
+it("does not accept empty or oversized replies as completion", async () => {
+  for (const reply of ["   ", "x".repeat(4001)]) {
+    const { harness, start, actions } = setup();
+    const result = start();
+    await vi.waitFor(() => expect(harness.pendingInteractions).toHaveLength(1));
+    harness.behavior.submitInteraction(harness.pendingInteractions[0].id, { reply });
+    expect(await result).toMatchObject({ isError: true });
+    expect(actions()).toEqual(["pause", "discard"]);
+  }
+});

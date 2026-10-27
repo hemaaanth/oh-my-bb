@@ -1,3 +1,4 @@
+import "./components/browser-handoff.css";
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import { BrowserLive } from "./components/browser-live";
 import { BrowserHandoff } from "./components/browser-handoff";

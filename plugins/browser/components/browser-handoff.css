@@ -1,0 +1,5 @@
+/* The host attribution repeats this card's Browser title. Scope this to Browser;
+   use a renderer chrome option instead if the SDK adds one. */
+[data-testid="plugin-interaction-shell"]:has([data-bb-plugin="browser"] [data-browser-handoff-card]) p.mb-4.text-xs:first-child {
+  display: none;
+}

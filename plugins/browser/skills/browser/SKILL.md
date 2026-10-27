@@ -91,3 +91,5 @@ to work around it. Personal-login sharing seeds isolated sessions; later agent
 logins remain private to that thread. Disabling sharing stops new seeds, not
 existing authenticated sessions. Close owned sessions before disabling an
 integration. Release and viewer revocation remain available for cleanup.
+
+A handoff Reply is user context or direction, not confirmation that the requested action was completed. Follow that direction before deciding whether to inspect the page or perform another action. Do not automatically treat a reply as Done or Cancel.

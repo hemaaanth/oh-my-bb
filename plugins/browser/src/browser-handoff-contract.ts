@@ -16,3 +16,8 @@ export const browserHandoffRpcContract = defineRpcContract({
   closeBrowserView:{input:z.object({threadId}).strict(),output:z.null()},
   showBrowserHandoff: { input: z.object({ threadId }).strict(), output: z.object({ ok: z.boolean() }) },
 });
+
+export const browserHandoffAnswer = z.union([
+  z.object({ done: z.boolean() }).strict(),
+  z.object({ reply: z.string().trim().min(1).max(4000) }).strict(),
+]);

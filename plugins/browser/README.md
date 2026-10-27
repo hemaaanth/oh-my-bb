@@ -159,3 +159,7 @@ Browser user-agent and fast-task controls are ordinary Preferences rows. An empt
 Fast-task options are disabled until the private API key is set in Configuration. Only a configured/not-configured boolean reaches the app. A credential change refreshes the controls. The backend also refuses enabling fast tasks or configuring a model/endpoint without a key. No paid model request runs to display settings.
 
 The retired continuous-cookie-sync toggle, scheduled fan-out, host sync handler and local active-session import have been removed. Pairing and authentication snapshots for new sessions remain supported. Existing paired records and private snapshots are preserved; old compatibility routes are only transport for the retained pairing, not continuous sync into active sessions.
+
+### Browser handoff replies
+
+Handoff cards use icon actions for Done, Reply and Cancel. Details is a separate disclosure note. Reply sends bounded user context back to the waiting agent without asserting that the browser action succeeded. The browser resumes for the agent to follow that direction; its viewer grant is still revoked first. Failed viewer cleanup still prevents resumption. Done retains its explicit completion-and-verify behavior. Cancel still discards the waiting session.

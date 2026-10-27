@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { browserHandoffHostContract, browserHandoffRpcContract, type BrowserLiveState } from "./browser-handoff-contract.js";
+import { browserHandoffAnswer, browserHandoffHostContract, browserHandoffRpcContract, type BrowserLiveState } from "./browser-handoff-contract.js";
 import { BROWSER_HANDOFF_RENDERER } from "./browser-handoff-renderer.js";
 import { registerViewer } from "./viewer.js";
 export { browserHandoffHostContract } from "./browser-handoff-contract.js";
@@ -79,8 +79,8 @@ export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: st
   });
   bb.agents.registerTool({
     name: "browser_handoff",
-    description: "Pause this thread's browser and ask the user to complete a login, OAuth, button click, or bot check. Shows a native BB action card. Returns after Done or Cancel.",
-    instructions: "Use when browser work needs a person. Open the relevant page with bb-browser first. Explain the exact action. Do not ask for passwords or codes in chat. While this tool waits, leave the browser alone. After Done, take a fresh snapshot and verify the result before continuing. On cancellation stop this browser task.",
+    description: "Pause this thread's browser and ask the user to complete a login, OAuth, button click, or bot check. Shows a native BB action card. Returns after Done, Reply or Cancel.",
+    instructions: "Use when browser work needs a person. Open the relevant page with bb-browser first. Explain the exact action. Do not ask for passwords or codes in chat. While this tool waits, leave the browser alone. After Done, take a fresh snapshot and verify the result before continuing. A reply returns the user’s context or direction without confirming completion; follow that direction. On cancellation stop this browser task.",
     parameters: z.object({ reason: z.enum(["login", "oauth", "bot-check", "button", "other"]), instructions: z.string().trim().min(1).max(2000) }).strict(),
     presentation: { label: { pending: "Browser needs your attention", completed: "Browser handoff answered" }, icon: { glyph: "Globe" } },
     execute: async (input, context) => {
@@ -89,6 +89,7 @@ export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: st
       if (pending.has(context.threadId)) throw new Error("This thread already has a browser handoff");
       pending.add(context.threadId);
       let completed = false;
+      let reply: string | null = null;
       let cleanupOk = false;
       let pauseAttempted = false;
       try {
@@ -102,9 +103,13 @@ export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: st
           threadId: context.threadId, rendererId: BROWSER_HANDOFF_RENDERER,
           title: "Browser needs your attention", payload: { ...input, host: host.name, inlineViewer:!!desktopUrl,...(desktopUrl?{viewerUrl:desktopUrl}:host.machineProviderId?.startsWith('sandbox-')?{viewerUrl:viewer.issue(context.threadId,hostId)}:{}) }, timeoutMs: 15 * 60_000,
           presentation: { label: { pending: "Waiting for your browser action", completed: "Browser action answered" }, icon: { glyph: "Globe" } },
-          describeSubmission: value => ({ title: value && typeof value === "object" && "done" in value && value.done === true ? "Finished browser action" : "Cancelled browser action" }),
+          describeSubmission: value => { const parsed = browserHandoffAnswer.safeParse(value); return { title: parsed.success && "reply" in parsed.data ? "Replied to browser request" : parsed.success && "done" in parsed.data && parsed.data.done ? "Finished browser action" : "Cancelled browser action" }; },
         }, { signal: context.signal });
-        completed = result.outcome === "submitted" && !!result.value && typeof result.value === "object" && "done" in result.value && result.value.done === true;
+        const answer = result.outcome === "submitted" ? browserHandoffAnswer.safeParse(result.value) : null;
+        if (answer?.success) {
+          if ("reply" in answer.data) reply = answer.data.reply;
+          else completed = answer.data.done;
+        }
 
       } finally {
         viewer.revoke(context.threadId);
@@ -112,13 +117,14 @@ export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: st
         try{await idle?.closeDesktop?.(context.threadId);}catch{desktopClosed=false;bb.log.warn("Desktop viewer cleanup could not be confirmed; discarding its browser");}
         // A separate signal is necessary when the tool was stopped by the user.
         const signal = AbortSignal.timeout(65_000);
-        const released = pauseAttempted ? await control(context.threadId, completed && desktopClosed ? "resume" : "discard", signal, hostId).catch(() => ({ ok: false })) : { ok: true };
+        const released = pauseAttempted ? await control(context.threadId, (completed || reply !== null) && desktopClosed ? "resume" : "discard", signal, hostId).catch(() => ({ ok: false })) : { ok: true };
         cleanupOk = released.ok && desktopClosed;
         pending.delete(context.threadId);changed(context.threadId);
         await idle?.release(hostId, context.threadId);
         if (!released.ok) bb.log.warn(`Browser handoff cleanup failed for ${context.threadId}; retry bb-browser thread resume or discard on its host`);
       }
       if (!cleanupOk) return { content: [{ type: "text" as const, text: "Browser handoff cleanup could not be confirmed. Stop automation. Check that its viewer has closed before reopening the browser." }], isError: true };
+      if (reply !== null) return `The user replied to the browser request:\n\n${reply}\n\nThe browser action is not confirmed complete. The session is available. Follow the user’s direction before further checks or actions; do not treat this as Done.`;
       return completed ? "The user finished the browser action. Take a fresh bb-browser snapshot and verify it before continuing." : { content: [{ type: "text" as const, text: "Browser handoff cancelled or expired. Stop this browser task. Its window has been closed." }], isError: true };
     },
   });
