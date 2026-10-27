@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+. /usr/local/lib/bb-sandbox/image-tools.sh
+
 CLICKHOUSE_VERSION="${CLICKHOUSE_VERSION:-latest}"
 GOLDSKY_CLI_VERSION="${GOLDSKY_CLI_VERSION:-latest}"
 INSTALL_PREFIX="${BB_AGENT_CLI_PREFIX:-/usr/local}"
@@ -12,11 +14,13 @@ esac
 
 mkdir -p "$INSTALL_PREFIX/bin" "$MISE_DATA_DIR"
 
+if bb_image_has goldsky; then
 npm install --global --prefix "$INSTALL_PREFIX" \
   --allow-scripts=esbuild \
   "@goldskycom/cli@${GOLDSKY_CLI_VERSION}"
 
-
+fi
+if bb_image_has hubspot; then
 if ! command -v hubspot >/dev/null 2>&1 && [ ! -x "$HOME/.hubspot/bin/hubspot" ]; then
   curl --fail --silent --show-error --location --retry 5 \
     https://api.hubapi.com/hub/cli/backend/hub-cli/latest/install.sh | bash
@@ -26,7 +30,8 @@ if [ "$hubspot_path" != "$INSTALL_PREFIX/bin/hubspot" ]; then
   install -m 755 "$hubspot_path" "$INSTALL_PREFIX/bin/hubspot"
 fi
 
-
+fi
+if bb_image_has clickhouse; then
 MISE_DATA_DIR="$MISE_DATA_DIR" mise install "clickhouse@${CLICKHOUSE_VERSION}"
 printf '%s\n' \
   '#!/bin/sh' \
@@ -35,5 +40,6 @@ printf '%s\n' \
   > "$INSTALL_PREFIX/bin/clickhouse"
 chmod 755 "$INSTALL_PREFIX/bin/clickhouse"
 
+fi
 npm cache clean --force
 rm -rf "$HOME/.cache" "$HOME/.npm"

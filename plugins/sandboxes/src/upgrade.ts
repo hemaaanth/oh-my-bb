@@ -5,10 +5,8 @@
  * One run does, in order:
  *   1. check    — latest Claude Code, Codex, OMP, and FX releases plus the bb
  *                 server version, against the `bb.*` labels on the active image
- *   2. build    — dispatch the `sandbox-image.yml` GitHub workflow with those
- *                 versions and wait for it (it also smoke-tests the image)
- *   3. register — register the pushed tag with every image provider, which
- *                 activates it
+ *   2. build    — use the local Docker builder with saved contents and target versions
+ *   3. register — the image builder registers the pinned digest with providers
  *   4. verify   — the native machine backends now boot that image
  *   5. heal     — resume each live native machine, install the target
  *                 harness versions in place, verify, and put it back to sleep
@@ -30,11 +28,6 @@ import { adaptersRef, latestHarnessVersions } from "./upgrade-sources.js";
 import { executorRunner, gatewaySetupOnHost, outputTail, type GatewaySetupResult } from "./gateway-setup.js";
 import type { BbPluginApi, MachineExecutor } from "@get-bb/plugin-sdk";
 import type { SandboxImageProvider } from "./config.js";
-import type {
-  SandboxImageJobHandle,
-  SandboxImageJobStatus,
-  SandboxImageRegistrationTaskRequest,
-} from "./image-manager.js";
 import type { NativeIdleSuspendHolds } from "./provider/idle-suspend.js";
 
 export const harnessNames = ["claude-code", "codex", "omp", "fx", "pi", "prime-agent", "fx-acp", "nanocodex-acp", "prime-agent-acp"] as const;
@@ -117,24 +110,6 @@ export interface SandboxUpgradeJobStatus {
   report: SandboxUpgradeReport | null;
 }
 
-export interface ImageBuildRun {
-  runId: string;
-  url: string;
-}
-
-export interface ImageBuildDispatcher {
-  dispatch(input: {
-    tag: string;
-    bbAppVersion: string;
-    harness: HarnessVersions;
-  }): Promise<ImageBuildRun>;
-  status(runId: string): Promise<{
-    status: string;
-    conclusion: string | null;
-    url: string;
-  }>;
-}
-
 /** A VM from the pre-0.43 launcher; its record lives in the plugin database. */
 export interface LegacyMachine {
   id: string;
@@ -159,11 +134,7 @@ export interface SandboxUpgradeDeps {
   latestHarnessVersions(): Promise<HarnessVersions>;
   /** The active image's build tag and the versions its labels name. */
   activeImage(): Promise<{ tag: string; versions: CarriedVersions } | null>;
-  builds: ImageBuildDispatcher;
-  startRegistration(
-    request: SandboxImageRegistrationTaskRequest,
-  ): Promise<SandboxImageJobHandle>;
-  imageJob(id: string, cursor: number): SandboxImageJobStatus;
+  buildImage(input: { tag: string; bbAppVersion: string; harness: HarnessVersions; onLog: (message: string) => void }): Promise<void>;
   /**
    * Per image provider, the image the native machine backend will boot next
    * and the one the store has active. They differ when activation did not
@@ -184,10 +155,6 @@ export interface SandboxUpgradeDeps {
 
 const MAX_JOB_LOG_LINES = 2_000;
 const MAX_RETAINED_JOBS = 4;
-const BUILD_POLL_MS = 30_000;
-const BUILD_TIMEOUT_MS = 2 * 60 * 60 * 1_000;
-const REGISTER_POLL_MS = 5_000;
-const REGISTER_TIMEOUT_MS = 2 * 60 * 60 * 1_000;
 const HOST_CONNECT_TIMEOUT_MS = 5 * 60 * 1_000;
 const DISCONNECTED_GRACE_MS = 90_000;
 const HEAL_TIMEOUT_MS = 10 * 60 * 1_000;
@@ -221,7 +188,7 @@ export function staleParts(
   }
   for (const name of harnessNames) {
     const current = carried?.harness[name] ?? null;
-    if (current !== target.harness[name]) {
+    if (current !== "disabled" && current !== target.harness[name]) {
       stale.push(`${harnessLabels[name]} ${current ?? "?"} → ${target.harness[name]}`);
     }
   }
@@ -238,10 +205,13 @@ const {execFileSync}=require('node:child_process');
 const {readFileSync}=require('node:fs');
 const {createHash}=require('node:crypto');
 function version(binary,parse) {
+  const id=({claude:"claude-code","prime-agent":"prime-agent"})[binary] || binary;
+  if(binary !== "bb" && process.env.BB_IMAGE_TOOLS !== undefined && !process.env.BB_IMAGE_TOOLS.split(",").includes(id)) return "disabled";
   try { return parse(execFileSync(binary,['--version'],{encoding:'utf8',timeout:15000,stdio:['ignore','pipe','ignore']}).trim()); }
   catch { return ''; }
 }
 function digest(binary) {
+  if(process.env.BB_IMAGE_TOOLS !== undefined && !process.env.BB_IMAGE_TOOLS.split(",").includes(binary)) return "disabled";
   try { const file=execFileSync('sh',['-c','command -v "$1"','sh',binary],{encoding:'utf8'}).trim();
     return createHash('sha256').update(readFileSync(file)).digest('hex'); }
   catch { return ''; }
@@ -325,6 +295,7 @@ fi
   return `set -u
 P="\${BB_HARNESS_PREFIX:-$(if [ "$(id -u)" = 0 ]; then printf /usr/local; else printf '%s/.local' "$HOME"; fi)}"
 export PATH="$P/bin:$PATH"
+image_tool_enabled() { [ "\${BB_IMAGE_TOOLS+x}" != x ] || case ",\${BB_IMAGE_TOOLS}," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 mkdir -p "$P/bin"
 CLAUDE_CODE_VERSION=${target["claude-code"]}
 CODEX_VERSION=${target.codex}
@@ -341,8 +312,8 @@ case "$(uname -m)" in
   *) echo "unsupported architecture $(uname -m)" >&2; omp_arch=; fx_arch= ;;
 esac
 packages=
-[ "$(cc)" = "$CLAUDE_CODE_VERSION" ] || packages="$packages @anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
-[ "$(cx)" = "$CODEX_VERSION" ] || packages="$packages @openai/codex@$CODEX_VERSION"
+if image_tool_enabled claude-code && [ "$(cc)" != "$CLAUDE_CODE_VERSION" ]; then packages="$packages @anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"; fi
+if image_tool_enabled codex && [ "$(cx)" != "$CODEX_VERSION" ]; then packages="$packages @openai/codex@$CODEX_VERSION"; fi
 # An interrupted install leaves .<name>-XXXX folders behind, and npm then
 # fails with ENOTEMPTY.
 for name in @anthropic-ai/.claude-code @openai/.codex; do
@@ -362,7 +333,7 @@ if [ -n "$packages" ]; then
   # The OMP download below needs the room the npm cache now holds.
   npm cache clean --force >/dev/null 2>&1 || true
 fi
-if [ -n "$omp_arch" ] && [ "$(om)" != "$OMP_VERSION" ]; then
+if image_tool_enabled omp && [ -n "$omp_arch" ] && [ "$(om)" != "$OMP_VERSION" ]; then
   base="https://github.com/can1357/oh-my-pi/releases/download/v$OMP_VERSION"
   if curl -fsSL --retry 5 -o /tmp/bb-upgrade-omp "$base/omp-linux-$omp_arch" \\
     && curl -fsSL --retry 5 -o /tmp/bb-upgrade-omp-sums "$base/SHA256SUMS.txt"; then
@@ -375,7 +346,7 @@ if [ -n "$omp_arch" ] && [ "$(om)" != "$OMP_VERSION" ]; then
   fi
   rm -f /tmp/bb-upgrade-omp /tmp/bb-upgrade-omp-sums
 fi
-if [ -n "$fx_arch" ] && [ "$(fxv)" != "$FX_VERSION" ]; then
+if image_tool_enabled fx && [ -n "$fx_arch" ] && [ "$(fxv)" != "$FX_VERSION" ]; then
   asset="fx-linux-$fx_arch.tar.gz"
   base="https://github.com/vercel-labs/fx/releases/download/v$FX_VERSION"
   if curl -fsSL --retry 5 -o "/tmp/$asset" "$base/$asset" \\
@@ -581,8 +552,7 @@ export class SandboxUpgrader {
         log(`Image ${active?.tag ?? "?"} is behind: ${stale.join(", ") || "rebuild forced"}`);
         const tag = upgradeImageTag(this.now());
         report.image.tag = tag;
-        await this.buildImage(tag, target, log, report);
-        await this.registerImage(tag, log);
+        await this.deps.buildImage({ tag, bbAppVersion: target.bb, harness: target.harness, onLog: log });
         this.verifyNativeImages(log);
         report.image.action = "built";
       }
@@ -595,61 +565,6 @@ export class SandboxUpgrader {
       ];
     }
     log(check ? "Check finished; nothing was changed" : "Upgrade finished");
-  }
-
-  private async buildImage(
-    tag: string,
-    target: UpgradeTarget,
-    log: (message: string) => void,
-    report: SandboxUpgradeReport,
-  ): Promise<void> {
-    const run = await this.deps.builds.dispatch({
-      tag,
-      bbAppVersion: target.bb,
-      harness: target.harness,
-    });
-    report.image.runUrl = run.url;
-    log(`Building image ${tag} in GitHub Actions: ${run.url}`);
-    const started = this.now();
-    let last = "";
-    for (;;) {
-      const status = await this.deps.builds.status(run.runId);
-      if (status.status === "completed") {
-        if (status.conclusion !== "success") {
-          throw new Error(`The image build ended ${status.conclusion ?? "without a conclusion"}: ${status.url}`);
-        }
-        log(`Image ${tag} built, smoke-tested, and pushed`);
-        return;
-      }
-      if (status.status !== last) {
-        log(`Image build ${status.status}`);
-        last = status.status;
-      }
-      if (this.now() - started > BUILD_TIMEOUT_MS) {
-        throw new Error(`The image build did not finish within two hours: ${status.url}`);
-      }
-      await this.sleep(BUILD_POLL_MS);
-    }
-  }
-
-  private async registerImage(tag: string, log: (message: string) => void): Promise<void> {
-    const handle = await this.deps.startRegistration({ reference: tag });
-    log(`Registering ${tag} with the providers as ${handle.id}`);
-    const started = this.now();
-    let cursor = 0;
-    for (;;) {
-      const status = this.deps.imageJob(handle.id, cursor);
-      cursor = status.cursor;
-      for (const line of status.progress) log(`  ${line}`);
-      if (status.state === "error") {
-        throw new Error(`Registering ${tag} failed: ${status.error ?? "a provider registration failed"}`);
-      }
-      if (status.state === "ready") return;
-      if (this.now() - started > REGISTER_TIMEOUT_MS) {
-        throw new Error(`Registering ${tag} did not finish within two hours; watch bb sandbox image-status ${handle.id}`);
-      }
-      await this.sleep(REGISTER_POLL_MS);
-    }
   }
 
   /** Fail loudly if activation did not reach a native machine backend. */

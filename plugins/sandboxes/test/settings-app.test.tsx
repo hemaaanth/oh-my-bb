@@ -7,16 +7,16 @@ import { afterEach, expect, it } from "vitest";
 import { z } from "zod";
 import { registerNativeProjectEnvironmentSync } from "../src/provider/project-env.js";
 import { SandboxPreparationStatus } from "../components/sandbox-settings.js";
+import { defaultImageTools } from "../src/image-tools.js";
 const app = await loadPluginApp(() => import("../app.js"));
 afterEach(cleanup);
 const values = { sshEnabled: false, idleSleepAfter: "15 minutes", defaultSizeTier: "M", copyGitHubCliAuth: false, browserUserAgent: "", browserExitNode: "", browserHomeEgressIp: "", gitUsername: "", browserTailscaleAuthKeyFile: "", browserStateFile: "" };
 const provider = { provider: "freestyle", enabled: true, configured: true, credentialsConfigured: true, apiUrl: "", target: "", sandboxClass: "", appName: "", vmRuntime: false, machineClass: "", environment: "", cpu: "4", memory: "8", storage: "20", persistence: "sticky", snapshotId: "snapshot-original", gatewayEndpoint: "", imageUri: "", supportsImages: false, artifactName: null };
 const baseRpc = {
   preferences: () => ({ values, revision: 0, migrationPending: false }),
-  imageBuildRepository: () => ({ repository: null, savedRepository: null, source: "unconfigured", imported: false }),
   integrations: () => ({ projectEnvironments: false, catalog: false, agents: false, projects: false }),
   providerSettings: () => ({ providers: [provider] }),
-  imageSettings: () => ({ repository: "", platform: "", extraPackages: [], components: [], providers: [] }),
+  imageSettings: () => ({ recipe: { revision: 0, tools: [...defaultImageTools] }, repository: "", platform: "", extraPackages: [], providers: [] }),
   versionAudit: () => ({ serverVersion: "1", previousServerVersion: null, findings: [], images: [], pins: [], machines: [] }),
   sandboxUpgradeJob: () => null,
 };
@@ -111,7 +111,7 @@ it("registers settings without a rail page and loads only local metadata on view
   const slots = app.settingsSections.map(section => renderSlot(section, {}, { rpc: baseRpc as never }));
   await slots[0]!.findByRole("switch", { name: "Copy GitHub CLI login" });
   await slots[1]!.findByRole("button", { name: "Daytona options" });
-  expect(slots.flatMap(slot => slot.inspection.rpcCalls.map(call => call.method)).every(method => ["preferences", "providerSettings", "integrations"].includes(method))).toBe(true);
+  expect(slots.flatMap(slot => slot.inspection.rpcCalls.map(call => call.method)).every(method => ["preferences", "providerSettings", "integrations", "imageSettings"].includes(method))).toBe(true);
   expect(slots[0]!.queryByRole("button", { name: "Save preferences" })).toBeNull();
   expect(slots[0]!.queryByRole("button", { name: "Connection options" })).toBeNull();
   expect(slots[0]!.getByRole("textbox", { name: /Git HTTPS username/ })).toBeTruthy();
@@ -119,4 +119,29 @@ it("registers settings without a rail page and loads only local metadata on view
   expect(slots[1]!.queryByText("Nirvana")).toBeNull();
   fireEvent.click(slots[4]!.getByRole("button", { name: "Open setup guide" }));
   expect(await slots[4]!.findByRole("heading", { name: "Sandboxes setup guide" })).toBeTruthy();
+});
+
+it("lets owners choose image contents, keeps project CLIs opt-in and saves a recipe without building", async () => {
+  let saved: unknown;
+  const slot = renderSlot(app.settingsSections.find(section => section.id === "runtime-images")!, {}, { rpc: { ...baseRpc, updateImageConfiguration: (input: unknown) => { saved = input; return { ...baseRpc.imageSettings(), recipe: { revision: 1, tools: [] } }; } } as never });
+  fireEvent.click(await slot.findByRole("button", { name: "Build first image" }));
+  const goldsky = await slot.findByRole("checkbox", { name: "Goldsky" });
+  expect((goldsky as HTMLInputElement).checked).toBe(false);
+  expect((slot.getByRole("checkbox", { name: "HubSpot" }) as HTMLInputElement).checked).toBe(false);
+  expect(slot.queryByRole("textbox", { name: "Image build repository" })).toBeNull();
+  fireEvent.click(slot.getByRole("button", { name: "Required only" }));
+  fireEvent.click(slot.getByRole("button", { name: "Save image settings" }));
+  await slot.findByText("Image settings saved.");
+  expect(saved).toMatchObject({ recipe: { revision: 0, tools: [] } });
+  expect(slot.inspection.rpcCalls.some(call => call.method === "buildImage")).toBe(false);
+});
+
+it("observes a saved build job on reopen and never starts a replacement", async () => {
+  window.sessionStorage.setItem("sandboxes:image-build", "fixture-running-job");
+  const slot = renderSlot(app.settingsSections.find(section => section.id === "runtime-images")!, {}, { rpc: { ...baseRpc, imageBuildStatus: () => ({ state: "ready", progress: [], cursor: 0, error: null, pinnedReference: "fixture/image@sha256:fixture", registrationErrors: [] }) } as never });
+  fireEvent.click(await slot.findByRole("button", { name: "Build first image" }));
+  await slot.findByText("Built image fixture/image@sha256:fixture");
+  expect(slot.inspection.rpcCalls.filter(call => call.method === "imageBuildStatus")).toHaveLength(1);
+  expect(slot.inspection.rpcCalls.some(call => ["buildImage", "startImageBuild"].includes(call.method))).toBe(false);
+  expect(window.sessionStorage.getItem("sandboxes:image-build")).toBeNull();
 });

@@ -1,5 +1,4 @@
 import type { BbPluginApi, PluginCliResult } from "@get-bb/plugin-sdk";
-import type { ImageBuildRepositoryImport } from "./image-build-repository.js";
 import {
   sandboxProviderValues,
   type SandboxProvider,
@@ -38,7 +37,6 @@ const providerUsage = sandboxProviderValues.join("|");
 const imageProviderUsage = sandboxImageProviders.join("|");
 
 export interface SandboxCliDeps {
-  importImageBuildRepository?: (input: ImageBuildRepositoryImport) => Promise<unknown>;
   sshStatus?: () => Promise<SandboxSshRecord[]>;
   setupSsh?: (hostId: string) => Promise<SandboxSshRecord>;
   listLegacySandboxes?: () => SandboxRecord[];
@@ -314,11 +312,6 @@ export function registerSandboxCli(
     summary: "Manage temporary sandbox machines",
     commands: [
       {
-        name: "import-image-builder",
-        summary: "Import one existing installation's explicit image builder route without dispatching",
-        usage: "bb sandbox import-image-builder --repository <owner/repo> --generation <id> --digest <sha256> --yes",
-      },
-      {
         name: "ssh-status",
         summary: "Show local editor SSH targets and pending Tailscale cleanup",
         usage: "bb sandbox ssh-status [--json]",
@@ -387,7 +380,7 @@ export function registerSandboxCli(
         name: "build-image",
         summary:
           "No-CI fallback: build the image with Docker on the bb server, then register it",
-        usage: `bb sandbox build-image --local [--provider <${imageProviderUsage}>] [--name <version>] [--wait <seconds>|--no-wait] [--json]`,
+        usage: `bb sandbox build-image [--provider <${imageProviderUsage}>] [--name <version>] [--wait <seconds>|--no-wait] [--json]`,
       },
       {
         name: "size",
@@ -436,15 +429,6 @@ export function registerSandboxCli(
     async run(argv, context) {
       const [command, ...args] = argv;
       const wantsJson = args.includes("--json");
-      if (command === "import-image-builder") {
-        if (!args.includes("--yes") || !deps.importImageBuildRepository) throw new Error("Explicit owner import requires --yes and the image builder import handler");
-        return json(await deps.importImageBuildRepository({
-          schemaVersion: 1,
-          repository: option(args, "--repository") ?? "",
-          sourceGeneration: option(args, "--generation") ?? "",
-          sourceSemanticDigest: option(args, "--digest") ?? "",
-        }));
-      }
       if (command === "ssh-status") {
         if (!deps.sshStatus) throw new Error("Sandbox SSH is unavailable");
         const targets = await deps.sshStatus();
@@ -650,11 +634,6 @@ export function registerSandboxCli(
         } else {
           if (deps.buildImage === undefined) {
             throw new Error("Image building is unavailable");
-          }
-          if (!args.includes("--local")) {
-            throw new Error(
-              "GitHub Actions builds and pushes the sandbox image; register it with `bb sandbox register-image`. Pass --local to build it with Docker on this server instead.",
-            );
           }
           const provider = imageProviderOption(args);
           const name = option(args, "--name");

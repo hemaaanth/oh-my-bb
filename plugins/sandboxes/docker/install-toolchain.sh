@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+. /usr/local/lib/bb-sandbox/image-tools.sh
+
 GO_VERSION="${GO_VERSION:-1.27.1}"
 RUST_VERSION="${RUST_VERSION:-1.99.0}"
 OP_VERSION="${OP_VERSION:-2.33.0-beta.02}"
@@ -26,14 +28,12 @@ apt-get update
 apt-get install --yes --no-install-recommends \
   bash \
   build-essential \
-  clang \
-  cmake \
+  libssl-dev \
+  pkg-config \
   dnsutils \
   fd-find \
   file \
   fuse-overlayfs \
-  fzf \
-  gdb \
   gh \
   git \
   git-lfs \
@@ -50,44 +50,47 @@ apt-get install --yes --no-install-recommends \
   libfuse2 \
   libgbm1 \
   libnss3 \
-  libssl-dev \
   libxcomposite1 \
   libxdamage1 \
   libxfixes3 \
   libxkbcommon0 \
   libxrandr2 \
   lsof \
-  make \
   netcat-openbsd \
-  ninja-build \
   openssh-client \
   patch \
   perl \
-  pkg-config \
-  postgresql-client \
   procps \
-  protobuf-compiler \
   python3 \
   python3-pip \
   python3-venv \
-  redis-tools \
   ripgrep \
   rsync \
-  shellcheck \
   slirp4netns \
   socat \
-  sqlite3 \
-  strace \
   sudo \
-  tmux \
   tree \
   uidmap \
   unzip \
-  vim-tiny \
   wget \
   xz-utils \
-  zip \
-  zsh
+  zip
+
+if bb_image_has build-tools; then apt-get install --yes --no-install-recommends build-essential make libssl-dev pkg-config; fi
+if bb_image_has clang; then apt-get install --yes --no-install-recommends clang; fi
+if bb_image_has cmake; then apt-get install --yes --no-install-recommends cmake; fi
+if bb_image_has ninja; then apt-get install --yes --no-install-recommends ninja-build; fi
+if bb_image_has gdb; then apt-get install --yes --no-install-recommends gdb; fi
+if bb_image_has protobuf; then apt-get install --yes --no-install-recommends protobuf-compiler; fi
+if bb_image_has postgresql; then apt-get install --yes --no-install-recommends postgresql-client; fi
+if bb_image_has redis; then apt-get install --yes --no-install-recommends redis-tools; fi
+if bb_image_has sqlite; then apt-get install --yes --no-install-recommends sqlite3; fi
+if bb_image_has fzf; then apt-get install --yes --no-install-recommends fzf; fi
+if bb_image_has shellcheck; then apt-get install --yes --no-install-recommends shellcheck; fi
+if bb_image_has strace; then apt-get install --yes --no-install-recommends strace; fi
+if bb_image_has tmux; then apt-get install --yes --no-install-recommends tmux; fi
+if bb_image_has vim; then apt-get install --yes --no-install-recommends vim-tiny; fi
+if bb_image_has zsh; then apt-get install --yes --no-install-recommends zsh; fi
 
 architecture="$(dpkg --print-architecture)"
 case "$architecture" in
@@ -109,6 +112,7 @@ case "$architecture" in
     ;;
 esac
 
+if bb_image_has go; then
 go_archive="go${GO_VERSION}.linux-${go_arch}.tar.gz"
 curl --fail --location --retry 5 \
   "https://go.dev/dl/${go_archive}" \
@@ -138,6 +142,8 @@ printf '%s  %s\n' "$go_checksum" "/tmp/${go_archive}" \
 rm -rf /usr/local/go
 tar -C /usr/local -xzf "/tmp/${go_archive}"
 
+fi
+if bb_image_has java; then
 curl --fail --location --retry 5 \
   "https://api.adoptium.net/v3/binary/latest/21/ga/linux/${java_arch}/jdk/hotspot/normal/eclipse?project=jdk" \
   --output /tmp/temurin.tar.gz
@@ -148,6 +154,8 @@ for executable in jar java javac javadoc javap; do
   ln -sf "/opt/java/bin/$executable" "/usr/local/bin/$executable"
 done
 
+fi
+if bb_image_has rust; then
 export CARGO_HOME=/opt/rust/cargo
 export RUSTUP_HOME=/opt/rust/rustup
 curl --fail --location --retry 5 https://sh.rustup.rs --output /tmp/rustup.sh
@@ -165,6 +173,8 @@ curl --fail --location --retry 5 \
   --output /tmp/cargo-nextest.tar.gz
 tar -C "$CARGO_HOME/bin" -xzf /tmp/cargo-nextest.tar.gz cargo-nextest
 
+fi
+if bb_image_has bun; then
 bun_asset="bun-linux-${bun_arch}.zip"
 curl --fail --location --retry 5 \
   "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/${bun_asset}" \
@@ -184,6 +194,8 @@ unzip -q -j "/tmp/${bun_asset}" -d /opt/bun/bin
 chmod 755 /opt/bun/bin/bun
 ln -sf /opt/bun/bin/bun /opt/bun/bin/bunx
 
+fi
+if bb_image_has deno; then
 deno_asset="deno-${deno_target}.zip"
 curl --fail --location --retry 5 \
   "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/${deno_asset}" \
@@ -198,14 +210,21 @@ mkdir -p /opt/deno/bin
 unzip -q -j "/tmp/${deno_asset}" -d /opt/deno/bin
 chmod 755 /opt/deno/bin/deno
 
+fi
+if bb_image_has python; then
 python3 -m pip install --break-system-packages --no-cache-dir uv
 UV_PYTHON_INSTALL_DIR=/opt/python UV_PYTHON_BIN_DIR=/usr/local/bin \
   uv python install 3.13 --default --force
 
+fi
+if bb_image_has mise; then
 MISE_DATA_DIR="${MISE_DATA_DIR:-/opt/mise}"
 export MISE_DATA_DIR
 curl --fail --location --retry 5 https://mise.run --output /tmp/install-mise.sh
 MISE_INSTALL_PATH=/usr/local/bin/mise sh /tmp/install-mise.sh
+
+fi
+if bb_image_has op; then
 mise install "1password-cli@${OP_VERSION}"
 # mise keeps its tools out of PATH by design; the sandbox needs a plain `op`.
 printf '%s\n' \
@@ -215,22 +234,19 @@ printf '%s\n' \
   > /usr/local/bin/op
 chmod 755 /usr/local/bin/op
 
+fi
 ln -sf /usr/bin/fdfind /usr/local/bin/fd
-for executable in cargo cargo-nextest clippy-driver rustc rustfmt rustup; do
-  ln -sf "$CARGO_HOME/bin/$executable" "/usr/local/bin/$executable"
-done
-for executable in go gofmt; do
-  ln -sf "/usr/local/go/bin/$executable" "/usr/local/bin/$executable"
-done
-for executable in bun bunx; do
-  ln -sf "/opt/bun/bin/$executable" "/usr/local/bin/$executable"
-done
-ln -sf /opt/deno/bin/deno /usr/local/bin/deno
+if bb_image_has rust; then
+  for executable in cargo cargo-nextest clippy-driver rustc rustfmt rustup; do ln -sf "/opt/rust/cargo/bin/$executable" "/usr/local/bin/$executable"; done
+fi
+if bb_image_has go; then for executable in go gofmt; do ln -sf "/usr/local/go/bin/$executable" "/usr/local/bin/$executable"; done; fi
+if bb_image_has bun; then for executable in bun bunx; do ln -sf "/opt/bun/bin/$executable" "/usr/local/bin/$executable"; done; fi
+if bb_image_has deno; then ln -sf /opt/deno/bin/deno /usr/local/bin/deno; fi
 git lfs install --system
 
 rm -f /tmp/bun-sha256sums.txt /tmp/cargo-nextest.tar.gz /tmp/deno-sha256sum.txt \
   /tmp/go-releases.json /tmp/install-mise.sh /tmp/omp /tmp/omp-sha256sums.txt \
   /tmp/rustup.sh /tmp/temurin.tar.gz \
-  "/tmp/${bun_asset}" "/tmp/${deno_asset}" "/tmp/${go_archive}"
+  "/tmp/${bun_asset:-unused}" "/tmp/${deno_asset:-unused}" "/tmp/${go_archive:-unused}"
 apt-get clean
 rm -rf /var/lib/apt/lists/* /root/.cache

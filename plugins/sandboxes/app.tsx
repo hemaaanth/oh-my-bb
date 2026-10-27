@@ -1,3 +1,5 @@
+import { imageTools, defaultImageTools, type ImageRecipe } from "./src/image-tools.js";
+import { ImagePackageTags } from "./components/image-package-tags.js";
 import type { AttachmentsView } from "./src/attachment-contract.js";
 import {
   Fragment,
@@ -15,7 +17,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { SettingsDialog } from "./components/settings-dialog.js";
 import { Button } from "./components/ui/button";
-import { SandboxPreferencesSettings, SandboxImageBuilderSettings, SandboxIntegrationSettings, SandboxPreparationStatus } from "./components/sandbox-settings.js";
+import { SandboxPreferencesSettings, SandboxIntegrationSettings, SandboxPreparationStatus } from "./components/sandbox-settings.js";
 import { Input } from "./components/ui/input";
 import { Switch } from "./components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
@@ -106,20 +108,16 @@ interface DaytonaCapacityView {
 }
 
 
-interface ImageComponentGroup {
-  category: string;
-  items: string[];
-}
 
 type SandboxImageProvider = "daytona" | "modal" | "e2b";
 
 interface ImageSettingsView {
+  recipe: ImageRecipe;
   repository: string;
   platform: string;
   registryUsernameConfigured: boolean;
   registryTokenConfigured: boolean;
   extraPackages: string[];
-  components: ImageComponentGroup[];
   providers: {
     provider: SandboxImageProvider;
     credentialsConfigured: boolean;
@@ -523,225 +521,92 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
 function SandboxImageCard() {
   const rpc = useRpc<typeof sandboxRpcContract>();
   const [view, setView] = useState<ImageSettingsView | null>(null);
-  const [repositoryDraft, setRepositoryDraft] = useState("");
-  const [platformDraft, setPlatformDraft] = useState("");
-  const [packagesDraft, setPackagesDraft] = useState("");
+  const [repository, setRepository] = useState("");
+  const [platform, setPlatform] = useState("linux/amd64");
+  const [packages, setPackages] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [filter, setFilter] = useState("");
   const [saving, setSaving] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(() => window.sessionStorage.getItem("sandboxes:image-build"));
   const [building, setBuilding] = useState(false);
-  const [buildMessage, setBuildMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const dirty = useRef(false);
-  const request = useRef(0);
-
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const dirty = useRef(false), request = useRef(0);
   const load = useCallback(async () => {
     const id = ++request.current;
-    const next = await rpc.call("imageSettings", null);
-    if (id !== request.current) return;
-    setView(next);
-    if (dirty.current) return;
-    setRepositoryDraft(next.repository);
-    setPlatformDraft(next.platform);
-    setPackagesDraft(next.extraPackages.join(", "));
+    try {
+      const next = await rpc.call("imageSettings", null);
+      if (id !== request.current || dirty.current) return;
+      setView(next); setRepository(next.repository); setPlatform(next.platform || "linux/amd64"); setPackages(next.extraPackages); setSelected(next.recipe.tools); setError("");
+    } catch (failure) { if (id === request.current) setError(errorText(failure)); }
   }, [rpc]);
-
-  useEffect(() => {
-    void load().catch((failure: unknown) => setError(errorText(failure)));
-  }, [load]);
-
-  useRealtime(
-    "sandbox-provider-settings",
-    useCallback(() => {
-      void load().catch(() => undefined);
-    }, [load]),
-  );
-  useRealtime(
-    "sandbox-image-builds",
-    useCallback(
-      (payload) => {
-        if (!isImageBuildProgress(payload)) return;
-        setBuildMessage(
-          payload.provider === null
-            ? payload.message.trim()
-            : `${providerLabel(payload.provider)}: ${payload.message.trim()}`,
-        );
-        if (payload.phase !== "building") void load().catch(() => undefined);
-      },
-      [load],
-    ),
-  );
-
-  if (view === null) {
-    return (
-      <div
-        role="status"
-        className="flex items-center gap-2 text-sm text-muted-foreground"
-      >
-        {error ? <span role="alert">{error}</span> : <><Icon name="Spinner" className="size-4 animate-spin" />Loading sandbox image settings</>}
-      </div>
-    );
-  }
-
+  useEffect(() => { void load(); return () => { request.current++; }; }, [load]);
+  useRealtime("sandbox-provider-settings", useCallback(() => { void load(); }, [load]));
+  useRealtime("sandbox-image-builds", useCallback(payload => {
+    if (isImageBuildProgress(payload)) setMessage(payload.message);
+  }, []));
+  const edit = (change: () => void) => { dirty.current = true; change(); };
   const save = async () => {
-    setSaving(true);
-    request.current++;
-    setError(null);
+    if (!view) return;
+    setSaving(true); setError(""); request.current++;
     try {
-      const next = await rpc.call("updateImageConfiguration", {
-        repository: repositoryDraft,
-        platform: platformDraft,
-        packages: packagesDraft
-          .split(/[\s,]+/u)
-          .map((item) => item.trim())
-          .filter(Boolean),
-      });
-      setView(next);
-      setRepositoryDraft(next.repository);
-      setPackagesDraft(next.extraPackages.join(", "));
-      dirty.current = false;
-    } catch (failure) {
-      setError(errorText(failure));
-    } finally {
-      setSaving(false);
-    }
+      const next = await rpc.call("updateImageConfiguration", { repository, platform, packages, recipe: { revision: view.recipe.revision, tools: selected as ImageRecipe["tools"] } });
+      setView(next); setSelected(next.recipe.tools); setPackages(next.extraPackages); dirty.current = false; setMessage("Image settings saved.");
+    } catch (failure) { setError(errorText(failure)); }
+    finally { setSaving(false); }
   };
-
-  const build = async () => {
+  useEffect(() => {
+    if (!jobId) return;
+    let active = true, cursor = 0;
+    let timer: ReturnType<typeof setTimeout>;
     setBuilding(true);
-    setBuildMessage("Preparing build context");
-    setError(null);
-    try {
-      const result = await rpc.call("buildImage", {});
-      setBuildMessage(
-        `${result.pinnedReference} — ${result.registrations
-          .map(
-            (registration) =>
-              `${providerLabel(registration.provider)} ${registration.status}`,
-          )
-          .join(", ")}`,
-      );
-      await load();
-    } catch (failure) {
-      setError(errorText(failure));
-    } finally {
-      setBuilding(false);
-    }
+    const observe = async () => {
+      try {
+        const status = await rpc.call("imageBuildStatus", { id: jobId, cursor });
+        if (!active) return;
+        cursor = status.cursor;
+        if (status.progress.length) setMessage(status.progress.at(-1) ?? "Building…");
+        if (status.state === "running") { timer = setTimeout(() => void observe(), 2000); return; }
+        window.sessionStorage.removeItem("sandboxes:image-build"); setJobId(null); setBuilding(false);
+        if (status.state === "error") setError(status.error ?? "Image build failed");
+        else { setMessage(`Built image ${status.pinnedReference ?? ""}`); if (status.registrationErrors.length) setError(status.registrationErrors.join("; ")); await load(); }
+      } catch (failure) {
+        if (!active) return;
+        setBuilding(false); setError(`${errorText(failure)}. Check the existing build before starting another.`);
+        // Keep the job ID. Reopening observes it; it never starts a replacement.
+      }
+    };
+    void observe();
+    return () => { active = false; clearTimeout(timer); };
+  }, [rpc, jobId, load]);
+  const build = async () => {
+    setBuilding(true); setError(""); setMessage("Preparing image build…");
+    try { const job = await rpc.call("startImageBuild", {}); window.sessionStorage.setItem("sandboxes:image-build", job.id); setJobId(job.id); }
+    catch (failure) { setError(errorText(failure)); setBuilding(false); }
   };
-
-  return (
-    <section className="overflow-hidden rounded-lg border border-border bg-card">
-
-      <fieldset disabled={saving || building} onChange={() => { dirty.current = true; }} className="min-w-0 space-y-4 px-4 py-3">
-        <div className="grid min-w-0 grid-cols-1 gap-3 @md:grid-cols-2">
-          <label className="space-y-1 text-xs text-muted-foreground @md:col-span-2">
-            <span>Image repository</span>
-            <Input
-              value={repositoryDraft}
-              placeholder="ghcr.io/acme/bb-sandbox"
-              onChange={(event) => setRepositoryDraft(event.target.value)}
-            />
-          </label>
-          <label className="space-y-1 text-xs text-muted-foreground">
-            <span>Platform</span>
-            <Input
-              value={platformDraft}
-              placeholder="linux/amd64"
-              onChange={(event) => setPlatformDraft(event.target.value)}
-            />
-          </label>
-          <label className="space-y-1 text-xs text-muted-foreground @md:col-span-2">
-            <span>Additional Debian packages</span>
-            <Input
-              value={packagesDraft}
-              placeholder="imagemagick, protobuf-compiler"
-              onChange={(event) => setPackagesDraft(event.target.value)}
-            />
-          </label>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={saving}
-          onClick={() => void save()}
-        >
-          {saving ? "Saving…" : "Save image settings"}
-        </Button>
-
-        <details>
-          <summary className="cursor-pointer text-sm font-medium text-foreground">Image contents</summary>
-          <div className="mt-2 grid gap-2 @md:grid-cols-2">
-            {view.components.map((component) => (
-              <div
-                key={component.category}
-                className="rounded-lg border border-border p-3"
-              >
-                <div className="text-xs font-medium text-foreground">
-                  {component.category}
-                </div>
-                <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {component.items.join(" · ")}
-                </div>
-              </div>
-            ))}
-          </div>
-        </details>
-
-        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-          <Button
-            type="button"
-            disabled={view.repository.length === 0 || building}
-            onClick={() => void build()}
-          >
-            {building ? (
-              <Icon name="Spinner" className="mr-2 size-4 animate-spin" />
-            ) : null}
-            Build and register image
-          </Button>
-          {buildMessage !== null ? (
-            <span
-              role="status"
-              className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
-            >
-              {buildMessage}
-            </span>
-          ) : null}
-        </div>
-        {view.repository.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Set an image repository to enable builds.
-          </p>
-        ) : null}
-
-        <div className="space-y-3">
-          {view.providers.map((entry) => (
-            <div key={entry.provider} className="rounded-md bg-muted/35 p-3">
-              <div className="flex items-baseline justify-between gap-3 text-xs">
-                <span className="font-medium text-foreground">
-                  {providerLabel(entry.provider)}
-                </span>
-                <span className="text-muted-foreground">
-                  {entry.credentialsConfigured
-                    ? "Credentials configured"
-                    : "No credentials"}
-                </span>
-              </div>
-              <div className="mt-1 truncate font-mono text-xs text-foreground">
-                {entry.activeName ?? "Not registered"}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <p className="text-xs text-muted-foreground">Private registry authentication is configured in native Configuration. Image builds do not replace existing machines.</p>
-
-        {error !== null ? (
-          <p role="alert" className="text-xs text-destructive">
-            {error}
-          </p>
-        ) : null}
+  const groups = [...new Set(imageTools.map(tool => tool.category))];
+  return <section className="min-w-0 space-y-4">
+    {!view ? <p role={error ? "alert" : "status"} className="text-sm">{error || "Loading image settings…"}</p> : <>
+      <p className="text-xs text-muted-foreground">Builds run with Docker on this BB server and push to your image registry. No GitHub repository is needed.</p>
+      <fieldset disabled={saving || building} className="min-w-0 space-y-4">
+        <label className="block min-w-0 space-y-1 text-sm"><span>Image registry repository</span><Input aria-label="Image registry repository" value={repository} placeholder="ghcr.io/your-account/bb-sandbox" onChange={event => edit(() => setRepository(event.target.value))} /><span className="block text-xs text-muted-foreground">Where the built image is stored. Add its credentials in Configuration.</span></label>
+        <label className="block min-w-0 space-y-1 text-sm"><span>Platform</span><Select value={platform} onValueChange={value => edit(() => setPlatform(value))}><SelectTrigger aria-label="Image platform"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="linux/amd64">Linux · x86-64</SelectItem><SelectItem value="linux/arm64">Linux · ARM64</SelectItem></SelectContent></Select></label>
+        <div className="space-y-2"><h3 className="text-sm font-medium">Image contents</h3><p className="text-xs text-muted-foreground">Required: Node.js, BB host, Git, SSH, the trusted browser and desktop, and connection helpers.</p><p className="text-xs text-muted-foreground">Choose the optional tools below. Existing machines keep their installed tools until replaced.</p></div>
+        <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => edit(() => setSelected([...defaultImageTools]))}>General defaults</Button><Button size="sm" variant="outline" onClick={() => edit(() => setSelected([]))}>Required only</Button></div>
+        <Input aria-label="Find image tools" placeholder="Find tools…" value={filter} onChange={event => setFilter(event.target.value)} />
+        {groups.filter(category => imageTools.some(tool => tool.category === category && `${tool.label} ${tool.category}`.toLowerCase().includes(filter.toLowerCase()))).map(category => <div key={category} className="min-w-0 space-y-2"><h4 className="text-xs font-medium text-muted-foreground">{category}</h4><div className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-2 @sm:grid-cols-2">{imageTools.filter(tool => tool.category === category && `${tool.label} ${tool.category}`.toLowerCase().includes(filter.toLowerCase())).map(tool => {
+          const neededBy = imageTools.filter(other => selected.includes(other.id) && (other.requires as readonly string[]).includes(tool.id));
+          return <label key={tool.id} className="flex min-w-0 items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-current" aria-label={tool.label} checked={selected.includes(tool.id)} disabled={neededBy.length > 0} onChange={event => edit(() => { const next = new Set(selected); if (event.target.checked) { next.add(tool.id); for (const dependency of tool.requires) next.add(dependency); } else next.delete(tool.id); setSelected([...next]); })} /><span className="min-w-0 break-words">{tool.label}{neededBy.length > 0 && <span className="block text-[11px] text-muted-foreground">Required by {neededBy.map(other => other.label).join(", ")}</span>}</span></label>;
+        })}</div></div>)}
+        <ImagePackageTags label="Additional Debian packages" values={packages} onChange={next => edit(() => setPackages(next))} max={100} length={100} />
+        <div className="flex justify-end"><Button variant="outline" size="sm" disabled={!dirty.current} onClick={() => void save()}>{saving ? "Saving…" : "Save image settings"}</Button></div>
       </fieldset>
-    </section>
-  );
+      <div className="space-y-2 border-t border-border pt-4"><Button disabled={saving || building || jobId !== null || dirty.current || !view.repository || !view.providers.some(entry => entry.credentialsConfigured)} onClick={() => void build()}>{building ? "Building…" : "Build and register image"}</Button><p className="text-xs text-muted-foreground">Builds use server resources and may incur registry and provider costs. New machines use the new image; running machines stay unchanged.</p>{dirty.current && <p className="text-xs text-muted-foreground">Save your changes before building.</p>}{!view.repository && <p className="text-xs text-muted-foreground">Set an image registry repository first.</p>}</div>
+      <div className="space-y-2">{view.providers.map(entry => <div key={entry.provider} className="flex min-w-0 items-start justify-between gap-3 text-xs"><span className="shrink-0 font-medium">{providerLabel(entry.provider)}</span><span className="min-w-0 truncate text-muted-foreground">{entry.activeName ?? (entry.credentialsConfigured ? "No image yet" : "Add provider credentials")}</span></div>)}</div>
+      {message && <p role="status" className="break-words text-xs text-muted-foreground">{message}</p>}{error && <p role="alert" className="break-words text-xs text-destructive">{error}</p>}
+      {jobId && !building && <Button size="sm" variant="outline" onClick={() => { window.sessionStorage.removeItem("sandboxes:image-build"); setJobId(null); setMessage(""); }}>Dismiss build status</Button>}
+    </>}
+  </section>;
 }
 
 function versionBadge(state: "current" | "behind" | "unknown"): {
@@ -1019,15 +884,26 @@ function ProviderSettings() {
   </section>;
 }
 function RuntimeSettings() {
+  const rpc = useRpc<typeof sandboxRpcContract>();
+  const [ready, setReady] = useState<boolean | null>(null);
+  const load = useCallback(() => { void rpc.call("imageSettings", null).then(view => setReady(view.providers.some(provider => provider.activeName !== null)), () => setReady(null)); }, [rpc]);
+  useEffect(load, [load]);
+  useRealtime("sandbox-provider-settings", load);
   return <section className="min-w-0 space-y-3"><h2 className="text-sm font-medium">Runtime images</h2>
     <div className="rounded-lg border border-border bg-surface-recessed/70 px-3 divide-y divide-border">
-      <div className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="text-sm">Image builder</p><p className="text-xs text-muted-foreground">Configure packages and build new images.</p></div><SettingsDialog title="Image builder" description="Changes apply to future machines. Builds may incur provider costs." buttonLabel="Configure"><SandboxImageBuilderSettings /><SandboxImageCard /></SettingsDialog></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="text-sm">Image builder</p><p className="text-xs text-muted-foreground">{ready === false ? "No image yet. Choose tools and build your first image." : "Choose tools and build images for new machines."}</p></div><SettingsDialog title="Image builder" description="Choose the contents of new sandbox machines." buttonLabel={ready === false ? "Build first image" : "Configure"}><SandboxImageCard /></SettingsDialog></div>
       <div className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="text-sm">Updates</p><p className="text-xs text-muted-foreground">Review runtime versions before upgrading.</p></div><SettingsDialog title="Runtime updates" description="Review the affected images and machines before starting an update." buttonLabel="Review updates"><SandboxUpgradesCard /></SettingsDialog></div>
     </div>
   </section>;
 }
 function MoreSettings() {
-  return <section className="min-w-0 space-y-3"><h2 className="text-sm font-medium">More</h2><div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-recessed/70 px-3 py-3"><div><p className="text-sm">Setup guide</p><p className="text-xs text-muted-foreground">Setup and usage.</p></div><SettingsDialog title="Sandboxes setup guide" description="Run a project on a cloud machine." buttonLabel="Open setup guide"><ol className="space-y-4 text-sm list-decimal pl-5"><li>Add your provider credentials in Configuration, then enable that provider in Providers.</li><li>Choose a default size and idle timeout in Preferences.</li><li>Start a thread and choose a Sandboxes machine. BB manages its lifetime.</li></ol><p className="mt-4 text-sm text-muted-foreground">Modal machines run for up to 24 hours. Other providers can sleep on idle. Freestyle retention depends on your plan and persistence setting.</p><p className="mt-3 text-sm text-muted-foreground">Use Runtime images to configure builds or review updates. Existing machines keep their current image until you update them.</p></SettingsDialog></div></section>;
+  return <section className="min-w-0 space-y-3"><h2 className="text-sm font-medium">More</h2><div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-recessed/70 px-3 py-3"><div><p className="text-sm">Setup guide</p><p className="text-xs text-muted-foreground">Setup and usage.</p></div><SettingsDialog title="Sandboxes setup guide" description="From your first image to your first cloud thread." buttonLabel="Open setup guide"><ol className="space-y-4 text-sm list-decimal pl-5">
+    <li><strong>Connect a provider.</strong> Add its API credentials in Configuration. Open its options in Providers and choose a region or runtime if needed.</li>
+    <li><strong>Prepare the builder.</strong> Install Docker with Buildx on this BB server. Create a private container registry repository, such as GHCR or Docker Hub, and add its username and write token in Configuration.</li>
+    <li><strong>Build your first image.</strong> Open Runtime images → Image builder. Enter the registry repository, choose its platform and optional tools, and save. Goldsky and HubSpot are optional. Choose Build and register image to build, push, and register the image with your configured Daytona, Modal or E2B providers. This can take a while and may incur costs.</li>
+    <li><strong>Choose defaults.</strong> Set the default machine size and idle timeout in Preferences. Modal runs for up to 24 hours and does not sleep on idle.</li>
+    <li><strong>Start a thread.</strong> Pick your project and a Sandboxes machine in BB’s new-thread composer. BB creates and retires the machine. New machines use your registered image.</li>
+  </ol><p className="mt-4 text-xs text-muted-foreground">Box and Freestyle bootstrap tools at launch and do not use this custom-image builder. Tailscale keys are needed for trusted browser home egress and optional local-editor SSH. Existing machines and images are not changed by saving builder settings.</p></SettingsDialog></div></section>;
 }
 
 

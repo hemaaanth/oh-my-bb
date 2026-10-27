@@ -1,3 +1,5 @@
+import type { HarnessVersions } from "./upgrade.js";
+import { defaultImageTools, normalizeImageTools } from "./image-tools.js";
 import { randomUUID } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { verifyRegistryBrowserArtifact, type BrowserArtifact } from "./browser-artifact.js";
@@ -63,6 +65,7 @@ export interface SandboxImageManagerDeps {
   bb: BbPluginApi;
   store: SandboxStore;
   getSettings: () => Promise<SandboxSettings>;
+  getImageTools?: () => Promise<string[]>;
   dockerfilePath: string;
   verifyBrowserImage?: (registry: SandboxImageRegistryConfig, pinnedReference: string) => Promise<BrowserArtifact>;
   bbAppVersion: () => Promise<string>;
@@ -143,6 +146,9 @@ function targetKey(target: RegistrationTarget): string {
 }
 
 export interface SandboxImageBuildRequest {
+  /** Internal upgrade target; never accepted from the public build RPC. */
+  harness?: HarnessVersions;
+  onLog?: (message: string) => void;
   provider?: SandboxProvider;
   name?: string;
   /** Register only this size on tiered providers; all sizes when absent. */
@@ -211,6 +217,8 @@ interface PreparedImageJob {
   targets: RegistrationTarget[];
   registrable: SandboxImageProvider[];
   extraPackages: string[];
+  tools: string[];
+  harness?: HarnessVersions;
   /** Target key to the image row opened for it, absent when it was skipped. */
   rows: Map<string, string>;
 }
@@ -243,7 +251,7 @@ export class SandboxImageManager {
     return this.start("build", request);
   }
 
-  /** Register an image CI already pushed, resolving the reference first. */
+  /** Register an image already pushed, resolving the reference first. */
   startRegistration(
     request: SandboxImageRegistrationTaskRequest = {},
   ): Promise<SandboxImageJobHandle> {
@@ -301,6 +309,7 @@ export class SandboxImageManager {
     };
     const log = (message: string) => {
       this.appendJobLog(job, message);
+      request.onLog?.(message);
       this.deps.bb.log.info(`[sandbox image] ${message.trimEnd()}`);
       this.publishProgress(null, null, "building", message);
     };
@@ -400,6 +409,7 @@ export class SandboxImageManager {
       }
       requested = request.provider;
     }
+    const tools = normalizeImageTools(await this.deps.getImageTools?.() ?? defaultImageTools);
     const settings = await this.deps.getSettings();
     const registry = sandboxImageRegistryConfig(settings);
     if (registry.repository.length === 0) {
@@ -457,8 +467,7 @@ export class SandboxImageManager {
       reference = resolved.reference;
       digest = resolved.digest;
       pinnedReference = resolved.pinnedReference;
-      // CI builds `docker/` verbatim, so an already-pushed image never carries
-      // the operator's extra Debian packages; recording them would lie.
+      // An externally pushed image has no evidence of local extra packages.
       extraPackages = [];
       bbAppVersion =
         (await this.deps.readImageBbAppVersion?.({
@@ -505,6 +514,8 @@ export class SandboxImageManager {
       registrable,
       extraPackages,
       rows,
+      tools,
+      harness: kind === "build" ? (request as SandboxImageBuildRequest).harness : undefined,
     };
   }
 
@@ -607,6 +618,7 @@ export class SandboxImageManager {
       context = await prepareImageBuildContext({
         dockerfilePath: this.deps.dockerfilePath,
         extraPackages: prepared.extraPackages,
+        tools: prepared.tools,
       });
       return await this.deps.buildAndPush({
         contextDir: context.contextDir,
@@ -614,6 +626,7 @@ export class SandboxImageManager {
         reference: prepared.reference,
         platform: prepared.registry.platform,
         bbAppVersion: await this.deps.bbAppVersion(),
+        harness: prepared.harness,
         registryUsername: prepared.registry.username,
         registryToken: prepared.registry.token,
         onLog: log,

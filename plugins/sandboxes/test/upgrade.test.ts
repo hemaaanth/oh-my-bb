@@ -320,39 +320,14 @@ function harness(
       },
     },
   });
-  const dispatch = vi.fn(async () => ({ runId: "42", url: "https://github.com/run/42" }));
+  const dispatch = vi.fn(async () => undefined);
   const holds = { hold: vi.fn(), release: vi.fn() };
   const deps: SandboxUpgradeDeps = {
     bb: fake.bb,
     serverVersion: async () => "0.43.4",
     latestHarnessVersions: async () => latest,
     activeImage: async () => ({ tag: "20260924t030437z", versions: oldImage }),
-    builds: {
-      dispatch,
-      status: async () => ({ status: "completed", conclusion: "success", url: "https://github.com/run/42" }),
-    },
-    startRegistration: vi.fn(async () => ({
-      id: "job_1",
-      kind: "register" as const,
-      version: "v",
-      reference: "r",
-      pinnedReference: null,
-      imageIds: [],
-    })),
-    imageJob: () => ({
-      id: "job_1",
-      kind: "register",
-      version: "v",
-      reference: "r",
-      pinnedReference: null,
-      imageIds: [],
-      state: "ready",
-      error: null,
-      progress: ["Registered bb-sandbox-new-m with daytona (size M)"],
-      cursor: 1,
-      images: [],
-      build: null,
-    }),
+    buildImage: dispatch,
     nativeImages: () => [{ provider: "daytona", booting: "bb-sandbox-new-m", active: "bb-sandbox-new-m" }],
     holds,
     sleep: async () => undefined,
@@ -407,7 +382,7 @@ describe("SandboxUpgrader", () => {
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({ bbAppVersion: "0.43.4", harness: latest }),
     );
-    expect(status.report?.image).toMatchObject({ action: "built", runUrl: "https://github.com/run/42" });
+    expect(status.report?.image).toMatchObject({ action: "built", runUrl: null });
     expect(status.progress.join("\n")).toContain("New sandbox machines boot the new image");
     expect(status.report?.machines).toEqual([
       expect.objectContaining({ hostId: "host_1", action: "healed" }),
@@ -518,4 +493,13 @@ describe("SandboxUpgrader", () => {
     const id = upgrader.start({ check: true });
     expect(() => upgrader.start()).toThrow(new RegExp(id, "u"));
   });
+});
+
+it("leaves intentionally excluded harnesses out of update plans and still checks BB", () => {
+  const excluded = Object.fromEntries(Object.keys(latest).map(key => [key, "disabled"])) as CarriedVersions["harness"];
+  expect(staleParts({ bb: "0.43.4", harness: excluded }, { bb: "0.43.4", harness: latest }, { includeBb: true })).toEqual([]);
+  const prefix = healPrefix(latest["claude-code"]);
+  const output = execFileSync("bash", ["-c", healScript(latest)], { encoding: "utf8", env: { PATH: `${prefix}/bin:/usr/bin:/bin`, BB_HARNESS_PREFIX: prefix, BB_IMAGE_TOOLS: "" } });
+  expect(npmInstalls(prefix)).toEqual([]);
+  expect(parseHealResult(output)).toMatchObject({ bb: "0.43.0", harness: excluded });
 });

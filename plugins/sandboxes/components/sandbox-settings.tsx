@@ -12,7 +12,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 
 const BOX = "min-w-0 rounded-md border border-border bg-surface-recessed/70 px-3";
 const ROW = "flex min-w-0 items-center justify-between gap-4 py-3";
-interface BuilderView { repository: string | null; savedRepository: string | null; source: "environment" | "preference" | "import" | "unconfigured"; imported: boolean }
 const failureText = (error: unknown) => error instanceof Error ? error.message : String(error);
 
 export function SandboxPreferencesSettings() {
@@ -71,13 +70,6 @@ export function SandboxPreferencesSettings() {
       {error && <div role="alert" className="space-y-2 text-xs text-destructive"><p>{error}</p><Button size="sm" variant="outline" onClick={() => { dirty.current = false; setDraft({}); void load(); }}>Reload saved preferences</Button></div>}
     </div>}
   </section>;
-}
-export function SandboxImageBuilderSettings() {
-  const rpc = useRpc<typeof sandboxRpcContract>();
-  const [data, setData] = useState<BuilderView | null>(null), [draft, setDraft] = useState<string | null>(null), [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-  useEffect(() => { let active = true; void rpc.call("imageBuildRepository", null).then(next => { if (active) setData(next); }, failure => { if (active) setError(failureText(failure)); }); return () => { active = false; }; }, [rpc]);
-  return <div className="min-w-0 space-y-2"><label className="block space-y-1"><span className="text-sm">Build repository</span><Input aria-label="Image build repository" disabled={!data || saving} value={draft ?? data?.savedRepository ?? ""} placeholder="owner/repository" onChange={event => setDraft(event.target.value)} /></label>{data?.source === "environment" && <p className="text-xs text-muted-foreground">An environment override takes precedence.</p>}<div className="flex justify-end"><Button size="sm" variant="outline" disabled={!data || draft === null || saving} onClick={async () => { setSaving(true); setError(""); try { setData(await rpc.call("saveImageBuildRepository", { repository: draft ?? "" })); setDraft(null); } catch (failure) { setError(failureText(failure)); } finally { setSaving(false); } }}>Save repository</Button></div>{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</div>;
 }
 
 const integrationLabels: Record<SandboxIntegration, string> = {

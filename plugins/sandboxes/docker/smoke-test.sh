@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+. /usr/local/lib/bb-sandbox/image-tools.sh
 
 # Asserts that a built sandbox image actually contains the toolchain the
 # settings inventory advertises. Run it against a local build:
@@ -25,44 +26,44 @@ check() {
 
 check node node --version
 check npm npm --version
-check pnpm pnpm --version
+if bb_image_has pnpm; then check pnpm pnpm --version; fi
 check corepack corepack --version
-check bun bun --version
-check deno deno --version
-check python3 python3 --version
-check uv uv --version
-check go go version
-check rustc rustc --version
-check cargo cargo --version
-check cargo-nextest cargo-nextest --version
-check java java --version
-check docker docker --version
-check docker-compose docker compose version
-check docker-buildx docker buildx version
-check nix nix --version
-check devbox devbox version
-check direnv direnv --version
-check process-compose process-compose version
-check mise mise --version
-check aws aws --version
-check kubectl kubectl version --client=true
-check helm helm version --short
-check doppler doppler --version
-check duckdb duckdb --version
-check op op --version
-check clickhouse clickhouse --version
-check psql psql --version
-check redis-cli redis-cli --version
-check sqlite3 sqlite3 --version
-check protoc protoc --version
+if bb_image_has bun; then check bun bun --version; fi
+if bb_image_has deno; then check deno deno --version; fi
+if bb_image_has python; then check python3 python3 --version; fi
+if bb_image_has python; then check uv uv --version; fi
+if bb_image_has go; then check go go version; fi
+if bb_image_has rust; then check rustc rustc --version; fi
+if bb_image_has rust; then check cargo cargo --version; fi
+if bb_image_has rust; then check cargo-nextest cargo-nextest --version; fi
+if bb_image_has java; then check java java --version; fi
+if bb_image_has docker; then check docker docker --version; fi
+if bb_image_has docker; then check docker-compose docker compose version; fi
+if bb_image_has docker; then check docker-buildx docker buildx version; fi
+if bb_image_has nix; then check nix nix --version; fi
+if bb_image_has devbox; then check devbox devbox version; fi
+if bb_image_has direnv; then check direnv direnv --version; fi
+if bb_image_has process-compose; then check process-compose process-compose version; fi
+if bb_image_has mise; then check mise mise --version; fi
+if bb_image_has aws; then check aws aws --version; fi
+if bb_image_has kubectl; then check kubectl kubectl version --client=true; fi
+if bb_image_has helm; then check helm helm version --short; fi
+if bb_image_has doppler; then check doppler doppler --version; fi
+if bb_image_has duckdb; then check duckdb duckdb --version; fi
+if bb_image_has op; then check op op --version; fi
+if bb_image_has clickhouse; then check clickhouse clickhouse --version; fi
+if bb_image_has postgresql; then check psql psql --version; fi
+if bb_image_has redis; then check redis-cli redis-cli --version; fi
+if bb_image_has sqlite; then check sqlite3 sqlite3 --version; fi
+if bb_image_has protobuf; then check protoc protoc --version; fi
 check brave brave-browser --version
 check agent-browser agent-browser --version
 check tailscale tailscale version
 check tailscaled command -v tailscaled
 check bb-browser bb-browser state list
-check freeze freeze --version
-check vhs vhs --version
-check ttyd ttyd --version
+if bb_image_has freeze; then check freeze freeze --version; fi
+if bb_image_has vhs; then check vhs vhs --version; fi
+if bb_image_has vhs; then check ttyd ttyd --version; fi
 check ffmpeg ffmpeg -version
 check imagemagick import -version
 check xvfb Xvfb -help
@@ -71,24 +72,24 @@ check xdotool xdotool --version
 check x11vnc x11vnc -version
 # cua's server imports python-xlib at module load, so even --help needs a
 # display; the functional check further down starts one and drives it.
-check cua-server command -v cua-computer-server
+if bb_image_has cua; then check cua-server command -v cua-computer-server; fi
 check git git --version
 check gh gh --version
 check rg rg --version
 check fd fd --version
 check jq jq --version
-check omp omp --version
-check fx fx --version
-check pi pi --version
-check prime-agent prime-agent --version
-check fx-acp command -v fx-acp
-check nanocodex-acp command -v nanocodex-acp
-check prime-agent-acp command -v prime-agent-acp
+if bb_image_has omp; then check omp omp --version; fi
+if bb_image_has fx; then check fx fx --version; fi
+if bb_image_has pi; then check pi pi --version; fi
+if bb_image_has prime-agent; then check prime-agent prime-agent --version; fi
+if bb_image_has fx-acp; then check fx-acp command -v fx-acp; fi
+if bb_image_has nanocodex-acp; then check nanocodex-acp command -v nanocodex-acp; fi
+if bb_image_has prime-agent-acp; then check prime-agent-acp command -v prime-agent-acp; fi
 check bb-host-daemon command -v bb-host-daemon
-check claude claude --version
-check codex codex --version
-check goldsky command -v goldsky
-check hubspot command -v hubspot
+if bb_image_has claude-code; then check claude claude --version; fi
+if bb_image_has codex; then check codex codex --version; fi
+if bb_image_has goldsky; then check goldsky command -v goldsky; fi
+if bb_image_has hubspot; then check hubspot command -v hubspot; fi
 check bb-sandbox-preview command -v bb-sandbox-preview
 check bb-sandbox-docker command -v bb-sandbox-docker
 check bb-sandbox-display command -v bb-sandbox-display
@@ -139,13 +140,14 @@ captured() {
 
 printf '<html><body><h1>bb sandbox</h1></body></html>' > "$capture_dir/page.html"
 captured capture-url "$(BB_SANDBOX_CAPTURE_DIR="$capture_dir" bb-sandbox-capture url "file://$capture_dir/page.html" 2>/dev/null || true)"
-captured capture-cmd "$(BB_SANDBOX_CAPTURE_DIR="$capture_dir" bb-sandbox-capture cmd -- uname -a 2>/dev/null || true)"
+if bb_image_has freeze; then captured capture-cmd "$(BB_SANDBOX_CAPTURE_DIR="$capture_dir" bb-sandbox-capture cmd -- uname -a 2>/dev/null || true)"; fi
 printf '%s\n' 'Output tape.gif' 'Set Width 800' 'Set Height 400' 'Type "echo bb"' 'Enter' 'Sleep 500ms' > "$capture_dir/t.tape"
-captured capture-tape "$( (cd "$capture_dir" && bb-sandbox-capture tape t.tape >/dev/null 2>&1 && printf '%s' "$capture_dir/tape.gif") || true)"
+if bb_image_has vhs; then captured capture-tape "$( (cd "$capture_dir" && bb-sandbox-capture tape t.tape >/dev/null 2>&1 && printf '%s' "$capture_dir/tape.gif") || true)"; fi
 captured capture-screen "$(BB_SANDBOX_CAPTURE_DIR="$capture_dir" bb-sandbox-capture screen 2>/dev/null || true)"
 
 check window-manager pgrep -x openbox
 
+if bb_image_has cua; then
 if computer_start="$(bb-sandbox-computer start --port 8765 2>&1)"; then
   computer_shot="$(curl --fail --silent --max-time 20 -X POST http://127.0.0.1:8765/cmd \
     -H 'Content-Type: application/json' \
@@ -163,8 +165,10 @@ else
   printf '%s\n' "$computer_start"
   failures=$((failures + 1))
 fi
+fi
 rm -rf "$capture_dir"
 
+if bb_image_has docker; then
 if bb-sandbox-docker --wait --timeout 120 >/dev/null 2>&1; then
   check dockerd docker version --format '{{.Server.Version}}'
   check docker-run docker run --rm alpine:3.22 echo container-ok
@@ -172,6 +176,8 @@ if bb-sandbox-docker --wait --timeout 120 >/dev/null 2>&1; then
 else
   printf 'FAIL  %-22s %s\n' dockerd "bb-sandbox-docker could not start a daemon"
   failures=$((failures + 1))
+fi
+
 fi
 
 if [ "$failures" -ne 0 ]; then

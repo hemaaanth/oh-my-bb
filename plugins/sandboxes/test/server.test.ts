@@ -44,9 +44,7 @@ describe("sandboxes plugin server", () => {
       registryUsernameConfigured: false,
       registryTokenConfigured: false,
       extraPackages: [],
-      components: expect.arrayContaining([
-        expect.objectContaining({ category: "Containers" }),
-      ]),
+      recipe: expect.objectContaining({ revision: 0 }),
       providers: [
         { provider: "daytona", credentialsConfigured: false, activeName: null },
         { provider: "modal", credentialsConfigured: false, activeName: null },

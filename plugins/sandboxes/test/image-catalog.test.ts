@@ -84,3 +84,16 @@ describe("sandbox image catalog", () => {
     );
   });
 });
+
+it("stamps selected contents and disabled harnesses into the real Docker recipe", async () => {
+  const source = new URL("../docker/Dockerfile", import.meta.url).pathname;
+  const context = await prepareImageBuildContext({ dockerfilePath: source, extraPackages: [], tools: ["go", "goldsky"] });
+  try {
+    const recipe = await readFile(context.dockerfilePath, "utf8");
+    expect(recipe).toContain("ARG BB_IMAGE_TOOLS=go,goldsky\n");
+    expect(recipe).toContain('bb.harness.omp="disabled"');
+    expect(recipe).toContain('bb.harness.claude-code="disabled"');
+    expect(recipe).toContain('bb.image.tools="${BB_IMAGE_TOOLS}"');
+    expect(recipe).not.toContain('bb.harness.pi="${PI_VERSION}"');
+  } finally { await context.cleanup(); }
+});

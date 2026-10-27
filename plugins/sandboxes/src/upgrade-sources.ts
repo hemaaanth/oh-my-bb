@@ -1,13 +1,12 @@
 /**
  * The outside world `bb sandbox upgrade` reads and drives: npm and GitHub for
- * the latest harness releases, the `gh` CLI for the image build workflow, and
+ * the latest harness releases, and
  * the registry for the active image's version labels.
  */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
-import { verifiedBrowserArtifact } from "./browser-artifact.js";
 import type { SandboxImageRegistryConfig } from "./config.js";
 import { readRegistryImageLabel } from "./register-image.js";
 import {
@@ -15,13 +14,10 @@ import {
   type CarriedVersions,
   type HarnessName,
   type HarnessVersions,
-  type ImageBuildDispatcher,
 } from "./upgrade.js";
 
 const run = promisify(execFile);
 const GH_TIMEOUT_MS = 60_000;
-const IMAGE_WORKFLOW = "sandbox-image.yml";
-const RUN_LOOKUP_ATTEMPTS = 20;
 
 /** The OCI label each harness version is stamped under (docker/Dockerfile). */
 export const harnessImageLabels: Record<HarnessName, string> = {
@@ -106,62 +102,6 @@ export async function latestHarnessVersions(): Promise<HarnessVersions> {
     "fx-acp": fxAcp, "nanocodex-acp": nanocodexAcp, "prime-agent-acp": primeAcp };
 }
 
-
-export function githubImageBuilds(
-  repository: () => Promise<string>,
-  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-): ImageBuildDispatcher {
-  return {
-    async dispatch({ tag, bbAppVersion, harness }) {
-      const repo = await repository();
-      const browser = verifiedBrowserArtifact();
-      const workflowState = (await gh(["api", `repos/${repo}/actions/workflows/${IMAGE_WORKFLOW}`, "--jq", ".state"])).trim();
-      if (workflowState !== "active") throw new Error(`Configure an active ${IMAGE_WORKFLOW} in ${repo} before dispatching sandbox images`);
-      await gh([
-        "workflow", "run", IMAGE_WORKFLOW, "-R", repo,
-        "-f", `version=${tag}`,
-        "-f", `bb_app_version=${bbAppVersion}`,
-        "-f", `claude_code_version=${harness["claude-code"]}`,
-        "-f", `codex_version=${harness.codex}`,
-        "-f", `omp_version=${harness.omp}`,
-        "-f", `fx_version=${harness.fx}`,
-        "-f", `pi_version=${harness.pi}`,
-        "-f", `prime_agent_version=${harness["prime-agent"]}`,
-        "-f", `adapters_ref=${adaptersRef()}`,
-        "-f", `browser_source_commit=${browser.sourceCommit}`,
-        "-f", `browser_inputs_sha256=${browser.inputsSha256}`,
-        "-f", `browser_archive_sha256=${browser.archiveSha256}`,
-      ]);
-      // `gh workflow run` does not return the run; the workflow's run-name
-      // carries the tag, so find it by that.
-      const title = `Sandbox image ${tag}`;
-      for (let attempt = 0; attempt < RUN_LOOKUP_ATTEMPTS; attempt += 1) {
-        await sleep(3_000);
-        const runs = JSON.parse(
-          await gh([
-            "run", "list", "-R", repo, "--workflow", IMAGE_WORKFLOW,
-            "--event", "workflow_dispatch", "-L", "20",
-            "--json", "databaseId,displayTitle,url",
-          ]),
-        ) as Array<{ databaseId: number; displayTitle: string; url: string }>;
-        const found = runs.find((candidate) => candidate.displayTitle === title);
-        if (found !== undefined) return { runId: String(found.databaseId), url: found.url };
-      }
-      throw new Error(`Dispatched ${IMAGE_WORKFLOW} in ${repo} but found no run named "${title}"`);
-    },
-    async status(runId) {
-      const repo = await repository();
-      const view = JSON.parse(
-        await gh(["run", "view", runId, "-R", repo, "--json", "status,conclusion,url"]),
-      ) as { status: string; conclusion: string | null; url: string };
-      return {
-        status: view.status,
-        conclusion: view.conclusion === "" ? null : view.conclusion,
-        url: view.url,
-      };
-    },
-  };
-}
 
 /** The bb and harness versions an image's labels name, read without pulling. */
 export async function readImageVersions(input: {

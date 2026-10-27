@@ -1,5 +1,12 @@
 #!/bin/sh
 set -eu
+
+if [ -f /usr/local/lib/bb-sandbox/image-tools.sh ]; then
+  . /usr/local/lib/bb-sandbox/image-tools.sh
+else
+  # Older machines have no image selection; retain their existing harness policy.
+  bb_image_has() { [ "${BB_IMAGE_TOOLS+x}" != x ] || case ",${BB_IMAGE_TOOLS}," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+fi
 PI_VERSION="${PI_VERSION:-1.2.0}"
 PRIME_AGENT_VERSION="${PRIME_AGENT_VERSION:-0.10.0}"
 # Release owner supplies the commit containing all three adapters before rollout.
@@ -10,12 +17,16 @@ install -d -m 755 "$P/bin"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
+if bb_image_has pi; then
 if [ "$(pi --version 2>/dev/null || true)" != "$PI_VERSION" ]; then
   # An interrupted install leaves these behind, and npm then fails with ENOTEMPTY.
   rm -rf "$P/lib/node_modules/@earendil-works/pi-coding-agent"
   find "$P/lib/node_modules/@earendil-works" -maxdepth 1 -type d -name ".pi-coding-agent-*" -exec rm -rf {} + 2>/dev/null || true
   npm install --global --prefix "$P" --ignore-scripts "@earendil-works/pi-coding-agent@$PI_VERSION"
 fi
+
+fi
+if bb_image_has prime-agent; then
 if [ "$(prime-agent --version 2>/dev/null | awk '{print $NF; exit}')" != "$PRIME_AGENT_VERSION" ]; then
   glibc="$(getconf GNU_LIBC_VERSION | awk '{print $2}')"
   [ "$(printf '%s\n' 2.35 "$glibc" | sort -V | head -n1)" = 2.35 ] || {
@@ -39,9 +50,12 @@ if [ "$(prime-agent --version 2>/dev/null | awk '{print $NF; exit}')" != "$PRIME
     sh "$work/prime/install.sh" --archive "$work/$asset"
 fi
 
+fi
+
 # Hash the executable bytes, not a package version shared by different commits.
 need_adapters=
 for name in fx-acp nanocodex-acp prime-agent-acp; do
+  bb_image_has "$name" || continue
   case "$name" in
     fx-acp) expected="${FX_ACP_SHA256:-}" ;;
     nanocodex-acp) expected="${NANOCODEX_ACP_SHA256:-}" ;;
@@ -59,6 +73,7 @@ if [ -n "$need_adapters" ]; then
   curl -fsSL --retry 5 "https://codeload.github.com/hemaaanth/oh-my-bb/tar.gz/$ADAPTERS_REF" -o "$work/adapters.tar.gz"
   tar -xzf "$work/adapters.tar.gz" -C "$work"
   for name in fx-acp nanocodex-acp prime-agent-acp; do
+  bb_image_has "$name" || continue
     package="$work/oh-my-bb-$ADAPTERS_REF/agents/$name"
     npm pack "$package" --pack-destination "$work" --ignore-scripts >/dev/null
     archive="$(node -e 'const p=require(process.argv[1]);console.log(p.name.replace("@", "").replace("/", "-")+"-"+p.version+".tgz")' "$package/package.json")"
@@ -69,6 +84,7 @@ if [ -n "$need_adapters" ]; then
   done
 fi
 for name in fx-acp nanocodex-acp prime-agent-acp; do
+  bb_image_has "$name" || continue
   case "$name" in
     fx-acp) expected="${FX_ACP_SHA256:-}" ;;
     nanocodex-acp) expected="${NANOCODEX_ACP_SHA256:-}" ;;

@@ -194,7 +194,7 @@ describe("bb sandbox build-image", () => {
       ),
     );
 
-    const result = await fake.harness.runCli(["build-image", "--local", "--json"]);
+    const result = await fake.harness.runCli(["build-image", "--json"]);
 
     expect(requests).toEqual([{}]);
     expect(result.exitCode).toBe(0);
@@ -255,16 +255,7 @@ describe("bb sandbox build-image", () => {
     await fake.harness.dispose();
   });
 
-  it("points at CI unless the local fallback is asked for explicitly", async () => {
-    const { fake, requests } = await cli(settled("build", build([])));
 
-    await expect(fake.harness.runCli(["build-image"])).resolves.toMatchObject({
-      exitCode: 1,
-      stderr: expect.stringContaining("bb sandbox register-image"),
-    });
-    expect(requests).toEqual([]);
-    await fake.harness.dispose();
-  });
 });
 
 

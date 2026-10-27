@@ -38,11 +38,11 @@ A retry requires a fresh, strict `preparationOutcomeV1` response for that job wi
 
 Catalog participation remains unconfirmed under its older materialization contract, even when the old result says ready. Refresh cannot manufacture completion evidence. Local observation disposal does not cancel a remote process. This observation protocol is not a required-preparation-before-prompt barrier and does not invent source configuration revisions or remote cancellation.
 
-## Preserve the image builder route explicitly
+## Image builder
 
-Fresh installs have no private builder default. Configure a supported builder and registry before image upgrades. For an existing installation, import its resolved route once through the supported owner action; retain the receipt. Runtime `BB_SANDBOX_IMAGE_BUILD_REPO` wins, then an explicit saved preference, then the imported route. An explicit empty preference disables the imported route.
+Images now build with local Docker/Buildx. The old GitHub build-repository route and import command are retired. Keep its historical KV receipt; it is no longer read. Do not dispatch the former workflow during migration.
 
-The builder must support the three Browser source/input/archive inputs and emit matching immutable-image labels. This package does not supply a public workflow. A previously inferred private workflow is not assumed to exist in this public repository. Adapt and review that configured workflow before cutover; migration itself must not dispatch, build, register, activate or heal an image.
+Configure the container registry and credentials, choose optional tools in Runtime images → Image builder, then explicitly build. Saving or migrating settings does not start a build. Goldsky and HubSpot are optional and off by default for future images; existing images and machines remain intact.
 
 ## Image provenance and rollback
 

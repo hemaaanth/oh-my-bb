@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+. /usr/local/lib/bb-sandbox/image-tools.sh
+
 # Docker Engine, Compose v2, and Buildx from Docker's official Debian
 # repository. Sandbox providers differ in what their kernel allows: Daytona
 # documents Docker-in-Docker, E2B and Freestyle run microVMs with a real
@@ -8,6 +10,7 @@ set -eu
 # ships the daemon unconditionally; bb-sandbox-docker decides at runtime
 # whether it can actually start and which storage driver works.
 
+if bb_image_has docker; then
 export DEBIAN_FRONTEND=noninteractive
 
 install -m 0755 -d /etc/apt/keyrings
@@ -37,3 +40,5 @@ apt-get install --yes --no-install-recommends \
 
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+
+fi

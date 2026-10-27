@@ -1,7 +1,7 @@
 # Sandboxes plugin
 
 This built-in, opt-in plugin contributes native BB machine and environment
-providers backed by Daytona, Modal, E2B, Box by ASCII, Freestyle,.
+providers backed by Daytona, Modal, E2B, Box by ASCII, and Freestyle.
 BB core owns current thread creation, host enrollment, checkout, and machine
 retirement; the plugin owns vendor allocation/removal and retains compatibility
 cleanup data for sandboxes created before the BB 0.43 migration.
@@ -471,15 +471,9 @@ It runs on the bb server and survives the CLI returning:
    files. It reports each binary version (adapter executable SHA-256), the
    gateway setup revision, and missing/stale files. Suspended or disconnected
    machines report unknown and are never woken.
-2. **Build.** When the image is behind, `gh workflow run sandbox-image.yml`
-   with every version passed in, then wait for the run. The workflow builds,
-   pushes, and smoke-tests the image. `gh` must be logged in on the bb server;
-   the repository must be explicitly configured in Sandboxes Preferences,
-   imported once for an inventoried existing installation, or overridden by
-   `BB_SANDBOX_IMAGE_BUILD_REPO=<owner/repo>` (highest precedence). There is no
-   checkout-origin fallback or private owner default. The configured workflow
-   must accept the Browser source/input/archive digest inputs and emit matching
-   OCI labels. No public workflow is supplied in 2C.
+2. **Build.** Use Docker with Buildx on this BB server, the saved image contents,
+   and the target BB/agent versions. Push to the configured container registry.
+   No GitHub workflow, source repository, or repository token is required.
 3. **Register.** Verify Browser provenance labels on the immutable pushed digest
    before provider registration and activation. Unknown/stale artifacts fail.
 4. **Verify.** The native machine backends must now boot the new image. If one
@@ -494,18 +488,14 @@ It runs on the bb server and survives the CLI returning:
 `--skip-image` only heals machines, `--force-image` rebuilds a current image,
 and `--skip-machines` stops after the image.
 
-The pins in `docker/install-harnesses.sh` are only the defaults for a build
-started without versions, such as a tag push or a manual workflow run. The CI
-workflow resolves blanks to those pins so every image's labels name what it
-installed.
+Local builds use the shipped harness pins unless an explicit runtime upgrade supplies target versions. Excluded harnesses carry `disabled` labels and are not reinstalled.
 
 Pi and Prime Agent have explicit version pins in `install-gateway-harnesses.sh`.
 Prime's release archive is checked against `SHA256SUMS`; the Bookworm image
 has glibc 2.36 (Prime requires at least 2.35). All adapters come from one
 immutable `ADAPTERS_REF` in the public `hemaaanth/oh-my-bb` repository.
-The release owner must replace its placeholder with the commit containing all
-three adapters before rollout. `BB_SANDBOX_ADAPTERS_REF` can supply that commit
-to the upgrade resolver; workflow dispatch forwards it as `adapters_ref`.
+The pinned commit must contain all three adapters. `BB_SANDBOX_ADAPTERS_REF` can supply that commit
+to the upgrade resolver; the local build uses the same adapter ref.
 Image labels track the adapter executable SHA-256, separately from the
 gateway setup revision. The installer rejects a non-commit adapter ref.
 
@@ -687,6 +677,23 @@ Sandbox agent environments receive `HOME` from the execution host user account. 
 
 ## Settings layout
 
-Configuration contains write-only credentials. Preferences save on change; Git and browser options are shown inline in the same section. Providers share one compact list. Runtime images opens image configuration and update review only on demand. More contains the setup guide. Sandboxes has no navigation-rail page.
+Configuration contains write-only credentials. Preferences save on change. Providers share one compact list. Runtime images opens image configuration and update review on demand. More contains the setup guide. Sandboxes has no navigation-rail page.
 
 Nirvana support has been removed. Historical migration records remain unchanged; no machine or image history is deleted.
+
+## First image and selectable contents
+
+1. Add provider credentials in Configuration and choose its region/runtime in Providers.
+2. Install Docker with Buildx on the BB server. Create a container registry repository and add its write credentials in Configuration.
+3. Open Runtime images → Build first image. Enter the registry repository (for example `ghcr.io/your-account/bb-sandbox`) and platform.
+4. Select optional tools and add extra Debian packages as tags. General defaults exclude Goldsky and HubSpot. Required only deselects every optional tool. Dependencies are visible and required while their dependents are selected.
+5. Save, then Build and register image. This builds locally, pushes to your registry and registers its immutable digest for configured Daytona, Modal and E2B providers. It may incur costs. No build starts on save or view. Existing machines are unchanged.
+6. Start a thread and choose a Sandboxes machine in the native composer.
+
+The required runtime includes Node.js, BB host daemon, Git/GitHub CLI/SSH, basic OS utilities, and the verified trusted-browser/desktop stack. These underpin the supported image and connection contract. Optional agent CLIs, extra language runtimes, Docker, environment managers, cloud/data CLIs and capture/development tools are individually selectable. Package versions remain pinned in the shipped installers; this UI chooses inclusion, not arbitrary installer commands.
+
+`image-recipe:v1` stores a versioned selection. Stale saves fail before configuration changes. The image records selected tools in `bb.image.tools`; excluded agent binaries carry `disabled` version labels. Upgrades use the same saved contents and do not reinstall excluded agent tools.
+
+The former GitHub build-repository setting, import command and workflow dispatcher are retired. Their historical KV receipt is retained but no longer read. The image registry repository is still needed: it is the container destination, not a source-code repository.
+
+Box and Freestyle bootstrap at launch and do not use the custom-image builder.

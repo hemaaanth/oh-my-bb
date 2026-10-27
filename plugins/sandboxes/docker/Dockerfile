@@ -1,5 +1,10 @@
 FROM node:22-bookworm-slim
 
+ARG BB_IMAGE_TOOLS=omp,claude-code,codex,fx,pi,prime-agent,fx-acp,nanocodex-acp,prime-agent-acp,python,go,rust,java,bun,deno,pnpm,docker,mise,nix,devbox,direnv,process-compose,aws,kubectl,helm,doppler,duckdb,op,clickhouse,postgresql,redis,sqlite,freeze,vhs,cua,build-tools,clang,cmake,ninja,gdb,protobuf,fzf,shellcheck,strace,tmux,vim,zsh
+ENV BB_IMAGE_TOOLS="${BB_IMAGE_TOOLS}"
+COPY image-tools.sh /usr/local/lib/bb-sandbox/image-tools.sh
+LABEL bb.image.tools="${BB_IMAGE_TOOLS}"
+
 ARG BROWSER_SOURCE_COMMIT=29ef6aa242b8d669b7f149a5da76610cacec4883
 ARG BROWSER_INPUTS_SHA256=3179a7e80deb99c04ec34ca0a427579a7f9933c2b9d6243f9fc00209e93fd2d9
 ARG BROWSER_ARCHIVE_SHA256=8a60cec1886c96af34bc9b3c4323dc9ab609420b0e64146798bfba62f567b7be
@@ -12,11 +17,10 @@ LABEL bb.browser.source-commit="${BROWSER_SOURCE_COMMIT}" \
   bb.browser.inputs-sha256="${BROWSER_INPUTS_SHA256}" \
   bb.browser.archive-sha256="${BROWSER_ARCHIVE_SHA256}"
 
-# Node 22 rather than 24: every project audited for this image pins Node 20 or
-# 22, two of them enforce `node: 22.x` with engine-strict, and none require 24.
+# Node 22 is the supported BB host runtime for this image.
 
 ARG BB_APP_VERSION=latest
-# Lets the plugin read the bb-app a CI-built image carries without pulling it.
+# Lets the plugin read the bb-app a built image carries without pulling it.
 LABEL bb.app.version="${BB_APP_VERSION}"
 ARG GO_VERSION=1.27.1
 ARG RUST_VERSION=1.99.0
@@ -58,16 +62,14 @@ RUN chmod 755 /tmp/install-visual-capture.sh \
   && /tmp/install-visual-capture.sh \
   && rm /tmp/install-visual-capture.sh
 
-# Empty means the pin in install-harnesses.sh, whose `${VAR:-pin}` treats an
-# empty value as unset. Declared here rather than at the top so a harness bump
-# only rebuilds the layers from this point on.
-ARG OMP_VERSION=
-ARG CLAUDE_CODE_VERSION=
-ARG CODEX_VERSION=
-ARG FX_VERSION=
+# Harness pins match install-harnesses.sh and can be overridden by updates.
+ARG OMP_VERSION=18.10.3
+ARG CLAUDE_CODE_VERSION=2.1.296
+ARG CODEX_VERSION=0.162.1
+ARG FX_VERSION=0.0.13
 ARG PI_VERSION=1.2.0
 ARG PRIME_AGENT_VERSION=0.10.0
-ARG ADAPTERS_REF=55bc645da12c679fb4c1f8ac569a07be44a75914
+ARG ADAPTERS_REF=767333e2c1f8f87154e1c64c8928bdf87d8d0d95
 ARG FX_ACP_SHA256=
 ARG NANOCODEX_ACP_SHA256=
 ARG PRIME_AGENT_ACP_SHA256=
@@ -78,8 +80,8 @@ RUN chmod 755 /tmp/install-harnesses.sh \
   && BB_APP_VERSION="${BB_APP_VERSION}" /tmp/install-harnesses.sh \
   && rm /tmp/install-harnesses.sh \
   && rm -rf /root/.cache /root/.npm
-RUN npm install --global pnpm@latest \
-  && pnpm --version \
+RUN . /usr/local/lib/bb-sandbox/image-tools.sh && if bb_image_has pnpm; then npm install --global pnpm@latest \
+  && pnpm --version; fi \
   && npm cache clean --force \
   && rm -rf /root/.cache /root/.npm
 
@@ -130,6 +132,12 @@ RUN mkdir --parents /opt/bb-agent-shims \
          ln -sf /usr/local/bin/bb-sandbox-agent-shim "/opt/bb-agent-shims/$name"; \
        fi; \
      done
+
+# BB's native modules need a compiler during installation. Omit it from the
+# final runtime when the owner deselected development build tools.
+RUN . /usr/local/lib/bb-sandbox/image-tools.sh \
+  && if ! bb_image_has build-tools; then apt-get purge --yes build-essential gcc g++ make libssl-dev pkg-config; fi \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # `bb sandbox upgrade` reads these without pulling the image. CI always passes
 # the resolved versions, so an empty label means a build outside that path.

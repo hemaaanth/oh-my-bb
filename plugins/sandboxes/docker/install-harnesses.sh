@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+. /usr/local/lib/bb-sandbox/image-tools.sh
+
 BB_APP_VERSION="${BB_APP_VERSION:-latest}"
 OMP_VERSION="${OMP_VERSION:-18.10.3}"
 CLAUDE_CODE_VERSION="${CLAUDE_CODE_VERSION:-2.1.296}"
@@ -38,7 +40,7 @@ cleanup() {
 trap cleanup EXIT
 cleanup
 
-if [ "$("$BB_HARNESS_PREFIX/bin/omp" --version 2>/dev/null || true)" != "omp/${OMP_VERSION}" ]; then
+if bb_image_has omp && [ "$("$BB_HARNESS_PREFIX/bin/omp" --version 2>/dev/null || true)" != "omp/${OMP_VERSION}" ]; then
   curl --fail --silent --show-error --location --retry 5 \
     "https://github.com/can1357/oh-my-pi/releases/download/v${OMP_VERSION}/${omp_asset}" \
     --output /tmp/omp
@@ -56,7 +58,7 @@ if [ "$("$BB_HARNESS_PREFIX/bin/omp" --version 2>/dev/null || true)" != "omp/${O
   rm -f /tmp/omp-sha256sums.txt
 fi
 
-if [ "$("$BB_HARNESS_PREFIX/bin/fx" --version 2>/dev/null || true)" != "$FX_VERSION" ]; then
+if bb_image_has fx && [ "$("$BB_HARNESS_PREFIX/bin/fx" --version 2>/dev/null || true)" != "$FX_VERSION" ]; then
   curl --fail --silent --show-error --location --retry 5 \
     "https://github.com/vercel-labs/fx/releases/download/v${FX_VERSION}/${fx_asset}" \
     --output "/tmp/${fx_asset}"
@@ -71,25 +73,9 @@ if [ "$("$BB_HARNESS_PREFIX/bin/fx" --version 2>/dev/null || true)" != "$FX_VERS
   rm -f "/tmp/${fx_asset}" "/tmp/${fx_asset}.sha256"
 fi
 
-if [ "$("$BB_HARNESS_PREFIX/bin/bb" --version 2>/dev/null || true)" != "$BB_APP_VERSION" ] || \
-   ! "$BB_HARNESS_PREFIX/bin/claude" --version 2>/dev/null | grep -q "^${CLAUDE_CODE_VERSION} " || \
-   [ "$("$BB_HARNESS_PREFIX/bin/codex" --version 2>/dev/null || true)" != "codex-cli ${CODEX_VERSION}" ]; then
-  npm uninstall --global --prefix "$BB_HARNESS_PREFIX" \
-    bb-app @anthropic-ai/claude-code @openai/codex >/dev/null 2>&1 || true
-  rm -rf "$BB_HARNESS_PREFIX/lib/node_modules/bb-app" \
-    "$BB_HARNESS_PREFIX/lib/node_modules/@anthropic-ai/claude-code" \
-    "$BB_HARNESS_PREFIX/lib/node_modules/@openai/codex"
-  find "$BB_HARNESS_PREFIX/lib/node_modules" -maxdepth 1 -type d \
-    -name '.bb-app-*' -exec rm -rf {} + 2>/dev/null || true
-  find "$BB_HARNESS_PREFIX/lib/node_modules/@anthropic-ai" -maxdepth 1 -type d \
-    -name '.claude-code-*' -exec rm -rf {} + 2>/dev/null || true
-  find "$BB_HARNESS_PREFIX/lib/node_modules/@openai" -maxdepth 1 -type d \
-    -name '.codex-*' -exec rm -rf {} + 2>/dev/null || true
-  npm cache clean --force >/dev/null 2>&1 || true
-  npm install --global --prefix "$BB_HARNESS_PREFIX" \
-    --allow-scripts=@anthropic-ai/claude-code,@parcel/watcher,better-sqlite3,node-pty,@google/genai,protobufjs \
-    "bb-app@${BB_APP_VERSION}" \
-    "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
-    "@openai/codex@${CODEX_VERSION}"
-fi
+packages="bb-app@${BB_APP_VERSION}"
+if bb_image_has claude-code; then packages="$packages @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"; fi
+if bb_image_has codex; then packages="$packages @openai/codex@${CODEX_VERSION}"; fi
+npm install --global --prefix "$BB_HARNESS_PREFIX" \
+  --allow-scripts=@anthropic-ai/claude-code,@parcel/watcher,better-sqlite3,node-pty,@google/genai,protobufjs $packages
 npm cache clean --force

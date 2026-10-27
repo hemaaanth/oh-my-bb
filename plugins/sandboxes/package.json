@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-sandboxes",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "description": "Run BB sandboxes and give agents one trusted Brave browser across local and remote machines.",
   "type": "module",
   "license": "MIT",

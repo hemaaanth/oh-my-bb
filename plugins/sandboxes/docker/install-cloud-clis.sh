@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+. /usr/local/lib/bb-sandbox/image-tools.sh
+
 # Cloud and data CLIs that repositories shell out to directly: AWS SSO logins,
 # kubectl/Helm for cluster-backed dev flows, Doppler for secret-injected dev
 # servers, and DuckDB for local analytics commands.
@@ -27,6 +29,7 @@ case "$architecture" in
     ;;
 esac
 
+if bb_image_has aws; then
 curl --fail --location --retry 5 \
   "https://awscli.amazonaws.com/awscli-exe-linux-${aws_arch}.zip" \
   --output /tmp/awscliv2.zip
@@ -34,6 +37,8 @@ rm -rf /tmp/aws
 unzip -q /tmp/awscliv2.zip -d /tmp
 /tmp/aws/install --update --install-dir /opt/aws-cli --bin-dir /usr/local/bin
 
+fi
+if bb_image_has kubectl; then
 kubectl_version="$(curl --fail --location --retry 5 --silent https://dl.k8s.io/release/stable.txt)"
 kubectl_release="https://dl.k8s.io/release/${kubectl_version}/bin/linux/${kubectl_arch}"
 curl --fail --location --retry 5 "${kubectl_release}/kubectl" --output /tmp/kubectl
@@ -42,6 +47,8 @@ curl --fail --location --retry 5 "${kubectl_release}/kubectl.sha256" \
 printf '%s  %s\n' "$(cat /tmp/kubectl.sha256)" /tmp/kubectl | sha256sum --check --status
 install -m 755 /tmp/kubectl /usr/local/bin/kubectl
 
+fi
+if bb_image_has helm; then
 helm_archive="helm-v${HELM_VERSION}-linux-${kubectl_arch}.tar.gz"
 curl --fail --location --retry 5 "https://get.helm.sh/${helm_archive}" \
   --output "/tmp/${helm_archive}"
@@ -52,6 +59,8 @@ printf '%s  %s\n' "$(awk '{ print $1; exit }' /tmp/helm.sha256sum)" "/tmp/${helm
 tar -C /tmp -xzf "/tmp/${helm_archive}"
 install -m 755 "/tmp/linux-${kubectl_arch}/helm" /usr/local/bin/helm
 
+fi
+if bb_image_has doppler; then
 doppler_asset="doppler_${DOPPLER_VERSION}_linux_${go_arch}.tar.gz"
 doppler_release="https://github.com/DopplerHQ/cli/releases/download/${DOPPLER_VERSION}"
 curl --fail --location --retry 5 "${doppler_release}/${doppler_asset}" \
@@ -67,6 +76,8 @@ printf '%s  %s\n' "$doppler_checksum" "/tmp/${doppler_asset}" | sha256sum --chec
 tar -C /tmp -xzf "/tmp/${doppler_asset}" doppler
 install -m 755 /tmp/doppler /usr/local/bin/doppler
 
+fi
+if bb_image_has duckdb; then
 duckdb_asset="duckdb_cli-linux-${go_arch}.zip"
 curl --fail --location --retry 5 \
   "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/${duckdb_asset}" \
@@ -74,8 +85,9 @@ curl --fail --location --retry 5 \
 unzip -q -o "/tmp/${duckdb_asset}" duckdb -d /tmp
 install -m 755 /tmp/duckdb /usr/local/bin/duckdb
 
+fi
 rm -rf /tmp/aws "/tmp/linux-${kubectl_arch}"
 rm -f /tmp/awscliv2.zip /tmp/doppler /tmp/doppler-checksums.txt /tmp/duckdb \
   /tmp/helm.sha256sum /tmp/kubectl /tmp/kubectl.sha256 \
-  "/tmp/${doppler_asset}" "/tmp/${duckdb_asset}" "/tmp/${helm_archive}"
+  "/tmp/${doppler_asset:-unused}" "/tmp/${duckdb_asset:-unused}" "/tmp/${helm_archive:-unused}"
 rm -rf /root/.cache

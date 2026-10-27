@@ -3,103 +3,23 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { verifiedBrowserArtifact } from "./browser-artifact.js";
 
-export const sandboxImageComponents = [
-  {
-    category: "Agent tools",
-    items: [
-      "bb host daemon",
-      "OMP",
-      "Claude Code",
-      "Codex CLI",
-      "FX",
-      "Pi",
-      "Prime Agent",
-      "FX ACP",
-      "nanocodex ACP",
-      "Prime Agent ACP",
-    ],
-  },
-  {
-    category: "Languages",
-    items: [
-      "Node.js 22",
-      "Python 3.13 + uv",
-      "Go 1.26.6",
-      "Rust 1.97.1 + nextest",
-      "Java 21",
-      "Bun 1.3.14",
-      "Deno 2.9.5",
-    ],
-  },
-  {
-    category: "Containers",
-    items: [
-      "Docker Engine",
-      "Docker Compose v2",
-      "Buildx",
-      "bb-sandbox-docker daemon starter",
-    ],
-  },
-  {
-    category: "Visual capture and computer use",
-    items: [
-      "Brave",
-      "agent-browser",
-      "bb-browser (pinned user agent, auth state, Tailscale home egress)",
-      "Tailscale",
-      "VHS + ttyd",
-      "freeze",
-      "TigerVNC + Xvfb + openbox + x11vnc",
-      "ffmpeg + ImageMagick",
-      "cua computer-server (HTTP + MCP)",
-      "bb-sandbox-capture",
-    ],
-  },
-  {
-    category: "Environment managers",
-    items: ["Nix (flakes)", "devbox", "direnv", "process-compose", "mise"],
-  },
-  {
-    category: "Cloud and data CLIs",
-    items: [
-      "AWS CLI v2",
-      "kubectl",
-      "Helm 3",
-      "Doppler",
-      "1Password CLI",
-      "DuckDB",
-      "ClickHouse client",
-      "PostgreSQL client",
-      "Redis tools",
-      "SQLite",
-    ],
-  },
-  {
-    category: "Project CLIs (credentials injected per project)",
-    items: [
-      "HubSpot Agent",
-      "Goldsky",
-    ],
-  },
-  {
-    category: "System and previews",
-    items: [
-      "build-essential",
-      "Clang/CMake/Ninja",
-      "protobuf-compiler",
-      "ripgrep/fd/fzf",
-      "tmux",
-      "xdotool/wmctrl",
-      "bb persistent preview supervisor",
-    ],
-  },
-] as const;
+export { imageTools } from "./image-tools.js";
+import { defaultImageTools, imageTools, normalizeImageTools } from "./image-tools.js";
+export const sandboxRequiredImageComponents = ["Node.js 22", "BB host daemon", "Git + GitHub CLI + SSH", "Brave + bb-browser + Tailscale", "Virtual desktop + FFmpeg + ImageMagick", "BB preview and connection helpers"];
+export function imageComponentsFor(selected: readonly string[]) {
+  return [
+    { category: "Required runtime", items: sandboxRequiredImageComponents },
+    ...[...new Set(imageTools.map(tool => tool.category))].map(category => ({ category, items: imageTools.filter(tool => tool.category === category && selected.includes(tool.id)).map(tool => tool.label) })).filter(group => group.items.length),
+  ];
+}
+
 
 /**
  * Everything the single sandbox Dockerfile expects beside itself. The image
  * installs the bb host daemon from npm, so no build artifact is staged here.
  */
 export const sandboxImageContextFiles = [
+  "image-tools.sh",
   "agent-guard.sh",
   "agent-shim.sh",
   "attach.sh",
@@ -150,15 +70,18 @@ export interface SandboxImageBuildContext {
 export async function prepareImageBuildContext(input: {
   dockerfilePath: string;
   extraPackages: string[];
+  tools?: string[];
 }): Promise<SandboxImageBuildContext> {
   const extraPackages = normalizeExtraPackages(input.extraPackages);
   const sourceDirectory = dirname(input.dockerfilePath);
   verifiedBrowserArtifact(sourceDirectory);
+  const tools = normalizeImageTools(input.tools ?? defaultImageTools);
   const targetDirectory = await mkdtemp(join(tmpdir(), "bb-sandbox-image-"));
   for (const filename of sandboxImageContextFiles) {
     await cp(join(sourceDirectory, filename), join(targetDirectory, filename), { dereference: true });
   }
-  const source = await readFile(input.dockerfilePath, "utf8");
+  let source = (await readFile(input.dockerfilePath, "utf8")).replace(/^ARG BB_IMAGE_TOOLS=.*$/mu, `ARG BB_IMAGE_TOOLS=${tools.join(",")}`);
+  source = source.replace(/bb\.harness\.([a-z-]+)="[^"\n]*"/gu, (label, tool: string) => tools.includes(tool as typeof tools[number]) ? label : `bb.harness.${tool}="disabled"`);
   const lines = source.split("\n");
   const markerIndex = lines.findIndex(
     (line) => line.trim() === extraPackagesMarker,

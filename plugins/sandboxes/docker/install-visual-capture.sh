@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+. /usr/local/lib/bb-sandbox/image-tools.sh
+
 # Visual capture and computer use. An agent working in a sandbox has no screen,
 # so everything it wants to show a human — a rendered page, a CLI's output, a
 # TUI's behaviour, a desktop app — has to be captured deliberately:
@@ -86,6 +88,7 @@ esac
 
 # vhs renders a terminal by screenshotting ttyd in a headless browser, and
 # Debian ships no ttyd package.
+if bb_image_has vhs; then
 ttyd_release="https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}"
 curl --fail --location --retry 5 "${ttyd_release}/ttyd.${ttyd_arch}" \
   --output /tmp/ttyd
@@ -99,6 +102,7 @@ fi
 printf '%s  %s\n' "$ttyd_checksum" /tmp/ttyd | sha256sum --check --status
 install -m 755 /tmp/ttyd "$INSTALL_PREFIX/bin/ttyd"
 
+fi
 install_charm_tool() {
   tool=$1
   version=$2
@@ -121,8 +125,8 @@ install_charm_tool() {
   rm -rf "/tmp/${tool}-extract" "/tmp/${archive}" "/tmp/${tool}-checksums.txt"
 }
 
-install_charm_tool freeze "$FREEZE_VERSION"
-install_charm_tool vhs "$VHS_VERSION"
+if bb_image_has freeze; then install_charm_tool freeze "$FREEZE_VERSION"; fi
+if bb_image_has vhs; then install_charm_tool vhs "$VHS_VERSION"; fi
 
 npm install --global --prefix "$INSTALL_PREFIX" \
   "agent-browser@${AGENT_BROWSER_VERSION}"
@@ -131,9 +135,11 @@ npm install --global --prefix "$INSTALL_PREFIX" \
 # (pywinctl, pymonctl) shell out to xset and xrandr, which the X packages above
 # provide; without them the server exits during startup.
 # CUA 0.3.42 passes FastAPI extra kwargs, removed in FastAPI 0.145.
+if bb_image_has cua; then
 UV_TOOL_BIN_DIR="$INSTALL_PREFIX/bin" \
   uv tool install --python 3.13 --with "fastapi<0.145" "cua-computer-server==${CUA_SERVER_VERSION}"
 
+fi
 # go-rod inside vhs, Puppeteer inside omp's browser tool, and anything else
 # looking for a system browser all resolve these names.
 if ! brave-browser --version | grep -q '^Brave Browser'; then

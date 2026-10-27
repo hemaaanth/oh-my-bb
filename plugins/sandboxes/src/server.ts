@@ -1,3 +1,4 @@
+import { imageRecipePreference, imageTools, imageRecipeSchema } from "./image-tools.js";
 import { registerRuntimeEnvironment } from "./runtime-environment.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { randomUUID } from "node:crypto";
@@ -6,7 +7,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { sandboxIntegrations } from "./preferences.js";
-import { imageBuildRepositoryPreference } from "./image-build-repository.js";
 import { compatibleBrowserArtifacts } from "./browser-artifact.js";
 import { loadSandboxSettings } from "./settings-preferences.js";
 import { registerBrowserIntegration } from "./browser-integration.js";
@@ -71,7 +71,7 @@ import {
   type SandboxResourceRequest,
 } from "./backend.js";
 import {
-  sandboxImageComponents,
+  imageComponentsFor,
   normalizeExtraPackages,
 } from "./image-catalog.js";
 import { SandboxImageManager } from "./image-manager.js";
@@ -79,7 +79,6 @@ import { SandboxProviderConfigurationStore } from "./provider-configuration.js";
 import { prepareGatewayHarnesses, SandboxUpgrader } from "./upgrade.js";
 import { gatewaySetupOnHost } from "./gateway-setup.js";
 import {
-  githubImageBuilds,
   latestHarnessVersions,
   readImageVersions,
 } from "./upgrade-sources.js";
@@ -184,7 +183,7 @@ export default async function plugin(bb: BbPluginApi) {
     registerRuntimeEnvironment(bb);
     const settings = await loadSandboxSettings(bb);
     const integrations = sandboxIntegrations(bb);
-    const buildRepository = imageBuildRepositoryPreference(bb);
+    const recipe = imageRecipePreference(bb);
     const requireIntegration = async (name: Parameters<typeof integrations.enabled>[0]) => {
       if (!await integrations.enabled(name)) throw new Error(`Enable ${name} under Sandboxes → Oh My BB first`);
     };
@@ -700,11 +699,16 @@ export default async function plugin(bb: BbPluginApi) {
         if (tag === null) return null;
         const registry = sandboxImageRegistryConfig(await combinedSettings());
         if (registry.repository.length === 0) return null;
+        const tools = await readRegistryImageLabel({ registry, reference: tag, label: "bb.image.tools", platform: registry.platform });
+        if (tools !== (await recipe.read()).tools.join(",")) return null;
         return { tag, versions: await readImageVersions({ registry, tag }) };
       },
-      builds: githubImageBuilds(buildRepository.resolve),
-      startRegistration: (request) => imageManager.startRegistration(request),
-      imageJob: (id, cursor) => imageManager.job(id, cursor),
+      buildImage: async ({ tag, harness, onLog }) => {
+        const result = await imageManager.build({ name: tag, harness, onLog });
+        const failed = result.registrations.filter(entry => entry.status === "error");
+        if (failed.length) throw new Error(failed.map(entry => entry.message).join("; "));
+        onLog(`Built and registered ${result.pinnedReference}`);
+      },
       nativeImages: () => [
         {
           // Native Daytona picks the snapshot for the requested size from the
@@ -807,10 +811,7 @@ export default async function plugin(bb: BbPluginApi) {
             (provider) => store.getProviderSettings(provider).extraPackages,
           ),
         ),
-        components: sandboxImageComponents.map((component) => ({
-          category: component.category,
-          items: [...component.items],
-        })),
+        recipe: await recipe.read(),
         providers: sandboxImageProviders.map((provider) => ({
           provider,
           credentialsConfigured: credentials[provider],
@@ -919,7 +920,7 @@ export default async function plugin(bb: BbPluginApi) {
         availableSkills: catalog.skills.filter((skill) => skill.enabled),
         availableAgents: agents.map((agent) => ({ id: agent.id, name: agent.name, detail: agent.description || null })),
         agents: agents.filter((agent) => context.agentIds.includes(agent.id)).map((agent) => ({ id: agent.id, name: agent.name, detail: agent.description || null })),
-        imageComponents: sandboxImageComponents.map((component) => ({
+        imageComponents: imageComponentsFor((await recipe.read()).tools).map((component) => ({
           category: component.category,
           items: [...component.items],
         })),
@@ -964,15 +965,6 @@ export default async function plugin(bb: BbPluginApi) {
       updateIntegrations: (input, context) => {
         if (context.experimental_caller.kind !== "client") throw new Error("Owner client required");
         return integrations.update(input);
-      },
-      imageBuildRepository: () => buildRepository.view(),
-      saveImageBuildRepository: (input, context) => {
-        if (context.experimental_caller.kind !== "client") throw new Error("Owner client required");
-        return buildRepository.save(input.repository);
-      },
-      importImageBuildRepository: (input, context) => {
-        if (context.experimental_caller.kind !== "client") throw new Error("Owner client required");
-        return buildRepository.import(input);
       },
       prepareSsh: async ({ hostId }) => {
         const target = await prepareSsh(hostId);
@@ -1024,7 +1016,10 @@ export default async function plugin(bb: BbPluginApi) {
       }),
       daytonaCapacity: () => loadDaytonaCapacity(),
       imageSettings: () => imageSettingsView(),
-      updateImageConfiguration: async (input) => {
+      updateImageConfiguration: async (input, context) => {
+        if (context.experimental_caller?.kind !== "client") throw new Error("Owner client required");
+        const extraPackages = normalizeExtraPackages(input.packages);
+        if (input.recipe) await recipe.save(imageRecipeSchema.parse(input.recipe));
         await providerConfiguration.updateImageConfiguration({
           repository: input.repository,
           platform: input.platform,
@@ -1037,7 +1032,6 @@ export default async function plugin(bb: BbPluginApi) {
             ? {}
             : { imageRegistryToken: input.registryToken }),
         });
-        const extraPackages = normalizeExtraPackages(input.packages);
         for (const provider of sandboxImageProviders) {
           store.updateProviderSettings(provider, { extraPackages });
         }
@@ -1129,7 +1123,20 @@ export default async function plugin(bb: BbPluginApi) {
         });
         return providerSettingsView(input.provider);
       },
-      buildImage: (request) => imageManager.build(request),
+      startImageBuild: async (_input, context) => {
+        if (context.experimental_caller?.kind !== "client") throw new Error("Owner client required");
+        const job = await imageManager.startBuild({});
+        return { id: job.id };
+      },
+      imageBuildStatus: ({ id, cursor }, context) => {
+        if (context.experimental_caller?.kind !== "client") throw new Error("Owner client required");
+        const job = imageManager.job(id, cursor);
+        return { state: job.state, progress: job.progress, cursor: job.cursor, error: job.error, pinnedReference: job.pinnedReference, registrationErrors: job.build?.registrations.filter(entry => entry.status === "error").map(entry => entry.message ?? "Provider registration failed") ?? [] };
+      },
+      buildImage: (request, context) => {
+        if (context.experimental_caller?.kind !== "client") throw new Error("Owner client required");
+        return imageManager.build(request);
+      },
       branches: async ({ projectId }) => {
         const project = await bb.sdk.projects.get({ projectId });
         const source =
@@ -1406,7 +1413,6 @@ export default async function plugin(bb: BbPluginApi) {
 
     registerSandboxCli(bb, manager, {
       sshStatus: () => ssh.list(),
-      importImageBuildRepository: (input) => buildRepository.import(input),
       setupSsh: prepareSsh,
       listLegacySandboxes: () => legacyCleanup.list(),
       getLegacySandbox: (idOrHostId) => legacyCleanup.get(idOrHostId),

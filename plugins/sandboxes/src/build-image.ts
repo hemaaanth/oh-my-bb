@@ -1,3 +1,5 @@
+import { adaptersRef } from "./upgrade-sources.js";
+import type { HarnessVersions } from "./upgrade.js";
 import { spawn } from "node:child_process";
 import { verifiedBrowserArtifact } from "./browser-artifact.js";
 
@@ -10,6 +12,7 @@ export interface BuildAndPushSandboxImageInput {
   reference: string;
   platform: string;
   bbAppVersion: string;
+  harness?: HarnessVersions;
   registryUsername: string | null;
   registryToken: string | null;
   onLog?: (message: string) => void;
@@ -102,6 +105,8 @@ export async function buildAndPushSandboxImage(
   input: BuildAndPushSandboxImageInput,
 ): Promise<PushedSandboxImage> {
   const browser = verifiedBrowserArtifact(input.contextDir);
+  const adapterRef = adaptersRef();
+  if (!/^[a-f0-9]{40}$/u.test(adapterRef)) throw new Error("Invalid adapter source commit");
   const token = input.registryToken?.trim() ?? "";
   const redact = (text: string) =>
     token.length === 0 ? text : text.replaceAll(token, "[redacted]");
@@ -153,6 +158,12 @@ export async function buildAndPushSandboxImage(
       "--build-arg", `BROWSER_SOURCE_COMMIT=${browser.sourceCommit}`,
       "--build-arg", `BROWSER_INPUTS_SHA256=${browser.inputsSha256}`,
       "--build-arg", `BROWSER_ARCHIVE_SHA256=${browser.archiveSha256}`,
+      "--build-arg", `ADAPTERS_REF=${adapterRef}`,
+      ...Object.entries(input.harness ?? {}).flatMap(([name, version]) => {
+        if (!/^[0-9A-Za-z][0-9A-Za-z.+-]*$/u.test(version)) throw new Error("Invalid harness version");
+        const arg = ({ "claude-code": "CLAUDE_CODE_VERSION", codex: "CODEX_VERSION", omp: "OMP_VERSION", fx: "FX_VERSION", pi: "PI_VERSION", "prime-agent": "PRIME_AGENT_VERSION", "fx-acp": "FX_ACP_SHA256", "nanocodex-acp": "NANOCODEX_ACP_SHA256", "prime-agent-acp": "PRIME_AGENT_ACP_SHA256" } as Record<string, string>)[name];
+        return ["--build-arg", `${arg}=${version}`];
+      }),
       "--tag",
       input.reference,
       "--push",

@@ -1,9 +1,9 @@
+import { imageRecipeSchema } from "./image-tools.js";
 import { attachmentChangeSchema, attachmentsViewSchema } from "./attachment-contract.js";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { sandboxIntegrationsSchema, sandboxIntegrationPatchSchema, integrationImportSchema } from "./preferences.js";
 import { nativeProjectPreparationSchema } from "./provider/project-env.js";
-import { imageBuildRepositoryImportSchema, imageBuildRepositorySchema, imageBuildRepositoryViewSchema } from "./image-build-repository.js";
 import { sandboxPreferencesPatchSchema, sandboxPreferencesViewSchema } from "./settings-preferences.js";
 import {
   sandboxProviderValues,
@@ -85,14 +85,12 @@ const providerSettingsSchema = z.object({
 });
 
 const imageSettingsSchema = z.object({
+  recipe: imageRecipeSchema,
   repository: z.string(),
   platform: z.string(),
   registryUsernameConfigured: z.boolean(),
   registryTokenConfigured: z.boolean(),
   extraPackages: z.array(z.string()),
-  components: z.array(
-    z.object({ category: z.string(), items: z.array(z.string()) }),
-  ),
   providers: z.array(
     z.object({
       provider: z.enum(sandboxImageProviders),
@@ -373,9 +371,6 @@ export const sandboxRpcContract = defineRpcContract({
   retryProjectPreparation: { input: z.object({ threadId: z.string().min(1) }).strict(), output: nativeProjectPreparationSchema },
   reconcileProjectPreparation: { input: z.object({ threadId: z.string().min(1) }).strict(), output: nativeProjectPreparationSchema },
   updateIntegrations: { input: sandboxIntegrationPatchSchema, output: sandboxIntegrationsSchema },
-  imageBuildRepository: { input: z.null(), output: imageBuildRepositoryViewSchema },
-  saveImageBuildRepository: { input: z.object({ repository: imageBuildRepositorySchema.or(z.literal("")) }).strict(), output: imageBuildRepositoryViewSchema },
-  importImageBuildRepository: { input: imageBuildRepositoryImportSchema, output: imageBuildRepositoryViewSchema },
   prepareSsh: {
     input: z.object({ hostId: z.string().regex(/^host_[a-z0-9_]+$/) }).strict(),
     output: sandboxSshIdentitySchema,
@@ -457,6 +452,7 @@ export const sandboxRpcContract = defineRpcContract({
       registryUsername: z.string().max(10_000).optional(),
       registryToken: z.string().max(10_000).optional(),
       packages: z.array(z.string()).max(100),
+      recipe: imageRecipeSchema.optional(),
     }),
     output: imageSettingsSchema,
   },
@@ -504,6 +500,11 @@ export const sandboxRpcContract = defineRpcContract({
       }),
     ]),
     output: providerSettingsSchema,
+  },
+  startImageBuild: { input: z.object({}).strict(), output: z.object({ id: z.string() }) },
+  imageBuildStatus: {
+    input: z.object({ id: z.string().min(1).max(100), cursor: z.number().int().nonnegative().default(0) }).strict(),
+    output: z.object({ state: z.enum(["running", "ready", "error"]), progress: z.array(z.string()), cursor: z.number(), error: z.string().nullable(), pinnedReference: z.string().nullable(), registrationErrors: z.array(z.string()) }),
   },
   buildImage: {
     input: z.object({

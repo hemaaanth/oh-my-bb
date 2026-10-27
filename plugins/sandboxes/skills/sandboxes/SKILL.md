@@ -82,12 +82,11 @@ bb sandbox upgrade
 bb sandbox upgrade-status <job-id>
 ```
 
-`upgrade` rebuilds the image in GitHub Actions with the latest Claude Code,
+`upgrade` rebuilds the image with Docker/Buildx on this BB server using the saved optional contents and the latest Claude Code,
 Codex, OMP, FX, Pi, Prime Agent, pinned ACP adapters, and this server's bb when the active image is behind,
 registers and activates it, verifies new machines will boot it, then heals the
 harnesses on every live native machine in place (waking and re-sleeping those
-asleep). It takes roughly 30-45 minutes when the image is rebuilt; the CLI
-returns after about four minutes and the job continues on the server. Use
+asleep). Build duration depends on selected tools, Docker cache and network. The job continues on the server after the CLI returns. Use
 `--skip-image` to only heal machines. Do not reinstall bb-app on a live machine
 by hand.
 
