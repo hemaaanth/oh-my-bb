@@ -15,6 +15,7 @@
     { "name": "status-sidebar", "source": "./plugins/status-sidebar" },
     { "name": "session-share", "source": "./plugins/session-share" },
     { "name": "pinpoint", "source": "./plugins/pinpoint" },
-    { "name": "projects", "source": "./plugins/projects" }
+    { "name": "projects", "source": "./plugins/projects" },
+    { "name": "demo-mode", "source": "./plugins/demo-mode" }
   ]
 }

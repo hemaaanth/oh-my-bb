@@ -1,0 +1,42 @@
+/* Each masked word becomes one block over the real text. Highlights never change layout. */
+:root { --bb-demo-block: color-mix(in oklab, var(--muted-foreground) 42%, transparent); }
+::highlight(bb-demo) {
+  color: transparent;
+  background-color: var(--bb-demo-block);
+  text-decoration: none;
+  text-shadow: none;
+}
+/* An inline code chip becomes one block in the same colour. */
+body[data-bb-demo-mode] [data-message-column] :not(pre) > code {
+  background: color-mix(in oklab, var(--muted-foreground) 42%, transparent) !important;
+  --bb-demo-block: transparent;
+}
+/* Clip instead of "…", so the last block runs to the edge. */
+body[data-bb-demo-mode] :is([data-sidebar="content"], [data-sidebar="inset"] header, [data-pane-header-focus-tab], [data-timeline-row-id], [class~="group/timeline-row"], [data-promptbox-shell], [data-bb-demo-sensitive]) * { text-overflow: clip !important; }
+/* Spelling marks would trace draft words. */
+body[data-bb-demo-mode] [data-promptbox-editor-content] ::spelling-error,
+body[data-bb-demo-mode] [data-promptbox-editor-content] ::grammar-error { text-decoration: none; }
+/* Host tooltips can repeat a hidden title on hover. */
+body[data-bb-demo-mode] [role="tooltip"] { visibility: hidden !important; }
+/* Images keep their box; the picture moves out of it and a fill shows instead. */
+body[data-bb-demo-mode] :is([data-message-column], [data-timeline-row-id], [data-promptbox], [role="dialog"], [data-bb-demo-sensitive]) img,
+body[data-bb-demo-mode] img[data-bb-demo-sensitive] {
+  object-position: -200vw 0;
+  background: var(--muted);
+}
+
+/* Plugin pages keep their BB frame but replace the page body, unless the page marks its own sensitive parts. */
+body[data-bb-demo-plugin-page] main:not([data-sidebar]):not(:has([data-bb-demo-ready])) { position: relative; }
+body[data-bb-demo-plugin-page] main:not([data-sidebar]):not(:has([data-bb-demo-ready])) > * { visibility: hidden !important; }
+body[data-bb-demo-plugin-page] main:not([data-sidebar]):not(:has([data-bb-demo-ready]))::after {
+  content: "✦  Plugin view hidden in Demo Mode";
+  position: absolute;
+  inset: 12px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--muted-foreground);
+  background: repeating-linear-gradient(135deg, var(--background), var(--background) 24px, var(--muted) 24px, var(--muted) 25px);
+  font-size: 14px;
+}

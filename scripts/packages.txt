@@ -13,6 +13,7 @@ plugins/task-workspaces
 plugins/session-share
 plugins/pinpoint
 plugins/projects
+plugins/demo-mode
 agents/fx-acp
 agents/nanocodex-acp
 agents/prime-agent-acp

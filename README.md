@@ -61,6 +61,8 @@ as `fx-acp/v0.1.0`.
   agent feedback, with screenshots, text edits, and explicit approvals.
 - [`plugins/projects`](plugins/projects) organizes native projects, groups and
   routing profiles. Explicit assignment handoffs preserve one source of truth.
+- [`plugins/demo-mode`](plugins/demo-mode) hides names and conversation content
+  for presentations while keeping sidebar structure, counts, and status visible.
 - [`agents/fx-acp`](agents/fx-acp) is an optional standalone ACP adapter for FX.
 - [`agents/nanocodex-acp`](agents/nanocodex-acp) is an optional standalone ACP
   adapter for nanocodex.
