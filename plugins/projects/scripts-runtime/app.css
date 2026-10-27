@@ -1,6 +1,6 @@
 /* The owned refresh glyph scopes both native desktop and compact menu rows. */
 body[data-workspace-scripts-ui] [role="menu"]:has(
-    > [role="menuitem"] > [data-icon="workspace-scripts/refresh"]
+    > [role="menuitem"] > [data-icon="projects/refresh"]
   ) {
   inline-size: min(
     24rem,
@@ -11,7 +11,7 @@ body[data-workspace-scripts-ui] [role="menu"]:has(
 
 body[data-workspace-scripts-ui]
   :is([role="menu"], [role="dialog"] > div):has(
-    > [role="menuitem"] > [data-icon="workspace-scripts/refresh"]
+    > [role="menuitem"] > [data-icon="projects/refresh"]
   )
   > [role="menuitem"]
   > span:not([data-icon-root]) {
@@ -23,7 +23,7 @@ body[data-workspace-scripts-ui]
 }
 
 body[data-workspace-scripts-ui]
-  [role="menuitem"]:has(> [data-icon="workspace-scripts/refresh"])
+  [role="menuitem"]:has(> [data-icon="projects/refresh"])
   + :is([role="separator"], hr)
   + div:last-child {
   max-inline-size: none;

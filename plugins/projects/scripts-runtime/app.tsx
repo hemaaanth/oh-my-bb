@@ -10,8 +10,9 @@ import {
   type PluginThreadActionRegistration,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import type { InspectResult, ScriptActionView, rpcContract } from "./server";
-import { MoreSettings, SCRIPTS_ICON } from "./settings";
+import type { InspectResult, ScriptActionView } from "./server";
+import type { scriptsRpcContract as rpcContract } from "./rpc";
+const SCRIPTS_ICON = "projects/scripts";
 import "./app.css";
 
 function actionStatus(action: ScriptActionView) {
@@ -66,7 +67,7 @@ function useScripts({ threadIds }: PluginThreadActionDataInput): ScriptsData {
     for (let offset = 0; offset < ids.length; offset += 100) {
       const batch = ids.slice(offset, offset + 100);
       try {
-        Object.assign(next, await rpc.call("inspectMany", { threadIds: batch }));
+        Object.assign(next, await rpc.call("scripts_inspectMany", { threadIds: batch }));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         for (const id of batch) next[id] = { available: false, message };
@@ -122,14 +123,14 @@ function useScripts({ threadIds }: PluginThreadActionDataInput): ScriptsData {
     setBusy(new Set(pending.current));
     try {
       if (value.startsWith("run:")) {
-        const result = await rpc.call("run", { threadId, actionId: value.slice(4) });
+        const result = await rpc.call("scripts_run", { threadId, actionId: value.slice(4) });
         const opened = !result.service && await navigate.experimental_openTerminal({ terminalId: result.terminalId });
         if (!opened) toast.success(`${result.title} ${result.reused ? "is already running" : "started"}. Copy its output command from Scripts.`);
       } else if (value.startsWith("stop:")) {
-        const result = await rpc.call("stopService", { threadId, actionId: value.slice(5) });
+        const result = await rpc.call("scripts_stopService", { threadId, actionId: value.slice(5) });
         toast.success(result.stopped ? "Service stopped." : "Service is not running.");
       } else if (value === "setup" || value === "teardown") {
-        const result = await rpc.call("runHook", { threadId, phase: value });
+        const result = await rpc.call("scripts_runHook", { threadId, phase: value });
         if (!await navigate.experimental_openTerminal({ terminalId: result.terminalId })) {
           toast.success(`${result.title} started. Read output with: bb terminal output ${result.terminalId}`);
         }
@@ -186,7 +187,7 @@ const scriptsAction: PluginThreadActionRegistration<ScriptsData> = {
             : "BB runs lifecycle hooks automatically.";
       }
     }
-    choices.push({ id: "refresh", label: "Refresh status", icon: "workspace-scripts/refresh" });
+    choices.push({ id: "refresh", label: "Refresh status", icon: "projects/refresh" });
     return {
       label: "Scripts",
       icon: SCRIPTS_ICON,
@@ -201,7 +202,7 @@ const scriptsAction: PluginThreadActionRegistration<ScriptsData> = {
   },
 };
 
-export default definePluginApp(app => {
+export function registerScriptsApp(app: Parameters<Parameters<typeof definePluginApp>[0]>[0]) {
   app.contentScripts.register({
     id: "native-menu-styles",
     mount() {
@@ -209,6 +210,5 @@ export default definePluginApp(app => {
       return () => document.body.removeAttribute("data-workspace-scripts-ui");
     },
   });
-  app.slots.settingsSection({ id: "more", component: MoreSettings });
   app.slots.experimental_threadAction(scriptsAction);
-});
+}

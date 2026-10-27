@@ -133,7 +133,7 @@ export function registerAgentSetup(bb: BbPluginApi, readPreview: (environmentId:
     },
     async cli(argv: string[], threadId?: string) {
       if (argv[1] === "list") return { exitCode: 0, stdout: `${JSON.stringify(view(await state()))}\n` };
-      if (!["enable", "disable"].includes(argv[1] ?? "") || !argv[2]) throw new Error("Usage: bb workspace-scripts agent-setup <list|enable <agent>|disable <agent>>");
+      if (!["enable", "disable"].includes(argv[1] ?? "") || !argv[2]) throw new Error("Usage: bb projects scripts agent-setup <list|enable <agent>|disable <agent>>");
       const name = argv[2]!.replace(/^@/u, "");
       const saved = await state();
       const byId = saved.bindings.find(binding => binding.profileId === name);

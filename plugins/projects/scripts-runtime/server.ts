@@ -675,13 +675,13 @@ export default function plugin(bb: BbPluginApi) {
     name: "workspace-scripts",
     summary: "Inspect and run scripts declared by the current workspace",
     commands: [
-      { name: "list", summary: "List workspace scripts", usage: "bb workspace-scripts list" },
-      { name: "run", summary: "Run a workspace script", usage: "bb workspace-scripts run <script-name>" },
-      { name: "setup", summary: "Run workspace setup", usage: "bb workspace-scripts setup" },
-      { name: "teardown", summary: "Run workspace teardown", usage: "bb workspace-scripts teardown" },
-      { name: "stop", summary: "Stop a workspace service", usage: "bb workspace-scripts stop <script-name>" },
-      { name: "prepare", summary: "Wait for the named preparation script", usage: "bb workspace-scripts prepare" },
-      { name: "agent-setup", summary: "Configure approved agent setup", usage: "bb workspace-scripts agent-setup <list|enable <agent>|disable <agent>>" },
+      { name: "list", summary: "List workspace scripts", usage: "bb projects scripts list" },
+      { name: "run", summary: "Run a workspace script", usage: "bb projects scripts run <script-name>" },
+      { name: "setup", summary: "Run workspace setup", usage: "bb projects scripts setup" },
+      { name: "teardown", summary: "Run workspace teardown", usage: "bb projects scripts teardown" },
+      { name: "stop", summary: "Stop a workspace service", usage: "bb projects scripts stop <script-name>" },
+      { name: "prepare", summary: "Wait for the named preparation script", usage: "bb projects scripts prepare" },
+      { name: "agent-setup", summary: "Configure approved agent setup", usage: "bb projects scripts agent-setup <list|enable <agent>|disable <agent>>" },
     ],
     async run(argv, context) {
       if (argv[0] === "agent-setup") {
@@ -721,7 +721,7 @@ export default function plugin(bb: BbPluginApi) {
           const result = await runAction(bb, context.threadId, action.id);
           return { exitCode: 0, stdout: `${result.title} ${result.reused ? "is already running" : `started in terminal ${result.terminalId}`}.\n` };
         }
-        return { exitCode: 2, stderr: "Usage: bb workspace-scripts <list|run <name>|prepare|setup|teardown|stop <name>|agent-setup>\n" };
+        return { exitCode: 2, stderr: "Usage: bb projects scripts <list|run <name>|prepare|setup|teardown|stop <name>|agent-setup>\n" };
       } catch (error) {
         return { exitCode: 1, stderr: `${errorMessage(error)}\n` };
       }

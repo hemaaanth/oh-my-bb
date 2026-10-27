@@ -61,11 +61,11 @@ Jev suggestions remain in the native new-thread composer. Exact repository refer
 Routing history and learned guidance remain in Projects. No routing settings, history, model data or secrets enter assignment exports. Commands remain:
 
 ```sh
-bb project-routing status
-bb project-routing backfill
-bb project-routing regenerate --project <id>
-bb project-routing history
-bb project-routing learn
+bb projects routing status
+bb projects routing backfill
+bb projects routing regenerate --project <id>
+bb projects routing history
+bb projects routing learn
 ```
 
 ## Development and distribution
@@ -88,7 +88,7 @@ Isolated SDK fixtures and browser component harnesses prove local handlers, stat
 
 ## Application environments
 
-Projects now owns the former Credentials implementation. Open **Project environments** in navigation, or **More → Manage project environments** in Projects settings. Each project has its own environment configuration. Existing shared configurations are retained with an explicit shared-edit warning.
+Projects now owns the former Credentials implementation. Open **Settings → Projects → Projects**, then edit a project and select **Environment**. Each project has its own environment configuration. Existing shared configurations are retained with an explicit shared-edit warning.
 
 Metadata saves preserve fields they do not edit, reject stale project/profile selections, and run no setup. Tokens stay in private installation storage. Agent instructions, `query_clickhouse`, existing workspace opt-outs and the on-host `bb-project-env-run` wrapper are retained. Remote Executor credentials are separate.
 
@@ -97,3 +97,9 @@ The `project-environments` package is a stateless compatibility adapter for exis
 Private setup recipes are not bundled. The former machine and workspace recipes are project-owned `.bb/setup/machine.sh` and `.bb/setup/workspace.sh`. Their existing preparation order and credential wrapper are retained. Copying a recipe does not execute it or change a project's existing `bb.json`/`paseo.json`.
 
 See [the merge runbook](../../docs/migrations/project-environments.md) before upgrading an existing installation. Do not simply enable the merged runtime against an unmigrated Credentials database.
+
+## Project commands and services
+
+Scripts is merged into Projects. The old workspace-scripts plugin is uninstalled after its KV and effective autostart preference are copied. Projects owns the native Scripts action, environment-scoped service records and existing approved pre-prompt setup. The CLI is `bb projects scripts …`; routing uses `bb projects routing …`. Application commands stay in each project's bb.json or paseo.json, and setup source stays in project-owned .sh files. See [migration](../../docs/migrations/scripts.md).
+
+All management is in settings: Preferences saves automatically; Projects has one row per native project with an editor; Groups has swatch/name/delete rows; More contains only the standard setup-guide row. No Projects navPanel or Add project button is registered. The native BB surface owns creating projects. Existing shared environments and explicit save/confirmation guards remain intact.

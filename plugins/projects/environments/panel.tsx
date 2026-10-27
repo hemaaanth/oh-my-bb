@@ -8,11 +8,11 @@ type Snapshot = PluginRpcResult<(typeof environmentRpcContract)["environment_sna
 type Fields = { name: string; environmentName: string; environmentId: string; account: string; serviceAccountName: string };
 const empty: Fields = { name: "", environmentName: "", environmentId: "", account: "", serviceAccountName: "" };
 const inputClass = "h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring";
-export function EnvironmentsPanel() {
+export function EnvironmentEditor({ selectedProjectId }: { selectedProjectId: string }) {
   const rpc = useRpc<typeof environmentRpcContract>();
   const editor = useRpc<typeof projectEnvironmentContract>();
   const [data, setData] = useState<Snapshot | null>(null);
-  const [projectId, setProjectId] = useState("");
+  const projectId = selectedProjectId;
   const [draft, setDraft] = useState<Fields>(empty);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -22,7 +22,6 @@ export function EnvironmentsPanel() {
   const baseline = useRef<{ id: string | null; updatedAt: string | null }>({ id: null, updatedAt: null });
   const load = useCallback(async () => {
     const next = await rpc.call("environment_snapshot"); setData(next);
-    setProjectId(current => current || next.projects.find(p => p.profileId)?.id || next.projects[0]?.id || "");
   }, [rpc]);
   useEffect(() => { void load().catch(e => setError(String(e))); }, [load]);
   useRealtime("project-environments-changed", () => { void load().catch(e => setError(String(e))); });
@@ -35,14 +34,7 @@ export function EnvironmentsPanel() {
   }, [profile, project]);
   const sharedProjects = data?.projects.filter(p => profile && p.profileId === profile.id) ?? [];
   async function action(fn: () => Promise<unknown>) { setBusy(true); setError(null); try { await fn(); await load(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
-  return <main className="mx-auto w-full max-w-[760px] space-y-5 px-4 py-5 [overflow-wrap:anywhere]">
-    <h1 className="text-lg font-semibold">Project environments</h1>
-    <label className="grid gap-2 text-sm">Project
-      <Select value={projectId} disabled={busy || !data} onValueChange={value => { dirty.current = false; setToken(""); setConfirmShared(false); setProjectId(value); }}>
-        <SelectTrigger aria-label="Project"><SelectValue placeholder="Choose a project" /></SelectTrigger>
-        <SelectContent>{data?.projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-      </Select>
-    </label>
+  return <div className="min-w-0 space-y-4 [overflow-wrap:anywhere]">
     {!data && <p role="status" className="text-sm text-muted-foreground">Loading environments…</p>}
     {data && project && <form className="space-y-4" onSubmit={event => { event.preventDefault(); void action(async () => { await editor.call("saveProjectEnvironment", { projectId, expectedProfileId: baseline.current.id, expectedUpdatedAt: baseline.current.updatedAt, ...draft, confirmShared }); dirty.current = false; }); }}>
       <div className="divide-y divide-border rounded-lg border border-border px-3">
@@ -58,5 +50,5 @@ export function EnvironmentsPanel() {
       <div className="mt-3 flex flex-wrap items-end gap-2"><label className="grid min-w-0 flex-1 gap-2 text-sm">New token<input type="password" autoComplete="new-password" className={inputClass} value={token} onChange={event => setToken(event.target.value)} /></label><button type="button" className={inputClass + " !w-auto disabled:opacity-50"} disabled={busy || !token.trim()} onClick={() => void action(async () => { if (!baseline.current.id || !baseline.current.updatedAt) throw new Error("Save the environment first"); await editor.call("setProjectEnvironmentToken", { projectId, expectedProfileId: baseline.current.id, expectedUpdatedAt: baseline.current.updatedAt, token, confirmShared }); setToken(""); })}>Save token</button></div>
     </details>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-  </main>;
+  </div>;
 }

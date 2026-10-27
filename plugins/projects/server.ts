@@ -1,3 +1,4 @@
+import { registerScripts } from "./scripts-runtime/feature.js";
 import { registerEnvironments } from "./environments/feature.js";
 import { setTimeout as delay } from "node:timers/promises";
 import { createHash, randomUUID } from "node:crypto";
@@ -813,17 +814,21 @@ export default async function plugin(bb: BbPluginApi) {
     set: (id, credentialId) => { assignments.requireWritable("applicationBindings"); store.updateProject(id, { credentialId }); publish("environment-linked"); },
   });
 
+  const scriptsCli = await registerScripts(bb);
   bb.cli.register({
-    name: "project-routing",
+    name: "projects",
     summary: "Inspect and refresh intelligent project routing profiles",
     commands: [
-      { name: "status", summary: "Show profile coverage", usage: "bb project-routing status" },
-      { name: "backfill", summary: "Refresh stale generated profiles and create missing ones; replaces generated content", usage: "bb project-routing backfill" },
-      { name: "regenerate", summary: "Regenerate one project profile", usage: "bb project-routing regenerate --project <id>" },
-      { name: "history", summary: "Show Jev routing hits and misses from new threads", usage: "bb project-routing history" },
-      { name: "learn", summary: "Learn routing guidance from routing history now", usage: "bb project-routing learn" },
+      { name: "scripts", summary: "Inspect and run project commands and approved setup", usage: "bb projects scripts <list|run|prepare|setup|teardown|stop|agent-setup>" },
+      { name: "status", summary: "Show profile coverage", usage: "bb projects routing status" },
+      { name: "backfill", summary: "Refresh stale generated profiles and create missing ones; replaces generated content", usage: "bb projects routing backfill" },
+      { name: "regenerate", summary: "Regenerate one project profile", usage: "bb projects routing regenerate --project <id>" },
+      { name: "history", summary: "Show Jev routing hits and misses from new threads", usage: "bb projects routing history" },
+      { name: "learn", summary: "Learn routing guidance from routing history now", usage: "bb projects routing learn" },
     ],
     async run(argv, context) {
+      if (argv[0] === "scripts") return scriptsCli.run(argv.slice(1), context);
+      if (argv[0] === "routing") argv = argv.slice(1);
       const command = argv[0] ?? "status";
       if (command === "status") {
         const snapshot = await routingProfilesSnapshot();
@@ -839,7 +844,7 @@ export default async function plugin(bb: BbPluginApi) {
       if (command === "regenerate") {
         const index = argv.indexOf("--project");
         const projectId = index >= 0 ? argv[index + 1] : context.projectId;
-        if (!projectId) return { exitCode: 2, stderr: "Usage: bb project-routing regenerate --project <id>" };
+        if (!projectId) return { exitCode: 2, stderr: "Usage: bb projects routing regenerate --project <id>" };
         const project = (await projectRows()).find((candidate) => candidate.id === projectId);
         if (!project) return { exitCode: 2, stderr: `Unknown project: ${projectId}` };
         await generateProjectRoutingProfile(project, { force: true, taskEvidence: await taskRoutingEvidence() });
@@ -852,7 +857,7 @@ export default async function plugin(bb: BbPluginApi) {
         const result = await learnFromRoutingHistory();
         return { exitCode: result.failed ? 1 : 0, stdout: `${JSON.stringify(result, null, 2)}\n` };
       }
-      return { exitCode: 2, stderr: "Usage: bb project-routing <status|backfill|regenerate|history|learn>" };
+      return { exitCode: 2, stderr: "Usage: bb projects routing <status|backfill|regenerate|history|learn>" };
     },
   });
 

@@ -7,7 +7,6 @@ plugins/model-gateway
 plugins/journal
 plugins/pages
 plugins/webhooks
-plugins/workspace-scripts
 plugins/status-sidebar
 plugins/task-workspaces
 plugins/session-share

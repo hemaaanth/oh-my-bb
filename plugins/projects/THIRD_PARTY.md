@@ -71,3 +71,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Consolidated Scripts components
+
+The responsive overlay, host setup helpers and package-owned scripts/refresh icons moved from Scripts. BB UI registry portions retain the MIT grant. The icon wrapper now uses the public SDK renderer; the old Hugeicons notices above are retained historical attribution. Optional security tools are not bundled. Their versions, upstream URLs, checksums and individual licenses remain in scripts-runtime/recipes/security-tools/versions.json; preserved approvals retain their original recipe bytes.

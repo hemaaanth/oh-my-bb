@@ -25,7 +25,7 @@ Do not run a real transfer, reload or source switch without the operator's cutov
 
 ## Routing commands
 
-`bb project-routing status`, `backfill`, `regenerate --project <id>`, `history`, and `learn` inspect or operate the existing routing feature. Generation and learning may use configured paid services; they are not harmless migration checks.
+`bb projects routing status`, `backfill`, `regenerate --project <id>`, `history`, and `learn` inspect or operate the existing routing feature. Generation and learning may use configured paid services; they are not harmless migration checks.
 
 Profile generation and learning run only through explicit actions. Startup, reload, project changes, key/model changes, periodic time and trace collection preserve stored profiles and learned guidance. “Refresh stale generated profiles” and `backfill` create missing profiles and replace stale generated profiles; manual profiles stay unchanged. `regenerate` may replace the selected manual profile. These actions use the saved model, may incur cost and do not restore earlier values.
 
@@ -40,3 +40,7 @@ Use **Project environments** or **Settings → Projects → More → Manage proj
 `bb project-env list` and the existing `prepare`, `run`, `import-credential`, `bind`, `unbind` and `cleanup` commands remain available through the stateless `project-environments` adapter. They execute in Projects. Preparation and run can execute project setup; do not use them just to inspect configuration. Run application commands through `bb-project-env-run`. Never print injected secrets or replay preparation after an unknown outcome.
 
 Private machine and workspace setup source belongs in the project's `.bb/setup/machine.sh` and `.bb/setup/workspace.sh`. Existing project manifests are separate and must be preserved.
+
+## Project commands
+
+Scripts is part of Projects. Use `bb projects scripts list`, `run <name>`, `stop <name>`, `setup`, `teardown`, `prepare` and `agent-setup <list|enable|disable>`. Declarations remain in project bb.json/paseo.json. Existing service terminals and agent setup approvals survive migration. These actions can run code; do not invoke them as read-only configuration checks. Routing commands are now `bb projects routing …`. The old Scripts plugin is retired. All project management is in Settings, not a rail page.

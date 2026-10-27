@@ -20,8 +20,14 @@ Authentication stays in host-owned Configuration. Preferences contains behavior,
 
 ## Project environments
 
-Manage application environments from Projects → Project environments, or Settings → More → Manage project environments. Each project gets its own configuration. Existing shared links are retained and clearly marked. Metadata saves check the saved project and environment revision. They do not run setup.
+Manage application environments from Settings → Projects → Projects, then edit a project. Each project gets its own configuration. Existing shared links are retained and clearly marked. Metadata saves check the saved project and environment revision. They do not run setup.
 
 Projects owns environment definitions, service-account token files, preparation records and the guarded ClickHouse tool. Agent service credentials remain in remote Executor. Configuration is resolved through the existing on-host `bb-project-env-run` wrapper.
 
 The old `project-environments` ID is a small compatibility adapter. It forwards existing RPCs and `bb project-env` commands to Projects and owns no second editor, data writer or preparation queue. A live merge requires a verified backup and a maintenance copy; it never imports secrets on startup. Project-specific setup sources belong in each project's `.bb/setup/` directory and are not bundled publicly.
+
+## Scripts are part of Projects
+
+Project commands and services remain declared in each checkout's bb.json (or legacy paseo.json). The native thread Scripts action, environment-scoped terminal tracking, service autostart preference and approved pre-prompt agent setup now run in Projects. Use `bb projects scripts …`. The separate Scripts package is retired and must be uninstalled after its saved state is migrated.
+
+Projects has no navigation rail page. Settings contains Preferences with autosave, compact Projects rows with environment/routing editors, Groups with swatch controls, a single standard More setup-guide row, and explained integration switches. Groups stay owned by Projects; Status Sidebar can consume them.
