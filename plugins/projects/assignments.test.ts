@@ -244,6 +244,32 @@ describe("assignment authority", () => {
     expect(remote.writes).toBe(1);
   });
 
+  it("preserves completed reverse identity and rows when repeat freeze is refused, including after restart", async () => {
+    const host = await fixture();
+    const identity = await freeze(host);
+    const remote = adapter(host, identity, []);
+    await stageCommit(host, identity);
+    await host.harness.behavior.callRpc("setProjectBundle", { projectId: "native/project", targetId: "new/destination-write", enabled: true });
+    await host.harness.behavior.callRpc("assignmentHandoffV1", { ...identity, phase: "reverse-freeze" });
+    await host.harness.behavior.callRpc("assignmentHandoffV1", { ...identity, phase: "reverse-commit" });
+    const completed = await host.harness.behavior.callRpc("assignmentStatusV1", { kind: "bundles" });
+    expect(completed).toMatchObject({ state: "source-owned", transfer: identity, reverseGeneration: "reverse/1" });
+    const before = host.bb.storage.database().serialize();
+    await expect(freeze(host)).rejects.toThrow("handoff-mismatch");
+    expect(host.bb.storage.database().serialize()).toEqual(before);
+    expect(await host.harness.behavior.callRpc("assignmentStatusV1", { kind: "bundles" })).toEqual(completed);
+    const reloaded = await host.harness.lifecycle.reload(plugin);
+    cleanups.push(() => reloaded.harness.lifecycle.dispose());
+    const afterRestart = reloaded.bb.storage.database().serialize();
+    expect(await reloaded.harness.behavior.callRpc("assignmentStatusV1", { kind: "bundles" })).toEqual(completed);
+    await expect(freeze(reloaded)).rejects.toThrow("handoff-mismatch");
+    expect(reloaded.bb.storage.database().serialize()).toEqual(afterRestart);
+    await reloaded.harness.behavior.callRpc("setProjectBundle", { projectId: "native/project", targetId: "catalog/read-through-write", enabled: true }, pluginCaller("catalog"));
+    expect(await reloaded.harness.behavior.callRpc("projectContext", { projectId: "native/project" }, pluginCaller("catalog"))).toMatchObject({ bundleIds: ["catalog/read-through-write", "new/destination-write"] });
+    expect(remote.writes).toBe(1);
+    expect(await reloaded.harness.behavior.callRpc("assignmentStatusV1", { kind: "bundles" })).toEqual(completed);
+  });
+
   it.each(["frozen/exported", "destination-staged", "destination-owned", "reverse-frozen"] as const)("restores a durable %s snapshot without enabling a second writer", async (state) => {
     const host = await fixture();
     const identity = await freeze(host);

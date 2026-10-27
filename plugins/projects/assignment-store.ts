@@ -95,6 +95,7 @@ export class AssignmentStore {
     if (destination !== destinations[kind]) throw new AssignmentError("handoff-mismatch", "Assignment destination is fixed by kind.");
     return this.db.transaction(() => {
       const existing = this.status(kind);
+      if (existing.state === "source-owned" && existing.reverseGeneration !== null) throw new AssignmentError("handoff-mismatch", "Repeated forward handoff after a completed reverse is unsupported. Keep the existing transfer identity and reverse generation.");
       if (existing.state !== "source-owned") {
         if (existing.transfer?.destination === destination && existing.transfer.destinationVersion === destinationVersion) return existing;
         throw new AssignmentError("handoff-mismatch", "A different handoff already exists.");

@@ -16,3 +16,4 @@
 - Include the authorized repository MIT license and verified dependency/component provenance notices in the package.
 - Block explicit setup beside an installed active, staged, frozen, old or unreachable assignment destination. Distinguish native-metadata-confirmed absence from unknown availability before readiness/import writes.
 - Preserve completed setup retries and standalone adoption. Document serial setup, unsupported destination-first adoption, durable activation, compatible upgrades and format-gated staged recovery (U1–U3).
+- Reject repeated forward freeze after completed reverse before any mutation. Preserve the prior transfer/reverse binding and destination read/write-through across restart.

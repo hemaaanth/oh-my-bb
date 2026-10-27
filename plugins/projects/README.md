@@ -42,6 +42,8 @@ The exact destination release is pinned through staging and first activation. Du
 
 Rollback requires a frozen reverse export containing all destination edits before source authority resumes. Do not downgrade a destination or restore an old database to bypass this barrier.
 
+After a completed reverse, another forward handoff is unsupported. Projects keeps the original transfer identity and reverse generation for destination read/write-through, and rejects a new freeze before changing rows or receipts. Ordinary source writes and destination delegation remain available. Do not clear the reverse marker or use freeze/abort to reset it.
+
 [ASSIGNMENT_HANDOFF.md](./ASSIGNMENT_HANDOFF.md) defines exact C1 wire schemas, digest rules, destination adapter obligations, mixed-version gates and expected data differences. Destination adapters must be implemented and verified in their own packages before any real transfer. No transfer or source deployment occurs as part of installing this implementation.
 
 ## Routing profiles
