@@ -517,11 +517,68 @@ export class AccountPoolHub {
           input: gatewayModelDetails(id).input,
         })),
       });
-    return this.handleAuthenticated(
-      await withoutClientCredentials(request, identity.harness),
-      provider,
-      identity,
-    );
+    const cleaned = await withoutClientCredentials(request, identity.harness);
+    if (routePath(request.url) === "/v1/alpha/search")
+      return this.search(cleaned, identity);
+    return this.handleAuthenticated(cleaned, provider, identity);
+  }
+
+  /**
+   * Codex web search: the request goes unchanged to a ChatGPT OAuth account in
+   * the thread's chain. No model, translation, key fallback or thread route.
+   */
+  private async search(request: Request, identity: ThreadIdentity): Promise<Response> {
+    const adapter = this.adapter("codex");
+    if (!this.accepting)
+      return adapter.errorResponse(503, "Model Gateway is not accepting requests.", STOPPING_RETRY_AFTER);
+    const now = this.options.now();
+    // Chain entries stay in operator order; each entry keeps its own priority pool.
+    const entries = expandChain(
+      this.options.getSettings().chains[identity.harness],
+      await this.options.accounts.list(),
+    ).map((entry) => entry.filter((account) => upstreamKind(account) === "chatgpt-oauth" && account.codexAccountId !== undefined))
+      .filter((entry) => entry.length > 0);
+    if (entries.length === 0)
+      return adapter.errorResponse(503, "Web search needs a ChatGPT subscription account in this harness's chain.");
+    const signal = AbortSignal.any([request.signal, this.stopped.signal]);
+    try {
+      const body = new Uint8Array(await request.arrayBuffer());
+      const parsed = adapter.parseRequest(body, request.headers);
+      let failure: FailureSummary | null = null;
+      for (const entry of entries) {
+        const accounts = entry.filter((account) => (this.options.routes.holdUntil(account.id) ?? 0) <= now);
+        if (accounts.length === 0) continue;
+        const result = await this.forwardEntry(
+          request,
+          parsed,
+          { kind: "chatgpt-oauth", replay: CHATGPT_REPLAY, accounts, client: adapter, upstream: adapter, model: null },
+          null,
+          identity,
+          new Map(),
+          signal,
+        );
+        if (result.kind === "response") return result.response;
+        failure = result.failure ?? failure;
+      }
+      signal.throwIfAborted();
+      if (failure !== null)
+        return adapter.errorResponse(failure.status, failure.message, failure.headers);
+      // Nothing was tried: answer with the earliest route hold, quota reset or rate-limit hold.
+      const chatgpt = entries.flat();
+      const until = this.entryResetAt(chatgpt, new Map(), "other", undefined, true);
+      return until === null
+        ? this.noEligibleResponse(chatgpt, "other", adapter)
+        : adapter.errorResponse(429, "No Model Gateway account is currently eligible.", {
+            "retry-after": String(Math.max(1, Math.ceil((until - this.options.now()) / 1_000))),
+          });
+    } catch (error) {
+      if (!signal.aborted) throw error;
+      return adapter.errorResponse(
+        request.signal.aborted ? 499 : 503,
+        request.signal.aborted ? "Model Gateway request was canceled." : "Model Gateway stopped accepting requests.",
+        request.signal.aborted ? undefined : STOPPING_RETRY_AFTER,
+      );
+    }
   }
 
   /** `provider` is the client protocol: claude = Messages, codex = Responses. */

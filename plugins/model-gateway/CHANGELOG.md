@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Serve Codex web search (`POST /v1/alpha/search`). The request goes byte for byte to a ChatGPT OAuth account in the thread's chain, in chain-entry order, with the existing refresh, 429 holds and `Retry-After`. It never uses Claude, API keys or model mapping, and it never changes the thread's route.
+
 - Size translated fallbacks by the body they actually receive. Responses `input_image` and `input_file` data URLs now cost a flat media allowance instead of counting as text. Foreign reasoning and `compaction` items that the translation drops are no longer counted. Each fallback model is checked against its own window. When the primary failed, was held or was at capacity, its 429 or 503 and `Retry-After` are returned instead of a false "Compact the thread". When only a too-small translated model is left, Codex gets `context_length_exceeded` and Claude Code gets `prompt is too long`, so both compact.
 
 - Add `inference.complete` and `inference.status` RPC methods. The Journal plugin uses them for subscription-only background completions on the ChatGPT OAuth pool. They never use API keys, chains, model routes or Jev, and they create no thread routes. The models are Luna only, and input, output and concurrency are capped.

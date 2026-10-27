@@ -520,6 +520,12 @@ export function createAccountPoolPlugin(
       { auth: "none" },
     );
     bb.http.route(
+      "POST",
+      "/v1/alpha/search",
+      (context) => hub.handle(context.req.raw, "codex"),
+      { auth: "none" },
+    );
+    bb.http.route(
       "GET",
       "/v1/models",
       (context) => hub.handle(context.req.raw, "codex"),

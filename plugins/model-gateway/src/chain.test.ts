@@ -2658,6 +2658,93 @@ describe("chain failover in the hub", () => {
     expect(await gw.env("pi", "thr_pi_off")).toEqual([]);
   });
 
+  describe("Codex web search", () => {
+    interface SearchGateway {
+      host: { harness: { behavior: { fetchHttp(method: "POST", path: string, init: { headers: Record<string, string>; body: string }): Promise<Response> } } };
+    }
+    const search = async (gw: SearchGateway, headers: Record<string, string>, query = "", body = '{ "query" : "bb" }\n') => {
+      const response = await gw.host.harness.behavior.fetchHttp("POST", `/v1/alpha/search${query}`, {
+        headers: { "content-type": "application/json", ...headers },
+        body,
+      });
+      return { status: response.status, headers: response.headers, text: await response.text() };
+    };
+    const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+
+    it("forwards search bytes to the chain's ChatGPT account and returns its raw reply", async () => {
+      const gw = await gateway({ withCodex: true });
+      const token = await gw.token("claude-code", "thr_search");
+      // Claude-first chain: the inference turn binds Max.
+      expect((await gw.send(token, userTurn)).text).toBe('{"served":"max-token"}');
+      const before = await gw.route("thr_search");
+      gw.upstream.attempts.length = 0;
+      gw.upstream.requests.length = 0;
+      gw.upstream.reply = () => new Response("raw search bytes", { status: 200, headers: { "content-type": "application/x-search" } });
+      // Codex's native search shape; its model must reach ChatGPT unmapped, byte for byte.
+      const body = '{ "id": "search-1", "model": "gw-gpt-6-sol",  "commands": { "search_query": [{ "q": "bb account pooler" }] } }\n';
+      const ok = await search(gw, {
+        authorization: "Bearer client-chatgpt-token",
+        "chatgpt-account-id": "client-account",
+        cookie: "session=client",
+        "x-codex-turn-metadata": '{"turn_id":"t1"}',
+      }, `?q=1&gateway_token=${token}`, body);
+      expect(ok).toMatchObject({ status: 200, text: "raw search bytes" });
+      expect(ok.headers.get("content-type")).toBe("application/x-search");
+      expect(gw.upstream.attempts).toEqual(["pro-token"]);
+      const sent = gw.upstream.requests[0]!;
+      expect(sent.url).toBe("https://chatgpt.test/alpha/search?q=1");
+      expect(sent.body).toBe(body);
+      expect(sent.headers.get("chatgpt-account-id")).toBe("chatgpt-account");
+      expect(sent.headers.get("cookie")).toBeNull();
+      expect(sent.headers.get("x-codex-turn-metadata")).toBe('{"turn_id":"t1"}');
+
+      gw.upstream.reply = () => new Response('{"error":"bad query"}', { status: 400, headers: { "content-type": "application/json" } });
+      expect(await search(gw, bearer(token))).toMatchObject({ status: 400, text: '{"error":"bad query"}' });
+      // Search never replaces the inference route, nor creates one.
+      expect(await gw.route("thr_search")).toEqual(before);
+      await search(gw, bearer(await gw.token("codex", "thr_search_only")));
+      expect((await gw.cli("status", "--thread", "thr_search_only", "--json")).exitCode).not.toBe(0);
+    });
+
+    it("rejects a bad token and never falls back to Claude or keys", async () => {
+      const none = await gateway();
+      expect((await search(none, bearer("not-a-token"))).status).toBe(401);
+      expect(await search(none, bearer(await none.token("claude-code", "thr_no_codex")))).toMatchObject({ status: 503 });
+      expect(none.upstream.attempts).toEqual([]);
+
+      const gw = await gateway({ withCodex: true });
+      const token = await gw.token("codex", "thr_chain");
+      expect((await gw.cli("chain", "set", "codex", "claude-key:*")).exitCode).toBe(0);
+      expect((await search(gw, bearer(token))).status).toBe(503);
+      expect((await gw.cli("chain", "set", "codex", "chatgpt-oauth:*")).exitCode).toBe(0);
+      expect((await gw.cli("account", "disable", gw.pro!.id)).exitCode).toBe(0);
+      expect((await search(gw, bearer(token))).status).toBe(503);
+      expect(gw.upstream.attempts).toEqual([]);
+    });
+
+    it("answers held and rate-limited accounts with the remaining Retry-After and no extra call", async () => {
+      const gw = await gateway({ withCodex: true });
+      const token = await gw.token("codex", "thr_held_search");
+      await gw.cli("account", "hold", gw.pro!.id, "--until", new Date(RESET).toISOString());
+      const held = await search(gw, bearer(token));
+      expect(held.status).toBe(429);
+      expect(held.headers.get("retry-after")).toBe(String((RESET - T) / 1_000));
+      expect(gw.upstream.attempts).toEqual([]);
+      await gw.cli("account", "hold", gw.pro!.id, "--clear");
+
+      gw.upstream.reply = () => Response.json({ error: "slow down" }, { status: 429, headers: { "retry-after": "120" } });
+      const limited = await search(gw, bearer(token));
+      expect(limited.status).toBe(429);
+      expect(limited.headers.get("retry-after")).toBe("120");
+      expect(gw.upstream.attempts).toEqual(["pro-token"]);
+      gw.setNow(T + 30_000);
+      const cached = await search(gw, bearer(token));
+      expect(cached.status).toBe(429);
+      expect(cached.headers.get("retry-after")).toBe("90");
+      expect(gw.upstream.attempts).toEqual(["pro-token"]);
+    });
+  });
+
   it("writes the Pi extension into the Pi agent dir, owned whole and backed up", async () => {
     const gw = await gateway();
     const agentDir = await mkdtemp(path.join(tmpdir(), "mgw-pi-agent-"));

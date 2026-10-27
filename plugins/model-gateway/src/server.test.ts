@@ -3038,6 +3038,148 @@ describe("Account Pool plugin", () => {
     }
   });
 
+  it("registers Codex web search and refreshes its ChatGPT login after a 401", async () => {
+    let refreshCalls = 0;
+    const seen: Array<{ url: string; authorization: string | null }> = [];
+    const fixture = await createOAuthRequestFixture(
+      "codex",
+      async (input, init) => {
+        if (String(input).endsWith("/oauth/token")) {
+          refreshCalls += 1;
+          return Response.json({ access_token: "oauth-new", expires_in: 3600 });
+        }
+        const authorization = new Headers(init?.headers).get("authorization");
+        seen.push({ url: String(input), authorization });
+        return authorization === "Bearer oauth-old"
+          ? Response.json({}, { status: 401 })
+          : Response.json({ encrypted_output: "encrypted-search-output" });
+      },
+      () => 1_800_000_000_000,
+    );
+    const response = await fixture.host.harness.behavior.fetchHttp("POST", "/v1/alpha/search", {
+      headers: { "x-bb-account-pool-token": fixture.key, "content-type": "application/json" },
+      body: JSON.stringify({ id: "search-1", model: "gpt-5.5", commands: { search_query: [{ q: "bb account pooler" }] } }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ encrypted_output: "encrypted-search-output" });
+    expect(refreshCalls).toBe(1);
+    expect(seen).toEqual([
+      { url: "https://upstream.example/alpha/search", authorization: "Bearer oauth-old" },
+      { url: "https://upstream.example/alpha/search", authorization: "Bearer oauth-new" },
+    ]);
+    fixture.service.controller.abort();
+    await fixture.service.done;
+    const stopped = await fixture.host.harness.behavior.fetchHttp("POST", "/v1/alpha/search", {
+      headers: { "x-bb-account-pool-token": fixture.key },
+      body: "{}",
+    });
+    expect(stopped.status).toBe(503);
+    await stopped.text();
+    expect(seen).toHaveLength(2);
+  });
+
+  it("searches ChatGPT accounts in explicit chain-entry order, not global priority", async () => {
+    let imported = 0;
+    const attempts: Array<string | null> = [];
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      provider: "codex",
+      source: "import",
+      options: {
+        codexUsageUrl: EMPTY_USAGE_URL,
+        importCodexCredentials: async () => ({
+          accessToken: imported++ === 0 ? "sk-first" : "sk-second",
+          refreshToken: "refresh",
+          idToken: null,
+          accountId: `search-codex-account-${imported}`,
+          email: null,
+          expiresAt: Date.now() + 24 * 60 * 60 * 1_000,
+        }),
+        fetch: async (input, init) => {
+          if (String(input) === EMPTY_USAGE_URL) return Response.json({});
+          const key = new Headers(init?.headers).get("authorization");
+          attempts.push(key);
+          return key === "Bearer sk-second" && attempts.length > 1
+            ? Response.json({}, { status: 429, headers: { "retry-after": "600" } })
+            : new Response("ok");
+        },
+      },
+    });
+    const second = accountSchema.parse(
+      await fixture.host.harness.behavior.callRpc("account.add", {
+        provider: "codex",
+        source: { kind: "import" },
+        label: null,
+        priority: 100,
+      }),
+    );
+    const chain = await fixture.host.harness.behavior.runCli(["chain", "set", "codex", second.id, fixture.account.id]);
+    expect(chain.exitCode).toBe(0);
+    const send = async () => {
+      const response = await fixture.host.harness.behavior.fetchHttp("POST", "/v1/alpha/search", {
+        headers: { "x-bb-account-pool-token": fixture.key },
+        body: "{}",
+      });
+      await response.text();
+      return response.status;
+    };
+    expect(await send()).toBe(200);
+    expect(attempts).toEqual(["Bearer sk-second"]);
+    // The first entry rate-limits for longer than an inline wait: the next entry serves.
+    expect(await send()).toBe(200);
+    expect(attempts).toEqual(["Bearer sk-second", "Bearer sk-second", "Bearer sk-first"]);
+  });
+
+  it("keeps search on the ChatGPT account that serves the same Codex session", async () => {
+    let imported = 0;
+    const attempts: Array<string | null> = [];
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      provider: "codex",
+      source: "import",
+      options: {
+        codexUsageUrl: EMPTY_USAGE_URL,
+        importCodexCredentials: async () => ({
+          accessToken: imported++ === 0 ? "sk-first" : "sk-second",
+          refreshToken: "refresh",
+          idToken: null,
+          accountId: `affinity-codex-account-${imported}`,
+          email: null,
+          expiresAt: Date.now() + 24 * 60 * 60 * 1_000,
+        }),
+        fetch: async (input, init) => {
+          if (String(input) === EMPTY_USAGE_URL) return Response.json({});
+          attempts.push(new Headers(init?.headers).get("authorization"));
+          return Response.json({ encrypted_output: "encrypted-search-output" });
+        },
+      },
+    });
+    await fixture.host.harness.behavior.callRpc("account.add", {
+      provider: "codex",
+      source: { kind: "import" },
+      label: null,
+      priority: 100,
+    });
+    const cli = fixture.host.harness.behavior.runCli;
+    const send = async (route: string, session: string) => {
+      const response = await fixture.host.harness.behavior.fetchHttp("POST", route, {
+        headers: { "x-bb-account-pool-token": fixture.key, "thread-id": session },
+        body: JSON.stringify({ id: "search-1", model: "gpt-5.5", commands: { search_query: [{ q: "bb" }] } }),
+      });
+      expect(response.status).toBe(200);
+      await response.text();
+    };
+    await send("/v1/responses", "session-a");
+    // With the first account held, session B binds to the second one.
+    await cli(["account", "hold", fixture.account.id, "--until", new Date(Date.now() + 3_600_000).toISOString()]);
+    await send("/v1/responses", "session-b");
+    await cli(["account", "hold", fixture.account.id, "--clear"]);
+    attempts.length = 0;
+    await send("/v1/alpha/search", "session-b");
+    await send("/v1/alpha/search", "session-a");
+    expect(attempts).toEqual(["Bearer sk-second", "Bearer sk-first"]);
+  });
+
   it("does not let a late second 401 poison a newer credential", async () => {
     const gate = deferred();
     let refreshCalls = 0;
