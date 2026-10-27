@@ -48,16 +48,16 @@ export function AgentsSettings() {
           <span className="block truncate text-xs text-muted-foreground">@{item.slug} · {item.kind === "thin" ? "Thin" : "Full"} · {item.modelMode === "level" ? modelLevelLabel(item.level) : item.model}</span>
           {item.description && <span className="block truncate text-xs text-muted-foreground">{item.description}</span>}
         </button>
-        <Button size="icon" variant="ghost" className="size-8 shrink-0 p-0" aria-label={`Edit ${item.name} profile`} onClick={() => { setTab("profile"); setEditing(item.id); }}><Icon name="Pencil" className="size-4" /></Button>
+        <Button size="icon" variant="ghost" className="size-8 shrink-0 p-0" aria-label={`Edit ${item.name} profile`} onClick={() => { setTab("profile"); setEditing(item.id); }}><svg aria-hidden className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m16 3 5 5M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z" /></svg></Button>
       </div>)}</div>}
     </div>
     <ErrorMessage error={error} />
     {error && <Button size="sm" variant="outline" onClick={() => void load()}>Retry</Button>}
     <Dialog open={editing !== null} onOpenChange={open => { if (!open) setEditing(null); }}>
-      <DialogContent aria-describedby={undefined} className="agent-settings-editor w-[calc(100%-2rem)] max-w-[760px] h-[85dvh] overflow-y-auto">
+      {editing !== null && <DialogContent aria-describedby={undefined} className="agent-settings-editor w-[calc(100%-2rem)] max-w-[760px] h-[85dvh] overflow-y-auto">
         <DialogHeader className={editing === "new" ? undefined : "sr-only"}><DialogTitle>{editing === "new" ? "New agent" : profile?.name ?? "Agent unavailable"}</DialogTitle></DialogHeader>
         {editing === "new" ? <ProfileForm makeDefault={profiles.length === 0} onSaved={async () => { await load(); setEditing(null); }} onCancel={() => setEditing(null)} /> : profile ? <AgentDetail key={profile.id} profile={profile} tab={tab} onReload={load} onBack={() => setEditing(null)} onTab={setTab} /> : <p className="text-sm text-muted-foreground">This agent is no longer available.</p>}
-      </DialogContent>
+      </DialogContent>}
     </Dialog>
   </section></TooltipProvider>;
 }
