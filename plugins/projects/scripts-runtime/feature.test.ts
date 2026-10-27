@@ -81,10 +81,11 @@ describe("independent group field updates", () => {
 describe("Projects CLI help",()=>{
  it("explains both command families and never prepares a workspace for nested help",async()=>{
   const h=createFakePluginHost({pluginId:"projects",sdk:{subscribe:()=>()=>{}}});await projects(h.bb);
+  const before=[...h.harness.inspection.sdk.calls];
   try{
    expect(await h.harness.behavior.runCli(["--help"])).toMatchObject({exitCode:0,stdout:expect.stringContaining("bb projects scripts")});
    expect(await h.harness.behavior.runCli(["scripts","prepare","--help"])).toMatchObject({exitCode:0,stdout:expect.stringContaining("bb projects scripts prepare")});
-   expect(h.harness.inspection.sdk.calls).toEqual([]);
+   expect(h.harness.inspection.sdk.calls).toEqual(before);
    expect(h.harness.experimental_hostRpcCalls).toEqual([]);
   }finally{await h.harness.lifecycle.dispose();}
  });
