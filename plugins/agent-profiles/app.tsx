@@ -1,3 +1,4 @@
+import { agentPreferencesContract } from "./server/preferences";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   definePluginApp,
@@ -231,6 +232,8 @@ function JoinedAgentsBanner() {
 
 function AgentsPreferences() {
   const rpc = useRpc<typeof rpcContract>();
+  const preferencesRpc = useRpc<typeof agentPreferencesContract>();
+  const [behavior, setBehavior] = useState<"directed" | "smart" | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -262,6 +265,9 @@ function AgentsPreferences() {
     }
   };
 
+  const loadPreferences = useCallback(() => { void preferencesRpc.call("agentPreferences", null).then(value => setBehavior(value.responseBehavior), () => toast.error("Could not load channel preference")); }, [preferencesRpc]);
+  useEffect(loadPreferences, [loadPreferences]);
+  useRealtime("agent-preferences", loadPreferences);
   const selected = profiles.find((profile) => profile.isDefault)?.id ?? "";
   return <section className="min-w-0 space-y-3" aria-label="Agent preferences">
     <h2 className="text-sm font-medium">Preferences</h2>
@@ -270,6 +276,13 @@ function AgentsPreferences() {
       <Select disabled={busy || profiles.length === 0} value={selected} onValueChange={value => void selectDefault(value)}>
         <SelectTrigger id="default-agent" className="w-full min-w-0 @md:w-72"><SelectValue placeholder={profiles.length ? "Choose an agent" : "Create an agent below"} /></SelectTrigger>
         <SelectContent>{profiles.map(profile => <SelectItem key={profile.id} value={profile.id}>{profile.name} (@{profile.slug})</SelectItem>)}</SelectContent>
+      </Select>
+    </div>
+    <div className="@container flex min-w-0 flex-col gap-2 rounded-md border border-border bg-surface-recessed/70 px-3 py-3 @md:flex-row @md:items-center @md:justify-between">
+      <div className="min-w-0"><label htmlFor="channel-response-behavior" className="text-sm">New channel responses</label><p className="text-xs text-muted-foreground">Directed waits for mentions. Automatic chooses one agent.</p></div>
+      <Select disabled={busy || behavior === null} value={behavior ?? ""} onValueChange={value => { setBusy(true); void preferencesRpc.call("updateAgentPreferences", { responseBehavior: value as "directed" | "smart" }).then(next => setBehavior(next.responseBehavior), () => toast.error("Could not save channel preference")).finally(() => setBusy(false)); }}>
+        <SelectTrigger id="channel-response-behavior" className="w-full min-w-0 @md:w-72"><SelectValue placeholder="Loading…" /></SelectTrigger>
+        <SelectContent><SelectItem value="directed">Directed</SelectItem><SelectItem value="smart">Automatic</SelectItem></SelectContent>
       </Select>
     </div>
   </section>;

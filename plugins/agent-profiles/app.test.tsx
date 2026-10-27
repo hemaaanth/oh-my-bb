@@ -74,7 +74,7 @@ describe("Agents settings", () => {
     const app = await loadPluginApp(() => import("./app"));
     expect(app.navPanels.some(panel => panel.id === "agents")).toBe(false);
     expect(app.settingsSections.map(section => section.id)).toEqual(["preferences", "agents"]);
-    const slot = renderSlot(app.settingsSections[0]!, {}, { rpc: { listProfiles: () => [profile] } });
+    const slot = renderSlot(app.settingsSections[0]!, {}, { rpc: { listProfiles: () => [profile], agentPreferences: () => ({ responseBehavior: "smart" }) } });
     await slot.findByLabelText("Default agent");
     expect(slot.queryByRole("button", { name: "Open Agents" })).toBeNull();
   });

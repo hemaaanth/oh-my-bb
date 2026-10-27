@@ -459,4 +459,4 @@ Existing setup integrations can contribute `AGENT_SETUP_ERROR` and an absolute `
 
 ### Agent settings
 
-Define agents in **Settings → Agents**. Preferences contains the default-agent choice. The Agents section has a searchable compact list and **New agent**. Select a row or its edit icon to open the profile, mission, persona, activity and usage in a settings dialog. Saved revision checks and local unsaved drafts are retained. There is no Agents rail page. Channel invitations link to Settings for agent management; channel conversations remain on their existing surface.
+Define agents in **Settings → Agents**. Preferences contains the default-agent choice and the response behavior for new channels. Configuration contains only the Jev key. The Agents section has a searchable compact list and **New agent**. Select a row or its edit icon to open the profile, mission, persona, activity and usage in a settings dialog. Saved revision checks and local unsaved drafts are retained. There is no Agents rail page. Channel invitations link to Settings for agent management; channel conversations remain on their existing surface.

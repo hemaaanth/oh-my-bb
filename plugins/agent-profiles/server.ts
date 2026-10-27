@@ -1,3 +1,4 @@
+import { loadAgentPreferences } from "./server/preferences";
 import { setTimeout as delay } from "node:timers/promises";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerAgentTools } from "./server/agent-tools";
@@ -403,23 +404,7 @@ export default async function plugin(bb: BbPluginApi) {
   const requiresHistoryMigration = Boolean(db.prepare("SELECT 1 FROM profiles LIMIT 1").get())
     && await bb.storage.kv.get("agent-history-cutover:v1") !== true;
 
-  const settings = bb.settings.define({
-    defaultResponseBehavior: {
-      type: "select",
-      label: "New channel response behavior",
-      options: ["directed", "smart"],
-      default: "smart",
-      description:
-        "Directed responds only to mentions and replies. Automatic asks Jev to choose one agent when no agent is named.",
-    },
-    jevApiKey: {
-      type: "string",
-      label: "Jev API key",
-      secret: true,
-      description:
-        "Lets Jev pick one agent in Automatic channels and decide whether delegated results need a follow-up.",
-    },
-  });
+  const settings = await loadAgentPreferences(bb);
   const executionResolver = createExecutionResolver(bb);
 
   const channels = await Store.create(bb, db);
@@ -510,11 +495,11 @@ export default async function plugin(bb: BbPluginApi) {
     async defaultResponseBehavior() {
       const stored = (await settings.get()).defaultResponseBehavior;
       return phase2ResponseBehaviorSchema.parse(
-        stored === "everyone" ? "smart" : stored,
+        stored,
       );
     },
     async rememberDefaultResponseBehavior(value) {
-      await settings.experimental_set({ defaultResponseBehavior: value });
+      await settings.setResponseBehavior(value);
     },
   });
   const automations = new ChannelAutomations(bb, channels, runtime);
