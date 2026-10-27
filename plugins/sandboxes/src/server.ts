@@ -785,8 +785,6 @@ export default async function plugin(bb: BbPluginApi) {
           provider === "freestyle" ? providerConfig.freestyle.persistence : "",
         snapshotId:
           provider === "freestyle" ? providerConfig.freestyle.snapshotId : "",
-        gatewayEndpoint: "",
-        imageUri: "",
         supportsImages: sandboxImageProviders.some(
           (candidate) => candidate === provider,
         ),

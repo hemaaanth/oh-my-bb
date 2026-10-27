@@ -80,8 +80,6 @@ const providerSettingsSchema = z.object({
   storage: z.string(),
   persistence: z.string(),
   snapshotId: z.string(),
-  gatewayEndpoint: z.string(),
-  imageUri: z.string(),
   supportsImages: z.boolean(),
   artifactName: z.string().nullable(),
 });

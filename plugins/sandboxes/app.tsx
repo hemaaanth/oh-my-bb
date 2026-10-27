@@ -79,8 +79,6 @@ interface ProviderSettingsView {
   storage: string;
   persistence: string;
   snapshotId: string;
-  gatewayEndpoint: string;
-  imageUri: string;
   supportsImages: boolean;
   artifactName: string | null;
 }
