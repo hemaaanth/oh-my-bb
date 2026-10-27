@@ -562,12 +562,6 @@ export class SandboxStore {
       row.inputs_sha256 === artifact.inputsSha256 && row.archive_sha256 === artifact.archiveSha256) ? "verified" : "incompatible";
   }
 
-  requireImageProvenance(imageId: string, compatible: ReadonlyArray<{ sourceCommit: string; inputsSha256: string; archiveSha256: string }>): void {
-    if (this.imageProvenanceState(imageId, compatible) !== "verified") {
-      throw new Error("Image Browser provenance is unknown or incompatible; retain this image and recover verified immutable-image provenance before activating it");
-    }
-  }
-
   isAlwaysOn(hostId: string): boolean {
     return this.db.prepare("SELECT 1 FROM sandbox_always_on WHERE host_id = ?").get(hostId) !== undefined;
   }
@@ -897,68 +891,6 @@ export class SandboxStore {
   deleteSizeProfile(projectId: string, provider: SandboxProvider): boolean {
     return this.db.prepare(
       "DELETE FROM sandbox_size_profiles WHERE project_id = ? AND provider = ?",
-    ).run(projectId, provider).changes > 0;
-  }
-
-  projectImages(projectId?: string): SandboxProjectImageRecord[] {
-    const rows = this.db.prepare(
-      `SELECT p.project_id, p.provider, p.image_id, i.name AS image_name,
-              p.updated_at
-       FROM sandbox_project_images p
-       JOIN sandbox_images i ON i.id = p.image_id
-       ${projectId === undefined ? "" : "WHERE p.project_id = ?"}
-       ORDER BY p.project_id, p.provider`,
-    ).all(...(projectId === undefined ? [] : [projectId])) as Array<{
-      project_id: string;
-      provider: SandboxProvider;
-      image_id: string;
-      image_name: string;
-      updated_at: number;
-    }>;
-    return rows.map((row) => ({
-      projectId: row.project_id,
-      provider: row.provider,
-      imageId: row.image_id,
-      imageName: row.image_name,
-      updatedAt: row.updated_at,
-    }));
-  }
-
-  projectImage(
-    projectId: string,
-    provider: SandboxProvider,
-  ): SandboxProjectImageRecord | null {
-    return this.projectImages(projectId).find(
-      (profile) => profile.provider === provider,
-    ) ?? null;
-  }
-
-  setProjectImage(
-    projectId: string,
-    provider: SandboxProvider,
-    imageId: string,
-  ): SandboxProjectImageRecord {
-    const image = this.requireImage(imageId);
-    if (image.provider !== provider) {
-      throw new Error(`Sandbox image ${image.name} belongs to ${image.provider}, not ${provider}`);
-    }
-    if (image.status !== "ready") {
-      throw new Error(`Sandbox image ${image.name} is not ready`);
-    }
-    this.db.prepare(
-      `INSERT INTO sandbox_project_images (project_id, provider, image_id, updated_at)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(project_id, provider) DO UPDATE SET
-         image_id = excluded.image_id, updated_at = excluded.updated_at`,
-    ).run(projectId, provider, imageId, Date.now());
-    const profile = this.projectImage(projectId, provider);
-    if (profile === null) throw new Error("Project image was not persisted");
-    return profile;
-  }
-
-  clearProjectImage(projectId: string, provider: SandboxProvider): boolean {
-    return this.db.prepare(
-      "DELETE FROM sandbox_project_images WHERE project_id = ? AND provider = ?",
     ).run(projectId, provider).changes > 0;
   }
 

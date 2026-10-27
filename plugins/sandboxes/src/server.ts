@@ -1173,21 +1173,6 @@ export default async function plugin(bb: BbPluginApi) {
         return providerSettingsView(input.provider);
       },
       buildImage: (request) => imageManager.build(request),
-      activateImage: async ({ imageId }) => {
-        const image = store.requireImage(imageId);
-        if (image.status !== "ready") {
-          throw new Error(`Sandbox image ${image.name} is not ready`);
-        }
-        store.requireImageProvenance(image.id, compatibleBrowserArtifacts());
-        await validateImagePlacement(image);
-        await activateImage(image.provider, image.name);
-        const activated = store.setDefaultImage(image.id);
-        bb.realtime.publish("sandbox-provider-settings", {
-          provider: image.provider,
-          type: "changed",
-        });
-        return activated;
-      },
       branches: async ({ projectId }) => {
         const project = await bb.sdk.projects.get({ projectId });
         const source =
@@ -1285,11 +1270,6 @@ export default async function plugin(bb: BbPluginApi) {
           // A plugin reload drops upgrade jobs.
           return null;
         }
-      },
-      clearProjectImage: async ({ projectId, provider }) => {
-        const removed = manager.clearProjectImage(projectId, provider);
-        bb.realtime.publish("sandbox-version-audit", { type: "changed" });
-        return { removed };
       },
       resizeSandbox: ({ sandboxId, cpuCores, memoryBytes, diskBytes }) =>
         manager.resizeSandbox(sandboxId, {
@@ -1489,16 +1469,6 @@ export default async function plugin(bb: BbPluginApi) {
       buildImage: (request) => imageManager.startBuild(request),
       registerImage: (request) => imageManager.startRegistration(request),
       imageJob: (id, cursor) => imageManager.job(id, cursor),
-      activateImage: async (imageId) => {
-        const image = store.requireImage(imageId);
-        if (image.status !== "ready") {
-          throw new Error(`Sandbox image ${image.name} is not ready`);
-        }
-        store.requireImageProvenance(image.id, compatibleBrowserArtifacts());
-        await validateImagePlacement(image);
-        await activateImage(image.provider, image.name);
-        return store.setDefaultImage(imageId);
-      },
       validateSizeRequest: (provider, resources, tier, regionId) =>
         validateSizeRequest(provider, resources, tier, regionId ?? null),
       startUpgrade: (options) => upgrader.start(options),

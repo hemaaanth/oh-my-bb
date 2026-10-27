@@ -180,14 +180,7 @@ carry package scopes.
 The settings cards show the active reference, the toolchain inventory, build
 history, and optional additional Debian packages. **Generate image** publishes
 the first reference. **Refresh image** builds a new immutable tag and activates
-it only after the push and provider registration succeed. A prior attested
-image can be reactivated without rebuilding when its immutable-image receipt
-matches a reviewed entry in `docker/browser-runtime.compatibility.json`.
-Updating today's Browser archive does not invalidate compatible historical
-proof. Legacy images without proof are retained, including existing defaults,
-but cannot be newly activated or pinned. Restoring their selection requires
-verified provenance recovery; before cutover the owner must resolve this real
-rollback restriction. There is no unknown-provenance override.
+it only after the push and provider registration succeed. Manual selection of older images and project-specific image pins have been retired. Existing machines, active provider defaults, and historical image records are retained.
 
 The same operations are available to agents and scripts:
 
@@ -196,7 +189,6 @@ bb sandbox provider daytona disable
 bb sandbox provider daytona enable
 bb sandbox images [--provider daytona]
 bb sandbox build-image [--provider daytona] [--name bb-sandbox-version]
-bb sandbox activate-image <image-id>
 ```
 
 `build-image` without `--provider` registers the pushed reference with every
@@ -531,12 +523,11 @@ Settings page.
 Sandbox daemons never update themselves: a machine keeps the bb-app its image
 carried until it is upgraded in place, and bb refuses a daemon whose protocol
 no longer matches. After bb is upgraded on this machine, three things can be
-stale at once: the active image, any project pinned to an older image, and
-every live sandbox. The plugin tracks the bb-app on each of them and offers one
+stale at once: the active image and every live sandbox. The plugin tracks the bb-app on each of them and offers one
 path through:
 
 1. **Notice.** On load the plugin compares the bb version with the one it last
-   ran under. When it changed, it logs every image, pin, and machine that is
+   ran under. When it changed, it logs every image and machine that is
    behind, with the command that fixes each.
 2. **Audit.** `bb sandbox doctor` prints the same findings on demand, and the
    Settings page shows them in the *bb <version>* card with per-row actions.
@@ -547,11 +538,7 @@ path through:
    behind; the audit reports a size that the plugin default or a project
    depends on but that no active image serves, with the
    `bb sandbox register-image --provider daytona --tier <size>` that fixes it.
-4. **Pins.** Pins survive image rebuilds on purpose. The audit lists any pin
-   behind the server; clear it with
-   `bb sandbox clear-project-image --provider <provider> --project <id>` or pin a
-   current image.
-5. **Machines.** `bb sandbox upgrade` rebuilds the image on this bb and heals
+4. **Machines.** `bb sandbox upgrade` rebuilds the image on this bb and heals
    the agent harnesses on live machines. It does not replace bb on an existing
    machine; a machine whose daemon bb rejects is recreated from the new image
    by starting a new thread.
@@ -644,7 +631,6 @@ bb sandbox provider <daytona|modal|e2b|box|freestyle|nirvana> <enable|disable>
 bb sandbox images [--provider <daytona|modal|e2b|nirvana>]
 bb sandbox build-image [--provider <daytona|modal|e2b|nirvana>] [--name <version>] [--tier <S|M|L|XL>] [--region <id>]
 bb sandbox register-image [--reference <tag>] [--provider <daytona|modal|e2b|nirvana>] [--tier <S|M|L|XL>] [--region <id>]
-bb sandbox activate-image <image-id>
 bb sandbox tiers
 bb sandbox size [--project <id>]
 bb sandbox set-size --provider <provider> [--project <id>] (--tier <S|M|L|XL> | --cpu/--memory/--disk) [--region <id>]

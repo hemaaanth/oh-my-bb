@@ -1,3 +1,7 @@
+# Unreleased
+
+- Remove manual image rollback/selection and project image pinning from settings, RPC and CLI. Keep current machines, provider defaults, build registration and historical database records.
+
 # Changelog
 
 ## Unreleased — Foundations 2C

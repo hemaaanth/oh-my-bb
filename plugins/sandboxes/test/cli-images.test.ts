@@ -266,3 +266,14 @@ describe("bb sandbox build-image", () => {
     await fake.harness.dispose();
   });
 });
+
+
+describe("retired image selection", () => {
+  it.each(["activate-image", "project-images", "set-project-image", "clear-project-image", "set-image-version"])("does not expose %s or start an image job", async (command) => {
+    const { fake, requests } = await cli(settled("build", build([])));
+    const result = await fake.harness.runCli([command, "old-image", "--provider", "modal", "--project", "project-1"]);
+    expect(result.exitCode).not.toBe(0);
+    expect(requests).toEqual([]);
+    await fake.harness.dispose();
+  });
+});

@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { compatibleBrowserArtifacts } from "./browser-artifact.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { NewThreadRequest } from "@get-bb/plugin-sdk/app";
 import {
@@ -41,7 +40,6 @@ import {
   type SandboxRuntimeRecord,
   type SandboxSizeProfileInput,
   type SandboxSizeProfileRecord,
-  type SandboxProjectImageRecord,
   type SandboxImageRecord,
 } from "./store.js";
 import { assessSandboxResources, type SandboxResourceAssessment } from "./resource-sizing.js";
@@ -595,27 +593,6 @@ export class SandboxManager {
     return this.store.deleteSizeProfile(projectId, provider);
   }
 
-  projectImages(projectId?: string): SandboxProjectImageRecord[] {
-    return this.store.projectImages(projectId);
-  }
-
-  setProjectImage(
-    projectId: string,
-    provider: SandboxProvider,
-    imageId: string,
-  ): SandboxProjectImageRecord {
-    this.store.requireImageProvenance(imageId, compatibleBrowserArtifacts());
-    return this.store.setProjectImage(projectId, provider, imageId);
-  }
-
-  setImageBbAppVersion(imageId: string, version: string) {
-    return this.store.setImageBbAppVersion(imageId, version);
-  }
-
-  clearProjectImage(projectId: string, provider: SandboxProvider): boolean {
-    return this.store.clearProjectImage(projectId, provider);
-  }
-
   /**
    * Apply a new size to one existing sandbox. The backend decides how much of
    * the request its API will accept right now, so the stored target records the
@@ -690,10 +667,6 @@ export class SandboxManager {
           image: this.store.getDefaultImage(provider, tier),
         })),
       );
-    const pins = this.store.projectImages().map((pin) => ({
-      ...pin,
-      bbAppVersion: this.store.requireImage(pin.imageId).bbAppVersion,
-    }));
     // Live sandboxes are managed by BB core now, so the audit covers only the
     // image, pin, and size-tier state the plugin still owns.
     const sandboxes: VersionAuditSandboxInput[] = [];
@@ -701,7 +674,7 @@ export class SandboxManager {
       serverVersion,
       previousServerVersion: options.previousServerVersion ?? null,
       defaultImages,
-      pins,
+      pins: [],
       sandboxes,
       sizeTiers,
     });

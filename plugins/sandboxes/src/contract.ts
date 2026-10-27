@@ -524,10 +524,6 @@ export const sandboxRpcContract = defineRpcContract({
     }),
     output: imageBuildSchema,
   },
-  activateImage: {
-    input: z.object({ imageId: z.string().min(1) }),
-    output: sandboxImageSchema,
-  },
   branches: {
     input: z.object({ projectId: z.string().min(1) }),
     output: z.object({
@@ -622,12 +618,5 @@ export const sandboxRpcContract = defineRpcContract({
   sandboxUpgradeJob: {
     input: z.object({ id: z.string().nullable(), cursor: z.number().int().min(0) }),
     output: sandboxUpgradeJobSchema.nullable(),
-  },
-  clearProjectImage: {
-    input: z.object({
-      projectId: z.string().min(1),
-      provider: z.enum(sandboxProviderValues),
-    }),
-    output: z.object({ removed: z.boolean() }),
   },
 });

@@ -56,7 +56,6 @@ export interface SandboxCliDeps {
     request: SandboxImageRegistrationTaskRequest,
   ) => Promise<SandboxImageJobHandle>;
   imageJob?: (id: string, cursor: number) => SandboxImageJobStatus;
-  activateImage?: (imageId: string) => Promise<SandboxImageRecord>;
   daytonaCapacity?: () => Promise<DaytonaCapacity>;
   validateSizeRequest?: (
     provider: SandboxProvider,
@@ -391,32 +390,6 @@ export function registerSandboxCli(
         usage: `bb sandbox build-image --local [--provider <${imageProviderUsage}>] [--name <version>] [--wait <seconds>|--no-wait] [--json]`,
       },
       {
-        name: "set-image-version",
-        summary:
-          "Record the bb-app version an image carries, for images built before the version label existed",
-        usage: "bb sandbox set-image-version <image-id> <bb-app-version> [--json]",
-      },
-      {
-        name: "activate-image",
-        summary: "Use an existing managed image for new sandboxes",
-        usage: "bb sandbox activate-image <image-id> [--json]",
-      },
-      {
-        name: "project-images",
-        summary: "Show provider images pinned to individual projects",
-        usage: "bb sandbox project-images [--project <project-id>] [--json]",
-      },
-      {
-        name: "set-project-image",
-        summary: "Pin a managed provider image to one project",
-        usage: `bb sandbox set-project-image <image-id> --provider <${providerUsage}> [--project <project-id>] [--json]`,
-      },
-      {
-        name: "clear-project-image",
-        summary: "Return one project to the shared provider image",
-        usage: `bb sandbox clear-project-image --provider <${providerUsage}> [--project <project-id>] [--json]`,
-      },
-      {
         name: "size",
         summary: "Show the per-project size profiles new sandboxes start from",
         usage: "bb sandbox size [--project <project-id>] [--json]",
@@ -706,75 +679,6 @@ export function registerSandboxCli(
           ? json({ job: status, progress })
           : renderImageJob(status, progress, seconds);
       }
-      if (command === "activate-image") {
-        if (deps.activateImage === undefined) {
-          throw new Error("Image activation is unavailable");
-        }
-        const imageId = args.find((arg) => !arg.startsWith("--"));
-        if (imageId === undefined) {
-          throw new Error("Usage: bb sandbox activate-image <image-id>");
-        }
-        const image = await deps.activateImage(imageId);
-        return wantsJson
-          ? json({ image })
-          : { exitCode: 0, stdout: `Activated ${image.name}.\n` };
-      }
-      if (command === "set-image-version") {
-        const [imageId, version] = args.filter((arg) => !arg.startsWith("--"));
-        if (!imageId || !version) {
-          throw new Error(
-            "Usage: bb sandbox set-image-version <image-id> <bb-app-version>",
-          );
-        }
-        if (!/^\d+\.\d+\.\d+(?:[-+.][0-9A-Za-z.-]+)?$/u.test(version)) {
-          throw new Error(`${version} is not a bb-app version such as 0.42.0`);
-        }
-        const image = manager.setImageBbAppVersion(imageId, version);
-        return wantsJson
-          ? json({ image })
-          : {
-              exitCode: 0,
-              stdout: `${image.name} (${image.provider}) carries bb-app ${image.bbAppVersion}.\n`,
-            };
-      }
-      if (command === "project-images") {
-        const projectId = option(args, "--project") ?? context.projectId;
-        const profiles = manager.projectImages(projectId ?? undefined);
-        return wantsJson
-          ? json({ profiles })
-          : {
-              exitCode: 0,
-              stdout: profiles.length === 0
-                ? "No project-specific images; projects use provider defaults.\n"
-                : `${profiles.map((profile) =>
-                    `${profile.projectId}\t${profile.provider}\t${profile.imageName}`
-                  ).join("\n")}\n`,
-            };
-      }
-      if (command === "set-project-image" || command === "clear-project-image") {
-        const projectId = option(args, "--project") ?? context.projectId;
-        const providerValue = option(args, "--provider");
-        if (!projectId) throw new Error("--project is required outside a project thread");
-        if (!providerValue || !isProvider(providerValue)) {
-          throw new Error(`--provider must be one of ${sandboxProviderValues.join(", ")}`);
-        }
-        if (command === "clear-project-image") {
-          const removed = manager.clearProjectImage(projectId, providerValue);
-          return wantsJson ? json({ removed }) : {
-            exitCode: 0,
-            stdout: removed
-              ? `Cleared the ${providerValue} image pin for ${projectId}.\n`
-              : `No ${providerValue} image pin for ${projectId}.\n`,
-          };
-        }
-        const imageId = args.find((arg) => !arg.startsWith("--") && arg !== providerValue && arg !== projectId);
-        if (!imageId) throw new Error("Usage: bb sandbox set-project-image <image-id> --provider <provider>");
-        const profile = manager.setProjectImage(projectId, providerValue, imageId);
-        return wantsJson ? json({ profile }) : {
-          exitCode: 0,
-          stdout: `${projectId} will use ${profile.imageName} on ${providerValue}.\n`,
-        };
-      }
       if (command === "size") {
         const projectId = option(args, "--project") ?? context.projectId;
         const profiles = manager.sizeProfiles(projectId ?? undefined);
@@ -960,7 +864,7 @@ export function registerSandboxCli(
       return {
         exitCode: 2,
         stderr:
-          "Usage: bb sandbox <list|show|delete|providers|provider|capacity|tiers|images|register-image|image-status|build-image|activate-image|project-images|set-project-image|clear-project-image|size|set-size|clear-size|resize|upgrade|doctor|ssh-status|ssh-setup> [options]\n",
+          "Usage: bb sandbox <list|show|delete|providers|provider|capacity|tiers|images|register-image|image-status|build-image|size|set-size|clear-size|resize|upgrade|doctor|ssh-status|ssh-setup> [options]\n",
       };
     },
   });

@@ -48,10 +48,4 @@ The builder must support the three Browser source/input/archive inputs and emit 
 
 The package-local Browser archive has a reviewed source/input/archive receipt. Verify it with `node docker/verify-browser-runtime.mjs`. Do not build from a live Browser root or substitute an old private sibling archive. Registration checks all three Browser labels against an immutable image reference.
 
-An additive table stores image provenance; historical SQL identities remain unchanged. A separately reviewed compatibility list permits attested older artifacts without requiring equality with today's archive. Unknown or incompatible images cannot be newly activated or pinned. Existing image rows, defaults, native resources and sessions remain retained.
-
-For an existing installation, recover and review immutable proof for needed legacy rollback targets before cutover. If proof cannot be recovered, an explicit owner decision must accept the precise temporary selection restriction. Do not hide that behavior change. A rebuild creates a new target; it does not preserve or prove an old rollback target. There is no arbitrary unknown-provenance override.
-
-The unused broken standalone Freestyle snapshot publisher is not shipped. Native Freestyle runtime, configured snapshot selection, settings and stored snapshot data remain. No replacement bootstrap framework or cloud snapshot operation is part of this migration.
-
-See [the package contract](../../plugins/sandboxes/CONTRACTS.md) for exact import inputs, precedence, retry semantics and recovery limits. Provider lifecycle, image building and network acceptance need separately bounded authorization; local fixtures are not substitutes for those checks.
+Image provenance records remain build evidence, with immutable historical SQL preserved. Manual selection/reactivation of old images and project-specific image pinning are retired by owner request. There are no UI, RPC or CLI entry points for those actions. Current provider defaults, existing machines and historical image records stay intact. Newly built images still follow the verified build-and-register pipeline. This removes the legacy-selection cutover gate without accepting an unverified image or starting a build.

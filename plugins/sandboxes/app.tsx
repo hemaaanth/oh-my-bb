@@ -591,9 +591,6 @@ function SandboxImageCard() {
   const [saving, setSaving] = useState(false);
   const [building, setBuilding] = useState(false);
   const [buildMessage, setBuildMessage] = useState<string | null>(null);
-  const [activatingImageId, setActivatingImageId] = useState<string | null>(
-    null,
-  );
   const [error, setError] = useState<string | null>(null);
   const dirty = useRef(false);
   const request = useRef(0);
@@ -689,19 +686,6 @@ function SandboxImageCard() {
       setError(errorText(failure));
     } finally {
       setBuilding(false);
-    }
-  };
-
-  const activate = async (image: SandboxImageRecord) => {
-    setActivatingImageId(image.id);
-    setError(null);
-    try {
-      await rpc.call("activateImage", { imageId: image.id });
-      await load();
-    } catch (failure) {
-      setError(errorText(failure));
-    } finally {
-      setActivatingImageId(null);
     }
   };
 
@@ -806,40 +790,11 @@ function SandboxImageCard() {
               <div className="mt-1 truncate font-mono text-xs text-foreground">
                 {entry.activeName ?? "Not registered"}
               </div>
-              {entry.images.length > 0 ? (
-                <div className="mt-2 space-y-1 font-mono text-xs text-muted-foreground">
-                  {entry.images.slice(0, 4).map((image) => (
-                    <div
-                      key={image.id}
-                      className="flex min-w-0 items-center justify-between gap-3"
-                    >
-                      <span className="min-w-0"><span className="block truncate">{image.name}</span><span className="block font-sans text-xs">{image.browserProvenance === "verified" ? "Browser provenance verified" : image.browserProvenance === "incompatible" ? "Browser runtime incompatible" : "Browser provenance unknown · retained"}</span></span>
-                      {image.isDefault ? (
-                        <span>active</span>
-                      ) : image.status === "ready" ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={activatingImageId !== null || image.browserProvenance !== "verified"}
-                          onClick={() => void activate(image)}
-                        >
-                          {activatingImageId === image.id
-                            ? "Activating…"
-                            : "Use"}
-                        </Button>
-                      ) : (
-                        <span>{image.status}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
             </div>
           ))}
         </div>
 
-        <p className="text-xs text-muted-foreground">Private registry authentication is configured in native Configuration. Unknown image provenance does not delete the image or stop its current machines.</p>
+        <p className="text-xs text-muted-foreground">Private registry authentication is configured in native Configuration. Image builds do not replace existing machines.</p>
 
         {error !== null ? (
           <p role="alert" className="text-xs text-destructive">
@@ -896,7 +851,6 @@ function SandboxUpgradesCard() {
   const rpc = useRpc<typeof sandboxRpcContract>();
   const [audit, setAudit] = useState<VersionAuditView | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busyAction, setBusyAction] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [job, setJob] = useState<SandboxUpgradeJobView | null>(null);
   const [jobLog, setJobLog] = useState<string[]>([]);
@@ -959,19 +913,6 @@ function SandboxUpgradesCard() {
     }, [load]),
   );
 
-  const run = async (key: string, action: () => Promise<string>) => {
-    setBusyAction(key);
-    setError(null);
-    try {
-      setMessage(await action());
-      await load();
-    } catch (failure) {
-      setError(errorText(failure));
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
   if (audit === null) {
     return (
       <section className="overflow-hidden rounded-lg border border-border bg-card">
@@ -1011,7 +952,7 @@ function SandboxUpgradesCard() {
           type="button"
           size="sm"
           className="shrink-0"
-          disabled={updating || busyAction !== null}
+          disabled={updating}
           onClick={() => void startUpdate()}
         >
           {updating ? (
@@ -1039,48 +980,6 @@ function SandboxUpgradesCard() {
                   </span>
                   <span className={`shrink-0 text-xs ${badge.className}`}>
                     {image.bbAppVersion ?? "?"} · {badge.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-        {audit.pins.length > 0 ? (
-          <div className="space-y-1">
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Project pins
-            </div>
-            {audit.pins.map((pin) => {
-              const badge = versionBadge(pin.state);
-              const key = `pin:${pin.projectId}:${pin.provider}`;
-              return (
-                <div key={key} className="flex items-center justify-between gap-3">
-                  <span className="truncate">
-                    {pin.projectId} · {providerLabel(pin.provider)} · {pin.imageName}
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2 text-xs">
-                    <span className={badge.className}>
-                      {pin.bbAppVersion ?? "?"} · {badge.label}
-                    </span>
-                    {pin.state !== "current" ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={busyAction !== null}
-                        onClick={() =>
-                          void run(key, async () => {
-                            await rpc.call("clearProjectImage", {
-                              projectId: pin.projectId,
-                              provider: pin.provider,
-                            });
-                            return `${pin.projectId} now uses the shared ${providerLabel(pin.provider)} image.`;
-                          })
-                        }
-                      >
-                        {busyAction === key ? "Clearing…" : "Clear pin"}
-                      </Button>
-                    ) : null}
                   </span>
                 </div>
               );

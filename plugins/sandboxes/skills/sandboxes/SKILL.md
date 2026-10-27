@@ -65,7 +65,6 @@ bb sandbox set-size --provider <provider> [--project <project-id>] --tier <S|M|L
 bb sandbox clear-size --provider <provider> [--project <project-id>]
 bb sandbox images [--provider <provider>]
 bb sandbox register-image [--reference <tag>] [--provider <provider>] [--tier <S|M|L|XL>] [--region <id>]
-bb sandbox activate-image <image-id>
 bb sandbox doctor
 ```
 
