@@ -15,6 +15,7 @@ plugins/pinpoint
 plugins/projects
 plugins/demo-mode
 plugins/sandboxes
+plugins/catalog
 agents/fx-acp
 agents/nanocodex-acp
 agents/prime-agent-acp

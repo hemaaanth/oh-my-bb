@@ -65,6 +65,8 @@ as `fx-acp/v0.1.0`.
   for presentations while keeping sidebar structure, counts, and status visible.
 - [`plugins/sandboxes`](plugins/sandboxes) supplies native runtime adapters for six
   providers. BB owns machine lifecycle; optional integrations keep their own authority.
+- [`plugins/catalog`](plugins/catalog), displayed as Executor, connects agents to
+  assigned remote toolkits and approved versioned skills. The `catalog` identity stays stable.
 - [`agents/fx-acp`](agents/fx-acp) is an optional standalone ACP adapter for FX.
 - [`agents/nanocodex-acp`](agents/nanocodex-acp) is an optional standalone ACP
   adapter for nanocodex.
@@ -120,6 +122,13 @@ Sandboxes' managed-model runtime requires Model Gateway. Credentials, Catalog,
 Agents and Projects call paths are off for fresh installs; Browser owns its own
 Sandboxes opt-in. Existing image provenance and builder routes need explicit
 preservation checks before cutover. See [Sandboxes migration](docs/migrations/sandboxes.md).
+
+Executor keeps remote service credentials on the Executor server. This BB plugin
+keeps its server-side API key and local toolkit/skill assignments. Skills work
+without remote Executor configuration. Optional Agents profile scopes start off.
+The display rename changes no plugin, tool, command, storage or secret identity.
+See [Executor migration](docs/migrations/catalog.md) for existing assignment
+handoffs and the distinction between a native approval and an SDK client call.
 
 ## Validate the repository
 
