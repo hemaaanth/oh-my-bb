@@ -828,6 +828,7 @@ export default async function plugin(bb: BbPluginApi) {
     name: "projects",
     summary: "Manage project scripts, services and routing profiles",
     commands: [
+      { name: "routing", summary: "Inspect or explicitly refresh routing profiles", usage: "bb projects routing <status|backfill|regenerate|history|learn>" },
       { name: "scripts", summary: "Inspect and run project commands and approved setup", usage: "bb projects scripts <list|run|prepare|setup|teardown|stop|agent-setup>" },
       { name: "status", summary: "Show profile coverage", usage: "bb projects routing status" },
       { name: "backfill", summary: "Refresh stale generated profiles and create missing ones; replaces generated content", usage: "bb projects routing backfill" },

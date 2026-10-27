@@ -110,6 +110,7 @@ export function RoutingProfileEditor({
           </button>
         </div>
       </div>
+      <p className="text-xs text-muted-foreground">Generation uses the saved model and may incur cost. Regenerating replaces this routing profile.</p>
       <div className="mt-4 grid min-w-0 gap-4">
         <label className="grid min-w-0 gap-1 text-xs text-muted-foreground">
           What this project is for

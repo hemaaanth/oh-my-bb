@@ -27,7 +27,9 @@
       "icon": "./icons/projects.svg",
       "experimental_icons": {
         "scripts": "./icons/scripts.svg",
-        "refresh": "./icons/refresh.svg"
+        "refresh": "./icons/refresh.svg",
+        "edit": "./icons/edit.svg",
+        "assignments": "./icons/assignments.svg"
       }
     },
     "server": "./server.ts",

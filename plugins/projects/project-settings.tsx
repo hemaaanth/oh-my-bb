@@ -567,7 +567,7 @@ export function ProjectsSettings() {
                     className={`${control} !px-2`}
                     aria-label={`Edit ${p.name}`}
                   >
-                    <Icon name="Pencil" className="size-4" aria-hidden />
+                    <Icon name="projects/edit" className="size-4" aria-hidden />
                   </button>
                 }
               >
@@ -602,7 +602,7 @@ export function ProjectsSettings() {
           disabled={busy || !data}
           onClick={() => void run(choices)}
         >
-          <Icon name="ListFilter" className="mr-2 inline size-4" aria-hidden />
+          <Icon name="projects/assignments" className="mr-2 inline size-4" aria-hidden />
           Load assignment choices
         </button>
         <Modal
@@ -614,7 +614,7 @@ export function ProjectsSettings() {
               disabled={busy || !data?.routingConfigured}
             >
               <Icon
-                name="RefreshCw"
+                name="projects/refresh"
                 className="mr-2 inline size-4"
                 aria-hidden
               />
