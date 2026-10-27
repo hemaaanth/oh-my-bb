@@ -30,6 +30,7 @@ import { createHub, TOKEN_QUERY } from "./hub.js";
 import { PoolOperations } from "./operations.js";
 import { accountPoolRpcContract, createRpcHandlers } from "./rpc.js";
 import { createInferenceHandlers } from "./inference.js";
+import { createThreadRuntimeStatusHandlers } from "./thread-runtime-status.js";
 import { ClaudeOAuthLogin } from "./upstreams/oauth-login.js";
 import { CodexDeviceLogin } from "./upstreams/codex-device-login.js";
 import {
@@ -135,11 +136,12 @@ export function createAccountPoolPlugin(
     const transport =
       options.fetch === undefined ? createUpstreamTransport() : null;
     const upstreamFetch = options.fetch ?? transport?.fetch;
+    const routes = new ThreadRouteStore(db);
     const hub = createHub({
       accounts,
       quotas,
       affinity: new PoolAffinityStore(db),
-      routes: new ThreadRouteStore(db),
+      routes,
       hubTokens,
       getSettings: () => currentSettings,
       fetch: upstreamFetch,
@@ -218,6 +220,7 @@ export function createAccountPoolPlugin(
         serverUrl: () => bb.server.loopbackBaseUrl,
       }),
       ...createInferenceHandlers(hub, now),
+      ...createThreadRuntimeStatusHandlers(routes, now),
     });
     registerPoolCli(
       bb,

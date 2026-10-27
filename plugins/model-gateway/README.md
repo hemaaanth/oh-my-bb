@@ -29,6 +29,12 @@ Automatic Claude Code failover maps Fable to `gpt-6-astra`, Opus to
   `{ harness, upstreamKind, accountLabel, model, chainIndex, chain, stickyUntil,
   autoModel, auto, fallbackCause } | null`; `chain` holds plain upstream names.
   The Sandboxes plugin reads it to show the route in its machine popover.
+- RPC `threadRuntimeStatusV1({ threadId })` is a strict cached read for SDK clients
+  and the authenticated `machine` plugin. It reads one saved thread route,
+  returns bounded observed model/fallback state with explicit age and expiry,
+  and does no host, account, secret, token, or remote work. Current routing is
+  not evaluated. It grants no execution or consent authority. See the
+  [V1 contract](docs/thread-runtime-status-v1.md) for its schema and limits.
 - Realtime channel `model-gateway.route-changed`, payload `{ threadId }`, when
   a thread's binding changes.
 - No thread header item of its own. The Sandboxes machine icon shows the

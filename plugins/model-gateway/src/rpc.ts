@@ -55,6 +55,10 @@ import {
   inferenceCompleteOutputSchema,
   inferenceStatusOutputSchema,
 } from "./inference.js";
+import {
+  threadRuntimeStatusV1InputSchema,
+  threadRuntimeStatusV1OutputSchema,
+} from "./thread-runtime-status.js";
 
 const fallbackCauseRpcSchema = z
   .object({
@@ -68,6 +72,10 @@ const fallbackCauseRpcSchema = z
   .strict();
 
 export const accountPoolRpcContract = defineRpcContract({
+  threadRuntimeStatusV1: {
+    input: threadRuntimeStatusV1InputSchema,
+    output: threadRuntimeStatusV1OutputSchema,
+  },
   "host.setupFiles": {
     input: z.object({
       hostId: z.string().min(1),
