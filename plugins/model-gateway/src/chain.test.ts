@@ -73,6 +73,15 @@ describe("chain config", () => {
     expect(labels).toEqual([["max"], ["max2"], ["key"], ["pro"]]);
   });
 
+  it("maps official Anthropic keys with an explicit base URL without changing third-party keys", () => {
+    const official = account({ kind: "api-key", label: "credits", baseUrl: "https://api.anthropic.com/" });
+    expect(mapModel(DEFAULT_MODEL_MAP, official, "gpt-6.1-sol")).toBe("claude-opus-5-5");
+    expect(mapModel({ ...DEFAULT_MODEL_MAP, "anthropic-compatible-key:credits": { "gpt-*": "custom" } }, official, "gpt-6.1-sol")).toBe("custom");
+    for (const baseUrl of ["https://kimi.test/anthropic", "https://api.anthropic.com.evil.test", "http://api.anthropic.com", "https://api.anthropic.com/proxy"]) {
+      expect(mapModel(DEFAULT_MODEL_MAP, { ...official, baseUrl }, "gpt-6.1-sol")).toBeNull();
+    }
+  });
+
   it("expands <kind>:<label> entries and maps per key before per kind (P4)", () => {
     const kimi = account({ label: "kimi", kind: "api-key", baseUrl: "https://kimi.test/anthropic" });
     const glm = account({ label: "glm", kind: "api-key", baseUrl: "https://glm.test/anthropic" });
@@ -1805,6 +1814,23 @@ describe("chain failover in the hub", () => {
     stream: true,
   });
   const codexUser = { type: "message", role: "user", content: [{ type: "input_text", text: "List the files, then patch the README." }] };
+
+  it("maps Pi fallback to an official Anthropic key after an HTML edge failure", async () => {
+    const gw = await gateway({ withCodex: true });
+    await addKey(gw, "anthropic-compatible-key", "credits", "https://api.anthropic.com", "sk-credits");
+    await gw.cli("chain", "set", "pi", "chatgpt-oauth:*", "anthropic-compatible-key:credits");
+    gw.upstream.reply = (who) => who === "pro-token"
+      ? new Response("<html>edge blocked</html>", { status: 403, headers: { "content-type": "text/html" } })
+      : anthropicTwoTools();
+    const key = (await valueOf(gw.env("pi", "thr_pi_edge"), "MODEL_GATEWAY_TOKEN")) as string;
+    const result = await gw.send(key, { ...codexBody([codexUser]), model: "gpt-6.1-sol" }, "/v1/responses");
+    expect(result.status).toBe(200);
+    expect(gw.upstream.attempts).toEqual(["pro-token", "sk-credits"]);
+    expect(JSON.parse(gw.upstream.requests.at(-1)!.body).model).toBe("claude-opus-5-5");
+    expect(await gw.route("thr_pi_edge")).toMatchObject({ entryIndex: 1, fallbackCause: { category: "availability", status: 403 } });
+    const accounts = accountSummarySchema.array().parse(await gw.host.harness.behavior.callRpc("account.list", null));
+    expect(accounts.find(a => a.id === gw.pro!.id)?.error).toBeNull();
+  });
 
   it("adds API keys from stdin only and never prints, returns or logs them", async () => {
     const gw = await gateway();

@@ -246,6 +246,12 @@ export function mapModel(
     typeof upstream === "string"
       ? [upstream]
       : [`${upstreamKind(upstream)}:${upstream.label}`, upstreamKind(upstream)];
+  // Explicit official URLs still use Claude models; other compatible vendors keep pass-through.
+  if (
+    typeof upstream !== "string" &&
+    upstream.provider === "claude" && upstream.kind === "api-key" &&
+    upstream.baseUrl?.replace(/\/+$/u, "") === "https://api.anthropic.com"
+  ) keys.push("claude-key");
   for (const key of keys) {
     for (const [pattern, target] of Object.entries(modelMap[key] ?? {})) {
       const source = pattern

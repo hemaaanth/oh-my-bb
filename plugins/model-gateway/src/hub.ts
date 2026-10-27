@@ -120,6 +120,8 @@ const MAX_INLINE_HOLD_MS = 20_000;
 const HOLD_WAKE_PAD_MS = 10;
 const TRANSIENT_RETRY_DELAY_MS = 250;
 const MAX_TRANSIENT_RETRY_DELAY_MS = 1_000;
+const HTML_ERROR_HOLD_MS = 60_000;
+const HTML_ERROR_PAGE = /^\s*(?:<!doctype\s+html\b|<html\b)/iu;
 const MAX_REFRESH_BACKOFF_MS = 60_000;
 const MAX_REFRESH_BACKOFFS = 1_024;
 const MAX_FAILURE_DETAIL_BYTES = 1_024;
@@ -471,6 +473,17 @@ export class AccountPoolHub {
     this.activeAccounts = this.options.affinity.loadActiveAccounts();
     this.options.routes.prune(this.options.now() - THREAD_ROUTE_TTL_MS);
     this.stopped = new AbortController();
+    // Recover HTML pages persisted as terminal auth errors by older versions.
+    for (const account of await this.options.accounts.list()) {
+      const quota = this.options.quotas.get(account.id);
+      if (quota.error !== null && HTML_ERROR_PAGE.test(quota.error)) {
+        this.options.quotas.put({
+          ...quota,
+          error: null,
+          heldUntil: Math.max(quota.heldUntil ?? 0, this.options.now() + HTML_ERROR_HOLD_MS),
+        });
+      }
+    }
     this.accepting = true;
     while (!signal.aborted) {
       await this.refreshUsage();
@@ -1626,6 +1639,7 @@ export class AccountPoolHub {
           if (
             response.status === 401 ||
             response.status === 403 ||
+            (response.status === 404 && selected.account.kind === "api-key") ||
             response.status === 408 ||
             response.status === 500 ||
             response.status === 502 ||
@@ -1636,6 +1650,23 @@ export class AccountPoolHub {
             const retryAfter = response.headers.get("retry-after");
             const detail = await this.discardUpstream(upstream, true);
             signal.throwIfAborted();
+            // Edge HTML is an availability failure, not proof of invalid credentials.
+            if (
+              (response.status === 401 || response.status === 403) &&
+              (response.headers.get("content-type")?.toLowerCase().includes("text/html") ||
+                HTML_ERROR_PAGE.test(detail))
+            ) {
+              const waitMs = Math.max(HTML_ERROR_HOLD_MS, retryAfter === null ? 0 : retryAfterMilliseconds(retryAfter, this.options.now()));
+              const message = `${adapter.upstreamName} returned an HTML HTTP ${response.status} error page; retry after the temporary hold.`;
+              this.options.quotas.put({ ...observed, heldUntil: this.options.now() + waitMs });
+              failure = {
+                status: 503,
+                message,
+                headers: { "retry-after": String(Math.ceil(waitMs / 1_000)) },
+                cause: fallbackCause(selected.account, "availability", response.status, message, this.options.now()),
+              };
+              break;
+            }
             const message =
               detail ||
               adapter.upstreamName +

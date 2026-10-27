@@ -95,6 +95,14 @@ Automatic Claude Code failover maps Fable to `gpt-6-astra`, Opus to
   same account still returns 429, an unpinned account moves to the next account;
   a pinned account moves to the next chain entry. Longer holds move on without
   the inline retry. The fallback cause records the limited account and HTTP 429.
+- HTML 401/403 error pages trigger a temporary account hold (at least 60 seconds,
+  or the upstream `Retry-After`) and fail over before output. They return a sanitized
+  503 when no fallback succeeds. Real JSON auth failures retain credential-error
+  handling. Older saved HTML errors are released on startup after a short hold.
+- Keys configured with the official `https://api.anthropic.com` base URL inherit
+  `claude-key` model mappings after their explicit compatible-key mappings.
+  Other vendors keep their own mappings. Key 404 responses try the next configured
+  account; no additional fallback accounts are enabled.
 - API keys: a 402, or a 400/403/429 whose body says the credit or balance is
   gone, benches the key for 30 minutes and moves on. Any other 429 is a plain
   hold as above. Keys have no quota headers.

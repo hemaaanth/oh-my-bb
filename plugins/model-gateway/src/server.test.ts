@@ -22,7 +22,7 @@ import type {
   ImportedClaudeCredentials,
   ImportedCodexCredentials,
 } from "./upstreams/credentials.js";
-import { AccountStore, HubTokenStore } from "./upstreams/store.js";
+import { AccountStore, HubTokenStore, QuotaStore } from "./upstreams/store.js";
 import { DEFAULT_AUTO, DEFAULT_CHAINS, DEFAULT_MODEL_MAP } from "./chain.js";
 import {
   createAccountPoolPlugin,
@@ -2557,7 +2557,62 @@ describe("Account Pool plugin", () => {
     expect((times[1] ?? 0) - (times[0] ?? 0)).toBeGreaterThanOrEqual(30);
   });
 
-  it.each([401, 403, 408, 500, 502, 503, 504, 529, "disconnect"])(
+  it.each(["<html>old edge error", "OAuth refresh failed with HTTP 400."])("only releases saved HTML errors on restart: %s", async (error) => {
+    let now = 1_800_000_000_000;
+    const fixture = await createOAuthRequestFixture("codex", async () => Response.json({ recovered: true }), () => now);
+    fixture.service.controller.abort();
+    await fixture.service.done;
+    const quotas = new QuotaStore(fixture.host.bb.storage.database());
+    quotas.put({ ...quotas.get(fixture.account.id), error });
+    const resumed = fixture.host.harness.behavior.runService("hub");
+    cleanups.push(async () => { resumed.controller.abort(); await resumed.done; });
+    await vi.waitFor(async () => {
+      expect(statusSchema.parse(await fixture.host.harness.behavior.callRpc("status.get", null)).accepting).toBe(true);
+    });
+    const accounts = z.array(accountSummarySchema).parse(await fixture.host.harness.behavior.callRpc("account.list", null));
+    expect(accounts[0]?.error).toBe(error.startsWith("<html>") ? null : error);
+    if (error.startsWith("<html>")) {
+      expect(accounts[0]?.heldUntil).toBe(now + 60_000);
+      now += 61_000;
+      const response = await fixture.host.harness.behavior.fetchHttp("POST", "/v1/responses", { headers: authHeaders(fixture.key), body: "{}" });
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it.each([
+    { provider: "codex" as const, route: "/v1/responses", status: 403, type: "text/html" },
+    { provider: "codex" as const, route: "/v1/alpha/search", status: 401, type: "text/plain" },
+    { provider: "claude" as const, route: "/v1/messages", status: 403, type: "text/html", retryAfter: "120" },
+  ])("recovers from an HTML $status on $route without locking the account", async ({ provider, route, status, type, retryAfter }) => {
+    let now = 1_800_000_000_000;
+    let attempts = 0;
+    const holdSeconds = retryAfter === undefined ? 60 : Number(retryAfter);
+    const fixture = await createOAuthRequestFixture(provider, async () => {
+      attempts++;
+      return attempts === 1
+        ? new Response("  <!DOCTYPE html><html>edge unavailable</html>", { status, headers: { "content-type": type, ...(retryAfter === undefined ? {} : { "retry-after": retryAfter }) } })
+        : Response.json({ recovered: true });
+    }, () => now);
+    const send = () => fixture.host.harness.behavior.fetchHttp("POST", route, {
+      headers: authHeaders(fixture.key), body: "{}",
+    });
+    const blocked = await send();
+    expect(blocked.status).toBe(503);
+    expect(blocked.headers.get("retry-after")).toBe(String(holdSeconds));
+    expect(await blocked.text()).not.toContain("<html>");
+    const accounts = z.array(accountSummarySchema).parse(await fixture.host.harness.behavior.callRpc("account.list", null));
+    expect(accounts[0]?.error).toBeNull();
+    expect(accounts[0]?.heldUntil).toBe(now + holdSeconds * 1_000);
+    now += 30_000;
+    const held = await send();
+    expect(held.headers.get("retry-after")).toBe(String(holdSeconds - 30));
+    expect(attempts).toBe(1);
+    now += (holdSeconds - 30) * 1_000 + 1_000;
+    expect((await send()).status).toBe(200);
+    expect(attempts).toBe(2);
+  });
+
+  it.each([401, 403, 404, 408, 500, 502, 503, 504, 529, "disconnect"])(
     "tries another account after a pre-stream %s failure",
     async (failure) => {
       const attempts: Array<string | undefined> = [];

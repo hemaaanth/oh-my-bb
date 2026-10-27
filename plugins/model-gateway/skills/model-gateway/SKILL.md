@@ -94,7 +94,14 @@ It fails closed when its key is unavailable; it never falls back to another
 account. Other models keep their existing chains. Run `bb gateway setup host`
 on each execution host after adding a model route so Pi and OMP discover it.
 
-The model map picks the upstream model for a translated request. Defaults for
+HTML 401/403 error pages cause a temporary account hold of at least 60 seconds,
+with `Retry-After`, rather than a permanent login error. Older saved HTML errors
+are released on startup. JSON authentication failures keep credential recovery.
+A pre-stream API-key 404 tries the next configured account.
+
+The model map picks the upstream model for a translated request. Keys with the
+explicit official `https://api.anthropic.com` base URL also inherit `claude-key`
+mappings after any compatible-key mappings. Other vendors are unchanged. Defaults for
 `chatgpt-oauth`:
 
 | Claude model | ChatGPT model |
