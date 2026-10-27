@@ -69,6 +69,7 @@ interface ProviderSettingsView {
   enabled: boolean;
   configured: boolean;
   credentialsConfigured: boolean;
+  credentialCheck: "missing" | "unchecked" | "valid" | "invalid";
   apiUrl: string;
   target: string;
   sandboxClass: string;
@@ -245,6 +246,8 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
       </div>
     );
   }
+
+  if (view.credentialCheck !== "valid") return <p role="status" className="text-sm text-muted-foreground">Check this provider’s connection in the provider list before editing its settings.</p>;
 
   const saveConfiguration = async () => {
     setSavingConfiguration(true);
@@ -877,10 +880,11 @@ function ProviderSettings() {
     <div className="rounded-lg border border-border bg-surface-recessed/70 px-3 divide-y divide-border">
       {sandboxProviderValues.map(provider => {
         const view = views.find(item => item.provider === provider);
-        return <div key={provider} className="flex min-w-0 items-center gap-3 py-3">
-          <div className="min-w-0 flex-1"><div className="text-sm font-medium">{providerLabel(provider)}</div><p className="text-xs text-muted-foreground">{!view ? "Loading…" : !view.configured ? "API key required" : view.enabled ? "Enabled" : "Disabled"}</p></div>
-          <Switch checked={view?.enabled ?? false} disabled={!view || busy} aria-label={`Enable ${providerLabel(provider)}`} onCheckedChange={async enabled => { setBusy(true); setError(""); try { const next = await rpc.call("setProviderEnabled", { provider, enabled }); setViews(previous => previous.map(item => item.provider === provider ? next : item)); } catch (failure) { setError(errorText(failure)); } finally { setBusy(false); } }} />
-          <SettingsDialog title={providerLabel(provider)} description={providerLifecycleNote(provider)} buttonLabel={`${providerLabel(provider)} options`} icon><ProviderSettingsCard provider={provider} /></SettingsDialog>
+        return <div key={provider} className="flex min-w-0 flex-wrap items-center gap-3 py-3">
+          <div className="min-w-0 flex-1"><div className="text-sm font-medium">{providerLabel(provider)}</div><p className="text-xs text-muted-foreground">{!view ? "Loading…" : !view.credentialsConfigured ? "Add credentials in Configuration" : view.credentialCheck === "invalid" ? "Connection failed — check credentials" : view.credentialCheck !== "valid" ? "Check connection to configure" : view.enabled ? "Enabled" : "Disabled"}</p></div>
+          <Switch checked={view?.enabled ?? false} disabled={!view || busy || (!view.enabled && view.credentialCheck !== "valid")} aria-label={`Enable ${providerLabel(provider)}`} onCheckedChange={async enabled => { setBusy(true); setError(""); try { const next = await rpc.call("setProviderEnabled", { provider, enabled }); setViews(previous => previous.map(item => item.provider === provider ? next : item)); } catch (failure) { setError(errorText(failure)); } finally { setBusy(false); } }} />
+          {view?.credentialsConfigured && view.credentialCheck !== "valid" && <Button size="sm" variant="outline" disabled={busy} onClick={async () => { setBusy(true); setError(""); try { const next = await rpc.call("checkProviderCredentials", { provider }); setViews(previous => previous.map(item => item.provider === provider ? next : item)); } catch { setError("Could not check provider credentials. Try again."); } finally { setBusy(false); } }}>Check connection</Button>}
+          <SettingsDialog disabled={!view || busy || view.credentialCheck !== "valid"} title={providerLabel(provider)} description={providerLifecycleNote(provider)} buttonLabel={`${providerLabel(provider)} options`} icon><ProviderSettingsCard provider={provider} /></SettingsDialog>
         </div>;
       })}
     </div>

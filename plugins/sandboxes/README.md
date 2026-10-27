@@ -705,3 +705,7 @@ The image builder has an inline **Custom Dockerfile instructions** editor. Its i
 Tool versions come from the shipped installers unless custom instructions replace them. Some optional installers track `latest`; selections alone do not promise reproducible package versions. The saved tool selection and custom instructions are captured together when a build starts. Custom recipes are not treated as equivalent to the standard image during update reuse checks.
 
 Browser owns sandbox browsing, home routing, public-IP verification and personal login sharing. Sandboxes links to Browser settings and does not display duplicate controls. Retired values and the old native key remain untouched for Browser's verified migration endpoint. Browser is optional: machine creation and coding agents continue without it; managed browser identity provisioning is skipped when Browser is absent or its integration is disabled. The supported managed browser remains Brave.
+
+### Provider credential checks
+
+A provider without credentials has disabled setup controls. After adding credentials in Configuration, choose **Check connection** in Providers. This performs a bounded read-only list request; it creates no sandbox. Only a successful check enables the settings button and enabling that provider. A failed check keeps the controls locked. Changing credentials or Daytona's API URL invalidates the saved check. Existing running machines are not stopped or reconfigured by these UI checks. You can always turn an enabled provider off. Settings reads never contact a vendor.

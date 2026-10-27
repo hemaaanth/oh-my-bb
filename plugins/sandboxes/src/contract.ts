@@ -68,6 +68,7 @@ const providerSettingsSchema = z.object({
   enabled: z.boolean(),
   configured: z.boolean(),
   credentialsConfigured: z.boolean(),
+  credentialCheck: z.enum(["missing", "unchecked", "valid", "invalid"]),
   apiUrl: z.string(),
   target: z.string(),
   sandboxClass: z.string(),
@@ -439,6 +440,7 @@ export const sandboxRpcContract = defineRpcContract({
       }),
     ),
   },
+  checkProviderCredentials: { input: z.object({ provider: z.enum(sandboxProviderValues) }).strict(), output: providerSettingsSchema },
   providerSettings: {
     input: z.null(),
     output: z.object({ providers: z.array(providerSettingsSchema) }),

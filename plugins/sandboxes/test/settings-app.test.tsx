@@ -11,7 +11,7 @@ import { defaultImageTools } from "../src/image-tools.js";
 const app = await loadPluginApp(() => import("../app.js"));
 afterEach(cleanup);
 const values = { sshEnabled: false, idleSleepAfter: "15 minutes", defaultSizeTier: "M", copyGitHubCliAuth: false, browserUserAgent: "", browserExitNode: "", browserHomeEgressIp: "", gitUsername: "", browserTailscaleAuthKeyFile: "", browserStateFile: "" };
-const provider = { provider: "freestyle", enabled: true, configured: true, credentialsConfigured: true, apiUrl: "", target: "", sandboxClass: "", appName: "", vmRuntime: false, machineClass: "", environment: "", cpu: "4", memory: "8", storage: "20", persistence: "sticky", snapshotId: "snapshot-original", gatewayEndpoint: "", imageUri: "", supportsImages: false, artifactName: null };
+const provider = { provider: "freestyle", enabled: true, configured: true, credentialsConfigured: true, credentialCheck: "valid", apiUrl: "", target: "", sandboxClass: "", appName: "", vmRuntime: false, machineClass: "", environment: "", cpu: "4", memory: "8", storage: "20", persistence: "sticky", snapshotId: "snapshot-original", gatewayEndpoint: "", imageUri: "", supportsImages: false, artifactName: null };
 const baseRpc = {
   preferences: () => ({ values, revision: 0, migrationPending: false }),
   integrations: () => ({ projectEnvironments: false, catalog: false, agents: false, projects: false }),
@@ -152,4 +152,19 @@ it("keeps Browser-owned connection fields out of Sandboxes preferences", async (
   expect(slot.queryByText("Expected home IP")).toBeNull();
   expect(slot.queryByText("Browser enrollment file")).toBeNull();
   expect(slot.queryByText("Browser auth state file")).toBeNull();
+});
+
+it("locks provider options until an explicit credential check succeeds", async () => {
+  let checks = 0;
+  const unchecked = { ...provider, credentialCheck: "unchecked" };
+  const slot = renderSlot(app.settingsSections.find(section => section.id === "providers")!, {}, { rpc: {
+    ...baseRpc, providerSettings: () => ({ providers: [unchecked] }),
+    checkProviderCredentials: () => { checks++; return { ...unchecked, credentialCheck: "valid" }; },
+  } as never });
+  const options = await slot.findByRole("button", { name: "Freestyle options" });
+  expect((options as HTMLButtonElement).disabled).toBe(true);
+  expect(checks).toBe(0);
+  fireEvent.click(slot.getByRole("button", { name: "Check connection" }));
+  await waitFor(() => expect((options as HTMLButtonElement).disabled).toBe(false));
+  expect(checks).toBe(1);
 });

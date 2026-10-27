@@ -1,3 +1,4 @@
+import { providerCredentialChecks } from "./credential-check.js";
 import { imageRecipePreference, imageTools, imageRecipeSchema } from "./image-tools.js";
 import { registerRuntimeEnvironment } from "./runtime-environment.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
@@ -761,6 +762,7 @@ export default async function plugin(bb: BbPluginApi) {
         recordBbApp: (id, version) => store.setLegacyBbAppVersion(id, version),
       },
     });
+    const credentialChecks = providerCredentialChecks(bb, combinedSettings);
     const providerSettingsView = async (provider: SandboxProvider) => {
       const currentSettings = await combinedSettings();
       const credentials = sandboxProviderCredentialStatus(currentSettings);
@@ -772,6 +774,7 @@ export default async function plugin(bb: BbPluginApi) {
         enabled: providerSettings.enabled,
         configured: config[provider] !== null,
         credentialsConfigured: credentials[provider],
+        credentialCheck: await credentialChecks.read(provider),
         apiUrl:
           provider === "daytona" ? providerConfig.daytona.apiUrl : "",
         target: provider === "daytona" ? providerConfig.daytona.target : "",
@@ -1011,6 +1014,11 @@ export default async function plugin(bb: BbPluginApi) {
       credentialProfiles,
       launchPreview,
       providers: () => manager.providers(),
+      checkProviderCredentials: async ({ provider }, context) => {
+        if (context.experimental_caller?.kind !== "client") throw new Error("Owner client required");
+        await credentialChecks.verify(provider);
+        return providerSettingsView(provider);
+      },
       providerSettings: async () => ({
         providers: await Promise.all(
           sandboxProviderValues.map(providerSettingsView),
