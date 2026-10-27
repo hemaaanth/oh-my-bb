@@ -164,7 +164,7 @@ it("locks provider options until an explicit credential check succeeds", async (
   const options = await slot.findByRole("button", { name: "Freestyle options" });
   expect((options as HTMLButtonElement).disabled).toBe(true);
   expect(checks).toBe(0);
-  fireEvent.click(slot.getByRole("button", { name: "Check connection" }));
+  fireEvent.click(slot.getByRole("button", { name: "Check Freestyle connection" }));
   await waitFor(() => expect((options as HTMLButtonElement).disabled).toBe(false));
   expect(checks).toBe(1);
 });
