@@ -1,6 +1,7 @@
+import { registerEnvironments } from "./environments/feature.js";
 import { setTimeout as delay } from "node:timers/promises";
 import { createHash, randomUUID } from "node:crypto";
-import type { BbPluginApi, ExperimentalPluginRpcHandlerContext } from "@get-bb/plugin-sdk";
+import type { BbPluginApi, ExperimentalPluginRpcHandlerContext, ExperimentalPluginRpcHandlersWithContext } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { preferencesSchema, rpcContract } from "./contract.js";
 import { AssignmentStore } from "./assignment-store.js";
@@ -697,7 +698,7 @@ export default async function plugin(bb: BbPluginApi) {
     if (migrationPromise || importReceipt("legacy-sources") || importReceipt("legacy-payload") || assignmentKinds.some((kind) => assignments.records(kind).some((record) => record.type !== "binding" || record.credentialId !== null))) throw new AssignmentError("not-migrated", "Existing or pending assignments require legacy import; initialization cannot clear them.");
   }
 
-  bb.rpc.register(rpcContract, {
+  const projectHandlers: ExperimentalPluginRpcHandlersWithContext<typeof rpcContract> = {
     snapshot: (_input, context) => snapshot(context),
     organizationSnapshot,
     assignmentStatusV1: ({ kind }) => assignments.status(kind),
@@ -805,6 +806,11 @@ export default async function plugin(bb: BbPluginApi) {
     removeBundle: (input, context) => authority.write("bundles", "removeBundle", input, context, () => { store.removeReference("bundle", input.bundleId); publish("bundle-removed"); }),
     removeCredential: (input, context) => authority.write("applicationBindings", "removeCredential", input, context, () => { store.removeReference("credential", input.credentialId); publish("credential-removed"); }),
     importLegacy,
+  };
+  bb.rpc.register(rpcContract, projectHandlers);
+  await registerEnvironments(bb, projectHandlers, {
+    get: (id) => store.getConfiguration(id).credentialId,
+    set: (id, credentialId) => { assignments.requireWritable("applicationBindings"); store.updateProject(id, { credentialId }); publish("environment-linked"); },
   });
 
   bb.cli.register({

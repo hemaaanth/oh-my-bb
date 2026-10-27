@@ -1,0 +1,39 @@
+{
+  "name": "bb-plugin-project-environments",
+  "version": "0.3.0",
+  "license": "MIT",
+  "type": "module",
+  "description": "Compatibility RPC adapter for Projects application environments.",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "icons"
+  ],
+  "engines": {
+    "bb": ">=0.46.1",
+    "bbPluginSdk": ">=0.6.49"
+  },
+  "bb": {
+    "name": "Projects compatibility",
+    "description": "Preserves old environment callers. Manage environments in Projects.",
+    "server": "./server.ts",
+    "branding": {
+      "icon": "./icons/projects.svg"
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.49",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/react": "^19.3.0",
+    "hono": "^4.13.14",
+    "typescript": "^5.7.0"
+  }
+}

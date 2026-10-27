@@ -5,7 +5,6 @@ import type { rpcContract } from "./contract";
 type Preferences = PluginRpcResult<(typeof rpcContract)["preferences"]>;
 export const integrationRows = [
   ["catalogIntegration", "Executor", "bundles"],
-  ["credentialsIntegration", "Credentials", "applicationBindings"],
   ["agentsIntegration", "Agents", "agentPreferences"],
   ["sidebarIntegration", "Status Sidebar", null],
   ["tasksIntegration", "Tasks", null],

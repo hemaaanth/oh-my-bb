@@ -1,5 +1,6 @@
+import { EnvironmentsPanel } from "./environments/panel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { definePluginApp, useRealtime, useRpc, type PluginRpcResult } from "@get-bb/plugin-sdk/app";
+import { definePluginApp, useRealtime, useRpc, useBbNavigate, type PluginRpcResult } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 // Type-only from ./contract: its zod schemas stay out of the frontend bundle.
 import type { ProjectGroupColor, rpcContract } from "./contract";
@@ -32,6 +33,7 @@ function repositoryLabel(project: Project) {
 }
 
 export function ProjectsPanel() {
+  const navigate = useBbNavigate();
   const rpc = useRpc<typeof rpcContract>();
   const [data, setData] = useState<Organization | null>(null);
   const [preferences, setPreferences] = useState<Preferences | null>(null);
@@ -86,7 +88,7 @@ export function ProjectsPanel() {
       try {
         const { references } = await rpc.call("assignmentOptionsV1", { kind });
         if (request !== optionsSequence.current) return;
-        const field = kind === "bundles" ? "bundles" : kind === "applicationBindings" ? "credentials" : "agents";
+        const field = kind === "bundles" ? "bundles" : "agents";
         setAssignmentData((previous) => previous ? { ...previous, [field]: [...references, ...previous[field].filter((reference) => !references.some(({ id }) => id === reference.id))] } : previous);
       } catch (cause) { failures.push(`${label}: ${cause instanceof Error ? cause.message : String(cause)}`); }
     }));
@@ -119,6 +121,7 @@ export function ProjectsPanel() {
           {error ?? "Loading projects…"}
           {error && <button type="button" className="ml-2 underline" onClick={() => void run(load)}>Retry</button>}
         </p>}
+        <button type="button" className={controlClass} onClick={() => navigate.toPluginPanel("environments")}>Manage project environments</button>
         <details className="min-w-0">
           <summary className="cursor-pointer text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Project groups</summary>
           <div className="mt-3 space-y-3">
@@ -172,12 +175,6 @@ export function ProjectsPanel() {
                       <label className="grid min-w-0 gap-1 text-sm">Icon
                         <input className={`${controlClass} min-w-0 w-full`} value={drafts[`icon:${project.id}`] ?? project.icon} onChange={(event) => setDrafts((current) => ({ ...current, [`icon:${project.id}`]: event.target.value }))} onBlur={(event) => { const value = event.target.value; if (value !== project.icon) void saveDraft(`icon:${project.id}`, value, () => rpc.call("updateProject", { projectId: project.id, icon: value.trim() })); }} />
                       </label>
-                      {assignment && preferences?.credentialsIntegration && <label className="grid min-w-0 gap-1 text-sm">Credentials
-                        <Select value={assignment.credentialId === null ? "none" : `profile:${assignment.credentialId}`} disabled={busy || !writable("applicationBindings")} onValueChange={(selection) => void run(async () => { await rpc.call("updateProject", { projectId: project.id, credentialId: selection === "none" ? null : selection.slice("profile:".length) }); await loadAssignments(); })}>
-                          <SelectTrigger className="w-full min-w-0"><SelectValue /></SelectTrigger>
-                          <SelectContent><SelectItem value="none">No credentials</SelectItem>{assignmentData!.credentials.map((credential) => <SelectItem key={credential.id} value={`profile:${credential.id}`}>{credential.name}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </label>}
                       {assignment && preferences?.agentsIntegration && <ReferenceChecklist title="Additional agents" references={assignmentData!.agents.filter(({ id }) => !assignmentData!.globalAgentIds.includes(id))} checked={new Set(assignment.agentIds)} busy={busy || !writable("agentPreferences")} onToggle={(targetId, enabled) => run(async () => { await rpc.call("setProjectAgent", { projectId: project.id, targetId, enabled }); await loadAssignments(); })} />}
                       {assignment && preferences?.catalogIntegration && <ReferenceChecklist title="Additional skills" references={assignmentData!.bundles.filter(({ id }) => !assignmentData!.globalBundleIds.includes(id))} checked={new Set(assignment.bundleIds)} busy={busy || !writable("bundles")} onToggle={(targetId, enabled) => run(async () => { await rpc.call("setProjectBundle", { projectId: project.id, targetId, enabled }); await loadAssignments(); })} />}
                     </div>
@@ -339,6 +336,7 @@ export default definePluginApp((app) => {
     banners: [{ id: "project-suggestion", chrome: "bare", component: ProjectRouterBanner }],
   });
   app.slots.settingsSection({ id: "preferences", component: PreferencesSettings });
-  app.slots.settingsSection({ id: "oh-my-bb", component: IntegrationSettings });
   app.slots.settingsSection({ id: "projects", component: ProjectsPanel });
+  app.slots.settingsSection({ id: "oh-my-bb", component: IntegrationSettings });
+  app.slots.navPanel({ id: "environments", path: "environments", title: "Project environments", icon: "KeyRound", component: EnvironmentsPanel });
 });

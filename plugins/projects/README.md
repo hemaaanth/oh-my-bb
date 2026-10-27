@@ -85,3 +85,15 @@ The package uses the public BB Plugin SDK and packaged UI components. It has no 
 The package is MIT-licensed under [LICENSE](./LICENSE). [THIRD_PARTY.md](./THIRD_PARTY.md) records the configured BB UI origin, actual dependency metadata and retained license notices without asserting unverified icon provenance.
 
 Isolated SDK fixtures and browser component harnesses prove local handlers, state transitions and UI behavior. They do not certify provider lifecycle, paid model behavior, real secret access, native host overlay arbitration or live plugin activation. Those require separate owner-controlled acceptance.
+
+## Application environments
+
+Projects now owns the former Credentials implementation. Open **Project environments** in navigation, or **More → Manage project environments** in Projects settings. Each project has its own environment configuration. Existing shared configurations are retained with an explicit shared-edit warning.
+
+Metadata saves preserve fields they do not edit, reject stale project/profile selections, and run no setup. Tokens stay in private installation storage. Agent instructions, `query_clickhouse`, existing workspace opt-outs and the on-host `bb-project-env-run` wrapper are retained. Remote Executor credentials are separate.
+
+The `project-environments` package is a stateless compatibility adapter for existing RPC callers and `bb project-env`. Keep it installed until those callers move. It forwards execution to Projects; no second database or job queue is opened. The transport cannot promise cancellation of a remote preparation after a lost CLI/RPC connection. Never replay an unknown preparation.
+
+Private setup recipes are not bundled. The former machine and workspace recipes are project-owned `.bb/setup/machine.sh` and `.bb/setup/workspace.sh`. Their existing preparation order and credential wrapper are retained. Copying a recipe does not execute it or change a project's existing `bb.json`/`paseo.json`.
+
+See [the merge runbook](../../docs/migrations/project-environments.md) before upgrading an existing installation. Do not simply enable the merged runtime against an unmigrated Credentials database.

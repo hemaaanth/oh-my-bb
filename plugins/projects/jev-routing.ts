@@ -191,7 +191,7 @@ export function createJevRouting(bb: BbPluginApi, deps: {
         if (!first || at < first.at) first = { text: row.text, at };
       }
       const cursor = timeline.timelinePage.olderCursor;
-      if (!timeline.timelinePage.hasOlderRows || !cursor) break;
+      if (!cursor) break;
       beforeAnchorId = cursor.anchorId;
       beforeAnchorSeq = String(cursor.anchorSeq);
     }

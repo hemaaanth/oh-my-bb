@@ -148,3 +148,5 @@ publication is not permission to move DMs, rewrite memory, or activate an unfini
 The same package-local checks run in CI. `scripts/packages.txt` is the one list of
 packages that `check.sh` and CI both read. To add a package, add its directory there.
 `./scripts/check.sh plugins/pages` checks one package.
+
+Application environments are part of [Projects](plugins/projects). The `project-environments` package preserves the old integration ID; it is not a separate Credentials product. See the [merge runbook](docs/migrations/project-environments.md).

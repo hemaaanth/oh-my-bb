@@ -103,7 +103,7 @@ describe("native Projects settings", () => {
     slot.lifecycle.unmount();
   });
 
-  it("retains unresolved credential IDs when an explicitly loaded source is unavailable", async () => {
+  it("does not offer the obsolete standalone Credentials picker or change saved assignments", async () => {
     const ready = { ...native, assignmentStatus: native.assignmentStatus.map((status) => ({ ...status, state: "source-owned" as const })) };
     const slot = renderSlot(await settings(), {}, { rpc: {
       organizationSnapshot: () => ready, preferences: () => ({ ...preferences, credentialsIntegration: true }),
@@ -114,9 +114,8 @@ describe("native Projects settings", () => {
     projectEditor(slot.container);
     expand(slot.container, "Assignments and migration");
     expect(slot.inspection.rpcCalls.some(({ method }) => method === "assignmentOptionsV1")).toBe(false);
-    fireEvent.click(slot.getByRole("button", { name: "Load assignment choices" }));
-    await slot.findByText("missing/profile");
-    expect(await slot.findByRole("alert")).toBeTruthy();
+    expect(slot.queryByRole("button", { name: "Load assignment choices" })).toBeNull();
+    expect(slot.queryByText("missing/profile")).toBeNull();
     expect(slot.inspection.rpcCalls.some(({ method }) => method === "updateProject")).toBe(false);
     slot.lifecycle.unmount();
   });

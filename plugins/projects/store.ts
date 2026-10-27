@@ -1,3 +1,4 @@
+import { migrations as environmentMigrations } from "./environments/store.js";
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { ProjectGroup, ProjectGroupColor } from "./contract.js";
@@ -45,6 +46,7 @@ export const migrations = [
    ALTER TABLE project_configuration ADD COLUMN routing_learned_fingerprint TEXT;`,
   assignmentMigration,
   assignmentAbortMigration,
+  ...environmentMigrations,
 ];
 
 interface GroupRow {

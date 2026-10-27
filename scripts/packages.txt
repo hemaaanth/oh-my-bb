@@ -13,6 +13,7 @@ plugins/task-workspaces
 plugins/session-share
 plugins/pinpoint
 plugins/projects
+plugins/project-environments
 plugins/demo-mode
 plugins/sandboxes
 plugins/catalog
