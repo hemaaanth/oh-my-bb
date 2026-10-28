@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { definePluginApp, experimental_THREAD_ACTION_GROUPS, ThreadChat, ThreadTitle, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
+import { definePluginApp, ThreadChat, ThreadTitle, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import * as Dialog from "@radix-ui/react-dialog";
 import { toast } from "sonner";
 import type { CalendarActivity, rpcContract } from "./server";
@@ -444,7 +444,7 @@ export default definePluginApp((app) => {
     id: "thread-brief",
     title: "Catch up",
     icon: "journal/journal",
-    group: experimental_THREAD_ACTION_GROUPS.open,
+    group: "machine",
     item: ({ thread }) => ({
       label: "Catch up",
       icon: "journal/journal",

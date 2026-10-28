@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import * as Select from "@radix-ui/react-select";
-import { experimental_Icon as Icon, definePluginApp, experimental_THREAD_ACTION_GROUPS, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
+import { experimental_Icon as Icon, definePluginApp, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
 import type { TraceResult, TraceSpan } from "./spans";
 import { clampWindow, fitWindow, panWindow, projectSpan, zoomWindow, type TimeWindow } from "./investigate";
@@ -337,7 +337,7 @@ export default definePluginApp((app) => {
     icon: "traces/traces", layout: "flush", component: ({ threadId }) => <Waterfall threadId={threadId} compact /> });
   app.slots.experimental_tab({ context: { kind: "thread" }, availability: "action", id: "context", title: "Context Inspector",
     icon: "traces/traces", layout: "flush", component: ({ threadId }) => <ContextInspector key={threadId} threadId={threadId} compact /> });
-  app.slots.experimental_threadAction({ id: "trace-thread", title: "Trace this thread", icon: "traces/traces", group: experimental_THREAD_ACTION_GROUPS.open,
+  app.slots.experimental_threadAction({ id: "trace-thread", title: "Trace this thread", icon: "traces/traces", group: "machine",
     item: ({ thread, navigate }) => ({ label: "Trace this thread", icon: "traces/traces",
       run: () => navigate.toPluginPanel("waterfall", { subPath: encodeURIComponent(thread.id) }) }) });
 });

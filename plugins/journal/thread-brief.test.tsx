@@ -29,6 +29,10 @@ const open = async (threadId = "thr_a", archivedAt: number | null = null) => {
 };
 
 describe("thread menu briefing", () => {
+  it("keeps Catch up with secondary thread actions", () => {
+    expect(action.group).toBe("machine");
+  });
+
   it("reads only the saved briefing for this thread and renders six sections", async () => {
     const rendered = renderSlot(overlay, {},
       { rpc: { journal_thread_brief: (input) => saved(rpcContract.journal_thread_brief.input.parse(input)) } });

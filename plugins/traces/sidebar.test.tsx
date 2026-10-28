@@ -29,6 +29,10 @@ const projects = [
 ];
 
 describe("Traces native sidebar", () => {
+  it("keeps Trace this thread with secondary thread actions", () => {
+    expect(app.threadActions.find(({ id }) => id === "trace-thread")?.group).toBe("machine");
+  });
+
   it("groups live BB identities by project and opens the same thread ID in Waterfall", async () => {
     const rendered = renderSlot(sidebar, { subPath: "thr_one" }, { sidebarThreads: { threads: rows, projects } });
     expect(screen.getByRole("navigation", { name: "Traces views" }).querySelectorAll("button")).toHaveLength(4);
