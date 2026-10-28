@@ -276,6 +276,33 @@ describe("Status Sidebar", () => {
     expect(screen.getByRole("link", { name: "Old archive" })).toBeDefined();
   });
 
+  it("keeps recent threads separate and changes the window from its header", async () => {
+    setView({ group: "status", subgroup: null });
+    renderSidebar({ threads: [
+      thread({ id: "fresh", title: "Fresh thread", updatedAt: Date.now() - 2 * 3_600_000 }),
+      thread({ id: "older", title: "Older thread", updatedAt: Date.now() - 4 * 3_600_000 }),
+    ] });
+    const recent = await screen.findByRole("region", { name: "Recent" });
+    expect(within(recent).getByRole("link", { name: "Fresh thread" })).toBeDefined();
+    expect(within(screen.getByRole("region", { name: "Idle" })).getByRole("link", { name: "Older thread" })).toBeDefined();
+    fireEvent.contextMenu(within(recent).getByRole("button"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Recent: past 6 hours" }));
+    expect(within(recent).getByRole("link", { name: "Older thread" })).toBeDefined();
+    expect(storedView().recentHours).toBe(6);
+  });
+
+  it("shows a bounded count of loaded archived threads", async () => {
+    renderSidebar({ threads: Array.from({ length: 55 }, (_, index) => thread({
+      id: `archive-${index}`, title: `Archive ${index}`, isArchived: true,
+      archivedAt: Date.now() - index * 60_000,
+    })) });
+    const archived = await screen.findByRole("region", { name: "Archived" });
+    expect(within(archived).getByText("50+")).toBeDefined();
+    fireEvent.click(within(archived).getByRole("button"));
+    expect(within(archived).getAllByRole("link")).toHaveLength(50);
+    expect(screen.queryByRole("link", { name: "Archive 54" })).toBeNull();
+  });
+
   it("keeps snoozed threads out of active groups and lets them wake early", async () => {
     const untilAt = Date.now() + 60_000;
     renderSidebar({ threads: [thread({ id: "sleeping", title: "Sleeping thread" })],
@@ -432,13 +459,13 @@ describe("Status Sidebar", () => {
     await pickViewOption(within(personal).getAllByRole("button")[0]!, "Group by", "Project");
     const bb = await screen.findByRole("region", { name: "bb" });
     expect(within(bb).getByRole("region", { name: "Personal section" })).toBeDefined();
-    expect(storedView()).toEqual({ sort: "recent", group: "project", subgroup: "workspace", archivedDays: 7 });
+    expect(storedView()).toEqual({ sort: "recent", group: "project", subgroup: "workspace", archivedDays: 7, recentHours: 3 });
 
     await pickViewOption(within(bb).getAllByRole("button")[0]!, "Subgroup by", "None");
     await waitFor(() =>
       expect(screen.queryByRole("region", { name: "Personal section" })).toBeNull(),
     );
-    expect(storedView()).toEqual({ sort: "recent", group: "project", subgroup: null, archivedDays: 7 });
+    expect(storedView()).toEqual({ sort: "recent", group: "project", subgroup: null, archivedDays: 7, recentHours: 3 });
 
     await pickViewOption(
       within(screen.getByRole("region", { name: "bb" })).getAllByRole("button")[0]!,
@@ -467,7 +494,7 @@ describe("Status Sidebar", () => {
       "Sort by",
       "Manual",
     );
-    expect(storedView()).toEqual({ sort: "manual", group: "status", subgroup: null, archivedDays: 7 });
+    expect(storedView()).toEqual({ sort: "manual", group: "status", subgroup: null, archivedDays: 7, recentHours: 3 });
   });
 
   it("reorders project groups without an inline section creator", async () => {

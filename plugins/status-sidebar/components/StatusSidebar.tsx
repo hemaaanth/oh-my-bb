@@ -66,6 +66,7 @@ import { cn } from "../lib/utils";
 import {
   persistViewOptions,
   readViewOptions,
+  RECENT_HOURS,
   type GroupDimension,
   type SidebarViewOptions,
 } from "../lib/sidebar-view";
@@ -125,6 +126,7 @@ const statusSections: readonly { bucket: SidebarBucket; label: string }[] = [
   { bucket: "unread", label: "Unread" },
   { bucket: "drafting", label: "Drafting" },
   { bucket: "needs-input", label: "Needs input" },
+  { bucket: "recent", label: "Recent" },
   { bucket: "idle", label: "Idle" },
   { bucket: "active", label: "Working" },
   { bucket: "archived", label: "Archived" },
@@ -136,6 +138,7 @@ const statusSectionIcon: Record<SidebarBucket, IconName> = {
   active: "CircleDashed",
   "needs-input": "CircleQuestion",
   drafting: "Edit",
+  recent: "Clock",
   idle: "Circle",
   archived: "Archive",
 };
@@ -226,7 +229,7 @@ export function StatusSidebar({
   onNavigate,
   searchQuery,
 }: PluginThreadListProps) {
-  const { status, threads: sidebarThreads, projects } = useSidebarThreads();
+  const { status, threads: sidebarThreads, projects, experimental_archived: archive } = useSidebarThreads({ experimental_lifecycles: ["active", "archived"] });
   const { data: integrationPreferences } = useIntegrations();
   const botsEnabled = integrationPreferences?.values.agentsIntegration === true;
   const tasksEnabled = integrationPreferences?.values.tasksIntegration === true;
@@ -339,6 +342,11 @@ export function StatusSidebar({
     ],
   );
   const [view, setView] = useState(readViewOptions);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
   const changeView = useStableCallback((next: SidebarViewOptions) => {
     setView(next);
     persistViewOptions(next);
@@ -458,12 +466,12 @@ export function StatusSidebar({
   if (!selectedThread || activeThreadId === null) {
     selectedStatusRef.current = null;
   } else {
-    const naturalStatus = statusForThread(selectedThread, draftThreadIds.has(selectedThread.id));
+    const naturalStatus = statusForThread(selectedThread, draftThreadIds.has(selectedThread.id), view.recentHours, now);
     const previous = selectedStatusRef.current;
     selectedStatusRef.current = {
       threadId: activeThreadId,
       status:
-        previous?.threadId === activeThreadId
+        previous?.threadId === activeThreadId && !(selectedThread.activity.backgroundCommands > 0 && selectedThread.status === "idle")
           ? followSelectedBucket(previous.status, naturalStatus)
           : naturalStatus,
     };
@@ -476,6 +484,8 @@ export function StatusSidebar({
           const naturalStatus = statusForThread(
             thread,
             draftThreadIds.has(thread.id),
+            view.recentHours,
+            now,
           );
           const retainSelected =
             thread.id === activeThreadId &&
@@ -489,7 +499,7 @@ export function StatusSidebar({
           ] as const;
         }),
       ),
-    [activeThreadId, draftThreadIds, snoozedUntilById, searchQuery, threads],
+    [activeThreadId, draftThreadIds, snoozedUntilById, searchQuery, threads, view.recentHours, now],
   );
   const effectiveStatusByThreadId = useMemo(() => {
     const gather = (
@@ -653,10 +663,11 @@ export function StatusSidebar({
     sort: (items) => [...items].sort((left, right) =>
       (snoozedUntilById.get(left.id) ?? 0) - (snoozedUntilById.get(right.id) ?? 0)),
   });
-  const archivedThreads = topThreads.filter((thread) =>
-    thread.isArchived && (thread.archivedAt ?? 0) >= Date.now() - view.archivedDays * 86_400_000 &&
+  const matchingArchivedThreads = topThreads.filter((thread) =>
+    thread.isArchived && (thread.archivedAt ?? 0) >= now - view.archivedDays * 86_400_000 &&
     threadMatches(thread, standaloneThreadIds.has(thread.id) ? "" : (projectNameById.get(thread.projectId) ?? ""))
-  );
+  ).sort((left, right) => (right.archivedAt ?? 0) - (left.archivedAt ?? 0));
+  const archivedThreads = matchingArchivedThreads.slice(0, 50);
   const archivedTree = buildSidebarTree({
     threads: archivedThreads,
     options: { ...view, group: "status", subgroup: null }, describe,
@@ -774,6 +785,10 @@ export function StatusSidebar({
       key: `archive-${days}`, label: `Archived: past ${days} days`, icon: "Archive" as const,
       onSelect: () => changeView({ ...view, archivedDays: days as 7 | 30 }),
     }));
+    if (target.kind === "status" && node.key === "recent") return RECENT_HOURS.map((hours) => ({
+      key: `recent-${hours}`, label: `Recent: past ${hours} ${hours === 1 ? "hour" : "hours"}`, icon: "Clock" as const,
+      onSelect: () => changeView({ ...view, recentHours: hours }),
+    }));
     if (target.kind === "project") {
       return [
         {
@@ -809,6 +824,7 @@ export function StatusSidebar({
         view={view}
         onViewChange={changeView}
         projectsEnabled={integrationPreferences?.values.projectsIntegration === true}
+        archiveHasMore={matchingArchivedThreads.length > 50 || Boolean(archive?.hasNextPage)}
       >
         {collapsed ? null : node.children ? (
           node.children.map((child) => renderNode(child, 1))
@@ -862,6 +878,7 @@ export function StatusSidebar({
         {tree.map((node) => renderNode(node, 0))}
         {snoozedTree.map((node) => renderNode(node, 0))}
         {archivedTree.map((node) => renderNode(node, 0))}
+        {archive?.status === "error" ? <p role="status" className="px-3 py-2 text-xs text-muted-foreground">Could not load archived threads.</p> : null}
         {countTreeThreads(tree) === 0 && snoozedThreads.length === 0 && archivedThreads.length === 0 ? (
           <p role="status" className="px-3 py-8 text-center text-xs text-muted-foreground">
             {searching ? "No threads found" : "No threads yet"}
@@ -959,6 +976,7 @@ function GroupSection({
   view,
   onViewChange,
   projectsEnabled,
+  archiveHasMore,
   children,
 }: {
   node: SidebarTreeNode;
@@ -974,6 +992,7 @@ function GroupSection({
   view: SidebarViewOptions;
   onViewChange: (next: SidebarViewOptions) => void;
   projectsEnabled: boolean;
+  archiveHasMore: boolean;
   children: ReactNode;
 }) {
   const [placement, setPlacement] = useState<DropPlacement | null>(null);
@@ -1024,12 +1043,14 @@ function GroupSection({
         <SidebarSectionHeader
           label={node.label}
           icon={<Icon name={icon} className="size-3.5" aria-hidden="true" />}
-          summary={
+          summary={node.key === "archived" && target.kind === "status" ? (
+            <span className="text-[10px] tabular-nums text-muted-foreground">{node.threads.length}{archiveHasMore ? "+" : ""}</span>
+          ) : (
             <ThreadStatusSummary
               threads={node.threads}
               statusByThreadId={summary}
             />
-          }
+          )}
           variant={isParent ? "parent" : "section"}
           depth={depth}
           collapsed={collapsed}

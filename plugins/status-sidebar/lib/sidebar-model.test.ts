@@ -261,3 +261,27 @@ describe("manual ordering", () => {
 
 
 });
+
+describe("focus buckets", () => {
+  const now = 1_000_000_000;
+
+  it("keeps delegated unread chatter out of Unread while retaining parent attention", () => {
+    expect(statusForThread(thread({ isUnread: true, parentThreadId: "parent", updatedAt: now }), false, 3, now)).toBe("recent");
+    expect(statusForThread(thread({ isUnread: true, lifecycleOwnerThreadId: "parent", updatedAt: now }), false, 3, now)).toBe("recent");
+    expect(statusForThread(thread({ isUnread: true, updatedAt: now }), false, 3, now)).toBe("unread");
+    expect(statusForThread(thread({ parentThreadId: "parent", hasPendingInteraction: true }), false, 3, now)).toBe("needs-input");
+  });
+
+  it("does not treat an idle background command as active agent work", () => {
+    const command = thread({ indicator: "background-command", activity: { workflows: 0, backgroundAgents: 0, backgroundCommands: 1, planMode: 0, goals: 0 } });
+    expect(isThreadActive(command)).toBe(false);
+    expect(isThreadActive({ ...command, status: "active" })).toBe(true);
+    expect(isThreadActive({ ...command, activity: { ...command.activity, backgroundAgents: 1 } })).toBe(true);
+  });
+
+  it("places read work within the chosen recent window before idle", () => {
+    expect(statusForThread(thread({ updatedAt: now - 2 * 3_600_000 }), false, 3, now)).toBe("recent");
+    expect(statusForThread(thread({ updatedAt: now - 4 * 3_600_000 }), false, 3, now)).toBe("idle");
+    expect(statusForThread(thread({ updatedAt: now - 4 * 3_600_000 }), false, 6, now)).toBe("recent");
+  });
+});

@@ -36,6 +36,7 @@ export const shortcutSlotStatusValues = [
   "active",
   "drafting",
   "unread",
+  "recent",
   "idle",
   "archived",
 ] as const;

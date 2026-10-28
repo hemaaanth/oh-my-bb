@@ -4,7 +4,7 @@ Group BB threads by working status with nested thread summaries and saved orderi
 
 ## See what needs attention
 
-Group threads by status or project, or by Projects-owned groups when enabled. Combine a subgroup with recent, status, or manual ordering. Idle sits above collapsed Working. Pinned stays on top; snoozed threads stay in a collapsed group for early wake-up, and Archived stays at the bottom with a 7- or 30-day window. Parent summaries include the neediest child. Expand children without leaving the thread list.
+Group threads by status or project, or by Projects-owned groups when enabled. Combine a subgroup with recent, status, or manual ordering. Recent shows read work from the past 3 hours (adjustable from its right-click menu). Older read threads sit in Idle above collapsed Working. Delegated child chatter does not fill Unread, and an idle background command does not keep a thread Working. Pinned stays on top; snoozed threads stay in a collapsed group for early wake-up, and Archived stays at the bottom with a 7- or 30-day window and at most 50 loaded rows. Parent summaries include the neediest child. Expand children without leaving the thread list.
 
 BB keeps its navigation rail, footer, split navigation, keyboard targets, and native thread action menus. Status Sidebar adds timed snoozing. It does not replace BB's project or thread lifecycle controls. The sidebar stays narrow; its collapsible setup guide lives in plugin settings, not a separate rail page.
 

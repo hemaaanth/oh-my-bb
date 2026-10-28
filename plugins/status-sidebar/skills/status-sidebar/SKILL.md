@@ -13,7 +13,7 @@ Select the provider in Settings → Appearance → Sidebar. Right-click or long-
 
 Never change the user's selected provider, grouping, collapse state, ordering, or BB Thread list preferences merely to validate the plugin. Use disposable fixture state. Never archive, move, delete, or create real threads or projects for validation.
 
-Status summaries distinguish needs input, active work, drafting, unread, idle, and archived. Pinned is an organizational bucket. Snoozed threads leave active groups until their selected time, but remain in a collapsed Snoozed group for early wake-up. Archived threads appear at the bottom for the selected 7- or 30-day window. Idle precedes Working, which starts collapsed. A parent includes its neediest child. Drafts are client-local. Thread menus use native BB actions plus timed snooze actions.
+Status summaries distinguish needs input, active work, drafting, unread, idle, and archived. Pinned is an organizational bucket. Snoozed threads leave active groups until their selected time, but remain in a collapsed Snoozed group for early wake-up. Archived threads appear at the bottom for the selected 7- or 30-day window, limited to 50 loaded rows. Recent defaults to 3 hours and is configurable from its header menu; older read threads go to Idle. Idle precedes Working, which starts collapsed. Idle background commands do not count as Working. Delegated children do not enter Unread, but pending input stays actionable. A parent includes its neediest child. Drafts are client-local. Thread menus use native BB actions plus timed snooze actions.
 
 ## Integrations
 

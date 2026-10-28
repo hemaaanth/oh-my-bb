@@ -32,6 +32,11 @@ export const STATUS_DESIGN: readonly {
     className: "bg-timeline-accent/20 text-timeline-accent",
   },
   {
+    status: "recent",
+    label: "recent",
+    className: "bg-sidebar-foreground/10 text-sidebar-foreground",
+  },
+  {
     status: "idle",
     label: "idle",
     className: "bg-sidebar-foreground/10 text-sidebar-foreground",
@@ -48,6 +53,7 @@ export const STATUS_MARKER: Record<
   unread: { className: "text-success" },
   drafting: { className: "", style: { color: DRAFTING_STATUS_COLOR } },
   active: { className: "text-timeline-accent" },
+  recent: { className: "text-muted-foreground" },
   idle: { className: "text-muted-foreground" },
   archived: { className: "text-muted-foreground/40" },
 };

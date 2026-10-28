@@ -6,6 +6,7 @@ export type ThreadStatusBucket =
   | "active"
   | "needs-input"
   | "drafting"
+  | "recent"
   | "idle"
   | "archived";
 
@@ -15,6 +16,7 @@ export const THREAD_STATUS_ORDER: readonly ThreadStatusBucket[] = [
   "unread",
   "drafting",
   "needs-input",
+  "recent",
   "idle",
   "active",
   "archived",
@@ -30,7 +32,6 @@ const ACTIVE_INDICATORS = new Set([
   "working-draft",
   "workflow",
   "background-agent",
-  "background-command",
   "plan-mode",
   "goal",
   "runtime",
@@ -68,10 +69,10 @@ export function isThreadActive(thread: PluginSidebarThread): boolean {
   return (
     activity.workflows +
       activity.backgroundAgents +
-      activity.backgroundCommands +
       activity.planMode +
       activity.goals >
-      0 || ACTIVE_INDICATORS.has(thread.indicator)
+      0 || ACTIVE_INDICATORS.has(thread.indicator) ||
+    (activity.backgroundCommands > 0 && thread.status !== "idle" && thread.status !== "error")
   );
 }
 
@@ -86,13 +87,15 @@ export function needsInput(thread: PluginSidebarThread): boolean {
 export function statusForThread(
   thread: PluginSidebarThread,
   hasDraft = false,
+  recentHours = 3,
+  now = Date.now(),
 ): ThreadStatusBucket {
   if (thread.isArchived) return "archived";
   if (needsInput(thread)) return "needs-input";
   if (isThreadActive(thread)) return "active";
   if (hasDraft) return "drafting";
-  if (thread.isUnread) return "unread";
-  return "idle";
+  if (thread.isUnread && !thread.parentThreadId && !thread.lifecycleOwnerThreadId) return "unread";
+  return thread.updatedAt >= now - recentHours * 3_600_000 ? "recent" : "idle";
 }
 
 // Neediness precedence for rolling a parent thread's bucket up from its
@@ -104,7 +107,8 @@ export const STATUS_NEEDINESS: Record<ThreadStatusBucket, number> = {
   active: 4,
   drafting: 3.5,
   unread: 3,
-  idle: 2,
+  recent: 2,
+  idle: 1,
   archived: 0,
 };
 
@@ -112,9 +116,10 @@ export const ORGANIZATIONAL_STATUS_RANK: Record<ThreadStatusBucket, number> = {
   "needs-input": 0,
   unread: 1,
   drafting: 2,
-  idle: 3,
-  active: 4,
-  archived: 5,
+  recent: 3,
+  idle: 4,
+  active: 5,
+  archived: 6,
 };
 
 export function mostNeedyStatus(
@@ -154,7 +159,7 @@ export function followSelectedBucket(
       ? previous
       : natural;
   }
-  if (natural === "idle") {
+  if (natural === "recent" || natural === "idle") {
     return previous === "active" ||
       previous === "needs-input" ||
       previous === "unread"
