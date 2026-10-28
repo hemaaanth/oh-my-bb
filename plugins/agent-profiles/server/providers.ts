@@ -63,6 +63,9 @@ export async function createAgentProviders(bb: BbPluginApi, db: Database.Databas
   });
   let agentsCatalog: { snapshot: string; dispose(): void } | undefined;
   bb.providers.experimental_contributeEnv(AGENTS_PROVIDER_ID, async ({ threadId, hostId }) => {
+    // Model catalog listing passes no thread, so it gets no memory. bb skips a
+    // resolver that throws, but logs a warning and shows it on the plugin status.
+    if (threadId === null) return [];
     const thread = await bb.sdk.threads.get({ threadId });
     if (thread.providerId !== AGENTS_PROVIDER_ID || thread.deletedAt !== null)
       throw new Error("Agent memory requires a live Agents thread.");

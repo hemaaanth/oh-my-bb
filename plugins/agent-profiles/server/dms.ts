@@ -30,7 +30,7 @@ type DmThread = {
 
 export interface AgentDms {
   ensureAgentDm(profileId: string): Promise<{ threadId: string }>;
-  restoreArchived(): Promise<void>;
+  restoreArchived(signal?: AbortSignal): Promise<void>;
   archived(threadId: string): Promise<void>;
   deleted(threadId: string): void;
 }
@@ -204,10 +204,11 @@ export function createAgentDms(bb: BbPluginApi, db: Database.Database, profiles:
       inFlight.set(profileId, operation);
       return operation;
     },
-    async restoreArchived() {
+    async restoreArchived(signal) {
       const rows = db.prepare("SELECT profile_id AS profileId, thread_id AS threadId FROM agent_dms WHERE state = 'ready'")
         .all() as Array<{ profileId: string; threadId: string }>;
       for (const row of rows) {
+        if (signal?.aborted) return;
         try {
           await restore(row.threadId);
           if (profiles.getProfile(row.profileId).showInSidebar) await allocate(row.profileId);

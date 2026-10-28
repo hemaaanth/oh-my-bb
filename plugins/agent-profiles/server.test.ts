@@ -236,6 +236,19 @@ describe("agent profiles", () => {
     await harness.lifecycle.dispose();
   });
 
+  it("contributes no agent memory env when bb lists the agents model catalog", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "agent-profiles", sdk: { plugins: projectPlugins() },
+    });
+    await plugin(bb);
+    await expect(harness.behavior.resolveProviderEnv("agents", {
+      threadId: null, projectId: null, hostId: "host-1",
+    })).resolves.toEqual([]);
+    expect(harness.inspection.logEntries.filter((entry) => entry.message.startsWith("provider environment contribution failed")))
+      .toEqual([]);
+    await harness.lifecycle.dispose();
+  });
+
   it("returns permission modes from the current provider capability shape", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "agent-profiles",

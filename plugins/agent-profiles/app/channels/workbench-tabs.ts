@@ -1,47 +1,52 @@
-import type { PluginFixedTabRegistration } from "@get-bb/plugin-sdk/app";
+import type { ExperimentalTabRegistration, PluginNavPanelProps } from "@get-bb/plugin-sdk/app";
 import { deferred } from "../shared/lazy";
 
 const workbench = () => import("./channel-workbench");
 
-export const channelWorkbenchTabs: PluginFixedTabRegistration[] = [
+export const channelWorkbenchTabs: ExperimentalTabRegistration[] = [
   {
     id: "activity",
-    panelId: "channels",
+    context: { kind: "nav-panel", panelId: "channels" },
+    availability: "fixed",
     title: "Activity",
     icon: "ListView",
     layout: "flush",
-    component: deferred(() => workbench().then((module) => module.ChannelActivityTab)),
+    component: deferred<PluginNavPanelProps>(() => workbench().then((module) => module.ChannelActivityTab)),
   },
   {
     id: "output",
-    panelId: "channels",
+    context: { kind: "nav-panel", panelId: "channels" },
+    availability: "fixed",
     title: "Output",
     icon: "Paperclip",
     layout: "flush",
-    component: deferred(() => workbench().then((module) => module.ChannelOutputTab)),
+    component: deferred<PluginNavPanelProps>(() => workbench().then((module) => module.ChannelOutputTab)),
   },
   {
     id: "decisions",
-    panelId: "channels",
+    context: { kind: "nav-panel", panelId: "channels" },
+    availability: "fixed",
     title: "Decisions",
     icon: "CircleCheck",
     layout: "flush",
-    component: deferred(() => workbench().then((module) => module.ChannelDecisionsTab)),
+    component: deferred<PluginNavPanelProps>(() => workbench().then((module) => module.ChannelDecisionsTab)),
   },
   {
     id: "automations",
-    panelId: "channels",
+    context: { kind: "nav-panel", panelId: "channels" },
+    availability: "fixed",
     title: "Automations",
     icon: "TimeSchedule",
     layout: "flush",
-    component: deferred(() => workbench().then((module) => module.ChannelAutomationsTab)),
+    component: deferred<PluginNavPanelProps>(() => workbench().then((module) => module.ChannelAutomationsTab)),
   },
   {
     id: "usage",
-    panelId: "channels",
+    context: { kind: "nav-panel", panelId: "channels" },
+    availability: "fixed",
     title: "Usage and limits",
     icon: "ChartColumn",
     layout: "flush",
-    component: deferred(() => workbench().then((module) => module.ChannelUsageTab)),
+    component: deferred<PluginNavPanelProps>(() => workbench().then((module) => module.ChannelUsageTab)),
   },
 ];

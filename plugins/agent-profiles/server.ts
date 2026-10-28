@@ -417,7 +417,10 @@ export default async function plugin(bb: BbPluginApi) {
   });
   agentProviders.reconcile(profiles.listProfiles());
   const dms = createAgentDms(bb, db, profiles, channels);
-  await dms.restoreArchived();
+  // Restoring pins each DM's agent model, and bb validates that against the agents
+  // provider. The provider joins bb's registry only after this factory returns, so
+  // awaiting here stalls the load until it times out. Services start after that.
+  bb.background.service("dm-restore", { start: (signal) => dms.restoreArchived(signal) });
   
   const channelSummaryNudge = createChannelSummaryNudge(bb, channels, () => sidebarChanged());
   let sidebarTimer: NodeJS.Timeout | undefined;

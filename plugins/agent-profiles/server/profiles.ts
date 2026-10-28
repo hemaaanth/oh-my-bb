@@ -30,7 +30,7 @@ import { channelAutomationToolNames } from "./channels/channel-automations";
 import type { ChannelRpcHandlers } from "./channels/rpc";
 import { assembleInstructions, spawnPreamble } from "./instructions";
 import type { ExecutionResolver, ModelLevelPreview } from "./execution-resolver";
-import { type ModelLevel, type ResolvedExecution } from "./model-levels";
+import { isReasoningLevel, type ModelLevel, type ResolvedExecution } from "./model-levels";
 import { AGENTS_PROVIDER_ID, agentModelId } from "./provider-ids";
 import type { AgentProviders } from "./providers";
 import type { AgentDms } from "./dms";
@@ -920,12 +920,17 @@ export function registerProfileRpc(
       supportsServiceTier: provider.capabilities.supportsServiceTier,
       permissionModes: provider.capabilities.permissionModes,
     })),
-    models: async ({ providerId }) => (await bb.sdk.providers.models({ providerId })).models.map((model) => ({
-      model: model.model,
-      displayName: model.displayName,
-      reasoningLevels: model.supportedReasoningEfforts.map(({ reasoningEffort }) => reasoningEffort),
-      defaultReasoningLevel: model.defaultReasoningEffort,
-    })),
+    models: async ({ providerId }) => (await bb.sdk.providers.models({ providerId })).models.map((model) => {
+      const reasoningLevels = model.supportedReasoningEfforts.map(({ reasoningEffort }) => reasoningEffort).filter(isReasoningLevel);
+      return {
+        model: model.model,
+        displayName: model.displayName,
+        reasoningLevels,
+        defaultReasoningLevel: isReasoningLevel(model.defaultReasoningEffort)
+          ? model.defaultReasoningEffort
+          : reasoningLevels[0] ?? "medium",
+      };
+    }),
     modelLevelPreview: ({ level }) => profiles.modelLevelPreview(level),
     ensureAgentDm: async ({ profileId }) => {
       const result = await dms.ensureAgentDm(profileId);

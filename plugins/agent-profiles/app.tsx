@@ -427,8 +427,8 @@ export default definePluginApp((app) => {
     path: "channels",
     component: ChannelsPage,
     headerContent: ChannelsHeader,
-    fixedTabs: channelWorkbenchTabs,
   });
+  for (const tab of channelWorkbenchTabs) app.slots.experimental_tab(tab);
   app.slots.settingsSection({ id: "preferences", component: AgentsPreferences });
   app.slots.settingsSection({ id: "agents", component: AgentsSettings });
 });

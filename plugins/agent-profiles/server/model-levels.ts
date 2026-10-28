@@ -23,10 +23,11 @@ export type ReasoningLevel =
 export type ExecutionModel = {
   model: string;
   displayName: string;
+  // Providers report free-form effort ids; only the ones we rank are used.
   supportedReasoningEfforts: ReadonlyArray<{
-    reasoningEffort: ReasoningLevel;
+    reasoningEffort: string;
   }>;
-  defaultReasoningEffort: ReasoningLevel;
+  defaultReasoningEffort: string;
   isDefault: boolean;
 };
 
@@ -165,12 +166,16 @@ function latestModel(
     })[0];
 }
 
+export function isReasoningLevel(effort: string): effort is ReasoningLevel {
+  return Object.hasOwn(EFFORT_RANK, effort);
+}
+
 function clampEffort(model: ExecutionModel, desired: ReasoningLevel) {
-  const supported = model.supportedReasoningEfforts.map(({ reasoningEffort }) => reasoningEffort);
+  const supported = model.supportedReasoningEfforts.map(({ reasoningEffort }) => reasoningEffort).filter(isReasoningLevel);
   const nearest = supported
     .filter((effort) => EFFORT_RANK[effort] <= EFFORT_RANK[desired])
     .sort((left, right) => EFFORT_RANK[right] - EFFORT_RANK[left])[0];
-  return nearest ?? model.defaultReasoningEffort;
+  return nearest ?? (isReasoningLevel(model.defaultReasoningEffort) ? model.defaultReasoningEffort : desired);
 }
 
 export function resolveExecution({

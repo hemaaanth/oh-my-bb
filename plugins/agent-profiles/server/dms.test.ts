@@ -261,6 +261,21 @@ describe("permanent agent DMs", () => {
     } finally { await x.harness.lifecycle.dispose(); }
   });
 
+  it("pins DM models after the load commits, because bb validates them against the agents provider", async () => {
+    const x = await setup();
+    try {
+      const a = await x.save("Atlas");
+      const { threadId } = await x.open(a.id);
+      x.models.delete(threadId);
+      x.overrides.delete(threadId);
+      x.update.mockClear();
+      const next = await x.harness.lifecycle.reload(plugin);
+      expect(x.update).not.toHaveBeenCalled();
+      await next.harness.runService("dm-restore").done;
+      expect(x.update).toHaveBeenCalledExactlyOnceWith({ threadId, model: agentModelId(a.id) });
+    } finally { await x.harness.lifecycle.dispose(); }
+  });
+
   it("keeps the placeholder and reservation recoverable when persisting the model fails", async () => {
     const x = await setup();
     try {
