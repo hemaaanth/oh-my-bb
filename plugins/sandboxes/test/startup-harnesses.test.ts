@@ -28,20 +28,20 @@ async function check(carried: HarnessVersions, healed = target, custom = false, 
 }
 it("replaces an old vendor Claude even when every harness is present", async () => {
   const exec = await check({ ...target, "claude-code": "2.1.234" });
-  expect(exec).toHaveBeenCalledTimes(2);
+  expect(exec).toHaveBeenCalledTimes(3);
   expect(exec.mock.calls[1]![0].command.join(" ")).toContain("CLAUDE_CODE_VERSION=2.1.296");
   expect(reconcileGatewaySetup).toHaveBeenCalledOnce();
 });
 it("skips installation when the common image versions already match", async () => {
-  expect(await check(target)).toHaveBeenCalledTimes(1);
+  expect(await check(target)).toHaveBeenCalledTimes(2);
 });
 it("retains installed versions only for an explicit custom image", async () => {
-  expect(await check({ ...target, "claude-code": "2.1.234" }, target, true)).toHaveBeenCalledTimes(1);
+  expect(await check({ ...target, "claude-code": "2.1.234" }, target, true)).toHaveBeenCalledTimes(2);
 });
 it("preserves disabled tools from the shared image selection", async () => {
   const disabled = Object.fromEntries(harnessNames.map(name => [name, "disabled"])) as HarnessVersions;
   const exec = await check(disabled, target, false, []);
-  expect(exec).toHaveBeenCalledTimes(1);
+  expect(exec).toHaveBeenCalledTimes(2);
   expect(exec.mock.calls[0]![0].command.slice(0, 2)).toEqual(["env", "BB_IMAGE_TOOLS="]);
 });
 it("stops before Gateway setup when an old harness survives repair", async () => {

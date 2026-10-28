@@ -1,3 +1,5 @@
+import { gzipSync } from "node:zlib";
+
 /**
  * Shared helper for vendors whose command API takes a single shell string and
  * has no stdin channel. BB core's machine bootstrap runs argv with bootstrap
@@ -15,6 +17,9 @@ export function toShellCommand(
 ): string {
   const quoted = argv.map(shQuote).join(" ");
   if (stdin.length === 0) return quoted;
-  const b64 = Buffer.from(stdin, "utf8").toString("base64");
-  return `printf %s ${shQuote(b64)} | base64 -d | ${quoted}`;
+  const bytes = Buffer.from(stdin, "utf8");
+  // Large installers otherwise exceed vendor command limits after base64 expansion.
+  const compressed = bytes.length > 8192;
+  const b64 = (compressed ? gzipSync(bytes) : bytes).toString("base64");
+  return `printf %s ${shQuote(b64)} | base64 -d${compressed ? " | gzip -dc" : ""} | ${quoted}`;
 }

@@ -423,6 +423,16 @@ export async function prepareGatewayHarnesses(
     const stale = staleParts(parseHealResult(output), { bb: "", harness: target }, { includeBb: false });
     if (stale.length) throw new Error(`Sandbox harness preparation failed: ${stale.join(", ")}${outputTail(output)}`);
   }
+  // Plain vendor images do not include the required BB preview supervisor.
+  await run(["node", "-e", `
+const fs=require("node:fs"),path=require("node:path"),{spawnSync}=require("node:child_process");
+const source=fs.readFileSync(0);
+if(spawnSync("sh",["-c","command -v bb-sandbox-preview"],{stdio:"ignore"}).status!==0){
+  const file=path.join(path.dirname(process.execPath),"bb-sandbox-preview"),temporary=file+".tmp-"+process.pid;
+  fs.writeFileSync(temporary,source,{mode:0o755,flag:"wx"});
+  try{fs.renameSync(temporary,file);}finally{if(fs.existsSync(temporary))fs.unlinkSync(temporary);}
+}
+`], readFileSync(new URL("../docker/preview-supervisor.mjs", import.meta.url), "utf8"));
   await reconcileGatewaySetup(bb, input.hostId, run, false, true);
 }
 

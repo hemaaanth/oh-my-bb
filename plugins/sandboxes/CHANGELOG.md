@@ -1,5 +1,7 @@
 # Unreleased
 
+- Compress large stdin payloads in the common shell transport so native resume installers fit provider command limits. Install the required preview supervisor when it is absent from a plain vendor image.
+
 - Align every provider executor and harness installation with the Node directory used by BB agents. Share create/resume connection setup and project-based machine naming; remove duplicated connector naming and event-based rename heuristics. Confirm empty Boat accounts can retire old uncheckpointed allocations.
 
 - Fix Modal bootstrap hanging on nonempty stdin; close the stream at its actual byte offset, stream progress immediately, and round exec timeouts to supported whole seconds.
