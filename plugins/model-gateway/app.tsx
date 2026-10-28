@@ -35,7 +35,7 @@ import {
 import { modelDisplayName } from "./src/model-catalog.js";
 import { FxIcon, GatewayChatGPTIcon, GatewayClaudeIcon, NanocodexIcon } from "./provider-icons";
 import "./app.css";
-import { GatewaySetup, GATEWAY_ICON, SETUP_PATH } from "./gateway-setup.js";
+import { GatewaySetup, GATEWAY_ICON } from "./gateway-setup.js";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -1170,6 +1170,7 @@ function RouteRow({
 function ModelGatewaySettings() {
   const rpc = useRpc<typeof accountPoolRpcContract>();
   const navigate = useBbNavigate();
+  const [setupOpen, setSetupOpen] = useState(false);
   const [status, setStatus] = useState<PoolStatus | null>(null);
   const [config, setConfig] = useState<AccountPoolConfig | null>(null);
   const [routing, setRouting] = useState<RoutingState | null>(null);
@@ -2002,9 +2003,14 @@ function ModelGatewaySettings() {
             <p className="text-sm">Setup guide</p>
             <p className="mt-0.5 text-xs text-muted-foreground">Connect accounts and prepare each harness.</p>
           </div>
-          <Button size="sm" variant="outline" onClick={() => navigate.toPluginPanel(SETUP_PATH)}>Open setup guide</Button>
+          <Button size="sm" variant="outline" onClick={() => setSetupOpen(true)}>Open setup guide</Button>
         </div>
       </SettingsSection>
+      <GatewayDialog open={setupOpen} onOpenChange={setSetupOpen}>
+        <DrawerFrame title="Set up Model Gateway" onClose={() => setSetupOpen(false)}>
+          <GatewaySetup />
+        </DrawerFrame>
+      </GatewayDialog>
       <GatewayDialog
         open={drawer !== null}
         onOpenChange={(open) => {
@@ -2859,13 +2865,6 @@ export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "gateway",
     component: ModelGatewaySettings,
-  });
-  app.slots.navPanel({
-    id: "setup",
-    title: "Model Gateway",
-    icon: GATEWAY_ICON,
-    path: SETUP_PATH,
-    component: GatewaySetup,
   });
   app.slots.experimental_providerIcon({
     providerKind: "agent",

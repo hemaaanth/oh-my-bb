@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
-import { UrlLink, useRpc } from "@get-bb/plugin-sdk/app";
-import { Button } from "./components/ui/button.js";
-import { Icon } from "./components/ui/icon.js";
+import { useRpc } from "@get-bb/plugin-sdk/app";
 import type { accountPoolRpcContract } from "./src/rpc.js";
 
 export const GATEWAY_ICON = "model-gateway/gateway";
-export const SETUP_PATH = "setup";
 
 const HARNESS_NAMES: Record<string, string> = {
   "acp-omp": "omp", "acp-fx": "FX", "acp-nanocodex": "nanocodex",
@@ -26,14 +23,7 @@ export function GatewaySetup() {
     return () => { cancelled = true; };
   }, [rpc]);
   return (
-    <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
-      <div className="mx-auto w-full max-w-[760px] space-y-4 px-4 py-6">
-        <Button variant="ghost" size="sm" className="h-5 px-0" asChild><UrlLink href="/settings/plugins/model-gateway"><Icon name="ChevronLeft" />Settings</UrlLink></Button>
-        <header className="flex items-center gap-3">
-          <Icon name={GATEWAY_ICON} aria-hidden className="size-9 shrink-0" />
-          <div className="min-w-0"><h1 className="text-lg font-semibold">Set up Model Gateway</h1>
-            <p className="text-xs text-subtle-foreground">Connect accounts, then choose routes for each harness.</p></div>
-        </header>
+    <div className="space-y-4">
         <section className="space-y-2 border-t border-border pt-5">
           <h2 className="text-sm font-medium">1. Add an upstream</h2>
           <p className="text-sm text-muted-foreground">Open Credentials in settings. Sign in to Claude or ChatGPT, import a login from the BB server, or add an API key. Saved secrets stay hidden.</p>
@@ -54,7 +44,6 @@ export function GatewaySetup() {
             </div>
           ))}
         </section>
-      </div>
     </div>
   );
 }

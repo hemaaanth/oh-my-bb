@@ -530,3 +530,14 @@ describe("Model usage footer", () => {
     await waitFor(() => expect(lists).toBe(2));
   });
 });
+
+
+it("opens the setup guide in settings without registering a rail page", async () => {
+  expect(app.navPanels).toEqual([]);
+  const slot = render();
+  const button = await slot.findByRole("button", { name: "Open setup guide" });
+  fireEvent.click(button);
+  expect(await slot.findByRole("dialog", { name: "Set up Model Gateway" })).toBeTruthy();
+  expect(await slot.findByText("bb gateway setup omp")).toBeTruthy();
+  expect(slot.inspection.navigateCalls).toEqual([]);
+});
