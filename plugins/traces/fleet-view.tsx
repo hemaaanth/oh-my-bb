@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { experimental_Icon as Icon, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import { FLEET_CHANNEL, type FleetFacet, type FleetHistogramBin, type FleetRow, type FleetSnapshot, type FleetView, type FleetMode, type fleetContract } from "./fleet-contract";
 import { metricDrilldownQuery, parseFleetQuery, type FleetMetricPredicate } from "./fleet-query";
 import "./fleet.css";
@@ -88,8 +88,8 @@ function useFleetJob(view: FleetView, initialQuery: string, initialSince: string
     refresh: () => setRevision((value) => value + 1), connection };
 }
 
-function ScanProgress({ snapshot, error, onCancel, onRefresh, connection }: { snapshot: FleetSnapshot | null; error: string | null;
-  onCancel: () => void; onRefresh: () => void; connection: string }) {
+function ScanProgress({ snapshot, error, onCancel, onRefresh, connection, quiet = false }: { snapshot: FleetSnapshot | null; error: string | null;
+  onCancel: () => void; onRefresh: () => void; connection: string; quiet?: boolean }) {
   const progress = snapshot ? Math.min(100, snapshot.totalThreads ? Math.round(snapshot.scannedThreads / snapshot.totalThreads * 100) : 100) : 0;
   const state = snapshot?.status ?? "loading";
   const freshness = snapshot?.freshness === "live-since-completion" ? `Live since ${clock(snapshot.liveSince ?? snapshot.startedAt)}; last update ${clock(snapshot.lastLiveEventAt ?? snapshot.updatedAt)}`
@@ -100,12 +100,19 @@ function ScanProgress({ snapshot, error, onCancel, onRefresh, connection }: { sn
     <div className="traces-fleet-progress-line"><span className={`traces-fleet-state traces-fleet-state-${state}`} role="status" aria-live="polite">{state}</span>
       <strong>{snapshot ? `${snapshot.scannedThreads.toLocaleString()} / ${snapshot.totalThreads.toLocaleString()} threads` : "Starting scan"}</strong>
       <span>{snapshot ? `${snapshot.scannedEvents.toLocaleString()} events scanned · ${snapshot.matchedEvents.toLocaleString()} matches` : ""}</span>
+      {quiet && snapshot?.limited && <span className="traces-fleet-partial">Partial results</span>}
+      {quiet && connection !== "connected" && <span className="traces-fleet-partial">Live offline</span>}
       <span className="traces-fleet-progress-actions">{snapshot && (state === "running" || state === "cancelling") && <button type="button" onClick={onCancel} disabled={state === "cancelling"}>Cancel scan</button>}
         <button type="button" onClick={onRefresh}>Rescan</button></span></div>
     <div className="traces-fleet-progress-track" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label="Thread scan progress"><span style={{ width: `${progress}%` }} /></div>
-    <div className="traces-fleet-freshness">{freshness}{snapshot?.retries ? ` · ${snapshot.retries} SQLite busy retries` : ""}{connection !== "connected" ? " · Live connection unavailable; reconnect triggers a new scan" : ""}</div>
-    {snapshot && snapshot.limitReasons.length > 0 && <ul className="traces-fleet-limits" aria-label="Scan limits and omitted data">{snapshot.limitReasons.map((reason) =>
-      <li key={reason.code}><strong>{reason.count.toLocaleString()}</strong> {reason.detail}</li>)}</ul>}
+    {quiet ? <details className="traces-fleet-coverage"><summary aria-label="Scan coverage and limits" title="Scan coverage and limits"><Icon name="Info" aria-hidden="true" /> Coverage</summary>
+      <div className="traces-fleet-coverage-popover"><p>{freshness}{snapshot?.retries ? ` · ${snapshot.retries} SQLite busy retries` : ""}{connection !== "connected" ? " · Live connection unavailable; reconnect triggers a new scan" : ""}</p>
+        <p>{snapshot ? `${snapshot.rows.length} newest rows shown · ${snapshot.matchedEvents.toLocaleString()} matches across ${snapshot.scannedThreads}/${snapshot.totalThreads} threads` : "Scan has not started."}</p>
+        {snapshot && snapshot.limitReasons.length > 0 && <ul className="traces-fleet-limits" aria-label="Scan limits and omitted data">{snapshot.limitReasons.map((reason) =>
+          <li key={reason.code}><strong>{reason.count.toLocaleString()}</strong> {reason.detail}</li>)}</ul>}</div></details>
+      : <><div className="traces-fleet-freshness">{freshness}{snapshot?.retries ? ` · ${snapshot.retries} SQLite busy retries` : ""}{connection !== "connected" ? " · Live connection unavailable; reconnect triggers a new scan" : ""}</div>
+        {snapshot && snapshot.limitReasons.length > 0 && <ul className="traces-fleet-limits" aria-label="Scan limits and omitted data">{snapshot.limitReasons.map((reason) =>
+          <li key={reason.code}><strong>{reason.count.toLocaleString()}</strong> {reason.detail}</li>)}</ul>}</>}
     {(snapshot?.error || error) && <p className="traces-fleet-error" role="alert">{snapshot?.error ?? error}</p>}
   </div>;
 }
@@ -120,7 +127,10 @@ function FleetControls({ view, draft, setDraft, onSubmit, since, setSince, mode,
     </form>
     {view === "explorer" && <div className="traces-fleet-switch" aria-label="Result mode"><button type="button" aria-pressed={mode === "events"} onClick={() => setMode("events")}>Events</button><button type="button" aria-pressed={mode === "spans"} onClick={() => setMode("spans")}>Spans</button></div>}
     <label className="traces-fleet-window">Window <select value={since} onChange={(event) => setSince(event.target.value)}><option value="1h">1 hour</option><option value="6h">6 hours</option><option value="24h">24 hours</option><option value="7d">7 days</option></select></label>
-    <details className="traces-fleet-syntax"><summary>Syntax</summary><p>AND-only <code>field:value</code> terms. Fields: project, thread, provider, model, environment, worktree, child, kind, type, status, tool, category, duration. Quote spaces: <code>project:"My Project"</code>. Examples: <code>kind:toolCall status:failed</code>, <code>duration:&gt;5s</code>. No free text or OR. Maximum 7 days.</p></details>
+    {view === "explorer" ? <details className="traces-fleet-query-help"><summary aria-label="Query syntax help" title="Query syntax help"><Icon name="Info" aria-hidden="true" /></summary>
+      <div className="traces-fleet-query-help-popover"><strong>Filter syntax</strong><p>AND-only <code>field:value</code> terms. Fields: project, thread, provider, model, environment, worktree, child, kind, type, status, tool, category, duration, metric.</p>
+        <p>Quote spaces: <code>project:"My Project"</code>. Examples: <code>kind:toolCall status:failed</code>, <code>duration:&gt;5s</code>. No free text or OR. Maximum 7 days.</p></div></details>
+      : <details className="traces-fleet-syntax"><summary>Syntax</summary><p>AND-only <code>field:value</code> terms. Fields: project, thread, provider, model, environment, worktree, child, kind, type, status, tool, category, duration. Quote spaces: <code>project:"My Project"</code>. Examples: <code>kind:toolCall status:failed</code>, <code>duration:&gt;5s</code>. No free text or OR. Maximum 7 days.</p></details>}
   </div>;
 }
 
@@ -151,46 +161,47 @@ function Facets({ snapshot, onFacet }: { snapshot: FleetSnapshot; onFacet: (fiel
   })}</aside>;
 }
 
-function RowDetail({ row, onWaterfall, onContext, onOpenThread }: { row: FleetRow | null; onWaterfall: (id: string) => void; onContext: (id: string) => void; onOpenThread: (id: string) => void }) {
+function RowDetail({ row, onClose, onWaterfall, onContext, onOpenThread }: { row: FleetRow; onClose: () => void; onWaterfall: (id: string) => void; onContext: (id: string) => void; onOpenThread: (id: string) => void }) {
   const rpc = useRpc<typeof fleetContract>();
   const [reveal, setReveal] = useState(false);
   const [detail, setDetail] = useState<{ input: string | null; output: string | null; inputSize: number | null; outputSize: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const request = useRef(0);
-  useEffect(() => { setReveal(false); setDetail(null); setError(null); }, [row?.id]);
+  const pane = useRef<HTMLElement>(null);
+  useEffect(() => { pane.current?.scrollIntoView?.({ block: "nearest" }); }, [row.id]);
+  useEffect(() => { setReveal(false); setDetail(null); setError(null); }, [row.id]);
   useEffect(() => {
-    if (!row || row.seq <= 0) return;
+    if (row.seq <= 0) return;
     const generation = ++request.current;
     rpc.call("traces_fleet_detail", { threadId: row.threadId, seq: row.seq, reveal }).then((value) => {
       if (generation === request.current) { setDetail(value); setError(null); }
     }, () => { if (generation === request.current) setError("Event detail is no longer available."); });
     return () => { request.current++; };
-  }, [rpc, row?.id, row?.seq, row?.threadId, reveal]);
-  return <aside className="traces-fleet-detail" aria-label="Selected event detail">
-    {!row ? <div className="traces-fleet-detail-empty"><h3>Select a row</h3><p>Inspect timing and metadata. Event payloads stay hidden until revealed.</p></div> : <>
-      <h3>{row.name}</h3><p className={row.status === "failed" ? "traces-fleet-error" : ""}>{row.status} · {row.type}</p>
-      <dl>{[["Thread", row.threadId], ["Turn", row.turnId ?? "—"], ["Item", row.itemId ?? "—"], ["Provider", row.provider], ["Model", row.model ?? "not stored"],
+  }, [rpc, row.id, row.seq, row.threadId, reveal]);
+  return <aside ref={pane} className="traces-fleet-detail" aria-label="Selected event detail">
+    <div className="traces-fleet-detail-heading"><h3>{row.name}</h3><button type="button" onClick={onClose} aria-label="Close event detail">×</button></div>
+    <p className={row.status === "failed" ? "traces-fleet-error" : ""}>{row.status} · {row.type}</p>
+    <dl>{[["Thread", row.threadId], ["Turn", row.turnId ?? "—"], ["Item", row.itemId ?? "—"], ["Provider", row.provider], ["Model", row.model ?? "not stored"],
         ["Project", row.projectId], ["Environment", row.environmentId ?? "none"], ["Worktree", String(row.worktree)], ["At", new Date(row.at).toLocaleString()],
         ["Duration", duration(row.durationMs)], ["Category", row.category ?? "—"]].map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
-      <div className="traces-fleet-detail-links"><button type="button" onClick={() => onOpenThread(row.threadId)}>Open thread</button><button type="button" onClick={() => onWaterfall(row.threadId)}>Waterfall</button><button type="button" onClick={() => onContext(row.threadId)}>Context</button></div>
+    <div className="traces-fleet-detail-links"><button type="button" onClick={() => onOpenThread(row.threadId)}>Open BB thread</button><button type="button" onClick={() => onWaterfall(row.threadId)}>Waterfall</button><button type="button" onClick={() => onContext(row.threadId)}>Context Inspector</button></div>
       {row.seq > 0 ? <>
         <label className="traces-fleet-reveal"><input type="checkbox" checked={reveal} onChange={(event) => { if (!event.target.checked) { request.current++; setDetail(null); } setReveal(event.target.checked); }} /> Reveal sensitive data</label>
         {error && <p className="traces-fleet-error">{error}</p>}
         {detail?.input && <section><h4>Input · {number(detail.inputSize)} bytes</h4><pre>{detail.input}</pre></section>}
         {detail?.output && <section><h4>Output · {number(detail.outputSize)} bytes</h4><pre>{detail.output}</pre></section>}
       </> : <p className="traces-fleet-muted">Derived span. Open Waterfall for its nested detail.</p>}
-    </>}
   </aside>;
 }
 
-function ExplorerRows({ snapshot, selectedId, onSelect }: { snapshot: FleetSnapshot; selectedId: string | null; onSelect: (row: FleetRow) => void }) {
+function ExplorerRows({ snapshot, selectedId, selectedRef, onSelect, onWaterfall }: { snapshot: FleetSnapshot; selectedId: string | null;
+  selectedRef: RefObject<HTMLButtonElement | null>; onSelect: (row: FleetRow) => void; onWaterfall: (id: string) => void }) {
   return <div className="traces-fleet-rows"><table><thead><tr><th>Time</th><th>Thread</th><th>Turn</th><th>Kind</th><th>Tool</th><th>Duration</th><th>Status</th></tr></thead><tbody>
     {snapshot.rows.map((row) => <tr key={row.id} className={row.id === selectedId ? "selected" : ""} aria-selected={row.id === selectedId}>
-      <td><button type="button" onClick={() => onSelect(row)} aria-current={row.id === selectedId ? "true" : undefined} aria-label={`Inspect ${row.kind} in ${row.threadId} at ${clock(row.at)}`}>{new Date(row.at).toLocaleTimeString()}</button></td>
-      <td>{row.threadId}</td><td>{row.turnId?.split("-t").at(-1) ?? "—"}</td><td>{row.kind}</td><td>{row.tool ?? "—"}</td><td>{duration(row.durationMs)}</td><td className={row.status === "failed" ? "failed" : ""}>{row.status}</td>
+      <td><button type="button" ref={row.id === selectedId ? selectedRef : undefined} onClick={() => onSelect(row)} aria-current={row.id === selectedId ? "true" : undefined} aria-label={`Inspect ${row.kind} in ${row.threadId} at ${clock(row.at)}`}>{new Date(row.at).toLocaleTimeString()}</button></td>
+      <td><button type="button" onClick={() => onWaterfall(row.threadId)} aria-label={`Open Waterfall for ${row.threadId}`}>{row.threadId}</button></td><td>{row.turnId?.split("-t").at(-1) ?? "—"}</td><td>{row.kind}</td><td>{row.tool ?? "—"}</td><td>{duration(row.durationMs)}</td><td className={row.status === "failed" ? "failed" : ""}>{row.status}</td>
     </tr>)}</tbody></table>
     {!snapshot.rows.length && <p className="traces-fleet-muted">{snapshot.status === "running" ? "Rows will appear as threads are scanned." : "No matching events in this window."}</p>}
-    <p className="traces-fleet-rows-footer">Showing {snapshot.rows.length} newest rows · {snapshot.rowsTruncated.toLocaleString()} omitted by row limits · {snapshot.matchedEvents.toLocaleString()} matches from {snapshot.scannedThreads}/{snapshot.totalThreads} threads.</p>
   </div>;
 }
 
@@ -198,6 +209,8 @@ export function ExplorerView({ initialQuery = "", initialSince = "24h", onDrilld
   const job = useFleetJob("explorer", initialQuery, initialSince, "events");
   const navigate = useBbNavigate();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { setSelectedId(null); }, [job.snapshot?.jobId]);
   const selected = job.snapshot?.rows.find((row) => row.id === selectedId) ?? null;
   const applyFacet = (field: string, value: string) => {
     const without = job.query.replace(new RegExp(`(?:^|\\s)${field}:(?:"[^"]*"|\\S+)`, "g"), " ").trim();
@@ -206,13 +219,15 @@ export function ExplorerView({ initialQuery = "", initialSince = "24h", onDrilld
   };
   return <div className="traces-fleet traces-fleet-explorer">
     <div className="traces-fleet-header"><div><h2>Log Explorer</h2><p>Event metadata and derived spans from BB's existing storage. Payloads are never indexed.</p></div><span className="traces-fleet-range">{job.snapshot ? `${new Date(job.snapshot.from).toLocaleString()} → ${new Date(job.snapshot.to).toLocaleString()}` : "Bounded window"}</span></div>
-    <FleetControls view="explorer" draft={job.draft} setDraft={job.setDraft} onSubmit={() => job.apply(job.draft)} since={job.since} setSince={job.setSince} mode={job.mode} setMode={job.setMode} />
-    <ScanProgress snapshot={job.snapshot} error={job.error} onCancel={job.cancel} onRefresh={job.refresh} connection={job.connection} />
+    <FleetControls view="explorer" draft={job.draft} setDraft={job.setDraft} onSubmit={() => { setSelectedId(null); job.apply(job.draft); }} since={job.since}
+      setSince={(value) => { setSelectedId(null); job.setSince(value); }} mode={job.mode} setMode={(value) => { setSelectedId(null); job.setMode(value); }} />
+    <ScanProgress snapshot={job.snapshot} error={job.error} onCancel={job.cancel} onRefresh={() => { setSelectedId(null); job.refresh(); }} connection={job.connection} quiet />
     {job.snapshot && <>
       <Histogram bins={job.snapshot.histogram} since={job.since} />
-      <div className="traces-fleet-explorer-grid"><Facets snapshot={job.snapshot} onFacet={applyFacet} />
-        <ExplorerRows snapshot={job.snapshot} selectedId={selectedId} onSelect={(row) => setSelectedId(row.id)} />
-        <RowDetail row={selected} onWaterfall={(id) => onDrilldown("waterfall", id)} onContext={(id) => onDrilldown("context", id)} onOpenThread={(id) => navigate.toThread(id)} />
+      <div className={`traces-fleet-explorer-grid${selected ? " has-detail" : ""}`}><Facets snapshot={job.snapshot} onFacet={applyFacet} />
+        <ExplorerRows snapshot={job.snapshot} selectedId={selectedId} selectedRef={selectedRef} onSelect={(row) => setSelectedId(row.id)} onWaterfall={(id) => onDrilldown("waterfall", id)} />
+        {selected && <RowDetail row={selected} onClose={() => { selectedRef.current?.focus(); setSelectedId(null); }}
+          onWaterfall={(id) => onDrilldown("waterfall", id)} onContext={(id) => onDrilldown("context", id)} onOpenThread={(id) => navigate.toThread(id)} />}
       </div>
     </>}
   </div>;

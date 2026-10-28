@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { fleetContract, type FleetSnapshot } from "./fleet-contract";
@@ -32,24 +32,69 @@ function snapshot(view: "metrics" | "explorer", query: string): FleetSnapshot {
 }
 
 describe("fleet UI", () => {
-  it("renders aggregate facets without a filter action and selects rows accessibly", async () => {
+  it("shows a selected detail pane only until close, refresh, or filter", async () => {
     const rendered = renderSlot(panel, { subPath: "explorer/_/24h" }, { rpc: {
       traces_fleet_start: (input) => snapshot("explorer", fleetContract.traces_fleet_start.input.parse(input).query),
       traces_fleet_cancel: () => snapshot("explorer", ""),
       traces_fleet_status: () => snapshot("explorer", ""),
+      traces_fleet_detail: () => ({ threadId: "thr_abc", seq: 1, type: "item/completed", at: 1_500,
+        input: null, output: null, inputSize: null, outputSize: null }),
     } });
-    await screen.findByRole("button", { name: /Inspect toolCall/ });
+    const inspect = await screen.findByRole("button", { name: /Inspect toolCall/ });
+    expect(screen.queryByRole("complementary", { name: "Selected event detail" })).toBeNull();
+    expect(screen.getByText("Partial results")).toBeTruthy();
+    expect(screen.getByLabelText("Scan coverage and limits").closest("details")?.open).toBe(false);
     expect(screen.getByText("Other values (grouped)").closest("button")).toBeNull();
-    expect(screen.getByRole("list", { name: "Scan limits and omitted data" }).textContent).toContain("1 matching row omitted");
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Inspect toolCall/ })); });
-    expect(screen.getByRole("button", { name: /Inspect toolCall/ }).getAttribute("aria-current")).toBe("true");
+    await act(async () => { fireEvent.click(inspect); });
+    expect(screen.getByRole("complementary", { name: "Selected event detail" })).toBeTruthy();
     expect(screen.getByRole("row", { selected: true })).toBeTruthy();
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Filter provider to codex/ })); });
+    expect(screen.getByRole("button", { name: /Inspect toolCall/ }).getAttribute("aria-current")).toBe("true");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Close event detail" })); });
+    expect(screen.queryByRole("complementary", { name: "Selected event detail" })).toBeNull();
+    expect(document.activeElement).toBe(inspect);
+    await act(async () => { fireEvent.click(inspect); fireEvent.click(screen.getByRole("button", { name: "Rescan" })); });
+    expect(screen.queryByRole("complementary", { name: "Selected event detail" })).toBeNull();
+    await screen.findByRole("button", { name: /Filter provider to codex/ });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Inspect toolCall/ }));
+      fireEvent.click(screen.getByRole("button", { name: /Filter provider to codex/ })); });
+    expect(screen.queryByRole("complementary", { name: "Selected event detail" })).toBeNull();
     expect(rendered.inspection.rpcCalls.filter((call) => call.method === "traces_fleet_start").at(-1)?.input).toMatchObject({ query: "provider:codex" });
     expect(screen.getByRole("button", { name: /Filter provider to codex/ }).getAttribute("aria-pressed")).toBe("true");
     rendered.lifecycle.unmount();
   });
 
+  it("opens Waterfall from a thread ID without selecting the row, then exposes Context Inspector in detail", async () => {
+    const rendered = renderSlot(panel, { subPath: "explorer/_/24h" }, { rpc: {
+      traces_fleet_start: () => snapshot("explorer", ""),
+      traces_fleet_cancel: () => snapshot("explorer", ""),
+      traces_fleet_detail: () => ({ threadId: "thr_abc", seq: 1, type: "item/completed", at: 1_500,
+        input: null, output: null, inputSize: null, outputSize: null }),
+    } });
+    await screen.findByRole("button", { name: "Open Waterfall for thr_abc" });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Open Waterfall for thr_abc" })); });
+    expect(rendered.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", path: "waterfall", options: { subPath: "thr_abc" } });
+    expect(screen.queryByRole("complementary", { name: "Selected event detail" })).toBeNull();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Inspect toolCall/ })); });
+    await act(async () => { fireEvent.click(within(screen.getByRole("complementary", { name: "Selected event detail" })).getByRole("button", { name: "Context Inspector" })); });
+    expect(rendered.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", path: "waterfall", options: { subPath: "context/thr_abc" } });
+    rendered.lifecycle.unmount();
+  });
+
+  it("keeps scan coverage and query grammar behind keyboard-accessible disclosures", async () => {
+    const rendered = renderSlot(panel, { subPath: "explorer/_/24h" }, { rpc: {
+      traces_fleet_start: () => snapshot("explorer", ""),
+      traces_fleet_cancel: () => snapshot("explorer", ""),
+    } });
+    await screen.findByRole("button", { name: /Inspect toolCall/ });
+    expect(screen.getByLabelText("Query syntax help").closest("details")?.open).toBe(false);
+    expect(screen.getByLabelText("Scan coverage and limits").closest("details")?.open).toBe(false);
+    await act(async () => { fireEvent.click(screen.getByLabelText("Query syntax help")); });
+    expect(screen.getByLabelText("Query syntax help").closest("details")?.open).toBe(true);
+    expect(screen.getByText(/AND-only/)).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByLabelText("Scan coverage and limits")); });
+    expect(screen.getByRole("list", { name: "Scan limits and omitted data" }).textContent).toContain("1 matching row omitted");
+    rendered.lifecycle.unmount();
+  });
   it("preserves the active Metrics filter when drilling into failed tools", async () => {
     const query = "provider:codex";
     const encoded = `q${btoa(query).replace(/=+$/, "")}`;
