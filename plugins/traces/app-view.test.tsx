@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { rpcContract } from "./server";
@@ -89,6 +89,73 @@ describe("Traces thread UI", () => {
     expect(screen.getByRole("button", { name: "Waterfall" }).getAttribute("aria-current")).toBe("page");
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Next turn" })); });
     expect(rendered.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", path: "waterfall", options: { subPath: "thr_abc/turn/turn-t2" } });
+    rendered.lifecycle.unmount();
+  });
+
+  it("expands exact command runs, compares turns, and navigates a long timeline by zoom and minimap", async () => {
+    const rendered = renderSlot(panel, { subPath: "thr_abc/turn/turn-t2" }, { rpc: {
+      traces_thread: (input) => { const { threadId, reveal } = rpcContract.traces_thread.input.parse(input);
+        const base = trace(threadId, reveal);
+        const first = { ...base.tree.children[0]!, usage: { last: { inputTokens: 100, outputTokens: 10 } } };
+        const children = Array.from({ length: 30 }, (_, index): TraceSpan => ({ ...first.children[0]!, id: `command-${index}`,
+          turnId: "turn-t2", kind: "commandExecution", name: index < 25 ? "Command · git" : "Command · npm",
+          start: 3_000 + index * 300, end: 3_100 + index * 300, durationMs: index === 24 ? 800 : 100,
+          children: index === 24 ? [{ ...first.children[0]!.children[0]!, id: "nested-command", turnId: "turn-t2" }] : [] }));
+        const second: TraceSpan = { ...first, id: "turn-2", turnId: "turn-t2", name: "turn-t2", start: 3_000,
+          end: 18_000, durationMs: 15_000, usage: { last: { inputTokens: 200, outputTokens: 20 } }, children };
+        return { ...base, tree: { ...base.tree, end: 18_000, durationMs: 17_000, children: [first, second] }, eventCount: 40 }; },
+    } });
+    expect((await screen.findByRole("region", { name: "Turn summary" })).textContent).toContain("31 tools");
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeTruthy();
+    expect(screen.getByRole("slider", { name: "Pan zoomed timeline" })).toHaveProperty("disabled", true);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Compare with previous turn" })); });
+    const comparison = screen.getByRole("region", { name: "Turn comparison" });
+    expect(comparison.textContent).toContain("Turn 1 → Turn 2");
+    expect(comparison.textContent).toContain("Last stored input tokens100200snapshot only");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Calls by command/tool" })); });
+    const groups = screen.getByRole("region", { name: "Calls by command or tool" });
+    expect(groups.textContent).toContain("Command · git25 runs");
+    await act(async () => { fireEvent.click(within(groups).getByText("Command · git")); });
+    expect(within(groups).getByRole("button", { name: "Show 5 more runs" })).toBeTruthy();
+    await act(async () => { fireEvent.click(within(groups).getByRole("button", { name: "Show 5 more runs" })); });
+    expect(within(groups).getByRole("button", { name: /Run 25 · 1 child spans/ })).toBeTruthy();
+    await act(async () => { fireEvent.click(within(groups).getByRole("button", { name: /Run 25 · 1 child spans/ })); });
+    expect(screen.queryByRole("region", { name: "Calls by command or tool" })).toBeNull();
+    expect(screen.getByRole("complementary", { name: "Span detail" }).textContent).toContain("Command · git");
+    expect((screen.getByRole("slider", { name: "Pan zoomed timeline" }) as HTMLInputElement).disabled).toBe(false);
+    const timeline = screen.getByRole("region", { name: "Waterfall spans" });
+    timeline.focus();
+    await act(async () => { fireEvent.keyDown(timeline, { key: "ArrowDown" }); });
+    expect(timeline.querySelector(".traces-row-selected")?.getAttribute("data-span-id")).toBe("nested-command");
+    const before = screen.getByRole("slider", { name: "Pan zoomed timeline" }) as HTMLInputElement;
+    const original = Number(before.value);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Pan right" })); });
+    expect(Number((screen.getByRole("slider", { name: "Pan zoomed timeline" }) as HTMLInputElement).value)).toBeGreaterThanOrEqual(original);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Reset zoom" })); });
+    expect((screen.getByRole("slider", { name: "Pan zoomed timeline" }) as HTMLInputElement).disabled).toBe(true);
+    rendered.lifecycle.unmount();
+  });
+
+  it("marks a running comparison incomplete and bounds a large turn's mounted rows", async () => {
+    const rendered = renderSlot(panel, { subPath: "thr_abc" }, { rpc: {
+      traces_thread: (input) => { const { threadId, reveal } = rpcContract.traces_thread.input.parse(input);
+        const base = trace(threadId, reveal);
+        const old = base.tree.children[0]!;
+        const start = Date.now() - 10_000;
+        const current: TraceSpan = { ...old, id: "turn-new", turnId: "t2", name: "t2", start, end: null, durationMs: null,
+          usage: null, status: "running", children: Array.from({ length: 180 }, (_, index) => ({ ...old.children[0]!,
+            id: `call-${index}`, kind: "commandExecution", name: "Command · git", start: start + index * 40,
+            end: start + index * 40 + 15, durationMs: 15, children: [] })) };
+        return { ...base, tree: { ...base.tree, end: start + 8_000, children: [old, current] }, eventCount: 200 }; },
+    } });
+    const region = await screen.findByRole("region", { name: "Waterfall spans" });
+    expect(region.querySelectorAll(".traces-row").length).toBeLessThanOrEqual(55);
+    expect(screen.getByRole("region", { name: "Turn summary" }).textContent).toContain("running");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Compare with previous turn" })); });
+    const compare = screen.getByRole("region", { name: "Turn comparison" });
+    expect(compare.textContent).toContain("duration and time allocation are incomplete");
+    expect(within(compare).getByRole("row", { name: /Duration/ }).textContent).toContain("not measured");
+    expect(compare.textContent).toContain("incomplete");
     rendered.lifecycle.unmount();
   });
 

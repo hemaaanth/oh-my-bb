@@ -31,6 +31,9 @@ export interface TraceSummary {
 export interface TraceResult { tree: TraceSpan; summary: TraceSummary; lastSeq: number; eventCount: number }
 
 const MAX_TEXT = 2_000;
+const SAFE_COMMANDS: Record<string, true> = { bb: true, bash: true, bun: true, cargo: true, curl: true, docker: true,
+  git: true, go: true, make: true, node: true, npm: true, npx: true, pnpm: true, python: true, python3: true,
+  rg: true, sh: true, ssh: true, vitest: true };
 const object = (v: unknown): Record<string, unknown> => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
 const nonempty = (v: unknown) => typeof v === "string" && v.length > 0 ? v : null;
 function render(v: unknown): { value: string | null; size: number | null } {
@@ -60,7 +63,11 @@ function eventTurn(event: TraceEvent): string | null { return event.scope.kind =
 function itemName(item: Record<string, unknown>): string {
   switch (item.type) {
     case "toolCall": return nonempty(item.tool) ?? "toolCall";
-    case "commandExecution": return "Command";
+    case "commandExecution": {
+      const command = typeof item.command === "string" ? item.command : "";
+      const executable = /^\s*(?:[A-Za-z_][\w]*=\S+\s+)*([A-Za-z][\w.-]*)\b/.exec(command)?.[1];
+      return executable && Object.hasOwn(SAFE_COMMANDS, executable) ? `Command · ${executable}` : "Command · other";
+    }
     case "fileRead": return nonempty(item.path) ?? "File read";
     case "fileChange": return "File change";
     case "search": return "Search";

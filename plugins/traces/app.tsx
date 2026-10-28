@@ -3,6 +3,8 @@ import * as Select from "@radix-ui/react-select";
 import { experimental_Icon as Icon, definePluginApp, experimental_THREAD_ACTION_GROUPS, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
 import type { TraceResult, TraceSpan } from "./spans";
+import { clampWindow, fitWindow, panWindow, projectSpan, zoomWindow, type TimeWindow } from "./investigate";
+import { CallGroups, TurnComparison } from "./turn-analysis";
 import { ContextInspector } from "./context-view";
 import { ExplorerView, MetricsView } from "./fleet-view";
 import { TracesSidebar } from "./sidebar";
@@ -25,13 +27,12 @@ const palette: Record<string, string> = {
   delegation: "#a7c47c", backgroundTask: "#a7c47c", search: "#78bcb0", contextCompaction: "#bc8bd2",
 };
 
-function SpanRow({ span, depth, selected, collapsed, turnNumber, onSelect, onToggle, origin, width, observedEnd }: {
+function SpanRow({ span, depth, selected, collapsed, turnNumber, onSelect, onToggle, origin, window, observedEnd }: {
   span: TraceSpan; depth: number; selected: boolean; collapsed: boolean; turnNumber: number | undefined; onSelect: (span: TraceSpan) => void;
-  onToggle: (span: TraceSpan) => void; origin: number; width: number; observedEnd: number;
+  onToggle: (span: TraceSpan) => void; origin: number; window: TimeWindow; observedEnd: number;
 }) {
-  const left = Math.max(0, Math.min(100, (span.start - origin) / width * 100));
   const effectiveEnd = span.end ?? Math.max(span.start, observedEnd);
-  const length = Math.max(0.4, Math.min(100 - left, (effectiveEnd - span.start) / width * 100));
+  const bar = projectSpan(span.start - origin, effectiveEnd - origin, window);
   const barClass = span.kind === WAIT ? "traces-bar traces-bar-wait" : span.status === "failed" ? "traces-bar traces-bar-failed" : "traces-bar";
   const elapsed = span.end === null ? `${duration(effectiveEnd - span.start)} open` : duration(span.durationMs);
   return <div className="traces-row-wrap">
@@ -44,7 +45,7 @@ function SpanRow({ span, depth, selected, collapsed, turnNumber, onSelect, onTog
         <span className="traces-row-text">{span.kind === "turn" ? `Turn ${turnNumber ?? span.name}` : span.name}</span>
         {span.status === "failed" && <span className="traces-failed">failed</span>}
       </span>
-      <span className="traces-track"><span className={barClass} style={{ left: `${left}%`, width: `${length}%`, background: span.kind === WAIT || span.status === "failed" ? undefined : palette[span.kind] ?? "var(--muted-foreground)" }} /></span>
+      <span className="traces-track">{bar && <span className={barClass} style={{ left: `${bar.left}%`, width: `${bar.width}%`, background: span.kind === WAIT || span.status === "failed" ? undefined : palette[span.kind] ?? "var(--muted-foreground)" }} />}</span>
       <span className="traces-row-time">{elapsed}</span>
     </button>
   </div>;
@@ -80,6 +81,8 @@ function Waterfall({ threadId, compact = false, initialTurnId = null, onTurnChan
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [turn, setTurn] = useState("last");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [analysis, setAnalysis] = useState<"none" | "calls" | "compare">("none");
+  const [zoom, setZoom] = useState<TimeWindow | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const request = useRef(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -125,7 +128,7 @@ function Waterfall({ threadId, compact = false, initialTurnId = null, onTurnChan
     if (turn !== next) { setTurn(next); setSelectedId(null); }
   }, [initialTurnId, onTurnChange, turns]);
   const selectTurn = (value: string) => {
-    setTurn(value); setSelectedId(null);
+    setTurn(value); setSelectedId(null); setZoom(null);
     if (onTurnChange) onTurnChange(value === "last" ? null : value === "all" ? "all" : turns.find((span) => span.id === value)?.turnId ?? null);
   };
   const turnIndex = turn === "last" ? turns.length - 1 : turns.findIndex((span) => span.id === turn);
@@ -178,7 +181,7 @@ function Waterfall({ threadId, compact = false, initialTurnId = null, onTurnChan
       event.preventDefault(); toggleSpan(selected);
     } else if (event.key === "Escape" && selectedId) { event.preventDefault(); setSelectedId(null); }
   };
-  useEffect(() => { if (listRef.current) listRef.current.scrollTop = 0; setScrollTop(0); }, [display?.id]);
+  useEffect(() => { if (listRef.current) listRef.current.scrollTop = 0; setScrollTop(0); setZoom(null); }, [display?.id]);
   const origin = display?.start ?? 0;
   const running = display?.end === null && display?.kind === "turn";
   useEffect(() => {
@@ -187,10 +190,25 @@ function Waterfall({ threadId, compact = false, initialTurnId = null, onTurnChan
     return () => window.clearInterval(timer);
   }, [running]);
   const observedEnd = Math.max(origin, root?.end ?? origin, running ? now : 0);
-  const width = Math.max(1, (display?.end ?? observedEnd) - origin);
+  const fullDuration = Math.max(20, (display?.end ?? observedEnd) - origin);
+  const view = clampWindow(zoom ?? { from: 0, to: fullDuration }, fullDuration);
+  const zoomed = view.from > 0 || view.to < fullDuration;
   const time = trace?.summary.timeMs ?? {};
   const total = Object.values(time).reduce((sum, ms) => sum + ms, 0);
   const entries = Object.entries(time).sort((a, b) => b[1] - a[1]);
+  const slowest = useMemo(() => summaryRows.reduce<TraceSpan | null>((best, { span }) =>
+    Object.hasOwn(TOOL_SPANS, span.kind) && span.durationMs !== null && (!best || span.durationMs > best.durationMs!) ? span : best, null), [summaryRows]);
+  const markers = useMemo(() => summaryRows.filter(({ span }) => Object.hasOwn(TOOL_SPANS, span.kind) && span.durationMs !== null && span.durationMs > 0)
+    .sort((a, b) => b.span.durationMs! - a.span.durationMs!).slice(0, 16).map(({ span }) => span), [summaryRows]);
+  const openRun = (span: TraceSpan) => {
+    setAnalysis("none"); setCollapsed(new Set()); setSelectedId(span.id);
+    const index = summaryRows.findIndex(({ span: row }) => row.id === span.id);
+    if (index >= 0 && listRef.current) {
+      const top = Math.max(0, index * 27 - listRef.current.clientHeight / 2);
+      listRef.current.scrollTop = top; setScrollTop(top); focusSpan.current = span.id;
+    }
+    setZoom(fitWindow(span.start - origin, (span.end ?? observedEnd) - origin, fullDuration));
+  };
   return <div className={`traces-panel ${compact ? "traces-panel-compact" : ""}`}>
     <div className="traces-toolbar">
       <div className="traces-heading"><h2>Thread Waterfall</h2><span>{threadId}</span></div>
@@ -217,13 +235,39 @@ function Waterfall({ threadId, compact = false, initialTurnId = null, onTurnChan
         <span>{display?.status ?? "not started"} · {running ? duration(Math.max(0, now - (display?.start ?? now))) : duration(display?.durationMs ?? null)} · {display?.metadata.model ?? "model not stored"}</span>
         <span>{counts.tools} tools · {counts.waits} waits · {counts.errors} errors</span>
       </section>
-      <div className="traces-axis"><span>Span · {trace!.eventCount.toLocaleString()} events</span><span className="traces-ticks"><span>{clock(origin)}</span><span>+{duration(width / 2)}</span><span>+{duration(width)}</span></span><span>Dur.</span></div>
+      <div className="traces-investigate-actions">
+        <button type="button" disabled={display?.kind !== "turn"} aria-pressed={analysis === "calls"}
+          onClick={() => setAnalysis(analysis === "calls" ? "none" : "calls")}>Calls by command/tool</button>
+        <button type="button" disabled={turnIndex <= 0 || display?.kind !== "turn"} aria-pressed={analysis === "compare"}
+          onClick={() => setAnalysis(analysis === "compare" ? "none" : "compare")}>Compare with previous turn</button>
+      </div>
+      {analysis === "calls" && display?.kind === "turn" && <CallGroups key={display.id} turn={display} onOpen={openRun} />}
+      {analysis === "compare" && display?.kind === "turn" && turnIndex > 0 &&
+        <TurnComparison previous={turns[turnIndex - 1]!} current={display} previousNumber={turnIndex} currentNumber={turnIndex + 1} />}
+      {fullDuration >= 1_000 && summaryRows.length > 4 && <div className="traces-zoom-controls" aria-label="Timeline zoom controls">
+        <button type="button" onClick={() => setZoom(zoomWindow(view, fullDuration, 0.5))}>Zoom in</button>
+        <button type="button" disabled={!zoomed} onClick={() => setZoom(zoomWindow(view, fullDuration, 2))}>Zoom out</button>
+        <button type="button" disabled={!zoomed} onClick={() => setZoom(panWindow(view, fullDuration, -(view.to - view.from) / 3))}>Pan left</button>
+        <button type="button" disabled={!zoomed} onClick={() => setZoom(panWindow(view, fullDuration, (view.to - view.from) / 3))}>Pan right</button>
+        <button type="button" disabled={!zoomed} onClick={() => setZoom(null)}>Reset zoom</button>
+        <button type="button" disabled={!selectedId || !selected} onClick={() => selected && setZoom(fitWindow(selected.start - origin, (selected.end ?? observedEnd) - origin, fullDuration))}>Focus selected</button>
+        <button type="button" disabled={!slowest} onClick={() => slowest && openRun(slowest)}>Focus slowest call</button>
+        <span>{zoomed ? `${duration(view.from)}–${duration(view.to)} of ${duration(fullDuration)}` : `Full ${duration(fullDuration)}`}</span>
+      </div>}
+      <div className="traces-axis"><span>Span · {trace!.eventCount.toLocaleString()} events</span><span className="traces-ticks"><span>{clock(origin + view.from)}</span><span>+{duration(view.from + (view.to - view.from) / 2)}</span><span>+{duration(view.to)}</span></span><span>Dur.</span></div>
+      {fullDuration >= 5_000 && summaryRows.length > 8 && <div className="traces-minimap" aria-label="Timeline overview">
+        {markers.map((span) => <span key={span.id} aria-hidden="true" style={{ left: `${100 * (span.start - origin) / fullDuration}%`, width: `${Math.max(0.3, 100 * span.durationMs! / fullDuration)}%` }} />)}
+        {zoomed && <span className="traces-minimap-window" aria-hidden="true" style={{ left: `${100 * view.from / fullDuration}%`, width: `${100 * (view.to - view.from) / fullDuration}%` }} />}
+        <input type="range" aria-label="Pan zoomed timeline" aria-valuetext={`${duration(view.from)} to ${duration(view.to)} of ${duration(fullDuration)}`}
+          min={0} max={Math.max(0, Math.ceil(fullDuration - (view.to - view.from)))} value={Math.round(view.from)} disabled={!zoomed}
+          onChange={(event) => setZoom(panWindow(view, fullDuration, Number(event.target.value) - view.from))} />
+      </div>}
       <div className="traces-body">
         <div className="traces-list" ref={listRef} role="region" aria-label="Waterfall spans" tabIndex={0}
           onKeyDown={onTimelineKey} onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
           <div style={{ height: firstRow * 27 }} />
           {visibleRows.map(({ span, depth }) => <SpanRow key={span.id} span={span} depth={depth} selected={span.id === selected?.id}
-            collapsed={collapsed.has(span.id)} turnNumber={turnNumbers.get(span.id)} onToggle={toggleSpan} onSelect={(value) => setSelectedId(value.id)} origin={origin} width={width} observedEnd={observedEnd} />)}
+            collapsed={collapsed.has(span.id)} turnNumber={turnNumbers.get(span.id)} onToggle={toggleSpan} onSelect={(value) => setSelectedId(value.id)} origin={origin} window={view} observedEnd={observedEnd} />)}
           <div style={{ height: Math.max(0, rows.length - firstRow - visibleRows.length) * 27 }} />
         </div>
         {selected && <Detail span={selected} revealed={reveal} />}

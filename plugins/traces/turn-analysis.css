@@ -1,0 +1,38 @@
+.traces-investigate-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.traces-investigate-actions button, .traces-zoom-controls button { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); cursor: pointer; font: inherit; }
+.traces-investigate-actions button:hover, .traces-zoom-controls button:hover { background: var(--accent); border-color: var(--ring); }
+.traces-investigate-actions button[aria-pressed=true] { background: var(--accent); }
+.traces-investigate-actions button:disabled, .traces-zoom-controls button:disabled { opacity: .45; cursor: default; }
+.traces-call-groups, .traces-turn-comparison { padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
+.traces-call-groups p, .traces-turn-comparison p { margin: 0 0 9px; color: var(--muted-foreground); line-height: 1.5; }
+.traces-call-group-list { max-height: min(300px, 40vh); overflow: auto; }
+.traces-call-group { border-bottom: 1px solid var(--border); }
+.traces-call-group summary { display: flex; align-items: center; gap: 8px; padding: 7px 5px; cursor: pointer; color: var(--foreground); }
+.traces-call-group summary:hover { background: var(--accent); }
+.traces-call-group summary span:last-child { margin-left: auto; text-align: right; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.traces-call-name { min-width: 120px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.traces-call-runs { margin: 0 0 8px 16px; border-left: 1px solid var(--border); max-height: 210px; overflow: auto; }
+.traces-call-runs button, .traces-call-more { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 5px 10px; border: 0; background: transparent; color: var(--foreground); text-align: left; cursor: pointer; font: inherit; }
+.traces-call-runs button:hover, .traces-call-more:hover { background: var(--accent); }
+.traces-call-runs button span:last-child { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.traces-turn-comparison h3 { margin: 0 0 8px; font-size: 12px; }
+.traces-compare-wrap { overflow: auto; max-height: min(300px, 40vh); }
+.traces-turn-comparison table { border-collapse: collapse; width: 100%; min-width: 460px; font-size: 11px; }
+.traces-turn-comparison :is(th, td) { padding: 5px 8px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
+.traces-turn-comparison th:first-child { text-align: left; }
+.traces-turn-comparison thead th { color: var(--muted-foreground); }
+.traces-turn-comparison > p:last-child { margin: 8px 0 0; }
+.traces-zoom-controls { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 8px 0; color: var(--muted-foreground); font-size: 11px; }
+.traces-zoom-controls button { padding: 3px 7px; }
+.traces-zoom-controls span { margin-left: auto; font-variant-numeric: tabular-nums; }
+.traces-minimap { position: relative; height: 22px; margin: 0 0 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--muted); overflow: hidden; }
+.traces-minimap > span { position: absolute; top: 0; bottom: 0; background: var(--primary); opacity: .35; pointer-events: none; }
+.traces-minimap .traces-minimap-window { background: color-mix(in srgb, var(--primary) 35%, transparent); border: 1px solid var(--primary); opacity: 1; }
+.traces-minimap input { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; margin: 0; opacity: .01; cursor: ew-resize; }
+.traces-minimap:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
+.traces-panel :is(.traces-investigate-actions, .traces-zoom-controls, .traces-minimap, .traces-call-groups, .traces-turn-comparison) :is(button, summary, input):focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+@container (max-width: 700px) {
+  .traces-investigate-actions { width: 100%; }
+  .traces-call-group summary { flex-wrap: wrap; }
+  .traces-call-group summary span:last-child { width: 100%; text-align: left; margin-left: 0; }
+}
