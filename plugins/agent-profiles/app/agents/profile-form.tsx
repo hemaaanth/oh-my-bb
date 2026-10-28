@@ -257,7 +257,6 @@ export function ProfileForm({
         </ConfigSection>
 
         <ConfigSection title="Execution">
-          <p className="text-xs text-muted-foreground">Agents run through Pi with shared long memory and full permission.</p>
           <ConfigRow label="Default project" htmlFor={`${id}-run-project`}>
             <div className="space-y-1.5">
               <select
