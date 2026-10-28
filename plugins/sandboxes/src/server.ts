@@ -1,3 +1,4 @@
+import { connectedHostSetup } from "./connected-host-setup.js";
 import { providerCredentialChecks } from "./credential-check.js";
 import { imageRecipePreference, imageTools, imageRecipeSchema } from "./image-tools.js";
 import { registerRuntimeEnvironment } from "./runtime-environment.js";
@@ -436,15 +437,7 @@ export default async function plugin(bb: BbPluginApi) {
         return {};
       }
     };
-    const optionsFor = (provider: SandboxProvider) => ({
-      now: () => Date.now(),
-      requireRuntime: async () => {
-        const installed = await bb.sdk.plugins.list();
-        if (!installed.plugins.some(plugin => plugin.id === "model-gateway" && plugin.enabled && plugin.status === "running")) {
-          throw new Error("Sandboxes managed model access requires Model Gateway running and configured before creating or resuming a machine; no local-login fallback is provided");
-        }
-      },
-      onConnected: async (hostId: string) => {
+    const queueConnectedHost = connectedHostSetup(bb, async (hostId) => {
         // Shared by every provider, including resume. SSH failure must not block agents.
         await ssh.ensure(hostId).catch(() => bb.log.warn(`SSH setup failed for ${hostId}; run bb sandbox ssh-status`));
         // Native bootstrap installs the daemon without replaying the image
@@ -466,7 +459,16 @@ export default async function plugin(bb: BbPluginApi) {
         } catch (error) {
           bb.log.warn(`Preview restore on ${hostId}: ${error instanceof Error ? error.message : String(error)}`);
         }
+    });
+    const optionsFor = (provider: SandboxProvider) => ({
+      now: () => Date.now(),
+      requireRuntime: async () => {
+        const installed = await bb.sdk.plugins.list();
+        if (!installed.plugins.some(plugin => plugin.id === "model-gateway" && plugin.enabled && plugin.status === "running")) {
+          throw new Error("Sandboxes managed model access requires Model Gateway running and configured before creating or resuming a machine; no local-login fallback is provided");
+        }
       },
+      onConnected: async (hostId: string) => { queueConnectedHost(hostId); },
       resolveDefaultInputs: (key: string) =>
         resolveProjectSizeDefaults(provider, key),
       // Native bootstrap skips the image entrypoint, so the trusted browser's
