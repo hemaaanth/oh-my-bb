@@ -22,8 +22,9 @@ export interface GatewaySetupResult {
 const runtimeSource = String.raw`
 const os = require('node:os');
 const path = require('node:path');
-if (!process.env.BB_SERVER_URL) throw new Error('Sandbox runtime has no BB_SERVER_URL; refusing server-loopback fallback');
-const runtime = { serverBaseUrl: process.env.BB_SERVER_URL, home: os.homedir(), uid: process.getuid(), gid: process.getgid(), ...(process.env.PI_CODING_AGENT_DIR ? { piAgentDirs: [path.relative(os.homedir(), process.env.PI_CODING_AGENT_DIR)] } : {}) };
+const serverBaseUrl = process.argv[1] || process.env.BB_SERVER_URL;
+if (!serverBaseUrl) throw new Error('Sandbox runtime has no BB_SERVER_URL; refusing server-loopback fallback');
+const runtime = { serverBaseUrl, home: os.homedir(), uid: process.getuid(), gid: process.getgid(), ...(process.env.PI_CODING_AGENT_DIR ? { piAgentDirs: [path.relative(os.homedir(), process.env.PI_CODING_AGENT_DIR)] } : {}) };
 const url = new URL(runtime.serverBaseUrl);
 if (url.username || url.password || url.search || url.hash) throw new Error('Expected a noncredential server base URL');
 console.log('BB-GATEWAY-RUNTIME '+JSON.stringify(runtime));
@@ -32,8 +33,11 @@ const runtimeSchema = z.object({ serverBaseUrl: z.url(), home: z.string().starts
 
 type Run = (command: string[], stdin?: string) => Promise<string>;
 
-export async function reconcileGatewaySetup(bb: BbPluginApi, hostId: string, run: Run, check: boolean): Promise<GatewaySetupResult> {
-  const raw = await run(["node", "-e", runtimeSource]);
+export async function reconcileGatewaySetup(bb: BbPluginApi, hostId: string, run: Run, check: boolean, bootstrap = false): Promise<GatewaySetupResult> {
+  // During create/resume core has not activated the host yet. Managed harness
+  // extensions use per-turn MODEL_GATEWAY_BASE_URL/TOKEN, never this fallback.
+  // Port 9 fails closed for catalog/default configuration without those credentials.
+  const raw = await run(["node", "-e", runtimeSource, ...(bootstrap ? ["http://127.0.0.1:9"] : [])]);
   const line = raw.split(/\r?\n/u).find(value => value.startsWith("BB-GATEWAY-RUNTIME "));
   if (!line) throw new Error("Sandbox did not report its server URL and user");
   const runtime = runtimeSchema.parse(JSON.parse(line.slice("BB-GATEWAY-RUNTIME ".length)));

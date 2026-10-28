@@ -25,7 +25,7 @@ import { readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { stripVTControlCharacters } from "node:util";
 import { adaptersRef, latestHarnessVersions } from "./upgrade-sources.js";
-import { executorRunner, gatewaySetupOnHost, outputTail, type GatewaySetupResult } from "./gateway-setup.js";
+import { executorRunner, gatewaySetupOnHost, reconcileGatewaySetup, outputTail, type GatewaySetupResult } from "./gateway-setup.js";
 import type { BbPluginApi, MachineExecutor } from "@get-bb/plugin-sdk";
 import type { SandboxImageProvider } from "./config.js";
 import type { NativeIdleSuspendHolds } from "./provider/idle-suspend.js";
@@ -409,7 +409,7 @@ export async function prepareGatewayHarnesses(
     const stale = staleParts(parseHealResult(output), { bb: "", harness: target }, { includeBb: false });
     if (stale.length) throw new Error(`Sandbox harness preparation failed: ${stale.join(", ")}${outputTail(output)}`);
   }
-  await gatewaySetupOnHost(bb, input.hostId, false);
+  await reconcileGatewaySetup(bb, input.hostId, run, false, true);
 }
 
 interface UpgradeJob {
