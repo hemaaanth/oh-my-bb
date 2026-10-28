@@ -66,18 +66,13 @@ describe("status projection", () => {
     });
     expect(needsInput(pending)).toBe(true);
     expect(isThreadActive(pending)).toBe(true);
-    expect(bucketForThread(pending, new Set())).toBe("needs-input");
+    expect(bucketForThread(pending)).toBe("needs-input");
   });
 
-  it("places Later independently without losing the live status", () => {
-    const active = thread({ indicator: "runtime" });
-    expect(statusForThread(active)).toBe("active");
-    expect(bucketForThread(active, new Set([active.id]))).toBe("later");
-  });
 
   it("separates unread finished work from read idle work", () => {
-    expect(bucketForThread(thread({ isUnread: true }), new Set())).toBe("unread");
-    expect(bucketForThread(thread(), new Set())).toBe("idle");
+    expect(bucketForThread(thread({ isUnread: true }))).toBe("unread");
+    expect(bucketForThread(thread())).toBe("idle");
   });
 
   it("shows an unsent draft below live work and above unread or idle", () => {
@@ -93,10 +88,10 @@ describe("status projection", () => {
 
   it("lets active work and pending questions override unread", () => {
     expect(
-      bucketForThread(thread({ isUnread: true, indicator: "runtime" }), new Set()),
+      bucketForThread(thread({ isUnread: true, indicator: "runtime" })),
     ).toBe("active");
     expect(
-      bucketForThread(thread({ isUnread: true, hasPendingInteraction: true }), new Set()),
+      bucketForThread(thread({ isUnread: true, hasPendingInteraction: true })),
     ).toBe("needs-input");
   });
 
@@ -106,7 +101,7 @@ describe("status projection", () => {
       hasPendingInteraction: true,
       indicator: "runtime",
     });
-    expect(bucketForThread(archived, new Set([archived.id]))).toBe("archived");
+    expect(bucketForThread(archived)).toBe("archived");
   });
 
   it("places pinned live threads in one top-level bucket without losing status", () => {
@@ -115,9 +110,9 @@ describe("status projection", () => {
       hasPendingInteraction: true,
     });
     expect(statusForThread(pinnedQuestion)).toBe("needs-input");
-    expect(bucketForThread(pinnedQuestion, new Set())).toBe("pinned");
+    expect(bucketForThread(pinnedQuestion)).toBe("pinned");
     expect(
-      bucketForThread(thread({ isPinned: true, isArchived: true }), new Set()),
+      bucketForThread(thread({ isPinned: true, isArchived: true })),
     ).toBe("archived");
   });
 });
@@ -165,7 +160,7 @@ describe("environment grouping", () => {
 });
 
 describe("manual ordering", () => {
-  it("sorts project threads by live status without pinned or Later placement", () => {
+  it("sorts project threads by live status without pinned placement", () => {
     const threads = [
       thread({ id: "pinned-idle", isPinned: true }),
       thread({ id: "active", indicator: "runtime" }),
@@ -182,16 +177,15 @@ describe("manual ordering", () => {
     expect(
       sortThreadsByStatus(
         threads,
-        new Map([["later-unread", 500]]),
         new Map(),
         statuses,
       ).map((item) => item.id),
     ).toEqual([
       "later-unread",
       "drafting",
-      "active",
       "question",
       "pinned-idle",
+      "active",
       "archived",
     ]);
   });
@@ -204,7 +198,6 @@ describe("manual ordering", () => {
         thread({ id: "a", updatedAt: 100 }),
         thread({ id: "b", updatedAt: 200 }),
       ],
-      new Map(),
       new Map([
         ["a", 1],
         ["b", 0],
@@ -250,7 +243,6 @@ describe("manual ordering", () => {
     const sorted = sortThreads(
       "pinned",
       threads,
-      new Map(),
       new Map([
         ["idle", 0],
         ["active", 1],
@@ -262,38 +254,10 @@ describe("manual ordering", () => {
     expect(sorted.map((item) => item.id)).toEqual([
       "question",
       "unread",
-      "active",
       "idle",
+      "active",
     ]);
   });
 
-  it("ranks Later threads by live attention status before manual order", () => {
-    const threads = [
-      thread({ id: "idle" }),
-      thread({ id: "active", indicator: "runtime" }),
-      thread({ id: "unread", isUnread: true }),
-      thread({ id: "question", hasPendingInteraction: true }),
-    ];
-    const statuses = new Map(
-      threads.map((item) => [item.id, statusForThread(item)]),
-    );
-    const sorted = sortThreads(
-      "later",
-      threads,
-      new Map(),
-      new Map([
-        ["idle", 0],
-        ["active", 1],
-        ["unread", 2],
-        ["question", 3],
-      ]),
-      statuses,
-    );
-    expect(sorted.map((item) => item.id)).toEqual([
-      "question",
-      "unread",
-      "active",
-      "idle",
-    ]);
-  });
+
 });

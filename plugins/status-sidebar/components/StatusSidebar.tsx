@@ -24,9 +24,8 @@ import { Icon, type IconName } from "./ui/icon";
 import { Input } from "./ui/input";
 import { ThreadRow } from "./ThreadRow";
 import { SidebarRow } from "./SidebarRow";
-import { DeleteSectionDialog } from "./DeleteSectionDialog";
 import { SectionContextMenu, type SectionMenuAction } from "./SectionMenu";
-import { useLaterThreads } from "../hooks/useLaterThreads";
+import { useSnoozedThreads } from "../hooks/useSnoozedThreads";
 import { useSandboxStatuses } from "../hooks/useSandboxStatuses";
 import { useChannels } from "../hooks/useChannels";
 import { useAgents } from "../hooks/useAgents";
@@ -125,10 +124,9 @@ const statusSections: readonly { bucket: SidebarBucket; label: string }[] = [
   { bucket: "pinned", label: "Pinned" },
   { bucket: "unread", label: "Unread" },
   { bucket: "drafting", label: "Drafting" },
-  { bucket: "active", label: "Active" },
   { bucket: "needs-input", label: "Needs input" },
   { bucket: "idle", label: "Idle" },
-  { bucket: "later", label: "Later" },
+  { bucket: "active", label: "Working" },
   { bucket: "archived", label: "Archived" },
 ];
 
@@ -139,7 +137,6 @@ const statusSectionIcon: Record<SidebarBucket, IconName> = {
   "needs-input": "CircleQuestion",
   drafting: "Edit",
   idle: "Circle",
-  later: "Clock",
   archived: "Archive",
 };
 
@@ -165,8 +162,7 @@ function useCollapsedHierarchy() {
   const toggle = (key: string) => {
     setCollapsed((current) => {
       const next = { ...current };
-      if (current[key]) delete next[key];
-      else next[key] = true;
+      next[key] = !(current[key] ?? (key === "status:active" || key === "status:snoozed" || key === "status:archived"));
       try {
         window.localStorage.setItem(
           COLLAPSE_STORAGE_KEY,
@@ -280,7 +276,7 @@ export function StatusSidebar({
     }
   });
   const sdk = useSdk();
-  const later = useLaterThreads();
+  const snoozed = useSnoozedThreads();
   const workspaceState = useWorkspaces();
   const draftThreadIds = useSidebarThreadDraftIds();
   const workspaceIds = useMemo(
@@ -320,11 +316,9 @@ export function StatusSidebar({
   const renameThread = useStableCallback(async (threadId: string, title: string) => {
     await sdk.threads.update({ threadId, title });
   });
-  const setThreadLater = useStableCallback(
-    (threadId: string, value: boolean) => {
-      void later.setLater(threadId, value);
-    },
-  );
+  const setThreadSnoozed = useStableCallback((threadId: string, untilAt: number | null) => {
+    void snoozed.setSnoozed(threadId, untilAt);
+  });
   const toggleThreadChildren = useStableCallback((threadId: string) =>
     collapseState.toggle(threadChildrenCollapseKey(threadId)),
   );
@@ -332,14 +326,14 @@ export function StatusSidebar({
     () => ({
       open: openThread,
       rename: renameThread,
-      setLater: setThreadLater,
+      setSnoozed: setThreadSnoozed,
       toggleChildren: toggleThreadChildren,
       tasksEnabled,
     }),
     [
       openThread,
       renameThread,
-      setThreadLater,
+      setThreadSnoozed,
       toggleThreadChildren,
       tasksEnabled,
     ],
@@ -349,6 +343,11 @@ export function StatusSidebar({
     setView(next);
     persistViewOptions(next);
   });
+  useEffect(() => {
+    if (integrationPreferences?.values.projectsIntegration === false && (view.group === "workspace" || view.subgroup === "workspace")) {
+      changeView({ ...view, group: "status", subgroup: null });
+    }
+  }, [integrationPreferences?.values.projectsIntegration, view]);
   const [draggedHeader, setDraggedHeader] = useState<DraggedHeader | null>(null);
   const [deletingWorkspace, setDeletingWorkspace] = useState<SidebarWorkspace | null>(null);
   const [workspaceEditor, setWorkspaceEditor] = useState<
@@ -423,23 +422,20 @@ export function StatusSidebar({
       .sort()
       .join("\0"),
   );
-  const laterIds = useMemo(
-    () => new Set(later.placedAtByThreadId.keys()),
-    [later.placedAtByThreadId],
-  );
+  const snoozedUntilById = snoozed.untilByThreadId;
 
   const childrenByParent = useMemo(() => {
     const present = new Set(threads.map((thread) => thread.id));
     const map = new Map<string, PluginSidebarThread[]>();
     for (const thread of threads) {
       const parentId = thread.parentThreadId;
-      if (!parentId || !present.has(parentId) || thread.isArchived) continue;
+      if (!parentId || !present.has(parentId) || thread.isArchived || snoozedUntilById.has(thread.id)) continue;
       const siblings = map.get(parentId);
       if (siblings) siblings.push(thread);
       else map.set(parentId, [thread]);
     }
     return map;
-  }, [threads]);
+  }, [threads, snoozedUntilById]);
   const childIds = useMemo(
     () =>
       new Set(
@@ -484,7 +480,7 @@ export function StatusSidebar({
           const retainSelected =
             thread.id === activeThreadId &&
             !thread.isPinned &&
-            !laterIds.has(thread.id);
+            !snoozedUntilById.has(thread.id);
           return [
             thread.id,
             retainSelected && selectedStatusRef.current?.threadId === thread.id
@@ -493,7 +489,7 @@ export function StatusSidebar({
           ] as const;
         }),
       ),
-    [activeThreadId, draftThreadIds, laterIds, searchQuery, threads],
+    [activeThreadId, draftThreadIds, snoozedUntilById, searchQuery, threads],
   );
   const effectiveStatusByThreadId = useMemo(() => {
     const gather = (
@@ -602,7 +598,6 @@ export function StatusSidebar({
     if (dimension === "status") {
       const bucket = bucketForThread(
         thread,
-        laterIds,
         effectiveStatusByThreadId.get(thread.id),
       );
       const rank = statusSections.findIndex((section) => section.bucket === bucket);
@@ -627,7 +622,7 @@ export function StatusSidebar({
 
   const tree = buildSidebarTree({
     threads: topThreads.filter((thread) =>
-      threadMatches(
+      !thread.isArchived && (searching || !snoozedUntilById.has(thread.id)) && threadMatches(
         thread,
         standaloneThreadIds.has(thread.id)
           ? ""
@@ -648,8 +643,28 @@ export function StatusSidebar({
         : [],
   });
 
+  const snoozedThreads = topThreads.filter((thread) =>
+    !thread.isArchived && snoozedUntilById.has(thread.id),
+  );
+  const snoozedTree = buildSidebarTree({
+    threads: snoozedThreads,
+    options: { ...view, group: "status", subgroup: null },
+    describe: () => ({ key: "snoozed", label: "Snoozed", rank: 0 }),
+    sort: (items) => [...items].sort((left, right) =>
+      (snoozedUntilById.get(left.id) ?? 0) - (snoozedUntilById.get(right.id) ?? 0)),
+  });
+  const archivedThreads = topThreads.filter((thread) =>
+    thread.isArchived && (thread.archivedAt ?? 0) >= Date.now() - view.archivedDays * 86_400_000 &&
+    threadMatches(thread, standaloneThreadIds.has(thread.id) ? "" : (projectNameById.get(thread.projectId) ?? ""))
+  );
+  const archivedTree = buildSidebarTree({
+    threads: archivedThreads,
+    options: { ...view, group: "status", subgroup: null }, describe,
+    sort: (items) => [...items].sort((left, right) => (right.archivedAt ?? 0) - (left.archivedAt ?? 0)),
+    keepEmpty: [{ key: "archived", label: "Archived", rank: statusSections.length - 1 }],
+  });
   const isCollapsed = (key: string) =>
-    !searching && collapseState.collapsed[key];
+    !searching && (collapseState.collapsed[key] ?? (key === "status:active" || key === "status:snoozed" || key === "status:archived"));
   const visibleThreads: PluginSidebarThread[] = [];
   const collectVisible = (nodes: readonly SidebarTreeNode[]) => {
     for (const node of nodes) {
@@ -659,6 +674,8 @@ export function StatusSidebar({
     }
   };
   collectVisible(tree);
+  collectVisible(snoozedTree);
+  collectVisible(archivedTree);
   useShortcutSlots(
     visibleThreads.slice(0, 10).map((thread) => ({
       threadId: thread.id,
@@ -672,14 +689,14 @@ export function StatusSidebar({
 
   if (
     status === "loading" ||
-    later.status === "loading" ||
+    snoozed.status === "loading" ||
     workspaceState.status === "loading"
   ) {
     return null;
   }
   if (
     status === "error" ||
-    later.status === "error" ||
+    snoozed.status === "error" ||
     workspaceState.status === "error"
   ) {
     return (
@@ -712,7 +729,7 @@ export function StatusSidebar({
 
   const workspaceOrder = workspaceState.workspaces.map((workspace) => workspace.id);
   const headerDrag: HeaderDragApi = {
-    enabled: !searching,
+    enabled: !searching && integrationPreferences?.values.projectsIntegration === true,
     dragged: draggedHeader,
     start: setDraggedHeader,
     end: () => setDraggedHeader(null),
@@ -752,7 +769,11 @@ export function StatusSidebar({
       ? { kind: "no-project" }
       : { kind: "project", projectId: node.key };
   };
-  const actionsForTarget = (target: SectionTarget): SectionMenuAction[] => {
+  const actionsForTarget = (target: SectionTarget, node: SidebarTreeNode): SectionMenuAction[] => {
+    if (target.kind === "status" && node.key === "archived") return [7, 30].map((days) => ({
+      key: `archive-${days}`, label: `Archived: past ${days} days`, icon: "Archive" as const,
+      onSelect: () => changeView({ ...view, archivedDays: days as 7 | 30 }),
+    }));
     if (target.kind === "project") {
       return [
         {
@@ -764,27 +785,7 @@ export function StatusSidebar({
         },
       ];
     }
-    if (target.kind !== "workspace") return [];
-    const { workspace } = target;
-    return [
-      {
-        key: "rename",
-        label: "Rename",
-        icon: "Edit",
-        onSelect: () => setWorkspaceEditor({ kind: "rename", workspace }),
-      },
-      ...(workspace.isDefault
-        ? []
-        : [
-            {
-              key: "delete",
-              label: "Delete section",
-              icon: "Trash2" as const,
-              destructive: true,
-              onSelect: () => setDeletingWorkspace(workspace),
-            },
-          ]),
-    ];
+    return [];
   };
   const showProjectName =
     view.group !== "project" && view.subgroup !== "project";
@@ -804,9 +805,10 @@ export function StatusSidebar({
         collapsed={collapsed}
         onToggle={() => collapseState.toggle(node.collapseKey)}
         headerDrag={headerDrag}
-        actions={actionsForTarget(target)}
+        actions={actionsForTarget(target, node)}
         view={view}
         onViewChange={changeView}
+        projectsEnabled={integrationPreferences?.values.projectsIntegration === true}
       >
         {collapsed ? null : node.children ? (
           node.children.map((child) => renderNode(child, 1))
@@ -820,11 +822,11 @@ export function StatusSidebar({
             {...threadChildCollapseProps}
             projectNameById={projectNameById}
             standaloneThreadIds={standaloneThreadIds}
-            laterIds={laterIds}
+            snoozedUntilById={snoozedUntilById}
             sandboxStatuses={sandboxStatuses}
             showProjectName={showProjectName}
             reorderEnabled={reorderEnabled}
-            workspaceMoveEnabled={!searching}
+            workspaceMoveEnabled={!searching && integrationPreferences?.values.projectsIntegration === true}
             onReorder={persistManualOrder}
           />
         )}
@@ -858,24 +860,12 @@ export function StatusSidebar({
       {workspaceState.error ? <p role="alert" className="px-2 py-2 text-xs text-destructive-text">{workspaceState.error} <UrlLink href="/settings/plugins/status-sidebar" className="underline" onClick={onNavigate}>Open settings</UrlLink></p> : null}
       <div role={botsEnabled ? "tabpanel" : undefined} id="sidebar-code-panel" aria-labelledby={botsEnabled ? "sidebar-code-tab" : undefined} hidden={visibleTab !== "code"}>
         {tree.map((node) => renderNode(node, 0))}
-        {countTreeThreads(tree) === 0 ? (
+        {snoozedTree.map((node) => renderNode(node, 0))}
+        {archivedTree.map((node) => renderNode(node, 0))}
+        {countTreeThreads(tree) === 0 && snoozedThreads.length === 0 && archivedThreads.length === 0 ? (
           <p role="status" className="px-3 py-8 text-center text-xs text-muted-foreground">
             {searching ? "No threads found" : "No threads yet"}
           </p>
-        ) : null}
-        <WorkspaceEditor
-          editor={workspaceEditor}
-          onDismiss={() => setWorkspaceEditor(null)}
-          onCreate={workspaceState.create}
-          onRename={workspaceState.rename}
-        />
-        {!workspaceEditor ? (
-          <button type="button" aria-label="New section"
-            onClick={() => setWorkspaceEditor({ kind: "create" })}
-            className="mt-2 flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">
-            <Icon name="Plus" className="size-3.5" aria-hidden="true" />
-            <span>Section</span>
-          </button>
         ) : null}
       </div>
       {botsEnabled ? <div role="tabpanel" id="sidebar-bots-panel" aria-labelledby="sidebar-bots-tab" hidden={visibleTab !== "bots"}>
@@ -897,69 +887,8 @@ export function StatusSidebar({
           </p>
         ) : null}
       </div> : null}
-      {deletingWorkspace ? <DeleteSectionDialog workspace={deletingWorkspace} onDismiss={() => setDeletingWorkspace(null)} onRemove={workspaceState.remove} /> : null}
     </div>
     </ThreadRowActionsContext.Provider>
-  );
-}
-
-function WorkspaceEditor({
-  editor,
-  onDismiss,
-  onCreate,
-  onRename,
-}: {
-  editor:
-    | { kind: "create" }
-    | { kind: "rename"; workspace: SidebarWorkspace }
-    | null;
-  onDismiss: () => void;
-  onCreate: (name: string) => Promise<string>;
-  onRename: (workspaceId: string, name: string) => Promise<void>;
-}) {
-  const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const operationRef = useRef(0);
-  useEffect(() => {
-    operationRef.current += 1;
-    setDraft(editor?.kind === "rename" ? editor.workspace.name : "");
-    setBusy(false);
-    setError(null);
-  }, [editor]);
-  if (!editor) return null;
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const name = draft.trim();
-    if (!name || busy) return;
-    setBusy(true);
-    setError(null);
-    const operation = ++operationRef.current;
-    const action = editor.kind === "create"
-      ? onCreate(name).then(() => undefined)
-      : onRename(editor.workspace.id, name);
-    void action.then(() => {
-      if (operation === operationRef.current) onDismiss();
-    }, (reason) => {
-      if (operation !== operationRef.current) return;
-      setError(reason instanceof Error ? reason.message : String(reason));
-      setBusy(false);
-    });
-  };
-  return (
-    <form onSubmit={submit} className="mt-2 px-1">
-      <Input
-        autoFocus
-        aria-label={editor.kind === "create" ? "Section name" : `Rename ${editor.workspace.name} section`}
-        value={draft}
-        disabled={busy}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => { if (event.key === "Escape") onDismiss(); }}
-        placeholder="Section name"
-        className={cn("h-7 px-2 text-xs", error && "border-destructive")}
-      />
-      {error ? <p role="alert" className="px-1 pt-1 text-[10px] text-destructive-text">{error}</p> : null}
-    </form>
   );
 }
 
@@ -997,7 +926,7 @@ interface HeaderDragApi {
 function iconForNode(node: SidebarTreeNode, target: SectionTarget): IconName {
   switch (target.kind) {
     case "status":
-      return statusSectionIcon[node.key as SidebarBucket];
+      return node.key === "snoozed" ? "Clock" : statusSectionIcon[node.key as SidebarBucket];
     case "workspace":
     case "general":
       return "Layers";
@@ -1029,6 +958,7 @@ function GroupSection({
   actions,
   view,
   onViewChange,
+  projectsEnabled,
   children,
 }: {
   node: SidebarTreeNode;
@@ -1043,6 +973,7 @@ function GroupSection({
   actions: readonly SectionMenuAction[];
   view: SidebarViewOptions;
   onViewChange: (next: SidebarViewOptions) => void;
+  projectsEnabled: boolean;
   children: ReactNode;
 }) {
   const [placement, setPlacement] = useState<DropPlacement | null>(null);
@@ -1088,6 +1019,7 @@ function GroupSection({
         actions={actions}
         view={view}
         onViewChange={onViewChange}
+        projectsEnabled={projectsEnabled}
       >
         <SidebarSectionHeader
           label={node.label}
@@ -1447,7 +1379,7 @@ interface ThreadGroupsProps {
   isThreadChildrenCollapsed: (threadId: string) => boolean;
   projectNameById: ReadonlyMap<string, string>;
   standaloneThreadIds: ReadonlySet<string>;
-  laterIds: ReadonlySet<string>;
+  snoozedUntilById: ReadonlyMap<string, number>;
   sandboxStatuses: ReadonlyMap<string, SandboxThreadStatus>;
   onReorder: (threadIds: readonly string[]) => void;
   showProjectName?: boolean;
@@ -1546,7 +1478,7 @@ function EnvironmentGroup({
   isThreadChildrenCollapsed,
   projectNameById,
   standaloneThreadIds,
-  laterIds,
+  snoozedUntilById,
   sandboxStatuses,
   showProjectName = false,
   reorderEnabled = true,
@@ -1616,7 +1548,7 @@ function EnvironmentGroup({
                 childrenByParent.has(thread.id) ? sandboxStatuses : undefined
               }
               isSelected={thread.id === activeThreadId}
-              isLater={laterIds.has(thread.id)}
+              snoozedUntil={snoozedUntilById.get(thread.id) ?? null}
               sandboxStatus={sandboxStatuses.get(thread.id)}
               isGrouped={group.grouped}
               isDragging={draggedId === thread.id && !isDraggedGroup}
@@ -1638,7 +1570,7 @@ function EnvironmentGroup({
               isThreadChildrenCollapsed={isThreadChildrenCollapsed}
               activeThreadId={activeThreadId}
               projectNameById={projectNameById}
-              laterIds={laterIds}
+              snoozedUntilById={snoozedUntilById}
               sandboxStatuses={sandboxStatuses}
             />
           </Fragment>
@@ -1657,7 +1589,7 @@ function SidecarThreads({
   isThreadChildrenCollapsed,
   activeThreadId,
   projectNameById,
-  laterIds,
+  snoozedUntilById,
   sandboxStatuses,
 }: {
   parentId: string;
@@ -1666,7 +1598,7 @@ function SidecarThreads({
   isThreadChildrenCollapsed: (threadId: string) => boolean;
   activeThreadId: string | null;
   projectNameById: ReadonlyMap<string, string>;
-  laterIds: ReadonlySet<string>;
+  snoozedUntilById: ReadonlyMap<string, number>;
   sandboxStatuses: ReadonlyMap<string, SandboxThreadStatus>;
 }) {
   const children = childrenByParent.get(parentId) ?? [];
@@ -1686,7 +1618,7 @@ function SidecarThreads({
             }
             showProjectName={child.projectId !== parentProjectId}
             isSelected={child.id === activeThreadId}
-            isLater={laterIds.has(child.id)}
+            snoozedUntil={snoozedUntilById.get(child.id) ?? null}
             sandboxStatus={sandboxStatuses.get(child.id)}
             childThreads={childrenByParent.get(child.id)}
             childrenCollapsed={isThreadChildrenCollapsed(child.id)}
@@ -1709,7 +1641,7 @@ function SidecarThreads({
             isThreadChildrenCollapsed={isThreadChildrenCollapsed}
             activeThreadId={activeThreadId}
             projectNameById={projectNameById}
-            laterIds={laterIds}
+            snoozedUntilById={snoozedUntilById}
             sandboxStatuses={sandboxStatuses}
           />
         </Fragment>

@@ -13,14 +13,14 @@ Select the provider in Settings → Appearance → Sidebar. Right-click or long-
 
 Never change the user's selected provider, grouping, collapse state, ordering, or BB Thread list preferences merely to validate the plugin. Use disposable fixture state. Never archive, move, delete, or create real threads or projects for validation.
 
-Status summaries distinguish needs input, active work, drafting, unread, idle, and archived. Pinned and Later are organizational buckets. A parent includes its neediest child. Drafts are client-local. Thread menus use native BB actions plus the plugin's Later marker.
+Status summaries distinguish needs input, active work, drafting, unread, idle, and archived. Pinned is an organizational bucket. Snoozed threads leave active groups until their selected time, but remain in a collapsed Snoozed group for early wake-up. Archived threads appear at the bottom for the selected 7- or 30-day window. Idle precedes Working, which starts collapsed. A parent includes its neediest child. Drafts are client-local. Thread menus use native BB actions plus timed snooze actions.
 
 ## Integrations
 
 Oh My BB in plugin settings exposes `agentsIntegration`, `projectsIntegration`, and `tasksIntegration`. All default to false. Read their values only when needed; do not enable them merely because an owner is installed. Existing native flags import once with the same IDs and values. The custom switches stay hidden during that import generation. One explicitly authorized reload finishes removing the native editors. Do not retain duplicate controls or add an API credentials section.
 
 - Agents (`agent-profiles`): Bots and Channels snapshots. DM creation/opening happens only on an explicit user action. Only exact owner-supplied thread IDs are excluded from Code while enabled. Do not infer ownership from titles, providers, or project IDs.
-- Projects (`projects`): use the owner's groups and project order. When off, local sidebar groups remain available. Toggling never copies or deletes either source's data. Enabled-owner errors are surfaced; they do not authorize local fallback writes.
+- Projects (`projects`): use the owner's groups and project order. When off, local sidebar groups are not shown or editable; retained legacy data is not deleted. Toggling never copies or deletes either source's data. Enabled-owner errors are surfaced; they do not authorize local fallback writes.
 - Tasks (`task-workspaces`): expose Attach to task. Query-driven discovery and explicit attachment only. The owner stores credentials.
 
 No startup installation, enabling, sibling probe, or source switch. Native BB host data is not a dependency on Sandboxes. Keep other owners' settings, IDs, and secrets untouched.

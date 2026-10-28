@@ -139,6 +139,7 @@ const workspaces: SidebarWorkspace[] = [
 
 function renderSidebar({
   threads,
+  snoozedRows = [],
   projects = [
     { id: "proj_1", name: "bb", isPersonal: false, href: "/projects/proj_1", settingsHref: "/projects/proj_1/settings" },
     { id: "proj_2", name: "sandbox", isPersonal: false, href: "/projects/proj_2", settingsHref: "/projects/proj_2/settings" },
@@ -158,6 +159,7 @@ function renderSidebar({
   integrations = true,
 }: {
   threads: PluginSidebarThread[];
+  snoozedRows?: { threadId: string; untilAt: number }[];
   projects?: PluginSidebarProject[];
   workspaceRows?: SidebarWorkspace[];
   sandboxStatuses?: readonly SandboxThreadStatus[];
@@ -178,9 +180,9 @@ function renderSidebar({
     sidebarDraftThreadIds: draftThreadIds,
     threadActions,
     rpc: {
-      getIntegrations: () => ({ values: { agentsIntegration: integrations, projectsIntegration: false, tasksIntegration: integrations }, migrationPending: false }),
-      listLater: () => ({ rows: [] }),
-      setLater: () => ({ ok: true as const }),
+      getIntegrations: () => ({ values: { agentsIntegration: integrations, projectsIntegration: integrations, tasksIntegration: integrations }, migrationPending: false }),
+      listSnoozed: () => ({ rows: snoozedRows }),
+      setSnoozed: () => ({ ok: true as const }),
       listThreadOrder: () => ({ threadIds: [] }),
       setThreadOrder: () => ({ ok: true as const }),
       setProjectOrder: () => ({ ok: true as const }),
@@ -244,11 +246,51 @@ describe("Status Sidebar", () => {
     const link = await screen.findByRole("link", { name: "Existing conversation" });
     expect(screen.queryByRole("tab", { name: "Bots" })).toBeNull();
     fireEvent.contextMenu(link.closest("li")!);
-    expect(await screen.findByRole("menuitem", { name: "Move to later" })).toBeDefined();
+    expect(await screen.findByRole("menuitem", { name: "Snooze" })).toBeDefined();
+    expect(screen.queryByRole("menuitem", { name: "Snooze for 1 hour" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Attach to task" })).toBeNull();
     expect(mounted.inspection.sdkCalls).toEqual([]);
     expect(mounted.inspection.navigateCalls).toEqual([]);
   });
+  it("starts with idle above collapsed Working and keeps archived at the bottom", async () => {
+    renderSidebar({ threads: [
+      thread({ id: "busy", title: "Working thread", indicator: "runtime" }),
+      thread({ id: "quiet", title: "Idle thread" }),
+      thread({ id: "recent", title: "Recent archive", isArchived: true, archivedAt: Date.now() - 86_400_000 }),
+      thread({ id: "old", title: "Old archive", isArchived: true, archivedAt: Date.now() - 8 * 86_400_000 }),
+    ] });
+    const idle = await screen.findByRole("region", { name: "Idle" });
+    const working = screen.getByRole("region", { name: "Working" });
+    const archived = screen.getByRole("region", { name: "Archived" });
+    expect(idle.compareDocumentPosition(working) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(working.compareDocumentPosition(archived) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Working thread" })).toBeNull();
+    fireEvent.click(within(working).getByRole("button"));
+    expect(screen.getByRole("link", { name: "Working thread" })).toBeDefined();
+    fireEvent.click(within(archived).getByRole("button"));
+    expect(screen.getByRole("link", { name: "Recent archive" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: "Old archive" })).toBeNull();
+    await pickViewOption(within(archived).getByRole("button"), "Group by", "Status");
+    fireEvent.contextMenu(within(archived).getByRole("button"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archived: past 30 days" }));
+    expect(screen.getByRole("link", { name: "Old archive" })).toBeDefined();
+  });
+
+  it("keeps snoozed threads out of active groups and lets them wake early", async () => {
+    const untilAt = Date.now() + 60_000;
+    renderSidebar({ threads: [thread({ id: "sleeping", title: "Sleeping thread" })],
+      snoozedRows: [{ threadId: "sleeping", untilAt }] });
+    const snoozed = await screen.findByRole("region", { name: "Snoozed" });
+    const archived = screen.getByRole("region", { name: "Archived" });
+    expect(snoozed.compareDocumentPosition(archived) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Idle" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Sleeping thread" })).toBeNull();
+    fireEvent.click(within(snoozed).getByRole("button"));
+    const link = within(snoozed).getByRole("link", { name: "Sleeping thread" });
+    fireEvent.contextMenu(link.closest("li")!);
+    expect(await screen.findByRole("menuitem", { name: "Wake now" })).toBeDefined();
+  });
+
   it("keeps Code and Bots separate and opens canonical DMs without changing channel links", async () => {
     setView({ group: "status", subgroup: null });
     const agentId = "00000000-0000-4000-8000-000000000003";
@@ -277,7 +319,7 @@ describe("Status Sidebar", () => {
     });
     await waitFor(() => expect(slots.at(-1)).toEqual(["parent"]));
     expect(screen.queryByRole("region", { name: "Pinned" })).toBeNull();
-    expect(screen.queryByRole("region", { name: "Archived" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Archived" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Delegated" })).toBeDefined();
     fireEvent.click(screen.getByRole("tab", { name: "Bots" }));
     const bots = screen.getByRole("tabpanel", { name: "Bots" });
@@ -371,6 +413,7 @@ describe("Status Sidebar", () => {
   });
 
   it("changes group, subgroup and sort from a section header's right-click menu", async () => {
+    setView({ group: "workspace", subgroup: "project" });
     const shortcutPublications: string[][] = [];
     renderSidebar({
       threads: [
@@ -389,23 +432,23 @@ describe("Status Sidebar", () => {
     await pickViewOption(within(personal).getAllByRole("button")[0]!, "Group by", "Project");
     const bb = await screen.findByRole("region", { name: "bb" });
     expect(within(bb).getByRole("region", { name: "Personal section" })).toBeDefined();
-    expect(storedView()).toEqual({ sort: "recent", group: "project", subgroup: "workspace" });
+    expect(storedView()).toEqual({ sort: "recent", group: "project", subgroup: "workspace", archivedDays: 7 });
 
     await pickViewOption(within(bb).getAllByRole("button")[0]!, "Subgroup by", "None");
     await waitFor(() =>
       expect(screen.queryByRole("region", { name: "Personal section" })).toBeNull(),
     );
-    expect(storedView()).toEqual({ sort: "recent", group: "project", subgroup: null });
+    expect(storedView()).toEqual({ sort: "recent", group: "project", subgroup: null, archivedDays: 7 });
 
     await pickViewOption(
       within(screen.getByRole("region", { name: "bb" })).getAllByRole("button")[0]!,
       "Group by",
       "Status",
     );
-    const active = await screen.findByRole("region", { name: "Active" });
+    const active = await screen.findByRole("region", { name: "Working" });
     expect(screen.getByRole("region", { name: "Idle" })).toBeDefined();
     await waitFor(() =>
-      expect(shortcutPublications.at(-1)).toEqual(["work", "personal"]),
+      expect(shortcutPublications.at(-1)).toEqual(["personal"]),
     );
 
     // Status is never offered as a subgroup.
@@ -424,10 +467,11 @@ describe("Status Sidebar", () => {
       "Sort by",
       "Manual",
     );
-    expect(storedView()).toEqual({ sort: "manual", group: "status", subgroup: null });
+    expect(storedView()).toEqual({ sort: "manual", group: "status", subgroup: null, archivedDays: 7 });
   });
 
-  it("reorders workspaces and exposes an inline workspace creator", async () => {
+  it("reorders project groups without an inline section creator", async () => {
+    setView({ group: "workspace", subgroup: "project" });
     const mounted = renderSidebar({ threads: [thread()] });
     const personal = await screen.findByRole("region", { name: "Personal section" });
     const work = screen.getByRole("region", { name: "Work section" });
@@ -443,25 +487,12 @@ describe("Status Sidebar", () => {
       input: { workspaceIds: ["ws_work", "ws_personal"] },
     }));
 
-    fireEvent.click(screen.getByRole("button", { name: "New section" }));
-    const input = screen.getByRole("textbox", { name: "Section name" });
-    fireEvent.change(input, { target: { value: "Clients" } });
-    fireEvent.submit(input.closest("form")!);
-    await waitFor(() => expect(mounted.inspection.rpcCalls).toContainEqual({
-      method: "createWorkspace",
-      input: { name: "Clients" },
-    }));
-    await waitFor(() =>
-      expect(screen.queryByRole("textbox", { name: "Section name" })).toBeNull(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "New section" }));
-    expect(screen.getByRole("textbox", { name: "Section name" })).not.toHaveProperty(
-      "disabled",
-      true,
-    );
+    expect(screen.queryByRole("button", { name: "New section" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Delete section" })).toBeNull();
   });
 
   it("renders every workspace with its projects, and a General catch-all for loose threads", async () => {
+    setView({ group: "workspace", subgroup: "project" });
     const shortcutPublications: string[][] = [];
     renderSidebar({
       threads: [
@@ -528,6 +559,7 @@ describe("Status Sidebar", () => {
   });
 
   it("persists collapsed hierarchy nodes and removes hidden rows from keyboard slots", async () => {
+    setView({ group: "workspace", subgroup: "project" });
     const shortcutPublications: string[][] = [];
     renderSidebar({
       threads: [
@@ -581,6 +613,7 @@ describe("Status Sidebar", () => {
   });
 
   it("disables thread and project reordering while search hides siblings", async () => {
+    setView({ group: "workspace", subgroup: "project" });
     renderSidebar({
       threads: [thread({ id: "visible", title: "Visible" })],
       searchQuery: "Visible",
@@ -593,6 +626,7 @@ describe("Status Sidebar", () => {
   });
 
   it("starts a new thread with a right-clicked project already selected", async () => {
+    setView({ group: "workspace", subgroup: "project" });
     const mounted = renderSidebar({ threads: [thread()] });
     const project = await screen.findByRole("region", { name: "bb" });
     fireEvent.contextMenu(within(project).getAllByRole("button")[0]!);
@@ -605,6 +639,7 @@ describe("Status Sidebar", () => {
   });
 
   it("moves projects and projectless threads onto workspace headers", async () => {
+    setView({ group: "workspace", subgroup: "project" });
     const mounted = renderSidebar({
       threads: [
         thread({ id: "project-thread" }),
@@ -651,6 +686,7 @@ describe("Status Sidebar", () => {
   });
 
   it("moves a workspace-specific projectless thread back to General", async () => {
+    setView({ group: "workspace", subgroup: "project" });
     const mounted = renderSidebar({
       threads: [
         thread({
@@ -702,7 +738,7 @@ describe("Status Sidebar", () => {
           projects: [{ id: "proj_1", name: "bb", isPersonal: false, href: "/projects/proj_1", settingsHref: "/projects/proj_1/settings" }],
         },
         rpc: {
-          listLater: () => ({ rows: [] }),
+          listSnoozed: () => ({ rows: [] }),
           listThreadOrder: () => ({ threadIds: [] }),
           listWorkspaces: () => ({ workspaces: [workspaces[0]!] }),
           listSandboxStatuses: () => ({ statuses: [] }),
@@ -802,6 +838,7 @@ describe("Status Sidebar", () => {
   });
 
   it("rolls a subthread's needier status into its project summary", async () => {
+    setView({ group: "workspace", subgroup: "project" });
     renderSidebar({
       threads: [
         thread({ id: "parent", title: "Parent" }),
@@ -821,6 +858,7 @@ describe("Status Sidebar", () => {
   });
 
   it("colours a local sub-agent by its working status and hides its matching project", async () => {
+    setView({ group: "project", subgroup: null });
     renderSidebar({
       threads: [
         thread({ id: "parent", title: "Parent" }),
@@ -846,6 +884,7 @@ describe("Status Sidebar", () => {
   });
 
   it("shows at most three sub-agent markers, neediest first, then the overflow", async () => {
+    setView({ group: "project", subgroup: null });
     renderSidebar({
       threads: [
         thread({ id: "parent", title: "Parent" }),

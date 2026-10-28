@@ -71,23 +71,36 @@ function projectsSdk() {
   };
 }
 
-describe("Later persistence", () => {
-  it("stores and clears Later state", async () => {
+describe("local organization retirement", () => {
+  it("shows only a neutral group and does not create local sections when Projects is off", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "status-sidebar", settings: { projectsIntegration: false } });
+    await plugin(bb);
+    expect((await harness.behavior.callRpc("listWorkspaces", null)).workspaces.map((group) => group.name)).toEqual(["Threads"]);
+    await expect(harness.behavior.callRpc("createWorkspace", { name: "Another section" })).rejects.toThrow(/Enable Projects/);
+    await harness.lifecycle.dispose();
+  });
+});
+
+describe("Snooze persistence", () => {
+  it("stores, expires, and clears snoozes", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "status-sidebar",
     });
     await plugin(bb);
 
-    await harness.behavior.callRpc("setLater", {
+    await harness.behavior.callRpc("setSnoozed", {
       threadId: "thr_1",
-      later: true,
+      untilAt: Date.now() + 60_000,
     });
-    const listed = await harness.behavior.callRpc("listLater", null);
+    const listed = await harness.behavior.callRpc("listSnoozed", null);
     expect(listed.rows).toHaveLength(1);
     expect(listed.rows[0]?.threadId).toBe("thr_1");
+    expect(listed.rows[0]?.untilAt).toBeGreaterThan(Date.now());
+    await harness.behavior.callRpc("setSnoozed", { threadId: "expired", untilAt: Date.now() - 1 });
+    expect((await harness.behavior.callRpc("listSnoozed", null)).rows).toHaveLength(1);
 
-    await harness.behavior.callRpc("setLater", { threadId: "thr_1", later: false });
-    expect(await harness.behavior.callRpc("listLater", null)).toEqual({ rows: [] });
+    await harness.behavior.callRpc("setSnoozed", { threadId: "thr_1", untilAt: null });
+    expect(await harness.behavior.callRpc("listSnoozed", null)).toEqual({ rows: [] });
     await harness.lifecycle.dispose();
   });
 });

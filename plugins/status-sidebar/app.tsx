@@ -8,7 +8,7 @@ export default definePluginApp((app) => {
     id: "status-sidebar",
     title: "Status Sidebar",
     description:
-      "Shows every section, project, thread, and subthread in one compact hierarchy.",
+      "Groups threads by status, with timed snoozing and a recent archive.",
     component: StatusSidebar,
   });
   app.slots.settingsSection({ id: "more", component: MoreSettings });

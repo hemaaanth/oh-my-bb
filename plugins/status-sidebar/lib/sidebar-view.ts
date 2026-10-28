@@ -7,12 +7,14 @@ export interface SidebarViewOptions {
   sort: SortMode;
   group: GroupDimension;
   subgroup: SubgroupDimension | null;
+  archivedDays: 7 | 30;
 }
 
 export const DEFAULT_VIEW_OPTIONS: SidebarViewOptions = {
   sort: "recent",
-  group: "workspace",
-  subgroup: "project",
+  group: "status",
+  subgroup: null,
+  archivedDays: 7,
 };
 
 export const GROUP_LABELS: Record<GroupDimension, string> = {
@@ -61,11 +63,12 @@ export function readViewOptions(): SidebarViewOptions {
       window.localStorage.getItem(SIDEBAR_VIEW_STORAGE_KEY) ?? "null",
     );
     if (!parsed || typeof parsed !== "object") return DEFAULT_VIEW_OPTIONS;
-    const { sort, group, subgroup } = parsed as Record<string, unknown>;
+    const { sort, group, subgroup, archivedDays } = parsed as Record<string, unknown>;
     const nextGroup = GROUPS.includes(group as GroupDimension)
       ? (group as GroupDimension)
       : DEFAULT_VIEW_OPTIONS.group;
     return {
+      archivedDays: archivedDays === 30 ? 30 : 7,
       sort: SORTS.includes(sort as SortMode)
         ? (sort as SortMode)
         : DEFAULT_VIEW_OPTIONS.sort,

@@ -36,7 +36,7 @@ export const ThreadRow = memo(function ThreadRow({
   thread,
   projectName,
   isSelected,
-  isLater,
+  snoozedUntil,
   sandboxStatus,
   isGrouped,
   isDragging,
@@ -56,7 +56,7 @@ export const ThreadRow = memo(function ThreadRow({
   thread: PluginSidebarThread;
   projectName: string;
   isSelected: boolean;
-  isLater: boolean;
+  snoozedUntil: number | null;
   sandboxStatus?: SandboxThreadStatus;
   isGrouped: boolean;
   isDragging: boolean;
@@ -106,11 +106,11 @@ export const ThreadRow = memo(function ThreadRow({
 
   const menuProps: ThreadMenuProps = {
     thread,
-    isLater,
+    snoozedUntil,
     editing,
     dragging: isDragging,
     onRename: () => setEditing(true),
-    onSetLater: (later) => actions.setLater(thread.id, later),
+    onSetSnoozed: (untilAt) => actions.setSnoozed(thread.id, untilAt),
     onAttachTask: () => setAttachTaskOpen(true),
   };
 

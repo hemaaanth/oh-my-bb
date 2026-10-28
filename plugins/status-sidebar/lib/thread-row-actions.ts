@@ -15,7 +15,7 @@ export interface ThreadRowActions {
   tasksEnabled: boolean;
   open: (threadId: string, split: boolean) => void;
   rename: (threadId: string, title: string) => Promise<void>;
-  setLater: (threadId: string, later: boolean) => void;
+  setSnoozed: (threadId: string, untilAt: number | null) => void;
   toggleChildren: (threadId: string) => void;
 }
 

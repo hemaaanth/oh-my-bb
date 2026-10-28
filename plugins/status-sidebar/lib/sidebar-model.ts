@@ -9,14 +9,14 @@ export type ThreadStatusBucket =
   | "idle"
   | "archived";
 
-export type SidebarBucket = "pinned" | "later" | ThreadStatusBucket;
+export type SidebarBucket = "pinned" | ThreadStatusBucket;
 
 export const THREAD_STATUS_ORDER: readonly ThreadStatusBucket[] = [
   "unread",
   "drafting",
-  "active",
   "needs-input",
   "idle",
+  "active",
   "archived",
 ];
 
@@ -112,8 +112,8 @@ export const ORGANIZATIONAL_STATUS_RANK: Record<ThreadStatusBucket, number> = {
   "needs-input": 0,
   unread: 1,
   drafting: 2,
-  active: 3,
-  idle: 4,
+  idle: 3,
+  active: 4,
   archived: 5,
 };
 
@@ -134,12 +134,10 @@ export function mostNeedyStatus(
 
 export function bucketForThread(
   thread: PluginSidebarThread,
-  laterThreadIds: ReadonlySet<string>,
   effectiveStatus?: ThreadStatusBucket,
 ): SidebarBucket {
   if (thread.isArchived) return "archived";
   if (thread.isPinned) return "pinned";
-  if (laterThreadIds.has(thread.id)) return "later";
   return effectiveStatus ?? statusForThread(thread);
 }
 
@@ -181,12 +179,11 @@ export function matchesSearch(
 export function sortThreads(
   bucket: SidebarBucket,
   threads: readonly PluginSidebarThread[],
-  placedAtByThreadId: ReadonlyMap<string, number>,
   orderIndexByThreadId: ReadonlyMap<string, number> = new Map(),
   statusByThreadId: ReadonlyMap<string, ThreadStatusBucket> = new Map(),
 ): PluginSidebarThread[] {
   return [...threads].sort((left, right) => {
-    if (bucket === "pinned" || bucket === "later") {
+    if (bucket === "pinned") {
       const leftStatus =
         statusByThreadId.get(left.id) ?? statusForThread(left);
       const rightStatus =
@@ -203,12 +200,6 @@ export function sortThreads(
       if (rightOrder === undefined) return 1;
       return leftOrder - rightOrder;
     }
-    if (bucket === "later") {
-      return (
-        (placedAtByThreadId.get(right.id) ?? 0) -
-        (placedAtByThreadId.get(left.id) ?? 0)
-      );
-    }
     if (bucket === "needs-input") {
       return right.latestAttentionAt - left.latestAttentionAt;
     }
@@ -218,7 +209,6 @@ export function sortThreads(
 
 export function sortThreadsByStatus(
   threads: readonly PluginSidebarThread[],
-  placedAtByThreadId: ReadonlyMap<string, number>,
   orderIndexByThreadId: ReadonlyMap<string, number> = new Map(),
   statusByThreadId: ReadonlyMap<string, ThreadStatusBucket> = new Map(),
 ): PluginSidebarThread[] {
@@ -229,7 +219,6 @@ export function sortThreadsByStatus(
         (thread) =>
           (statusByThreadId.get(thread.id) ?? statusForThread(thread)) === status,
       ),
-      placedAtByThreadId,
       orderIndexByThreadId,
       statusByThreadId,
     ),

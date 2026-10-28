@@ -9,14 +9,14 @@ describe("Oh My BB integration preferences", () => {
   it("imports saved native flag IDs once without changing sidebar state and removes native editors after reload", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "status-sidebar", settings: enabled });
     await plugin(bb);
-    await harness.behavior.callRpc("setLater", { threadId: "fixture-thread", later: true });
+    await harness.behavior.callRpc("setSnoozed", { threadId: "fixture-thread", untilAt: Date.now() + 60_000 });
     await harness.behavior.callRpc("setThreadOrder", { workspaceId: "fixture-order", threadIds: ["fixture-second", "fixture-first"] });
-    const later = await harness.behavior.callRpc("listLater", null);
+    const snoozed = await harness.behavior.callRpc("listSnoozed", null);
     expect(read.parse(await harness.behavior.callRpc("getIntegrations", null))).toEqual({ values: enabled, migrationPending: true });
     const next = await harness.lifecycle.reload(plugin);
     try {
       expect(read.parse(await next.harness.behavior.callRpc("getIntegrations", null))).toEqual({ values: enabled, migrationPending: false });
-      expect(await next.harness.behavior.callRpc("listLater", null)).toEqual(later);
+      expect(await next.harness.behavior.callRpc("listSnoozed", null)).toEqual(snoozed);
       expect(await next.harness.behavior.callRpc("listThreadOrder", { workspaceId: "fixture-order" })).toEqual({ threadIds: ["fixture-second", "fixture-first"] });
       await expect(next.harness.behavior.setSettings({ agentsIntegration: false })).rejects.toThrow(/unknown setting/i);
       expect(next.harness.inspection.sdk.callsTo("plugins.callRpc")).toEqual([]);

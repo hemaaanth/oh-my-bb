@@ -10,11 +10,11 @@ import { useThreadRowActions } from "../lib/thread-row-actions";
 
 export type ThreadMenuProps = {
   thread: PluginSidebarThread;
-  isLater: boolean;
+  snoozedUntil: number | null;
   editing: boolean;
   dragging: boolean;
   onRename: () => void;
-  onSetLater: (later: boolean) => void;
+  onSetSnoozed: (untilAt: number | null) => void;
   onAttachTask: () => void;
 };
 
@@ -22,15 +22,34 @@ export function ThreadContextMenu({ children, ...props }: ThreadMenuProps & { ch
   const { tasksEnabled } = useThreadRowActions();
   const renameSelected = useRef(false);
   const inline: PluginThreadActionsInlineItem[] = [];
-  if (!props.thread.isArchived) inline.push({
-    key: "status-sidebar/later",
-    group: groups.organize,
-    action: {
-      label: props.isLater ? "Move to idle" : "Move to later",
-      icon: "Clock",
-      run: () => props.onSetLater(!props.isLater),
-    },
-  });
+  if (!props.thread.isArchived) {
+    const now = new Date();
+    const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1); tomorrow.setHours(9, 0, 0, 0);
+    if (tomorrow.getTime() <= now.getTime()) tomorrow.setDate(tomorrow.getDate() + 1);
+    const snoozeTimes = {
+      hour: now.getTime() + 60 * 60_000,
+      tomorrow: tomorrow.getTime(),
+      week: now.getTime() + 7 * 24 * 60 * 60_000,
+    };
+    inline.push({
+      key: "status-sidebar/snooze", group: groups.organize,
+      action: {
+        label: "Snooze", icon: "Clock",
+        choices: { items: [
+          { id: "hour", label: "For 1 hour" },
+          { id: "tomorrow", label: "Until tomorrow" },
+          { id: "week", label: "For 1 week" },
+        ] },
+        run: ({ value }) => {
+          if (value && Object.hasOwn(snoozeTimes, value)) props.onSetSnoozed(snoozeTimes[value as keyof typeof snoozeTimes]);
+        },
+      },
+    });
+    if (props.snoozedUntil) inline.push({
+      key: "status-sidebar/wake", group: groups.organize,
+      action: { label: "Wake now", icon: "Clock", run: () => props.onSetSnoozed(null) },
+    });
+  }
   if (tasksEnabled) inline.push({
     key: "status-sidebar/attach-task",
     group: groups.organize,

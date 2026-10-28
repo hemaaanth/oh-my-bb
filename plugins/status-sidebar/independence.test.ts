@@ -35,33 +35,23 @@ describe("independent sidebar", () => {
     insert.run("ws_work", "Saved second", "blue", 1, 0);
     await plugin(bb);
     const { workspaces } = await harness.behavior.callRpc("listWorkspaces", null);
-    expect(workspaces.map((group: { id: string; name: string }) => [group.id, group.name])).toEqual([
+    expect(workspaces.map((group: { id: string; name: string }) => [group.id, group.name])).toEqual([["ws_personal", "Threads"]]);
+    expect((await harness.behavior.callRpc("legacyWorkspaceSnapshot", null)).workspaces.map((group: { id: string; name: string }) => [group.id, group.name])).toEqual([
       ["ws_personal", "Saved default"], ["ws_work", "Saved second"],
     ]);
     await harness.lifecycle.dispose();
   });
 
-  it("keeps local groups and assignments across integration toggles and reload", async () => {
+  it("retains legacy groups without offering new local group mutations", async () => {
     let { bb, harness } = createFakePluginHost({ pluginId: "status-sidebar" });
+    const db = bb.storage.database();
+    db.exec("CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL, position INTEGER NOT NULL, is_default INTEGER NOT NULL DEFAULT 0)");
+    db.prepare("INSERT INTO workspaces (id, name, color, position, is_default) VALUES (?, ?, ?, ?, ?)").run("ws_saved", "Saved group", "amber", 0, 1);
     await plugin(bb);
-    const created = await harness.behavior.callRpc("createWorkspace", { name: "Fixture section" });
-    await harness.behavior.callRpc("renameWorkspace", { workspaceId: created.workspaceId, name: "Renamed fixture" });
-    await harness.behavior.callRpc("setProjectWorkspace", { projectId: "fixture-project", workspaceId: created.workspaceId });
-    await harness.behavior.callRpc("setThreadWorkspace", { threadId: "fixture-thread", workspaceId: created.workspaceId });
-    await harness.behavior.callRpc("setProjectOrder", { projectIds: ["fixture-project"], workspaceId: created.workspaceId });
-    const saved = await harness.behavior.callRpc("listWorkspaces", null);
-    await harness.behavior.callRpc("setIntegrations", { projectsIntegration: true });
-    await expect(harness.behavior.callRpc("listWorkspaces", null)).rejects.toThrow();
-    await harness.behavior.callRpc("setIntegrations", { projectsIntegration: false });
+    await expect(harness.behavior.callRpc("createWorkspace", { name: "New section" })).rejects.toThrow(/Enable Projects/);
     ({ harness } = await harness.lifecycle.reload(plugin));
-    expect(await harness.behavior.callRpc("listWorkspaces", null)).toEqual(saved);
-    await expect(harness.behavior.callRpc("setWorkspaceOrder", { workspaceIds: [created.workspaceId] })).rejects.toThrow("every section");
-    const defaultId = saved.workspaces.find((row: { isDefault: boolean }) => row.isDefault)!.id;
-    await expect(harness.behavior.callRpc("deleteWorkspace", { workspaceId: defaultId })).rejects.toThrow("Cannot delete");
-    await harness.behavior.callRpc("deleteWorkspace", { workspaceId: created.workspaceId });
-    const after = await harness.behavior.callRpc("listWorkspaces", null);
-    expect(after.workspaces.find((row: { id: string }) => row.id === defaultId)!.projectIds).toContain("fixture-project");
-    expect(after.workspaces.some((row: { id: string }) => row.id === created.workspaceId)).toBe(false);
+    expect((await harness.behavior.callRpc("listWorkspaces", null)).workspaces.map((group: { name: string }) => group.name)).toEqual(["Threads"]);
+    expect((await harness.behavior.callRpc("legacyWorkspaceSnapshot", null)).workspaces.map((group: { name: string }) => group.name)).toContain("Saved group");
     await harness.lifecycle.dispose();
   });
 

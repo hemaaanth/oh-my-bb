@@ -1,4 +1,4 @@
-export const LATER_CHANNEL = "later-threads";
+export const SNOOZE_CHANNEL = "snoozed-threads";
 export const THREAD_ORDER_CHANNEL = "thread-order";
 export const WORKSPACES_CHANNEL = "workspaces";
 export const SHORTCUT_SLOTS_CHANNEL = "shortcut-slots";

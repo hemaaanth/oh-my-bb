@@ -4,13 +4,13 @@ Group BB threads by working status with nested thread summaries and saved orderi
 
 ## See what needs attention
 
-Group threads by status, workspace, or project. Combine a subgroup with recent, status, or manual ordering. Needs input, active work, drafting, unread, idle, and Later have distinct meanings. Parent summaries include the neediest child. Expand children without leaving the thread list.
+Group threads by status or project, or by Projects-owned groups when enabled. Combine a subgroup with recent, status, or manual ordering. Idle sits above collapsed Working. Pinned stays on top; snoozed threads stay in a collapsed group for early wake-up, and Archived stays at the bottom with a 7- or 30-day window. Parent summaries include the neediest child. Expand children without leaving the thread list.
 
-BB keeps its navigation rail, footer, split navigation, keyboard targets, and native thread action menus. Status Sidebar adds a private Later marker. It does not replace BB's project or thread lifecycle controls. The sidebar stays narrow; its collapsible setup guide lives in plugin settings, not a separate rail page.
+BB keeps its navigation rail, footer, split navigation, keyboard targets, and native thread action menus. Status Sidebar adds timed snoozing. It does not replace BB's project or thread lifecycle controls. The sidebar stays narrow; its collapsible setup guide lives in plugin settings, not a separate rail page.
 
 ## Works alone
 
-Native BB thread, project, draft, host, and navigation data power the base sidebar. Saved local groups, manual order, and collapse preferences remain available. No account, API key, or sibling package is required. Private state stays on the BB server or in the current client's browser storage.
+Native BB thread, project, draft, host, and navigation data power the base sidebar. Manual order, snooze times, and collapse preferences remain available. Retired local groups stay stored, but are no longer shown. No account, API key, or sibling package is required. Private state stays on the BB server or in the current client's browser storage.
 
 ## Optional integrations
 

@@ -33,12 +33,14 @@ export function SectionContextMenu({
   actions = [],
   view,
   onViewChange,
+  projectsEnabled = true,
   children,
 }: {
   label: string;
   actions?: readonly SectionMenuAction[];
   view: SidebarViewOptions;
   onViewChange: (next: SidebarViewOptions) => void;
+  projectsEnabled?: boolean;
   children: ReactElement;
 }) {
   const scopeProps = usePortalScopeProps();
@@ -68,7 +70,7 @@ export function SectionContextMenu({
             label="Group by"
             value={view.group}
             current={GROUP_LABELS[view.group]}
-            choices={(Object.keys(GROUP_LABELS) as GroupDimension[]).map(
+            choices={(Object.keys(GROUP_LABELS) as GroupDimension[]).filter((group) => projectsEnabled || group !== "workspace").map(
               (group) => ({ value: group, label: GROUP_LABELS[group] }),
             )}
             onChange={(group) =>
@@ -81,7 +83,7 @@ export function SectionContextMenu({
             current={view.subgroup ? GROUP_LABELS[view.subgroup] : "None"}
             choices={[
               { value: NO_SUBGROUP, label: "None" },
-              ...subgroupChoices(view.group).map((subgroup) => ({
+              ...subgroupChoices(view.group).filter((subgroup) => projectsEnabled || subgroup !== "workspace").map((subgroup) => ({
                 value: subgroup,
                 label: GROUP_LABELS[subgroup],
               })),

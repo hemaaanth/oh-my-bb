@@ -11,7 +11,7 @@ import {
   DEFAULT_WORKSPACE_ID,
   type ChannelSummary,
   type ChannelsChangedSignal,
-  LATER_CHANNEL,
+  SNOOZE_CHANNEL,
   SHORTCUT_SLOTS_CHANNEL,
   THREAD_ORDER_CHANNEL,
   WORKSPACES_CHANNEL,
@@ -70,6 +70,10 @@ const migrations = [
    SELECT workspace_id, thread_id, position FROM thread_order;
    DROP TABLE thread_order;
    ALTER TABLE thread_order_scoped RENAME TO thread_order`,
+  `CREATE TABLE IF NOT EXISTS snoozed_threads (
+     thread_id TEXT PRIMARY KEY,
+     until_at INTEGER NOT NULL
+   )`,
 ];
 
 const threadIdInput = z.object({ threadId: z.string().trim().min(1) }).strict();
@@ -195,21 +199,8 @@ const publishShortcutSlotsInput = shortcutSlotsSchema.extend({
 export const rpcContract = defineRpcContract({
   getIntegrations: { input: z.null(), output: integrationsViewSchema },
   setIntegrations: { input: integrationsPatchSchema, output: integrationsViewSchema },
-  listLater: {
-    input: z.null(),
-    output: z.object({
-      rows: z.array(
-        z.object({
-          threadId: z.string(),
-          placedAt: z.number().int(),
-        }),
-      ),
-    }),
-  },
-  setLater: {
-    input: threadIdInput.extend({ later: z.boolean() }),
-    output: z.object({ ok: z.literal(true) }),
-  },
+  listSnoozed: { input: z.null(), output: z.object({ rows: z.array(z.object({ threadId: z.string(), untilAt: z.number().int() })) }) },
+  setSnoozed: { input: threadIdInput.extend({ untilAt: z.number().int().nonnegative().nullable() }), output: okSchema },
   listThreadOrder: {
     input: workspaceOrderScopeInput,
     output: z.object({ threadIds: z.array(z.string()) }).strict(),
@@ -323,9 +314,9 @@ export const rpcContract = defineRpcContract({
   },
 });
 
-interface LaterRow {
+interface SnoozedRow {
   thread_id: string;
-  placed_at: number;
+  until_at: number;
 }
 
 interface ThreadOrderRow {
@@ -370,7 +361,7 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   const publish = (threadId: string) => {
-    bb.realtime.publish(LATER_CHANNEL, { threadId });
+    bb.realtime.publish(SNOOZE_CHANNEL, { threadId });
   };
   const publishThreadOrder = () => {
     bb.realtime.publish(THREAD_ORDER_CHANNEL, null);
@@ -404,7 +395,7 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   async function canonicalWorkspaces() {
-    if (!integrations.projectsIntegration) return { workspaces: legacyWorkspaces() };
+    if (!integrations.projectsIntegration) return { workspaces: [{ id: DEFAULT_WORKSPACE_ID, name: "Threads", color: "amber", isDefault: true, projectIds: [], threadIds: [] }] };
     const snapshot = await bb.sdk.plugins.callRpc({ pluginId: "projects", method: "groupsSnapshot", input: null, outputSchema: projectGroupsSchema });
     if (!integrations.projectsIntegration) throw new Error("Group source changed. Try again.");
     const threadAssignments = db.prepare(`SELECT thread_id, workspace_id FROM workspace_threads`).all() as WorkspaceThreadRow[];
@@ -590,30 +581,16 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(rpcContract, {
     getIntegrations: () => ({ values: integrationPreferences.get(), migrationPending: integrationPreferences.migrationPending }),
     setIntegrations: async (patch) => ({ values: await integrationPreferences.update(patch), migrationPending: integrationPreferences.migrationPending }),
-    listLater() {
-      const rows = db
-        .prepare(
-          `SELECT thread_id, placed_at
-             FROM later_threads
-             ORDER BY placed_at DESC`,
-        )
-        .all() as LaterRow[];
-      return {
-        rows: rows.map((row) => ({
-          threadId: row.thread_id,
-          placedAt: row.placed_at,
-        })),
-      };
+    listSnoozed() {
+      const rows = db.prepare(`SELECT thread_id, until_at FROM snoozed_threads WHERE until_at > ?`).all(Date.now()) as SnoozedRow[];
+      return { rows: rows.map((row) => ({ threadId: row.thread_id, untilAt: row.until_at })) };
     },
-    setLater({ threadId, later }) {
-      if (later) {
-        db.prepare(
-          `INSERT INTO later_threads (thread_id, placed_at)
-           VALUES (?, ?)
-           ON CONFLICT(thread_id) DO UPDATE SET placed_at = excluded.placed_at`,
-        ).run(threadId, Date.now());
+    setSnoozed({ threadId, untilAt }) {
+      if (untilAt !== null && untilAt > Date.now()) {
+        db.prepare(`INSERT INTO snoozed_threads (thread_id, until_at) VALUES (?, ?)
+          ON CONFLICT(thread_id) DO UPDATE SET until_at = excluded.until_at`).run(threadId, untilAt);
       } else {
-        db.prepare(`DELETE FROM later_threads WHERE thread_id = ?`).run(threadId);
+        db.prepare(`DELETE FROM snoozed_threads WHERE thread_id = ?`).run(threadId);
       }
       publish(threadId);
       return { ok: true } as const;
@@ -658,6 +635,7 @@ export default async function plugin(bb: BbPluginApi) {
       return { projectIds: group?.projectIds ?? [] };
     },
     async setProjectOrder({ projectIds, workspaceId }) {
+      requireIntegration("projectsIntegration", "Projects");
       const resolvedWorkspaceId = workspaceId ?? await defaultProjectGroupId();
       if (integrations.projectsIntegration) {
         await bb.sdk.plugins.callRpc({ pluginId: "projects", method: "setProjectOrder", input: { groupId: resolvedWorkspaceId, projectIds }, outputSchema: okSchema });
@@ -674,6 +652,7 @@ export default async function plugin(bb: BbPluginApi) {
     },
     listWorkspaces: () => canonicalWorkspaces(),
     async createWorkspace({ name }) {
+      requireIntegration("projectsIntegration", "Projects");
       const { workspaces } = await canonicalWorkspaces();
       const color = workspaceColorValues[workspaces.length % workspaceColorValues.length]!;
       let workspaceId: string;
@@ -689,6 +668,7 @@ export default async function plugin(bb: BbPluginApi) {
       return { workspaceId };
     },
     async renameWorkspace({ workspaceId, name }) {
+      requireIntegration("projectsIntegration", "Projects");
       const { workspaces } = await canonicalWorkspaces();
       const group = workspaces.find((candidate) => candidate.id === workspaceId);
       if (!group) throw new Error("Section not found");
@@ -701,6 +681,7 @@ export default async function plugin(bb: BbPluginApi) {
       return { ok: true } as const;
     },
     async deleteWorkspace({ workspaceId }) {
+      requireIntegration("projectsIntegration", "Projects");
       const { workspaces } = await canonicalWorkspaces();
       const group = workspaces.find((candidate) => candidate.id === workspaceId);
       if (!group || group.isDefault) throw new Error("Cannot delete this section");
@@ -723,6 +704,7 @@ export default async function plugin(bb: BbPluginApi) {
       return { ok: true } as const;
     },
     async setWorkspaceOrder({ workspaceIds }) {
+      requireIntegration("projectsIntegration", "Projects");
       const { workspaces } = await canonicalWorkspaces();
       if (workspaceIds.length !== workspaces.length || workspaceIds.some((id) => !workspaces.some((group) => group.id === id))) throw new Error("Section order must include every section");
       if (integrations.projectsIntegration) {
@@ -752,6 +734,7 @@ export default async function plugin(bb: BbPluginApi) {
       return { ok: true as const };
     },
     async setProjectWorkspace({ projectId, workspaceId }) {
+      requireIntegration("projectsIntegration", "Projects");
       if (integrations.projectsIntegration) {
         await bb.sdk.plugins.callRpc({ pluginId: "projects", method: "setProjectGroup", input: { projectId, groupId: workspaceId }, outputSchema: okSchema });
       } else {
@@ -769,6 +752,7 @@ export default async function plugin(bb: BbPluginApi) {
       return { ok: true } as const;
     },
     async setThreadWorkspace({ threadId, workspaceId }) {
+      requireIntegration("projectsIntegration", "Projects");
       const { workspaces } = await canonicalWorkspaces();
       if (!workspaces.some((group) => group.id === workspaceId)) throw new Error("Section not found");
       db.prepare(
@@ -780,6 +764,7 @@ export default async function plugin(bb: BbPluginApi) {
       return { ok: true } as const;
     },
     clearThreadWorkspace({ threadId }) {
+      requireIntegration("projectsIntegration", "Projects");
       db.prepare(`DELETE FROM workspace_threads WHERE thread_id = ?`).run(threadId);
       publishWorkspaces();
       return { ok: true } as const;
@@ -836,7 +821,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   bb.events.on("thread.deleted", ({ thread }) => {
-    db.prepare(`DELETE FROM later_threads WHERE thread_id = ?`).run(thread.id);
+    db.prepare(`DELETE FROM snoozed_threads WHERE thread_id = ?`).run(thread.id);
     db.prepare(`DELETE FROM thread_order WHERE thread_id = ?`).run(thread.id);
     db.prepare(`DELETE FROM workspace_threads WHERE thread_id = ?`).run(
       thread.id,
@@ -846,4 +831,3 @@ export default async function plugin(bb: BbPluginApi) {
     publishWorkspaces();
   });
 }
-
