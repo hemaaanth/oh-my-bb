@@ -1,11 +1,7 @@
 /**
- * Box backend for the BB 0.43 machine/environment provider model.
- *
- * Allocates a Box via its REST API WITHOUT the legacy `setupScript` (daemon
- * install) or enrollment env — core installs the daemon over the executor. Box's
- * command API returns only a boolean `success`, so the executor appends an
- * exit-code marker and parses it. Box exposes no name/metadata to look a box up
- * by allocation key, so uncertain cleanup requires manual reconciliation.
+ * Boat REST backend. Persisted Box provider/resource IDs remain unchanged.
+ * Core installs the daemon over the executor; command status uses an exit marker.
+ * Allocation-key lookup is not implemented, so uncertain cleanup stays retained.
  */
 import { z } from "zod";
 import type {
@@ -24,14 +20,16 @@ import {
 import type { SandboxBackend } from "../sandbox-backend.js";
 import { toShellCommand } from "./shell-exec.js";
 
-const BASE_URL = "https://ascii.dev/api/box/v1";
+const BASE_URL = "https://boat.dev/api/v1";
+// Boat TTL is wall-clock, not idle time. BB handles idle suspension separately.
+const AUTO_STOP_SECONDS = 2 * 60 * 60;
 const RC_MARKER = "__BBRC__";
 
 type BoxConfig = NonNullable<SandboxRuntimeConfig["box"]>;
 type BoxMachineClass = BoxConfig["machineClass"];
 
 const boxEnvelopeSchema = z.object({
-  box: z.object({ id: z.string(), state: z.string() }),
+  sandbox: z.object({ id: z.string(), state: z.string() }),
 });
 const commandSchema = z.object({
   success: z.boolean(),
@@ -84,7 +82,7 @@ export function createBoxMachineBackend(
     if (!response.ok) {
       const detail = z.object({ message: z.string().optional() }).safeParse(body);
       throw new Error(
-        `Box API ${response.status}: ${
+        `Boat API ${response.status}: ${
           detail.success ? detail.data.message ?? response.statusText : response.statusText
         }`,
       );
@@ -102,7 +100,7 @@ export function createBoxMachineBackend(
       request_.signal.throwIfAborted();
       const command = `${toShellCommand(request_.command, request_.stdin)}; printf '${RC_MARKER}%s' "$?"`;
       const result = commandSchema.parse(
-        await request(`/boxes/${encodeURIComponent(boxId)}/commands`, {
+        await request(`/sandboxes/${encodeURIComponent(boxId)}/commands`, {
           method: "POST",
           body: JSON.stringify({
             command,
@@ -131,24 +129,24 @@ export function createBoxMachineBackend(
   const waitUntilRunning = async (boxId: string): Promise<void> => {
     const deadline = Date.now() + 2 * 60_000;
     while (Date.now() < deadline) {
-      const body = await request(`/boxes/${encodeURIComponent(boxId)}`);
-      if (body === null) throw new Error(`Box ${boxId} disappeared while starting`);
-      const state = boxEnvelopeSchema.parse(body).box.state;
+      const body = await request(`/sandboxes/${encodeURIComponent(boxId)}`);
+      if (body === null) throw new Error(`Boat ${boxId} disappeared while starting`);
+      const state = boxEnvelopeSchema.parse(body).sandbox.state;
       if (state === "ready" || state === "idle" || state === "running") return;
-      if (state === "error") throw new Error(`Box ${boxId} failed while starting`);
+      if (state === "error") throw new Error(`Boat ${boxId} failed while starting`);
       await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
     }
-    throw new Error(`Box ${boxId} did not become ready within 2 minutes`);
+    throw new Error(`Boat ${boxId} did not become ready within 2 minutes`);
   };
 
   return {
     definition: {
       id: "sandbox-box",
-      displayName: "Box Sandbox",
-      description: "Create a cloud sandbox on Box.",
-      environmentDescription: "Run this thread in a Box cloud sandbox.",
-      runtimeName: "Box",
-      icon: "./box-logo.svg",
+      displayName: "Boat Sandbox",
+      description: "Create a cloud sandbox on Boat.",
+      environmentDescription: "Run this thread in a Boat cloud sandbox.",
+      runtimeName: "Boat",
+      icon: "./boat-logo.svg",
       ephemeral: true,
       inputs: boxInputsSchema,
     },
@@ -163,7 +161,7 @@ export function createBoxMachineBackend(
     },
     async availability(): Promise<PluginMachineProviderAvailability> {
       return config.apiKey.length === 0
-        ? { status: "setup-required", message: "Add a Box API key." }
+        ? { status: "setup-required", message: "Add a Boat API key." }
         : { status: "available" };
     },
     async validate(inputs): Promise<PluginMachineValidateDecision> {
@@ -175,13 +173,13 @@ export function createBoxMachineBackend(
     async create(context) {
       const tier = resolveTier(context.inputs);
       const machineClass = machineClassForTier(tier);
-      context.report.step(`Creating the Box sandbox (${tier})`);
+      context.report.step(`Creating the Boat sandbox (${tier})`);
       const created = boxEnvelopeSchema.parse(
-        await request("/boxes", {
+        await request("/sandboxes", {
           method: "POST",
           body: JSON.stringify({
             type: machineClass,
-            ttlSeconds: null,
+            ttlSeconds: AUTO_STOP_SECONDS,
             environment: config.environment,
           }),
         }),
@@ -189,31 +187,31 @@ export function createBoxMachineBackend(
       const resource: BoxResource = {
         provider: "box",
         key: context.key,
-        providerSandboxId: created.box.id,
+        providerSandboxId: created.sandbox.id,
         name: `bb-${context.key}`,
         machineClass,
         environment: config.environment,
         sizeTier: tier,
       };
       await context.checkpoint(resource);
-      return { resource, executor: executorFor(created.box.id) };
+      return { resource, executor: executorFor(created.sandbox.id) };
     },
     async reconcileCleanup() {
-      throw new Error("Box cannot confirm cleanup by allocation key; retain the native resource for manual reconciliation");
+      throw new Error("Boat cannot confirm cleanup by allocation key; retain the native resource for manual reconciliation");
     },
     async suspend(context) {
-      context.report.step("Stopping the Box sandbox");
+      context.report.step("Stopping the Boat sandbox");
       await request(
-        `/boxes/${encodeURIComponent(context.resource.providerSandboxId)}/stop`,
+        `/sandboxes/${encodeURIComponent(context.resource.providerSandboxId)}/stop`,
         { method: "POST" },
       );
       return context.resource;
     },
     async resume(context) {
-      context.report.step("Restoring the Box sandbox");
+      context.report.step("Restoring the Boat sandbox");
       await request(
-        `/boxes/${encodeURIComponent(context.resource.providerSandboxId)}/resume`,
-        { method: "POST" },
+        `/sandboxes/${encodeURIComponent(context.resource.providerSandboxId)}/resume`,
+        { method: "POST", body: JSON.stringify({ ttlSeconds: AUTO_STOP_SECONDS }) },
       );
       await waitUntilRunning(context.resource.providerSandboxId);
       return {
@@ -223,7 +221,7 @@ export function createBoxMachineBackend(
     },
     async remove(context) {
       await request(
-        `/boxes/${encodeURIComponent(context.resource.providerSandboxId)}`,
+        `/sandboxes/${encodeURIComponent(context.resource.providerSandboxId)}`,
         {
           method: "DELETE",
           headers: {
@@ -233,7 +231,7 @@ export function createBoxMachineBackend(
       );
     },
     async removeLegacy(providerSandboxId) {
-      await request(`/boxes/${encodeURIComponent(providerSandboxId)}`, {
+      await request(`/sandboxes/${encodeURIComponent(providerSandboxId)}`, {
         method: "DELETE",
         headers: { "X-Ascii-Confirm-Delete": providerSandboxId },
       });

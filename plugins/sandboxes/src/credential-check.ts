@@ -12,7 +12,7 @@ function effectiveSettings(settings: SandboxSettings): SandboxSettings {
     modalTokenId: settings.modalTokenId?.trim() || process.env.MODAL_TOKEN_ID?.trim() || "",
     modalTokenSecret: settings.modalTokenSecret?.trim() || process.env.MODAL_TOKEN_SECRET?.trim() || "",
     e2bApiKey: settings.e2bApiKey?.trim() || process.env.E2B_API_KEY?.trim() || "",
-    boxApiKey: settings.boxApiKey?.trim() || process.env.BOX_API_KEY?.trim() || "",
+    boxApiKey: settings.boxApiKey?.trim() || process.env.BOAT_API_KEY?.trim() || process.env.BOX_API_KEY?.trim() || "",
     freestyleApiKey: settings.freestyleApiKey?.trim() || process.env.FREESTYLE_API_KEY?.trim() || "",
   };
 }
@@ -36,7 +36,7 @@ export async function checkProviderCredentials(provider: SandboxProvider, settin
     if (!response.ok) throw new Error("Provider refused credentials");
   };
   if (provider === "daytona") return request(`${(settings.daytonaApiUrl || "https://app.daytona.io/api").replace(/\/$/, "")}/snapshots?page=1&limit=1`, settings.daytonaApiKey);
-  if (provider === "box") return request("https://ascii.dev/api/box/v1/boxes", settings.boxApiKey);
+  if (provider === "box") return request("https://boat.dev/api/v1/sandboxes", settings.boxApiKey);
   if (provider === "modal") {
     const { ModalClient } = createRequire(import.meta.url)("modal") as typeof import("modal");
     const client = new ModalClient({ tokenId: settings.modalTokenId, tokenSecret: settings.modalTokenSecret });

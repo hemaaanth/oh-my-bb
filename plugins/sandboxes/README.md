@@ -1,7 +1,7 @@
 # Sandboxes plugin
 
 This built-in, opt-in plugin contributes native BB machine and environment
-providers backed by Daytona, Modal, E2B, Box by ASCII, and Freestyle.
+providers backed by Daytona, Modal, E2B, Boat, and Freestyle.
 BB core owns current thread creation, host enrollment, checkout, and machine
 retirement; the plugin owns vendor allocation/removal and retains compatibility
 cleanup data for sandboxes created before the BB 0.43 migration.
@@ -82,7 +82,7 @@ teardown, or cleanup.
 
 `idleSleepAfter` controls automatic idle sleep for providers with durable
 pause/stop support: 5, 15, or
-30 minutes, 1 hour, or Never. It updates live when saved. Daytona, Box, and
+30 minutes, 1 hour, or Never. It updates live when saved. Daytona, Boat, and
 Freestyle stop while preserving provider-supported disk state; E2B
 pauses and can resume. Modal does not use this setting because its idle timeout
 terminates the sandbox rather than pausing it. The machine popover in a thread
@@ -102,7 +102,7 @@ Environment fallbacks are supported for existing installs:
 `DAYTONA_API_KEY`, `BB_SANDBOX_DAYTONA_SNAPSHOT`, `MODAL_TOKEN_ID`,
 `MODAL_TOKEN_SECRET`, `BB_SANDBOX_MODAL_IMAGE_NAME`,
 `BB_SANDBOX_MODAL_VM_RUNTIME`, `E2B_API_KEY`, and
-`BB_SANDBOX_E2B_TEMPLATE`, `BOX_API_KEY`, and `FREESTYLE_API_KEY`.
+`BB_SANDBOX_E2B_TEMPLATE`, `BOAT_API_KEY` (or `BOX_API_KEY`), and `FREESTYLE_API_KEY`.
 
 
 Freestyle uses the [v5 VM API](https://api.freestyle.sh/openapi.json) through
@@ -139,11 +139,11 @@ reference with each provider that can consume it:
 | Modal | image created from the registry reference, then published |
 | E2B | template built `fromImage` on the reference |
 
-Box and Freestyle have no custom-image API. They install the same pinned
+Boat and Freestyle have no custom-image API. They install the same pinned
 toolchain through the portable runtime bootstrap on first boot.
 
 The selected image pins the sandbox's bb version. When the host is upgraded,
-build and activate a new sandbox image with that same version. Box and
+build and activate a new sandbox image with that same version. Boat and
 Freestyle install the same pinned version through the portable bootstrap on
 first boot.
 
@@ -203,7 +203,7 @@ backend maps it onto what its API accepts:
 | L | 8 | 16 GiB | 40 GiB |
 | XL | 16 | 32 GiB | 100 GiB |
 
-Modal takes the size on the create call; Box rounds it
+Modal takes the size on the create call; Boat rounds it
 to the nearest machine class; E2B sizes by template and ignores it. Freestyle
 starts at its base image or snapshot size, then grows dimensions to at least the
 requested tier. Its v5 resize API uses MiB and cannot shrink any dimension, so
@@ -446,7 +446,7 @@ It merges that setting into `/root/.codex/config.toml` without replacing other
 Codex configuration, so new images and existing sandboxes repaired with
 `bb sandbox upgrade` use the same setting as the bb server machine.
 
-Daytona, Modal, E2B, reference this image directly. Box and
+Daytona, Modal, E2B, reference this image directly. Boat and
 Freestyle install the same layers through the portable bootstrap, which embeds
 the same installer scripts and skips any layer the provider will not let it
 install as root.
@@ -647,7 +647,7 @@ workload or treating a single compilation spike as representative capacity.
 
 ## Lifecycle and cleanup
 
-Daytona, E2B, Box, Freestyle, native machines suspend through BB
+Daytona, E2B, Boat, Freestyle, native machines suspend through BB
 core after the configured idle interval and resume on the next turn. The plugin
 reconstructs idle deadlines at startup, so a reload cannot silently leave an
 already-idle machine running. A shared host is suspended only when every
@@ -696,7 +696,7 @@ The required runtime includes Node.js, BB host daemon, Git/GitHub CLI/SSH, basic
 
 The former GitHub build-repository setting, import command and workflow dispatcher are retired. Their historical KV receipt is retained but no longer read. The image registry repository is still needed: it is the container destination, not a source-code repository.
 
-Box and Freestyle bootstrap at launch and do not use the custom-image builder.
+Boat and Freestyle bootstrap at launch and do not use the custom-image builder.
 
 ### Custom image instructions and Browser settings
 
@@ -709,3 +709,11 @@ Browser owns sandbox browsing, home routing, public-IP verification and personal
 ### Provider credential checks
 
 A provider without credentials has disabled setup controls. After adding credentials in Configuration, choose **Check connection** in Providers. This performs a bounded read-only list request; it creates no sandbox. Only a successful check enables the settings button and enabling that provider. A failed check keeps the controls locked. Changing credentials or Daytona's API URL invalidates the saved check. Existing running machines are not stopped or reconfigured by these UI checks. You can always turn an enabled provider off. Settings reads never contact a vendor.
+
+### Boat auto-stop
+
+BB pauses Boat sandboxes after 15 minutes of inactivity by default. Stop saves disk state; it interrupts running processes. Resume restores the saved disk. Deleting a sandbox removes it.
+
+Boat also has a separate two-hour wall-clock auto-stop, reset on each create or resume. This permits trial accounts to start. It can interrupt an active turn after two hours, including with Always on enabled. BB idle sleep does not extend this deadline.
+
+Boat was formerly Box. Existing saved keys, sandbox IDs and internal `box` / `sandbox-box` identifiers remain valid. New API requests use `boat.dev`.

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Rename Box to Boat, use the current Boat API and logo, and preserve existing keys and resources. Set trial-compatible two-hour auto-stop on create/resume; BB still pauses idle machines after the saved idle period.
+
 - Remove manual image rollback/selection and project image pinning from settings, RPC and CLI. Keep current machines, provider defaults, build registration and historical database records.
 
 # Changelog

@@ -268,3 +268,15 @@ describe("retired image selection", () => {
     await fake.harness.dispose();
   });
 });
+
+it("accepts Boat and old Box CLI identifiers without changing stored provider IDs", async () => {
+  const changes: Array<[string, boolean]> = [];
+  const { fake } = await cli(settled("build", build([])), {
+    setProviderEnabled: (provider, enabled) => { changes.push([provider, enabled]); },
+  });
+  try {
+    expect((await fake.harness.runCli(["provider", "boat", "enable"])).stdout).toBe("Enabled boat.\n");
+    await fake.harness.runCli(["provider", "box", "disable"]);
+    expect(changes).toEqual([["box", true], ["box", false]]);
+  } finally { await fake.harness.dispose(); }
+});

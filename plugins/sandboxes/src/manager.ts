@@ -334,7 +334,7 @@ function providerDisplayName(provider: SandboxProvider): string {
     daytona: "Daytona",
     modal: "Modal",
     e2b: "E2B",
-    box: "Box",
+    box: "Boat",
     freestyle: "Freestyle",
 
   };

@@ -46,7 +46,7 @@ import type { ModelRoute } from "./src/model-route.js";
 function providerLabel(provider: SandboxProvider): string {
   return ({
     daytona: "Daytona", modal: "Modal", e2b: "E2B",
-    box: "Box by ASCII", freestyle: "Freestyle",
+    box: "Boat", freestyle: "Freestyle",
   } satisfies Record<SandboxProvider, string>)[provider];
 }
 
@@ -150,7 +150,7 @@ function providerLifecycleNote(provider: SandboxProvider): string {
   if (provider === "modal") {
     return "Runs for up to 24 hours; idle sleep does not apply.";
   }
-  if (provider === "box") return "Archives on idle and resumes with saved machine state.";
+  if (provider === "box") return "Pauses on idle and saves disk. Boat also auto-stops after 2 hours awake.";
   if (provider === "freestyle") return "Pauses on idle. Disk retention depends on the selected persistence mode.";
   return provider === "daytona"
     ? "Sleeps on idle and wakes on the next message."
@@ -911,7 +911,7 @@ function MoreSettings() {
     <li><strong>Build your first image.</strong> Open Runtime images → Image builder. Enter the registry repository, choose its platform and optional tools, and save. Goldsky and HubSpot are optional. Choose Build and register image to build, push, and register the image with your configured Daytona, Modal or E2B providers. This can take a while and may incur costs.</li>
     <li><strong>Choose defaults.</strong> Set the default machine size and idle timeout in Preferences. Modal runs for up to 24 hours and does not sleep on idle.</li>
     <li><strong>Start a thread.</strong> Pick your project and a Sandboxes machine in BB’s new-thread composer. BB creates and retires the machine. New machines use your registered image.</li>
-  </ol><p className="mt-4 text-xs text-muted-foreground">Box and Freestyle bootstrap tools at launch and do not use this custom-image builder. Tailscale keys are needed for trusted browser home egress and optional local-editor SSH. Existing machines and images are not changed by saving builder settings.</p></SettingsDialog></div></section>;
+  </ol><p className="mt-4 text-xs text-muted-foreground">Boat and Freestyle bootstrap tools at launch and do not use this custom-image builder. Tailscale keys are needed for trusted browser home egress and optional local-editor SSH. Existing machines and images are not changed by saving builder settings.</p></SettingsDialog></div></section>;
 }
 
 

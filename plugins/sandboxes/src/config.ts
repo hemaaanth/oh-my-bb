@@ -29,7 +29,7 @@ export const sandboxCredentialDescriptors = {
   modalTokenId: { type: "string", label: "Modal token ID", secret: true },
   modalTokenSecret: { type: "string", label: "Modal token secret", secret: true },
   e2bApiKey: { type: "string", label: "E2B API key", secret: true },
-  boxApiKey: { type: "string", label: "Box API key", secret: true },
+  boxApiKey: { type: "string", label: "Boat API key", secret: true },
   freestyleApiKey: { type: "string", label: "Freestyle API key", secret: true },
   imageRegistryUsername: { type: "string", label: "Image registry username", secret: true },
   imageRegistryToken: { type: "string", label: "Image registry token", secret: true },
@@ -183,7 +183,7 @@ export type SandboxSettings = PluginSettingsValues<
 
 /**
  * Every provider that can consume the shared sandbox image by registry
- * reference. Box and Freestyle bootstrap their toolchain at launch instead.
+ * reference. Boat and Freestyle bootstrap their toolchain at launch instead.
  */
 export const sandboxImageProviders = [
   "daytona",
@@ -283,7 +283,7 @@ export function loadSandboxRuntimeConfig(
     settings.e2bTemplate,
     env.BB_SANDBOX_E2B_TEMPLATE,
   );
-  const boxApiKey = first(settings.boxApiKey, env.BOX_API_KEY);
+  const boxApiKey = first(settings.boxApiKey, env.BOAT_API_KEY, env.BOX_API_KEY);
   const freestyleApiKey = first(settings.freestyleApiKey, env.FREESTYLE_API_KEY);
   const modalVmRuntimeOverride =
     env.BB_SANDBOX_MODAL_VM_RUNTIME?.trim().toLowerCase();
@@ -421,7 +421,7 @@ export function sandboxProviderCredentialStatus(
       first(settings.modalTokenId, env.MODAL_TOKEN_ID) !== undefined &&
       first(settings.modalTokenSecret, env.MODAL_TOKEN_SECRET) !== undefined,
     e2b: first(settings.e2bApiKey, env.E2B_API_KEY) !== undefined,
-    box: first(settings.boxApiKey, env.BOX_API_KEY) !== undefined,
+    box: first(settings.boxApiKey, env.BOAT_API_KEY, env.BOX_API_KEY) !== undefined,
     freestyle: first(settings.freestyleApiKey, env.FREESTYLE_API_KEY) !== undefined,
   };
 }
