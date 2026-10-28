@@ -17,7 +17,7 @@ while IFS= read -r package; do
 done <<< "$listed"
 
 # Only committed packages count, so a package still being built does not fail the check.
-tracked="$(git -C "$root" ls-files 'plugins/*/package.json' 'agents/*/package.json' | sed 's|/package.json$||')"
+tracked="$(git -C "$root" ls-files 'plugins/*/package.json' 'agents/*/package.json' | grep -E '^(plugins|agents)/[^/]+/package.json$' | sed 's|/package.json$||')"
 while IFS= read -r package; do
   [ -n "$package" ] || continue
   if ! grep -qxF "$package" <<< "$listed"; then

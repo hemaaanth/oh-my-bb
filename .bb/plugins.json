@@ -19,6 +19,7 @@
     { "name": "demo-mode", "source": "./plugins/demo-mode" },
     { "name": "sandboxes", "source": "./plugins/sandboxes" },
     { "name": "catalog", "source": "./plugins/catalog" },
-    { "name": "agent-profiles", "source": "./plugins/agent-profiles" }
+    { "name": "agent-profiles", "source": "./plugins/agent-profiles" },
+    { "name": "traces", "source": "./plugins/traces" }
   ]
 }

@@ -17,6 +17,7 @@ plugins/demo-mode
 plugins/sandboxes
 plugins/catalog
 plugins/agent-profiles
+plugins/traces
 agents/fx-acp
 agents/nanocodex-acp
 agents/prime-agent-acp
