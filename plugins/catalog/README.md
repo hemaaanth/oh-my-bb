@@ -58,8 +58,7 @@ capability set without copying a developer's home directory.
 ## Configuration and Preferences
 
 Set the Executor URL and secret API key in BB's native **Configuration**.
-Executor does not duplicate those fields. **Preferences** contains optional
-sources under **Oh My BB**. Agents profile toolkit scopes are off on a fresh
+Executor does not duplicate those fields. **Oh My BB** contains optional integrations. Agents profile toolkit scopes are off on a fresh
 installation. An explicit saved false remains false. An existing agent-scoped
 toolkit mapping retains the earlier opt-in until you change it.
 
@@ -114,7 +113,7 @@ Threads with toolkits get `executor_execute`, `executor_docs`, and
 `executor_resume`, with instructions naming each toolkit and its integrations.
 A thread's toolkits are its agent's, then its project's, then the global ones;
 the first is the default, and a `toolkit` argument picks another. Agent-scoped
-toolkits apply only with the Agents source enabled in Preferences. When it is
+toolkits apply only with the Agents integration enabled in Executor settings → Oh My BB. When it is
 enabled, each call asks Agents which profile the thread runs as; the check
 does not rely on a cached answer. When it is off, the plugin makes no Agents call.
 One call runs in one toolkit. The tools run on the BB server and call the

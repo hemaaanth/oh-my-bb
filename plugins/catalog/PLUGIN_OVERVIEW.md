@@ -8,7 +8,7 @@ The rename changes only the display name. The plugin ID remains `catalog`; the p
 
 Set Executor URL and API key in BB's native Configuration fields. The key stays on the server. No custom auth form duplicates those fields.
 
-Preferences contains optional sources under Oh My BB. Agents profile toolkit scopes are off on a fresh install. Saved false stays false. An existing agent toolkit map retains its previous consent until explicitly changed. No optional source is probed merely by opening settings.
+Executor settings → Oh My BB contains optional integrations. Agents profile toolkit scopes are off on a fresh install. Saved false stays false. An existing agent toolkit map retains its previous consent until explicitly changed. No optional source is probed merely by opening settings.
 
 Sources, custom sets and toolkit mappings use scoped native dialogs. More is collapsed help, including explicit assignment readiness. Connection diagnostics contact Executor only when Check Executor is chosen; opening settings reads local configuration and cached alerts.
 

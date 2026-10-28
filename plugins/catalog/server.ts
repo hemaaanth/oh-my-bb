@@ -171,13 +171,13 @@ export default async function plugin(bb: BbPluginApi) {
     executorUrl: {
       type: "string",
       label: "Executor URL",
-      description: "Origin of the Executor that holds remote MCP and API credentials, e.g. https://executor.example.ts.net:8446.",
+      description: "Server that stores your service connections.",
       default: "",
     },
     executorApiKey: {
       type: "string",
       label: "Executor API key",
-      description: "Reaches every remote Executor toolkit. This plugin chooses project mappings; agents never see the key.",
+      description: "Connects this BB server to Executor.",
       secret: true,
     },
   });
@@ -925,7 +925,7 @@ export default async function plugin(bb: BbPluginApi) {
         if (scope === "global" && targetId !== "*") throw new Error("Global toolkits use the * target.");
         if (toolkits.length && scope === "project" && !(await targets()).some((project) => project.id === targetId)) throw new Error("Choose an existing project.");
         if (scope === "plugin") pluginCallerSchema.parse(targetId);
-        if (toolkits.length && scope === "agent" && (!preferences.agentsIntegration || !(await agentProfiles()).some((agent) => agent.id === targetId))) throw new Error("Enable Agents in Preferences and choose an existing profile ID.");
+        if (toolkits.length && scope === "agent" && (!preferences.agentsIntegration || !(await agentProfiles()).some((agent) => agent.id === targetId))) throw new Error("Enable Agents in Executor settings → Oh My BB and choose an existing profile ID.");
         const key = scope === "global" ? GLOBAL_TOOLKITS : scope === "agent" ? AGENT_TOOLKITS + targetId : scope === "plugin" ? PLUGIN_TOOLKITS + targetId : targetId;
         await saveExecutorToolkits(key, toolkits, expectedToolkits);
         bb.realtime.publish("catalog-changed", { reason: "toolkits-changed" });
@@ -1382,7 +1382,7 @@ export default async function plugin(bb: BbPluginApi) {
         const agentRef = cliOption(argv, "--agent");
         const pluginRef = cliOption(argv, "--plugin");
         if ([projectRef, agentRef, pluginRef, argv.includes("--global") || undefined].filter(Boolean).length !== 1) return { exitCode: 1, stderr: usage };
-        if (agentRef && !preferences.agentsIntegration) return { exitCode: 1, stderr: "Enable Agents in Catalog Preferences → Oh My BB before choosing an agent toolkit scope.\n" };
+        if (agentRef && !preferences.agentsIntegration) return { exitCode: 1, stderr: "Enable Agents in Executor settings → Oh My BB before choosing an agent toolkit scope.\n" };
         if (pluginRef && !pluginCallerSchema.safeParse(pluginRef).success) return { exitCode: 1, stderr: `Not a plugin ID: ${pluginRef}\n` };
         const project = projectRef ? (await bb.sdk.projects.list()).find((candidate) => candidate.id === projectRef || candidate.name === projectRef) : null;
         if (projectRef && !project) return { exitCode: 1, stderr: `Unknown project: ${projectRef}\n` };

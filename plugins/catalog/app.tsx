@@ -3,7 +3,7 @@ import { definePluginApp, experimental_useQuestionFormHost, useRealtime, useRpc,
 import { toast } from "sonner";
 import type { z } from "zod";
 import type { executorApprovalsSchema, rpcContract } from "./contract";
-import { CatalogPanel } from "./catalog-panel";
+import { CatalogPanel, CatalogIntegrationSettings } from "./catalog-panel";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
 
@@ -149,6 +149,7 @@ function ConnectionAlerts() {
 
 export default definePluginApp((app) => {
   app.slots.settingsSection({ id: "catalog", component: CatalogPanel });
+  app.slots.settingsSection({ id: "oh-my-bb", component: CatalogIntegrationSettings });
   app.slots.pendingInteraction({ id: APPROVAL_RENDERER_ID, component: ExecutorApproval });
   app.slots.experimental_appOverlay({ id: "connection-alerts", component: ConnectionAlerts });
 });
