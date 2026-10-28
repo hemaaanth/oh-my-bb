@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import * as Select from "@radix-ui/react-select";
-import { experimental_Icon as Icon, definePluginApp, experimental_THREAD_ACTION_GROUPS, useBbNavigate, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import { experimental_Icon as Icon, definePluginApp, experimental_THREAD_ACTION_GROUPS, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
 import type { TraceResult, TraceSpan } from "./spans";
 import { ContextInspector } from "./context-view";
@@ -13,33 +13,41 @@ function duration(ms: number | null) {
   return ms >= 60_000 ? `${(ms / 60_000).toFixed(1)}m` : ms >= 1_000 ? `${(ms / 1_000).toFixed(1)}s` : `${ms}ms`;
 }
 function clock(ms: number) { return new Date(ms).toLocaleTimeString(undefined, { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
-function flatten(span: TraceSpan, depth = 0): Array<{ span: TraceSpan; depth: number }> {
-  return [{ span, depth }, ...span.children.flatMap((child) => flatten(child, depth + 1))];
+function flatten(span: TraceSpan, depth = 0, collapsed?: ReadonlySet<string>): Array<{ span: TraceSpan; depth: number }> {
+  return [{ span, depth }, ...(collapsed?.has(span.id) ? [] : span.children.flatMap((child) => flatten(child, depth + 1, collapsed)))];
 }
 const WAIT = "wait";
+const TOOL_SPANS: Record<string, true> = { commandExecution: true, toolCall: true, fileRead: true, fileChange: true,
+  search: true, webSearch: true, webFetch: true, delegation: true, backgroundTask: true };
 const palette: Record<string, string> = {
   thread: "var(--muted-foreground)", turn: "var(--primary)", reasoning: "#9b82d2", agentMessage: "#8b97cb",
   commandExecution: "#e5ad6f", toolCall: "#72afc6", fileRead: "#78bcb0", fileChange: "#d494ae",
   delegation: "#a7c47c", backgroundTask: "#a7c47c", search: "#78bcb0", contextCompaction: "#bc8bd2",
 };
 
-function SpanRow({ span, depth, selected, onSelect, origin, width, observedEnd }: {
-  span: TraceSpan; depth: number; selected: boolean; onSelect: (span: TraceSpan) => void; origin: number; width: number; observedEnd: number;
+function SpanRow({ span, depth, selected, collapsed, turnNumber, onSelect, onToggle, origin, width, observedEnd }: {
+  span: TraceSpan; depth: number; selected: boolean; collapsed: boolean; turnNumber: number | undefined; onSelect: (span: TraceSpan) => void;
+  onToggle: (span: TraceSpan) => void; origin: number; width: number; observedEnd: number;
 }) {
   const left = Math.max(0, Math.min(100, (span.start - origin) / width * 100));
   const effectiveEnd = span.end ?? Math.max(span.start, observedEnd);
   const length = Math.max(0.4, Math.min(100 - left, (effectiveEnd - span.start) / width * 100));
   const barClass = span.kind === WAIT ? "traces-bar traces-bar-wait" : span.status === "failed" ? "traces-bar traces-bar-failed" : "traces-bar";
   const elapsed = span.end === null ? `${duration(effectiveEnd - span.start)} open` : duration(span.durationMs);
-  return <button type="button" className={`traces-row ${selected ? "traces-row-selected" : ""}`} onClick={() => onSelect(span)} title={`${span.kind} · ${span.name} · ${elapsed}`}>
-    <span className="traces-row-label" style={{ paddingLeft: `${Math.min(depth, 6) * 16 + 12}px` }}>
-      <span className="traces-kind" aria-hidden="true" style={{ color: palette[span.kind] ?? "var(--muted-foreground)" }}>●</span>
-      <span className="traces-row-text">{span.kind === "turn" ? `Turn ${span.name.split("-t").at(-1)}` : span.name}</span>
-      {span.status === "failed" && <span className="traces-failed">failed</span>}
-    </span>
-    <span className="traces-track"><span className={barClass} style={{ left: `${left}%`, width: `${length}%`, background: span.kind === WAIT || span.status === "failed" ? undefined : palette[span.kind] ?? "var(--muted-foreground)" }} /></span>
-    <span className="traces-row-time">{elapsed}</span>
-  </button>;
+  return <div className="traces-row-wrap">
+    {span.children.length > 0 && <button type="button" className="traces-fold" style={{ left: `${Math.min(depth, 6) * 16 + 2}px` }}
+      aria-label={`${collapsed ? "Expand" : "Collapse"} ${span.kind} ${span.name}`} aria-expanded={!collapsed} onClick={() => onToggle(span)}>{collapsed ? "▸" : "▾"}</button>}
+    <button type="button" className={`traces-row ${selected ? "traces-row-selected" : ""}`} data-span-id={span.id}
+      aria-current={selected ? "true" : undefined} onClick={() => onSelect(span)} title={`${span.kind} · ${span.name} · ${elapsed}`}>
+      <span className="traces-row-label" style={{ paddingLeft: `${Math.min(depth, 6) * 16 + (span.children.length ? 28 : 12)}px` }}>
+        <span className="traces-kind" aria-hidden="true" style={{ color: palette[span.kind] ?? "var(--muted-foreground)" }}>●</span>
+        <span className="traces-row-text">{span.kind === "turn" ? `Turn ${turnNumber ?? span.name}` : span.name}</span>
+        {span.status === "failed" && <span className="traces-failed">failed</span>}
+      </span>
+      <span className="traces-track"><span className={barClass} style={{ left: `${left}%`, width: `${length}%`, background: span.kind === WAIT || span.status === "failed" ? undefined : palette[span.kind] ?? "var(--muted-foreground)" }} /></span>
+      <span className="traces-row-time">{elapsed}</span>
+    </button>
+  </div>;
 }
 
 function Detail({ span, revealed }: { span: TraceSpan; revealed: boolean }) {
@@ -63,15 +71,22 @@ function Detail({ span, revealed }: { span: TraceSpan; revealed: boolean }) {
   </aside>;
 }
 
-function Waterfall({ threadId, compact = false }: { threadId: string; compact?: boolean }) {
+function Waterfall({ threadId, compact = false, initialTurnId = null, onTurnChange }: { threadId: string; compact?: boolean;
+  initialTurnId?: string | null; onTurnChange?: (turnId: string | null) => void }) {
   const rpc = useRpc<typeof rpcContract>();
   const [reveal, setReveal] = useState(true);
   const [result, setResult] = useState<TraceResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [turn, setTurn] = useState("last");
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [now, setNow] = useState(() => Date.now());
   const request = useRef(0);
   const listRef = useRef<HTMLDivElement>(null);
+  const focusSpan = useRef<string | null>(null);
+  const refreshTimer = useRef<number | null>(null);
+  const connection = useRealtimeConnectionState();
+  const previousConnection = useRef(connection);
   const [scrollTop, setScrollTop] = useState(0);
   const load = useCallback(() => {
     const generation = ++request.current;
@@ -83,25 +98,95 @@ function Waterfall({ threadId, compact = false }: { threadId: string; compact?: 
       setError(cause instanceof Error ? cause.message : String(cause));
     });
   }, [rpc, threadId, reveal]);
-  useEffect(() => { setResult(null); setSelectedId(null); setTurn("last"); }, [threadId]);
-  useEffect(() => { load(); return () => { request.current++; }; }, [load]);
+  useEffect(() => { setResult(null); setSelectedId(null); setCollapsed(new Set()); setTurn("last"); }, [threadId]);
+  useEffect(() => { load(); return () => { request.current++; window.clearTimeout(refreshTimer.current ?? undefined); refreshTimer.current = null; }; }, [load]);
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimer.current !== null) return;
+    refreshTimer.current = window.setTimeout(() => { refreshTimer.current = null; load(); }, 450);
+  }, [load]);
   useRealtime("traces-changed", (payload) => {
     const changed = payload as { threadId?: string };
-    if (changed.threadId === threadId) load();
+    if (changed.threadId === threadId) scheduleRefresh();
   });
+  useEffect(() => {
+    if (previousConnection.current === "reconnecting" && connection === "connected") scheduleRefresh();
+    previousConnection.current = connection;
+  }, [connection, scheduleRefresh]);
   const trace = result?.tree.threadId === threadId ? result : null;
   const root = trace?.tree;
   const all = useMemo(() => root ? flatten(root) : [], [root]);
   const byId = useMemo(() => new Map(all.map(({ span }) => [span.id, span])), [all]);
-  const turns = all.filter(({ span }) => span.kind === "turn" && span.threadId === threadId).map(({ span }) => span);
-  const display = turn === "all" ? root : turn === "last" ? turns.at(-1) ?? root : turns.find((candidate) => candidate.id === turn) ?? root;
-  const rows = useMemo(() => display ? flatten(display) : [], [display]);
+  const turns = useMemo(() => all.filter(({ span }) => span.kind === "turn" && span.threadId === threadId).map(({ span }) => span)
+    .sort((a, b) => a.start - b.start || a.id.localeCompare(b.id)), [all, threadId]);
+  const turnNumbers = useMemo(() => new Map(turns.map((span, index) => [span.id, index + 1])), [turns]);
+  useEffect(() => {
+    if (!onTurnChange) return;
+    const next = initialTurnId === "all" ? "all" : initialTurnId ? turns.find((span) => span.turnId === initialTurnId)?.id ?? "last" : "last";
+    if (turn !== next) { setTurn(next); setSelectedId(null); }
+  }, [initialTurnId, onTurnChange, turns]);
+  const selectTurn = (value: string) => {
+    setTurn(value); setSelectedId(null);
+    if (onTurnChange) onTurnChange(value === "last" ? null : value === "all" ? "all" : turns.find((span) => span.id === value)?.turnId ?? null);
+  };
+  const turnIndex = turn === "last" ? turns.length - 1 : turns.findIndex((span) => span.id === turn);
+  const display = turn === "all" ? root : turn === "last" ? turns.at(-1) ?? root : turns[turnIndex] ?? root;
+  const summaryRows = useMemo(() => display ? flatten(display) : [], [display]);
+  const rows = useMemo(() => display ? flatten(display, 0, collapsed) : [], [display, collapsed]);
   const selected = selectedId && byId.get(selectedId) || display || null;
+  const counts = useMemo(() => {
+    const value = { tools: 0, waits: 0, errors: 0 };
+    for (const { span } of summaryRows) {
+      if (Object.hasOwn(TOOL_SPANS, span.kind)) value.tools++;
+      if (span.kind === "wait" || span.kind === "idle") value.waits++;
+      if (span.kind === "error" || span.status === "failed") value.errors++;
+    }
+    return value;
+  }, [summaryRows]);
+  const toggleSpan = (span: TraceSpan) => {
+    setCollapsed((previous) => { const next = new Set(previous); if (!next.delete(span.id)) next.add(span.id); return next; });
+    setSelectedId(span.id);
+  };
   const firstRow = Math.max(0, Math.floor(scrollTop / 27) - 5);
   const visibleRows = rows.slice(firstRow, firstRow + 55);
+  useLayoutEffect(() => {
+    if (focusSpan.current === null) return;
+    const target = Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>(".traces-row") ?? []).find((element) => element.dataset.spanId === focusSpan.current);
+    target?.focus({ preventScroll: true }); focusSpan.current = null;
+  }, [selectedId, scrollTop, rows]);
+  const onTimelineKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !rows.length) return;
+    const active = rows.findIndex(({ span }) => span.id === selected?.id);
+    if (event.key === "ArrowDown" || event.key === "j" || event.key === "ArrowUp" || event.key === "k") {
+      event.preventDefault();
+      const next = Math.max(0, Math.min(rows.length - 1, active + (event.key === "ArrowDown" || event.key === "j" ? 1 : -1)));
+      const viewport = listRef.current;
+      if (viewport) {
+        const top = next * 27;
+        const scroll = top < viewport.scrollTop ? top : top + 27 > viewport.scrollTop + viewport.clientHeight ? top + 27 - viewport.clientHeight : viewport.scrollTop;
+        if (scroll !== viewport.scrollTop) { viewport.scrollTop = scroll; setScrollTop(scroll); }
+      }
+      focusSpan.current = rows[next]!.span.id; setSelectedId(rows[next]!.span.id);
+    } else if (event.key === "ArrowRight" && selected?.children.length && collapsed.has(selected.id)) {
+      event.preventDefault(); toggleSpan(selected);
+    } else if (event.key === "ArrowLeft") {
+      if (selected?.children.length && !collapsed.has(selected.id)) { event.preventDefault(); toggleSpan(selected); }
+      else if (active > 0) {
+        const parent = rows.slice(0, active).reverse().find(({ depth }) => depth < rows[active]!.depth);
+        if (parent) { event.preventDefault(); focusSpan.current = parent.span.id; setSelectedId(parent.span.id); }
+      }
+    } else if (event.key === "Enter" && event.target === event.currentTarget && selected?.children.length) {
+      event.preventDefault(); toggleSpan(selected);
+    } else if (event.key === "Escape" && selectedId) { event.preventDefault(); setSelectedId(null); }
+  };
   useEffect(() => { if (listRef.current) listRef.current.scrollTop = 0; setScrollTop(0); }, [display?.id]);
   const origin = display?.start ?? 0;
-  const observedEnd = Math.max(origin, root?.end ?? origin);
+  const running = display?.end === null && display?.kind === "turn";
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [running]);
+  const observedEnd = Math.max(origin, root?.end ?? origin, running ? now : 0);
   const width = Math.max(1, (display?.end ?? observedEnd) - origin);
   const time = trace?.summary.timeMs ?? {};
   const total = Object.values(time).reduce((sum, ms) => sum + ms, 0);
@@ -110,7 +195,7 @@ function Waterfall({ threadId, compact = false }: { threadId: string; compact?: 
     <div className="traces-toolbar">
       <div className="traces-heading"><h2>Thread Waterfall</h2><span>{threadId}</span></div>
       <div className="traces-controls">
-        <div className="traces-turn-control"><span>Turn</span><Select.Root value={turn} onValueChange={(value) => { setTurn(value); setSelectedId(null); }}>
+        <div className="traces-turn-control"><span>Turn</span><Select.Root value={turn} onValueChange={selectTurn}>
           <Select.Trigger className="traces-turn-trigger" aria-label="Turn"><Select.Value /><Select.Icon><Icon name="ChevronDown" aria-hidden="true" /></Select.Icon></Select.Trigger>
           <Select.Portal><Select.Content className="traces-turn-content" position="popper" sideOffset={6}><Select.Viewport>
             <Select.Item className="traces-turn-item" value="last"><Select.ItemText>Latest turn</Select.ItemText><Select.ItemIndicator><Icon name="Check" aria-hidden="true" /></Select.ItemIndicator></Select.Item>
@@ -118,6 +203,8 @@ function Waterfall({ threadId, compact = false }: { threadId: string; compact?: 
             {turns.map((span, index) => <Select.Item key={span.id} className="traces-turn-item" value={span.id}><Select.ItemText>Turn {index + 1}</Select.ItemText><Select.ItemIndicator><Icon name="Check" aria-hidden="true" /></Select.ItemIndicator></Select.Item>)}
           </Select.Viewport></Select.Content></Select.Portal>
         </Select.Root></div>
+        <button type="button" aria-label="Previous turn" disabled={turnIndex <= 0} onClick={() => selectTurn(turns[turnIndex - 1]!.id)}>←</button>
+        <button type="button" aria-label="Next turn" disabled={turnIndex < 0 || turnIndex >= turns.length - 1} onClick={() => selectTurn(turns[turnIndex + 1]!.id)}>→</button>
         <label className={reveal ? "traces-reveal-on" : ""}><input type="checkbox" checked={reveal} onChange={(event) => { if (!event.target.checked) { setResult(null); setSelectedId(null); } setReveal(event.target.checked); }} /> Reveal sensitive data</label>
         <button type="button" onClick={load}>Refresh</button>
       </div>
@@ -125,11 +212,18 @@ function Waterfall({ threadId, compact = false }: { threadId: string; compact?: 
     {error && <p role="alert" className="traces-error">{error}</p>}
     {!trace && !error && <p className="traces-empty">Loading thread events…</p>}
     {root && <>
+      <section className="traces-turn-summary" aria-label="Turn summary">
+        <strong>{turns.length === 0 ? "No turns yet" : turn === "all" ? `All ${turns.length} turns` : `Turn ${turnIndex + 1} of ${turns.length}`}</strong>
+        <span>{display?.status ?? "not started"} · {running ? duration(Math.max(0, now - (display?.start ?? now))) : duration(display?.durationMs ?? null)} · {display?.metadata.model ?? "model not stored"}</span>
+        <span>{counts.tools} tools · {counts.waits} waits · {counts.errors} errors</span>
+      </section>
       <div className="traces-axis"><span>Span · {trace!.eventCount.toLocaleString()} events</span><span className="traces-ticks"><span>{clock(origin)}</span><span>+{duration(width / 2)}</span><span>+{duration(width)}</span></span><span>Dur.</span></div>
       <div className="traces-body">
-        <div className="traces-list" ref={listRef} onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
+        <div className="traces-list" ref={listRef} role="region" aria-label="Waterfall spans" tabIndex={0}
+          onKeyDown={onTimelineKey} onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
           <div style={{ height: firstRow * 27 }} />
-          {visibleRows.map(({ span, depth }) => <SpanRow key={span.id} span={span} depth={depth} selected={span.id === selected?.id} onSelect={(value) => setSelectedId(value.id)} origin={origin} width={width} observedEnd={observedEnd} />)}
+          {visibleRows.map(({ span, depth }) => <SpanRow key={span.id} span={span} depth={depth} selected={span.id === selected?.id}
+            collapsed={collapsed.has(span.id)} turnNumber={turnNumbers.get(span.id)} onToggle={toggleSpan} onSelect={(value) => setSelectedId(value.id)} origin={origin} width={width} observedEnd={observedEnd} />)}
           <div style={{ height: Math.max(0, rows.length - firstRow - visibleRows.length) * 27 }} />
         </div>
         {selected && <Detail span={selected} revealed={reveal} />}
@@ -165,6 +259,10 @@ function NavPanel({ subPath }: { subPath: string }) {
     : parts[0] === "waterfall" || /^thr_[a-z0-9]+$/.test(parts[0] ?? "") ? "waterfall" : "explorer";
   const rawId = view === "context" ? parts[1] : view === "waterfall" ? parts[0] : null;
   const threadId = rawId && /^thr_[a-z0-9]+$/.test(rawId) ? rawId : "";
+  let focusedTurn: string | null = parts[1] === "all" ? "all" : null;
+  if (view === "waterfall" && parts[1] === "turn" && parts[2] && parts[2].length <= 300) {
+    try { const decoded = decodeURIComponent(parts[2]); if (decoded.length <= 100) focusedTurn = decoded; } catch { /* Invalid turn segment falls back to latest. */ }
+  }
   const fleetQuery = view === "explorer" || view === "metrics" ? decodeFleetFilter(parts[1]) : "";
   const fleetSince = /^(?:[1-9]\d?h|[1-7]d)$/.test(parts[2] ?? "") ? parts[2]! : "24h";
   const open = (path: string) => navigate.toPluginPanel("waterfall", { subPath: path });
@@ -179,7 +277,9 @@ function NavPanel({ subPath }: { subPath: string }) {
     </nav>
     {view === "explorer" ? <ExplorerView key={subPath} initialQuery={fleetQuery} initialSince={fleetSince} onDrilldown={openThreadView} />
       : view === "metrics" ? <MetricsView key={subPath} initialQuery={fleetQuery} initialSince={fleetSince} onExplorer={(query, since) => openFleetView("explorer", query, since)} onWaterfall={(id) => openThreadView("waterfall", id)} />
-      : threadId ? view === "context" ? <ContextInspector key={threadId} threadId={threadId} /> : <Waterfall key={threadId} threadId={threadId} />
+      : threadId ? view === "context" ? <ContextInspector key={threadId} threadId={threadId} />
+        : <Waterfall key={threadId} threadId={threadId} initialTurnId={focusedTurn}
+          onTurnChange={(id) => open(id === "all" ? `${threadId}/all` : id ? `${threadId}/turn/${encodeURIComponent(id)}` : threadId)} />
         : <div className="traces-thread-empty"><p>Select a thread in Log Explorer, or choose “Trace this thread” in a thread menu.</p><button type="button" onClick={() => openFleetView("explorer")}>Open Log Explorer</button></div>}
   </div></div>;
 }

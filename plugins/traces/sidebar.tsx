@@ -11,7 +11,7 @@ export function TracesSidebar({ subPath }: { subPath: string }) {
   const [search, setSearch] = useState("");
   const [showHidden, setShowHidden] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const [expanded, setExpanded] = useState<ReadonlyMap<string, number>>(new Map());
   const state = experimental_useSidebarThreads(showArchived ? { experimental_lifecycles: ["active", "archived"] } : undefined);
   const segments = subPath.split("/");
   const id = segments[0] === "context" ? segments[1] : segments[0];
@@ -31,6 +31,13 @@ export function TracesSidebar({ subPath }: { subPath: string }) {
   }, [state.threads, showHidden, showArchived, query]);
   const projects = new Map(state.projects.map((project) => [project.id, project.name]));
   const selectedVisible = selectedId === null || [...groups.values()].some((threads) => threads.some((thread) => thread.id === selectedId));
+  const selectedThread = state.threads.find((thread) => thread.id === selectedId);
+  const selectionNote = selectedVisible ? null : query && selectedThread && !selectedThread.displayTitle.toLocaleLowerCase().includes(query)
+    && !selectedThread.id.toLocaleLowerCase().includes(query) ? "Selected thread does not match this search."
+    : selectedThread?.isHidden && !showHidden ? "Selected thread is hidden. Enable Hidden to show it."
+      : selectedThread?.isArchived && !showArchived ? "Selected thread is archived. Enable Archived to show it."
+        : showArchived && state.experimental_archived?.status === "loading" ? "Loading archived threads…"
+          : "Selected thread is unavailable in BB's sidebar list.";
   return <aside className="traces-sidebar" aria-label="Traces threads">
     <div className="traces-sidebar-search">
       <input type="search" value={search} onChange={(event) => setSearch(event.target.value)}
@@ -43,9 +50,9 @@ export function TracesSidebar({ subPath }: { subPath: string }) {
       {state.status === "loading" && <p role="status">Loading BB threads…</p>}
       {state.status === "error" && <p role="alert">BB thread list unavailable.</p>}
       {state.status === "ready" && !groups.size && <p>{query ? "No matching threads." : "No threads in this view."}</p>}
-      {state.status === "ready" && !selectedVisible && <p className="traces-sidebar-unlisted">Selected thread is hidden, archived, or unavailable in this list.</p>}
+      {state.status === "ready" && selectionNote && <p className="traces-sidebar-unlisted">{selectionNote}</p>}
       {[...groups].map(([projectId, threads]) => {
-        const shown = query || expanded.has(projectId) ? threads : threads.filter((thread, index) => index < PER_PROJECT || thread.id === selectedId);
+        const shown = threads.filter((thread, index) => index < (expanded.get(projectId) ?? (query ? 50 : PER_PROJECT)) || thread.id === selectedId);
         const omitted = threads.length - shown.length;
         return <section key={projectId} aria-label={projects.get(projectId) ?? projectId}>
           <h3>{projects.get(projectId) ?? projectId}<span>{threads.length}</span></h3>
@@ -55,7 +62,7 @@ export function TracesSidebar({ subPath }: { subPath: string }) {
             <span className="traces-sidebar-title">{thread.parentThreadId && <span aria-hidden="true">↳ </span>}{thread.displayTitle}</span>
             <small>{thread.id}{thread.isArchived ? " · archived" : thread.isHidden ? " · hidden" : Object.hasOwn(BUSY_STATUSES, thread.status) ? " · running" : ""}</small>
           </button></li>)}</ul>
-          {omitted > 0 && <button type="button" className="traces-sidebar-more" onClick={() => setExpanded(new Set([...expanded, projectId]))}>Show {omitted} more</button>}
+          {omitted > 0 && <button type="button" className="traces-sidebar-more" onClick={() => setExpanded(new Map(expanded).set(projectId, shown.length + 50))}>Show {Math.min(50, omitted)} more</button>}
         </section>;
       })}
       {showArchived && state.experimental_archived?.status === "error" && <p role="alert">Archived threads unavailable.</p>}

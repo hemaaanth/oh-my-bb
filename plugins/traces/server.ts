@@ -10,6 +10,9 @@ import { fleetCliCommands } from "./fleet-cli";
 const MAX_CLI_BYTES = 1_000_000;
 const PAGE_SIZE = "100"; // BB's events.list maximum is 100.
 const CACHE_LIMIT = 5;
+const MAX_CACHED_EVENTS = 20_000;
+const MAX_CACHED_BYTES = 8_000_000;
+const SIGNAL_DELAY_MS = 350;
 const CHANNEL = "traces-changed";
 
 export const rpcContract = defineRpcContract({
@@ -23,29 +26,38 @@ export const rpcContract = defineRpcContract({
   },
 });
 
-type CacheEntry = { result: TraceResult; dependencies: Set<string> };
+type CacheEntry = { result: TraceResult; dependencies: Set<string>; events: TraceEvent[] | null; bytes: number; dirty: boolean };
 
 export default function plugin(bb: BbPluginApi) {
   const cache = new Map<string, CacheEntry>();
+  const pending = new Map<string, Promise<CacheEntry>>();
+  const signalTimers = new Map<string, NodeJS.Timeout>();
   const promptHost = bb.hosts.experimental_client({ contract: promptHostContract });
   const fleet = registerFleet(bb);
   let epoch = 0;
 
-  async function readEvents(threadId: string): Promise<TraceEvent[]> {
-    const rows: TraceEvent[] = [];
-    let afterSeq = "0";
+  async function readEvents(threadId: string, previous: readonly TraceEvent[] = []): Promise<TraceEvent[]> {
+    let rows: TraceEvent[] | null = null;
+    let afterSeq = String(previous.at(-1)?.seq ?? 0);
     while (true) {
-      const page = await bb.sdk.threads.events.list({ threadId, afterSeq, limit: PAGE_SIZE, order: "asc" });
-      rows.push(...page as TraceEvent[]);
+      const page = await bb.sdk.threads.events.list({ threadId, afterSeq, limit: PAGE_SIZE, order: "asc" }) as TraceEvent[];
+      if (previous.length && page.some((event, index) => event.seq > (index ? page[index - 1]!.seq : Number(afterSeq)) + 1)) return readEvents(threadId);
+      if (page.length && (page[0]!.seq <= Number(afterSeq) || page.some((event, index) => index && event.seq <= page[index - 1]!.seq))) {
+        if (previous.length) return readEvents(threadId);
+        throw new Error(`events.list returned non-ascending history for ${threadId}`);
+      }
+      if (page.length) {
+        (rows ??= []).push(...page);
+      }
       if (page.length < Number(PAGE_SIZE)) break;
       const next = page.at(-1)!.seq.toString();
       if (next === afterSeq) throw new Error(`events.list did not advance for ${threadId}`);
       afterSeq = next;
     }
-    return rows;
+    return previous.length ? rows ? [...previous, ...rows] : [...previous] : rows ?? [];
   }
 
-  async function readTree(threadId: string, includeChildren: boolean, visited: Set<string>, deps: Set<string>): Promise<TraceResult> {
+  async function readTree(threadId: string, includeChildren: boolean, visited: Set<string>, deps: Set<string>, previous: readonly TraceEvent[] = []): Promise<{ result: TraceResult; events: TraceEvent[] }> {
     if (visited.has(threadId)) throw new Error(`Thread parent cycle at ${threadId}`);
     visited.add(threadId); deps.add(threadId);
     const response = await bb.sdk.threads.get({ threadId });
@@ -59,7 +71,7 @@ export default function plugin(bb: BbPluginApi) {
         thread.environmentLabel = `${env.isWorktree ? "worktree" : "environment"} · ${env.branchName ?? env.name ?? env.path}`;
       } catch { /* The environment may have been removed; preserve its ID. */ }
     }
-    const events = await readEvents(threadId);
+    const events = await readEvents(threadId, previous);
     const descendants: TraceResult[] = [];
     if (includeChildren) {
       let offset = 0;
@@ -67,7 +79,7 @@ export default function plugin(bb: BbPluginApi) {
         const page = await bb.sdk.threads.list({ parentThreadId: threadId, limit: 100, offset, includeHidden: true });
         for (const child of page) {
           if (visited.has(child.id)) continue;
-          descendants.push(await readTree(child.id, true, visited, deps));
+          descendants.push((await readTree(child.id, true, visited, deps)).result);
         }
         if (page.length < 100) break;
         offset += page.length;
@@ -82,33 +94,44 @@ export default function plugin(bb: BbPluginApi) {
         if (typeof ref !== "string" || !/^thr_[a-z0-9]+$/.test(ref) || visited.has(ref)) continue;
         try { await bb.sdk.threads.get({ threadId: ref }); }
         catch { continue; }
-        descendants.push(await readTree(ref, true, visited, deps));
+        descendants.push((await readTree(ref, true, visited, deps)).result);
       }
     }
-    return buildTrace(thread, events, descendants);
+    return { result: buildTrace(thread, events, descendants), events };
   }
 
   async function trace(threadId: string, includeChildren: boolean, reveal: boolean): Promise<TraceResult> {
     const cacheKey = `${threadId}:${includeChildren}`;
     let cached = cache.get(cacheKey);
-    if (!cached) {
-      let started = epoch;
-      let dependencies = new Set<string>();
-      let result = await readTree(threadId, includeChildren, new Set(), dependencies);
-      if (epoch !== started) {
-        started = epoch;
-        dependencies = new Set<string>();
-        result = await readTree(threadId, includeChildren, new Set(), dependencies);
-      }
-      // If activity continued during both reads, return the latest tree but
-      // do not cache it. The next event signal will trigger another read.
-      if (epoch !== started) return presentTrace(result, reveal);
-      cached = { result, dependencies };
-      cache.set(cacheKey, cached);
-      if (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value!);
-    } else {
-      cache.delete(cacheKey); cache.set(cacheKey, cached);
+    if (cached && !cached.dirty) { cache.delete(cacheKey); cache.set(cacheKey, cached); return presentTrace(cached.result, reveal); }
+    let work = pending.get(cacheKey);
+    if (!work) {
+      work = (async () => {
+        let started = epoch;
+        let deps = new Set<string>();
+        let previous = !includeChildren ? cached?.events ?? [] : [];
+        let read = await readTree(threadId, includeChildren, new Set(), deps, previous);
+        if (epoch !== started) {
+          started = epoch; deps = new Set<string>(); previous = [];
+          read = await readTree(threadId, includeChildren, new Set(), deps);
+        }
+        if (previous.length && read.events[previous.length - 1]?.id !== previous.at(-1)?.id) previous = [];
+        const bytes = !includeChildren && read.events.length <= MAX_CACHED_EVENTS
+          ? (previous.length && cached?.events ? cached.bytes : 0)
+            + read.events.slice(previous.length).reduce((total, event) => total + JSON.stringify(event).length, 0) : MAX_CACHED_BYTES + 1;
+        const events = bytes <= MAX_CACHED_BYTES ? read.events : null;
+        const entry: CacheEntry = { result: read.result, dependencies: deps, events, bytes, dirty: false };
+        if (epoch === started && events) {
+          cache.delete(cacheKey); cache.set(cacheKey, entry);
+          if (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value!);
+        }
+        return entry;
+      })();
+      pending.set(cacheKey, work);
+      const settle = () => { if (pending.get(cacheKey) === work) pending.delete(cacheKey); };
+      work.then(settle, settle);
     }
+    cached = await work;
     return presentTrace(cached.result, reveal);
   }
   function emptyPrompt(threadId: string, provider: string, status: PromptResult["status"], reason: string, sessionId: string | null = null): PromptResult {
@@ -139,17 +162,41 @@ export default function plugin(bb: BbPluginApi) {
       return emptyPrompt(threadId, provider, "unavailable", "The transcript host is unavailable or the read failed.", sessionId);
     }
   }
-  function invalidate(ids: readonly (string | null)[], threadId: string, parentThreadId: string | null) {
-    epoch++;
-    for (const [cacheKey, entry] of cache) if (ids.some((id) => id !== null && entry.dependencies.has(id))) cache.delete(cacheKey);
-    bb.realtime.publish(CHANNEL, { threadId, parentThreadId });
+  function signal(threadId: string) {
+    if (signalTimers.has(threadId)) return;
+    signalTimers.set(threadId, setTimeout(() => {
+      signalTimers.delete(threadId);
+      bb.realtime.publish(CHANNEL, { threadId });
+    }, SIGNAL_DELAY_MS));
+  }
+  function invalidate(ids: readonly (string | null)[], threadId: string, parentThreadId: string | null, rewritten = false) {
+    let touched = false;
+    for (const key of pending.keys()) if (ids.some((id) => id !== null && key.startsWith(`${id}:`))) { touched = true; break; }
+    for (const [key, entry] of cache) if (ids.some((id) => id !== null && entry.dependencies.has(id))) {
+      touched = true;
+      if (rewritten) cache.delete(key);
+      else entry.dirty = true;
+    }
+    if (touched) epoch++;
+    signal(threadId);
+    if (parentThreadId) signal(parentThreadId);
   }
 
-  bb.events.on("experimental_thread.events", ({ thread }) => invalidate([thread.id], thread.id, thread.parentThreadId));
-  bb.events.on("thread.created", ({ thread }) => invalidate([thread.parentThreadId], thread.id, thread.parentThreadId));
-  bb.events.on("thread.deleted", ({ thread }) => invalidate([thread.id, thread.parentThreadId], thread.id, thread.parentThreadId));
+  bb.events.on("experimental_thread.events", ({ thread, sequence }) => {
+    const last = cache.get(`${thread.id}:false`)?.result.lastSeq;
+    invalidate([thread.id], thread.id, thread.parentThreadId, last !== undefined && sequence <= last);
+  });
+  bb.events.on("thread.created", ({ thread }) => invalidate([thread.parentThreadId], thread.id, thread.parentThreadId, true));
+  bb.events.on("thread.deleted", ({ thread }) => invalidate([thread.id, thread.parentThreadId], thread.id, thread.parentThreadId, true));
   bb.events.on("experimental_thread.parentChanged", ({ thread, previousParentThreadId }) =>
-    invalidate([thread.id, previousParentThreadId, thread.parentThreadId], thread.id, thread.parentThreadId));
+    invalidate([thread.id, previousParentThreadId, thread.parentThreadId], thread.id, thread.parentThreadId, true));
+  const unsubscribe = bb.sdk.subscribe({ event: "thread:changed", callback: ({ id, changes }) => {
+    if (!id) return;
+    const hard = changes.some((change) => change === "history-rewritten" || change === "history-compacted" || change === "thread-deleted" || change === "parent-changed");
+    if (hard || changes.some((change) => change === "events-appended" || change === "status-changed" || change === "title-changed" || change === "environment-changed"))
+      invalidate([id], id, null, hard);
+  } });
+  bb.onDispose(() => { unsubscribe(); for (const timer of signalTimers.values()) clearTimeout(timer); signalTimers.clear(); cache.clear(); pending.clear(); });
   bb.rpc.register(rpcContract, { traces_thread: ({ threadId, includeChildren, reveal }) => trace(threadId, includeChildren, reveal),
     traces_prompt: ({ threadId, call, reveal }) => prompt(threadId, call, reveal) });
 

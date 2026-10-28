@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createFakePluginHost, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server";
 import type { TraceEvent, TraceResult } from "./spans";
@@ -23,6 +23,7 @@ describe("SDK trace RPC and CLI", () => {
         } },
       },
     } });
+    harness.sdk.stub("subscribe", () => () => {});
     plugin(bb);
     const result = await harness.behavior.callRpc("traces_thread", { threadId: thread.id, includeChildren: false, reveal: false });
     expect(JSON.stringify(result)).not.toContain(secret);
@@ -45,7 +46,74 @@ describe("SDK trace RPC and CLI", () => {
     await harness.behavior.emitThreadEvent("experimental_thread.events", { thread, sequence: events.at(-1)!.seq });
     const refreshed = await harness.behavior.callRpc("traces_thread", { threadId: thread.id, includeChildren: false, reveal: false }) as TraceResult;
     expect(refreshed.eventCount).toBe(events.length);
-    expect(reads).toBe(4);
+    expect(reads).toBe(3); // The appended page starts after the cached last sequence.
+    await harness.lifecycle.dispose();
+  });
+  it("coalesces append bursts and rereads rewritten or gapped histories", async () => {
+    const thread = makeThreadResponse({ id: "thr_live", providerId: "pi", title: "Live", environmentId: null });
+    let events: TraceEvent[] = [{ id: "start", threadId: thread.id, seq: 1, scope: { kind: "turn", turnId: "t1" },
+      type: "turn/started", createdAt: 100, data: {} }];
+    const reads: number[] = [];
+    let notify: ((event: { id?: string; changes: readonly string[] }) => void) | null = null;
+    const { bb, harness } = createFakePluginHost({ pluginId: "traces", sdk: { threads: {
+      get: async () => thread,
+      events: { list: async ({ afterSeq }: { afterSeq?: string }) => {
+        reads.push(Number(afterSeq ?? 0));
+        return events.filter((event) => event.seq > Number(afterSeq ?? 0));
+      } },
+    } } });
+    harness.sdk.stub("subscribe", ({ callback }) => { notify = callback as typeof notify; return () => { notify = null; }; });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      plugin(bb);
+      await harness.behavior.callRpc("traces_thread", { threadId: thread.id, includeChildren: false, reveal: false });
+      for (let seq = 2; seq <= 6; seq++) {
+        events.push({ id: `event_${seq}`, threadId: thread.id, seq, scope: { kind: "thread" }, type: "provider/warning", createdAt: 100 + seq, data: {} });
+        await harness.behavior.emitThreadEvent("experimental_thread.events", { thread, sequence: seq });
+      }
+      expect(harness.inspection.realtimeSignals.filter((signal) => signal.channel === "traces-changed")).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(350);
+      expect(harness.inspection.realtimeSignals.filter((signal) => signal.channel === "traces-changed")).toHaveLength(1);
+      const appended = await harness.behavior.callRpc("traces_thread", { threadId: thread.id, includeChildren: false, reveal: false }) as TraceResult;
+      expect(appended.eventCount).toBe(6);
+      expect(reads).toEqual([0, 1]);
+      events = [{ ...events[0]!, id: "replaced" }];
+      notify!({ id: thread.id, changes: ["history-rewritten"] });
+      const rewritten = await harness.behavior.callRpc("traces_thread", { threadId: thread.id, includeChildren: false, reveal: false }) as TraceResult;
+      expect(rewritten.eventCount).toBe(1);
+      expect(reads.at(-1)).toBe(0);
+      events.push({ ...events[0]!, id: "gap", seq: 10, createdAt: 200 });
+      await harness.behavior.emitThreadEvent("experimental_thread.events", { thread, sequence: 10 });
+      const gap = await harness.behavior.callRpc("traces_thread", { threadId: thread.id, includeChildren: false, reveal: false }) as TraceResult;
+      expect(gap.eventCount).toBe(2);
+      expect(reads.at(-1)).toBe(0);
+      await harness.lifecycle.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+  it("does not cache a stale in-flight read after a history rewrite", async () => {
+    const thread = makeThreadResponse({ id: "thr_race", providerId: "pi", title: "Race", environmentId: null });
+    const oldEvent: TraceEvent = { id: "old", threadId: thread.id, seq: 1, scope: { kind: "turn", turnId: "t1" },
+      type: "turn/started", createdAt: 100, data: {} };
+    const gate = Promise.withResolvers<void>();
+    let reads = 0;
+    let notify: ((event: { id?: string; changes: readonly string[] }) => void) | null = null;
+    const { bb, harness } = createFakePluginHost({ pluginId: "traces", sdk: { threads: {
+      get: async () => thread,
+      events: { list: async () => {
+        reads++;
+        if (reads === 1) { await gate.promise; return [oldEvent]; }
+        return [{ ...oldEvent, id: "replacement" }, { ...oldEvent, id: "new", seq: 2, createdAt: 200 }];
+      } },
+    } } });
+    harness.sdk.stub("subscribe", ({ callback }) => { notify = callback as typeof notify; return () => { notify = null; }; });
+    plugin(bb);
+    const pending = harness.behavior.callRpc("traces_thread", { threadId: thread.id, includeChildren: false, reveal: false });
+    await Promise.resolve(); await Promise.resolve();
+    notify!({ id: thread.id, changes: ["history-rewritten"] });
+    gate.resolve();
+    const result = await pending as TraceResult;
+    expect(result.eventCount).toBe(2);
+    expect(reads).toBe(2);
     await harness.lifecycle.dispose();
   });
   it("links parent children and delegation childRef, then refreshes parent when a child changes", async () => {
@@ -71,6 +139,7 @@ describe("SDK trace RPC and CLI", () => {
       events: { list: async ({ threadId, afterSeq }: { threadId: string; afterSeq?: string }) =>
         (eventSets.get(threadId) ?? []).filter((event) => event.seq > Number(afterSeq ?? 0)) },
     } } });
+    harness.sdk.stub("subscribe", () => () => {});
     plugin(bb);
     const first = await harness.behavior.callRpc("traces_thread", { threadId: rootId, includeChildren: true, reveal: false }) as TraceResult;
     const delegation = first.tree.children.flatMap((span) => span.children).find((span) => span.kind === "delegation");

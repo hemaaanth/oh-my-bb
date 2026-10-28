@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, fireEvent, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { rpcContract } from "./server";
 import type { TraceResult, TraceSpan } from "./spans";
@@ -14,7 +14,13 @@ function trace(threadId: string, reveal: boolean): TraceResult {
   const turn: TraceSpan = { id: "turn-1", threadId, turnId: "turn-t1", itemId: null, kind: "turn", name: "turn-t1",
     start: 1_000, end: 2_000, durationMs: 1_000, status: "completed", error: null,
     input: reveal ? "sensitive-waterfall" : null, output: null, inputSize: 19, outputSize: null,
-    metadata, usage: { totalTokens: 42 }, contextUsage: { usedTokens: 21 }, children: [] };
+    metadata, usage: { totalTokens: 42 }, contextUsage: { usedTokens: 21 },
+    children: [{ id: "tool-1", threadId, turnId: "turn-t1", itemId: "item-1", kind: "toolCall", name: "fetch",
+      start: 1_200, end: 1_500, durationMs: 300, status: "completed", error: null,
+      input: null, output: null, inputSize: null, outputSize: null, metadata, usage: null, contextUsage: null,
+      children: [{ id: "nested-1", threadId, turnId: "turn-t1", itemId: "nested-1", kind: "fileRead", name: "Child file",
+        start: 1_250, end: 1_300, durationMs: 50, status: "completed", error: null, input: null, output: null,
+        inputSize: null, outputSize: null, metadata, usage: null, contextUsage: null, children: [] }] }] };
   return { tree: { ...turn, id: "root", kind: "thread", name: "Test thread", turnId: null, input: null, inputSize: null, usage: null,
     contextUsage: null, children: [turn] }, summary: { elapsedMs: 1_000, activeMs: 1_000, counts: {}, timeMs: { wait: 100 },
     slowest: [], errors: [{ id: "error", kind: "toolCall", name: "Failed tool", error: null }] }, lastSeq: 2, eventCount: 2 };
@@ -49,6 +55,77 @@ describe("Traces thread UI", () => {
     expect(screen.queryByText("sensitive-waterfall")).toBeNull();
     expect(rendered.inspection.rpcCalls.filter((call) => call.method === "traces_thread").at(-1)?.input).toMatchObject({ reveal: false });
     rendered.lifecycle.unmount();
+  });
+
+  it("summarizes the focused turn and folds nested spans with keyboard navigation", async () => {
+    const rendered = renderSlot(panel, { subPath: "thr_abc/turn/turn-t1" }, { rpc: {
+      traces_thread: (input) => { const { threadId, reveal } = rpcContract.traces_thread.input.parse(input); return trace(threadId, reveal); },
+    } });
+    const region = await screen.findByRole("region", { name: "Waterfall spans" });
+    expect(screen.getByRole("region", { name: "Turn summary" }).textContent).toContain("2 tools");
+    expect(screen.getByRole("button", { name: "Collapse toolCall fetch" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Child file/ })).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Collapse toolCall fetch" })); });
+    expect(screen.queryByRole("button", { name: /Child file/ })).toBeNull();
+    region.focus();
+    await act(async () => { fireEvent.keyDown(region, { key: "ArrowRight" }); });
+    expect(screen.getByRole("button", { name: /Child file/ })).toBeTruthy();
+    await act(async () => { fireEvent.keyDown(region, { key: "ArrowDown" }); });
+    expect(screen.getByRole("button", { name: /Child file/ }).getAttribute("aria-current")).toBe("true");
+    expect(screen.getByRole("button", { name: "Previous turn" })).toHaveProperty("disabled", true);
+    rendered.lifecycle.unmount();
+  });
+
+  it("keeps explicit turn URLs without changing the BB thread ID", async () => {
+    const rendered = renderSlot(panel, { subPath: "thr_abc/turn/turn-t1" }, { rpc: {
+      traces_thread: (input) => { const { threadId, reveal } = rpcContract.traces_thread.input.parse(input);
+        const original = trace(threadId, reveal);
+        const next = { ...original.tree.children[0]!, id: "turn-2", turnId: "turn-t2", name: "turn-t2",
+          start: 3_000, end: 4_000, children: [] };
+        return { ...original, tree: { ...original.tree, children: [...original.tree.children, next] } }; },
+    } });
+    await screen.findByRole("region", { name: "Turn summary" });
+    expect(screen.getByRole("region", { name: "Turn summary" }).textContent).toContain("Turn 1 of 2");
+    expect(screen.getByRole("button", { name: "Waterfall" }).getAttribute("aria-current")).toBe("page");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Next turn" })); });
+    expect(rendered.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", path: "waterfall", options: { subPath: "thr_abc/turn/turn-t2" } });
+    rendered.lifecycle.unmount();
+  });
+
+  it("reports no turns before a thread begins instead of Turn 0 of 0", async () => {
+    const rendered = renderSlot(panel, { subPath: "thr_empty" }, { rpc: {
+      traces_thread: (input) => { const { threadId, reveal } = rpcContract.traces_thread.input.parse(input);
+        const initial = trace(threadId, reveal); return { ...initial, tree: { ...initial.tree, children: [] }, eventCount: 0 }; },
+    } });
+    expect((await screen.findByRole("region", { name: "Turn summary" })).textContent).toContain("No turns yet");
+    expect(screen.queryByText(/Turn 0 of 0/)).toBeNull();
+    rendered.lifecycle.unmount();
+  });
+
+  it("coalesces live append signals and catches up after socket reconnection", async () => {
+    let version = 2;
+    const rendered = renderSlot(panel, { subPath: "thr_abc/turn/turn-t1" }, { rpc: {
+      traces_thread: (input) => { const { threadId, reveal } = rpcContract.traces_thread.input.parse(input);
+        return { ...trace(threadId, reveal), eventCount: version }; },
+    } });
+    await screen.findByRole("region", { name: "Turn summary" });
+    expect(rendered.inspection.rpcCalls.filter((call) => call.method === "traces_thread")).toHaveLength(1);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      version = 8;
+      for (let index = 0; index < 10; index++) await rendered.behavior.emitRealtime("traces-changed", { threadId: "thr_abc" });
+      await rendered.behavior.emitRealtime("traces-changed", { threadId: "thr_other" });
+      expect(rendered.inspection.rpcCalls.filter((call) => call.method === "traces_thread")).toHaveLength(1);
+      await act(async () => { await vi.advanceTimersByTimeAsync(450); });
+      expect(rendered.inspection.rpcCalls.filter((call) => call.method === "traces_thread")).toHaveLength(2);
+      expect(screen.getByText(/Span · 8 events/)).toBeTruthy();
+      version = 9;
+      await rendered.behavior.setRealtimeConnectionState("reconnecting");
+      await rendered.behavior.setRealtimeConnectionState("connected");
+      await act(async () => { await vi.advanceTimersByTimeAsync(450); });
+      expect(screen.getByText(/Span · 9 events/)).toBeTruthy();
+      expect(rendered.inspection.rpcCalls.filter((call) => call.method === "traces_thread")).toHaveLength(3);
+    } finally { vi.useRealTimers(); rendered.lifecycle.unmount(); }
   });
 
   it("hides Context payload immediately on call switch or Reveal off", async () => {

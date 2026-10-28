@@ -47,7 +47,7 @@ describe("Traces native sidebar", () => {
 
   it("searches BB titles and IDs, and reveals hidden and archived threads only on request", async () => {
     const rendered = renderSlot(sidebar, { subPath: "context/thr_archived" }, { sidebarThreads: { threads: rows, projects } });
-    expect(screen.getByText(/Selected thread is hidden, archived, or unavailable/)).toBeTruthy();
+    expect(screen.getByText("Selected thread is archived. Enable Archived to show it.")).toBeTruthy();
     await act(async () => { fireEvent.click(screen.getByRole("checkbox", { name: "Hidden" })); });
     expect(screen.getByRole("button", { name: /Hidden worker, thr_hidden, hidden/ })).toBeTruthy();
     await act(async () => { fireEvent.click(screen.getByRole("checkbox", { name: "Archived" })); });
@@ -55,12 +55,23 @@ describe("Traces native sidebar", () => {
     const search = screen.getByRole("searchbox", { name: "Search Traces threads" });
     await act(async () => { fireEvent.change(search, { target: { value: "thr_two" } }); });
     expect(screen.getByRole("button", { name: /Second run, thr_two/ })).toBeTruthy();
+    expect(screen.getByText("Selected thread does not match this search.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /First run, thr_one/ })).toBeNull();
     await act(async () => { fireEvent.keyDown(search, { key: "Escape" }); });
     expect(screen.getByRole("button", { name: /First run, thr_one/ })).toBeTruthy();
     rendered.lifecycle.unmount();
   });
 
+  it("bounds broad searches and expands only one project's rows at a time", async () => {
+    const many = Array.from({ length: 120 }, (_, index): PluginSidebarThread => ({ ...base, id: `thr_${index}`, title: `Work ${index}`, displayTitle: `Work ${index}`, updatedAt: 1_000 + index }));
+    const rendered = renderSlot(sidebar, { subPath: "" }, { sidebarThreads: { threads: many, projects } });
+    const search = screen.getByRole("searchbox", { name: "Search Traces threads" });
+    await act(async () => { fireEvent.change(search, { target: { value: "Work" } }); });
+    expect(screen.getAllByRole("listitem")).toHaveLength(50);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Show 50 more" })); });
+    expect(screen.getAllByRole("listitem")).toHaveLength(100);
+    rendered.lifecycle.unmount();
+  });
   it("keeps unavailable and loading list states explicit", () => {
     const loading = renderSlot(sidebar, { subPath: "thr_unknown" }, { sidebarThreads: { status: "loading" } });
     expect(screen.getByRole("status").textContent).toContain("Loading BB threads");

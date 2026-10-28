@@ -27,14 +27,23 @@
 .traces-turn-item svg { width: 14px; height: 14px; color: var(--primary); }
 .traces-turn-trigger:focus-visible, .traces-turn-item:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .traces-controls .traces-reveal-on { color: var(--destructive); }
+.traces-turn-summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; padding: 10px 0; border-bottom: 1px solid var(--border); color: var(--muted-foreground); font-size: 11px; }
+.traces-turn-summary strong { color: var(--foreground); font-size: 12px; }
+.traces-turn-summary span:last-child { margin-left: auto; font-variant-numeric: tabular-nums; }
 .traces-axis, .traces-row { display: grid; grid-template-columns: minmax(180px, 280px) minmax(140px, 1fr) 66px; align-items: center; gap: 8px; }
 .traces-axis { padding: 7px 0; font-size: 11px; color: var(--muted-foreground); border-bottom: 1px solid var(--border); }
 .traces-axis > :last-child { text-align: right; }
 .traces-ticks { display: flex; justify-content: space-between; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .traces-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 300px); height: min(68vh, 800px); min-height: 280px; }
 .traces-list { min-width: 0; min-height: 0; overflow: auto; padding: 6px 0; scrollbar-color: var(--border) transparent; }
+.traces-list:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.traces-row-wrap { position: relative; height: 27px; }
+.traces-fold { position: absolute; top: 3px; z-index: 1; width: 21px; height: 21px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted-foreground); cursor: pointer; font-size: 13px; line-height: 1; }
+.traces-fold:hover { background: var(--accent); color: var(--foreground); }
+.traces-fold:focus-visible { outline: 2px solid var(--ring); }
 .traces-row { width: 100%; height: 27px; padding: 0 12px 0 0; border: 0; background: transparent; text-align: left; color: inherit; font: inherit; cursor: pointer; }
-.traces-row:hover, .traces-row:focus-visible { background: var(--accent); outline: none; }
+.traces-row:hover, .traces-row:focus-visible { background: var(--accent); }
+.traces-row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .traces-row-selected { background: var(--accent); box-shadow: inset 2px 0 0 var(--primary); }
 .traces-row-label { min-width: 0; display: flex; align-items: center; gap: 7px; }
 .traces-kind { flex: 0 0 auto; font-size: 9px; }

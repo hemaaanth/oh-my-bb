@@ -20,6 +20,7 @@ describe("prompt RPC and CLI boundary", () => {
         environments: { get: async () => ({ hostId: "host_remote" }) as never } },
       experimental_callHostRpc: async () => result,
     });
+    harness.sdk.stub("subscribe", () => () => {});
     plugin(bb);
     const hidden = await harness.behavior.callRpc("traces_prompt", { threadId: thread.id, call: 1, reveal: false }) as PromptResult;
     expect(hidden.status).toBe("available");
@@ -42,6 +43,7 @@ describe("prompt RPC and CLI boundary", () => {
     const thread = makeThreadResponse({ id: "thr_pi", providerId: "pi", environmentId: null });
     const { bb, harness } = createFakePluginHost({ pluginId: "traces", experimental_hostEntry: true,
       sdk: { threads: { get: async () => thread } }, experimental_callHostRpc: async () => { throw new Error("Must not run"); } });
+    harness.sdk.stub("subscribe", () => () => {});
     plugin(bb);
     const result = await harness.behavior.callRpc("traces_prompt", { threadId: thread.id, call: null, reveal: false }) as PromptResult;
     expect(result.status).toBe("unsupported");
@@ -57,6 +59,7 @@ describe("prompt RPC and CLI boundary", () => {
         environments: { get: async () => ({ hostId: "host_remote" }) as never } },
       experimental_callHostRpc: async () => { throw new Error(`Path with ${secret}`); },
     });
+    harness.sdk.stub("subscribe", () => () => {});
     plugin(bb);
     const result = await harness.behavior.callRpc("traces_prompt", { threadId: thread.id, call: null, reveal: false }) as PromptResult;
     expect(result.status).toBe("unavailable");
