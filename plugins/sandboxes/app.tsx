@@ -1,3 +1,4 @@
+import { SandboxSizeOptions } from "./components/sandbox-size-options.js";
 import { imageTools, defaultImageTools, type ImageRecipe } from "./src/image-tools.js";
 import { ImagePackageTags } from "./components/image-package-tags.js";
 import type { AttachmentsView } from "./src/attachment-contract.js";
@@ -29,7 +30,6 @@ import {
 } from "./components/ui/popover";
 import { sandboxProviderValues, type SandboxProvider } from "./src/backend.js";
 import {
-  formatSizeTier,
   sandboxSizeTierValues,
 } from "./src/size-tiers.js";
 import type {
@@ -1438,14 +1438,7 @@ function SandboxSizeInputs({ value, onChange }: PluginMachineProviderInputsProps
           {selected === SIZE_DEFAULT ? "Default size" : `Size ${selected}`}
         </div>
       </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={SIZE_DEFAULT}>Project default</SelectItem>
-        {sandboxSizeTierValues.map((tier) => (
-          <SelectItem key={tier} value={tier}>
-            {formatSizeTier(tier)}
-          </SelectItem>
-        ))}
-      </SelectContent>
+      <SandboxSizeOptions projectDefault />
     </Select>
   );
 }
