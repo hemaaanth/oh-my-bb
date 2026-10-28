@@ -12,13 +12,13 @@ Catch up in each thread's native three-dot menu opens a saved briefing: the orig
 
 The Journal page offers daily, weekly, and all-time replay with per-day outcomes, work-category filters, project breakdowns, and a separate lifecycle context. Visible child-agent and side-chat work rolls into the parent day with links, so it does not inflate counts. Hidden workers remain omitted. Test-category activity stays visible.
 
-Calendar shows agent turns as time blocks. Time sheet groups agent hours by thread or project and copies them as CSV. Traces shows raw turns, failures, and input requests. Calendar and Time sheet deliberately use a wider day-column canvas; text views align with BB Settings.
+Calendar shows agent turns as time blocks. Time sheet groups agent hours by thread or project and copies them as CSV. Calendar and Time sheet deliberately use a wider day-column canvas; text views align with BB Settings.
 
 Categories cover bug fixes, features, improvements, research, analysis, operations, content, planning, reviews, projects, and tests. Local title rules work without an API key; manual corrections win over model results. The work-day timezone defaults to America/New_York and is configurable for new indexing and explicit backfill.
 
 ## Dispatch calls, if you want them
 
-An optional Dispatch integration shows voice-agent calls as a thin rail beside the agent blocks in the Calendar, with their own rows in Traces. It is off by default; the Calls toggle turns it on. Journal reads calls from Dispatch on demand and stores nothing. Calls never count toward agent hours.
+An optional Dispatch integration shows voice-agent calls as a thin rail beside the agent blocks in the Calendar. It is off by default; the Calls toggle turns it on. Journal reads calls from Dispatch on demand and stores nothing. Calls never count toward agent hours.
 
 ## Settings with clear ownership
 

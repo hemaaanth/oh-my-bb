@@ -24,7 +24,6 @@ export type Grouping = "thread" | "project";
 export type ColorMode = "project" | "work";
 export type ProjectStyle = { id: string; name: string; color: string; order: number };
 export type CalendarFilters = { query: string; category: JournalCategory | "all"; projectId: string };
-export type TraceTurn = Activity["turns"][number];
 export type CalendarCall = NonNullable<Activity["calls"]>[number];
 
 // Week stays compact; Day and 3 days give a quarter hour room for one line.

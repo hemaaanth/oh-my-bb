@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakePluginHost, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import plugin, {
-  ENRICH_STARTUP_DELAY_MS, FEED_WINDOW_MS,
+  ENRICH_STARTUP_DELAY_MS,
   briefCatchUpText, classifyThread, cleanSummary, groupMessagesByDay, localDayStart, normalizeIntelligence, plainPreview, readContract, rpcContract, selectTranscript,
 } from "./server";
 import { addWorkDays } from "./shared";
@@ -665,30 +665,6 @@ describe("background enrichment", () => {
     expect(plainPreview("## Done\n\nPushed **the fix** in `1d70ca6`, see [PR #96](https://x.test/96).")).toBe("Done Pushed the fix in 1d70ca6, see PR #96");
   });
 
-  it("keeps failures and input requests for traces on their own channel", async () => {
-    const { harness } = await loadJournal([thread("thr_a")]);
-    const traces = async (from = 0, to = Date.now() + 1) => (await harness.behavior.callRpc("journal_traces", { from, to }) as { events: Array<{ threadId: string; kind: string; preview: string | null }> }).events;
-    await harness.behavior.emitThreadEvent("thread.active", { thread: thread("thr_a") } as never);
-    await vi.advanceTimersByTimeAsync(1_000);
-    await harness.behavior.emitThreadEvent("interaction.pending", { thread: thread("thr_a"), interaction: { payload: { kind: "user_question" } } } as never);
-    await vi.advanceTimersByTimeAsync(1_000);
-    await harness.behavior.emitThreadEvent("thread.idle", { thread: thread("thr_a"), lastAssistantText: "Done." } as never);
-    await vi.advanceTimersByTimeAsync(1_000);
-    await harness.behavior.emitThreadEvent("thread.failed", { thread: thread("thr_b"), error: "Provider crashed" } as never);
-    // Turns cover active and idle, so only failures and input requests are kept.
-    expect(await traces()).toMatchObject([
-      { threadId: "thr_b", kind: "failed", preview: "Provider crashed" },
-      { threadId: "thr_a", kind: "input", preview: "Asked a question" },
-    ]);
-    expect(await traces(Date.now())).toHaveLength(1);
-    expect(harness.inspection.realtimeSignals.filter((signal) => signal.channel === "journal-feed")).toHaveLength(2);
-    await vi.advanceTimersByTimeAsync(FEED_WINDOW_MS - 1_500);
-    await harness.behavior.emitThreadEvent("thread.failed", { thread: thread("thr_a"), error: "Again" } as never);
-    expect((await traces()).map((event) => event.preview)).toEqual(["Again", "Provider crashed"]);
-    await harness.behavior.emitThreadEvent("thread.deleted", { thread: thread("thr_b") } as never);
-    expect((await traces()).map((event) => event.preview)).toEqual(["Again"]);
-    await harness.lifecycle.dispose();
-  });
 
   it("returns a stale narrative at once and regenerates it once in the background", async () => {
     const { harness, db } = await loadJournal([]);

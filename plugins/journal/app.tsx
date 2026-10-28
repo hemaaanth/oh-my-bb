@@ -7,7 +7,6 @@ import { addWorkDays, CATEGORIES, categoryLabels, DEFAULT_WORK_TIME_ZONE, localD
 import { addDays, CHANGE_CHANNEL, DEFAULT_MERGE_GAP_MINUTES, formatDuration, MERGE_GAP_MINUTES, startOfDay, startOfWeek, type MergeGapMinutes } from "./calendar";
 import { CalendarEmpty, CalendarLegend, CalendarStats, CalendarView, filterActivity, OTHER_COLOR, Segmented, Swatch, useColors, useRevealed, type CalendarFilters, type ColorMode, type Grouping } from "./calendar-view";
 import { TimesheetView } from "./timesheet-view";
-import { TracesView } from "./traces-view";
 import { CatchUpOverlay } from "./catch-up";
 import { openThreadBrief, ThreadBriefOverlay } from "./thread-brief";
 import { Button } from "@/components/ui/button";
@@ -156,7 +155,7 @@ function PanelHeader() {
 
 // "What": the range, grouping, color and filters sit on top and apply to every view.
 // "How": the views below only change the presentation.
-const VIEWS = ["calendar", "timesheet", "activity", "traces"] as const;
+const VIEWS = ["calendar", "timesheet", "activity"] as const;
 type View = typeof VIEWS[number];
 const RANGES = ["day", "3days", "week", "all"] as const;
 type RangeKind = typeof RANGES[number];
@@ -166,7 +165,7 @@ const dayTitleFormat = new Intl.DateTimeFormat(undefined, { weekday: "long", mon
 // One tab row used to mix ranges and views; carry a saved choice over.
 const LEGACY_VIEW_KEY = "journal.calendar.view";
 const LEGACY_VIEWS: Record<string, [View, RangeKind]> = {
-  day: ["calendar", "day"], "3days": ["calendar", "3days"], week: ["calendar", "week"], timesheet: ["timesheet", "week"], all: ["activity", "all"], activity: ["traces", "day"],
+  day: ["calendar", "day"], "3days": ["calendar", "3days"], week: ["calendar", "week"], timesheet: ["timesheet", "week"], all: ["activity", "all"],
 };
 function legacyChoice(): [View, RangeKind] | undefined {
   try { return LEGACY_VIEWS[window.localStorage.getItem(LEGACY_VIEW_KEY) ?? ""]; } catch { return undefined; }
@@ -223,7 +222,7 @@ function JournalPanel() {
   const range = useMemo(() => calendarRange(rangeKind, day), [rangeKind, day]);
   const loadCalendar = useCallback((from: number, to: number, mergeGapMinutes: MergeGapMinutes) => () =>
     rpc.call("journal_calendar", { from, to, mergeGapMinutes }).then((wire): CalendarActivity => unpackCalendar(wire)), [rpc]);
-  const loadTraces = useCallback((from: number, to: number) => () => rpc.call("journal_traces", { from, to }), [rpc]);
+  // Every view needs the calendar: its blocks, or at least the project colors.
   // Every view needs the calendar: its blocks, or at least the project colors.
   const calendar = useSnapshot("calendar", `${range.from}:${range.to}:${gap}`, loadCalendar(range.from, range.to, gap));
   useRealtime(CHANGE_CHANNEL, calendar.refresh);
@@ -233,8 +232,6 @@ function JournalPanel() {
     const timer = window.setInterval(calendar.refresh, 60_000); return () => window.clearInterval(timer);
   }, [rangeKind, range.to, calendar.refresh]);
 
-  const traces = useSnapshot("traces", view === "traces" ? `${range.from}:${range.to}` : null, loadTraces(range.from, range.to));
-  useDebouncedRealtime("journal-feed", traces.refresh);
 
   // Activity covers the work days the range touches. Typing settles before it refetches.
   const replayQuery = useDebounced(query, 200);
@@ -253,7 +250,6 @@ function JournalPanel() {
     const next = calendarRange(kind === "all" && target !== "activity" ? "week" : kind, targetDay);
     if (next.from > Date.now()) return;
     prefetch("calendar", `${next.from}:${next.to}:${targetGap}`, loadCalendar(next.from, next.to, targetGap));
-    if (target === "traces") prefetch("traces", `${next.from}:${next.to}`, loadTraces(next.from, next.to));
     // Activity can start an AI narrative, so it only loads on a hover, never while idle.
     if (target === "activity") {
       const input = replayInputFor(kind, next.from, next.to);
@@ -261,17 +257,16 @@ function JournalPanel() {
     }
   };
   const latestPrefetch = useRef(prefetchView); latestPrefetch.current = prefetchView;
-  // Once the shown range has loaded, warm the ranges either side and the Traces spans.
+  // Once the shown range has loaded, warm the ranges either side.
   const settled = calendar.data !== null && !calendar.isStale;
   useEffect(() => {
     if (!settled || rangeKind === "all") return;
     const timer = window.setTimeout(() => {
       const prefetchIdle = latestPrefetch.current; const step = RANGE_DAYS[rangeKind];
       prefetchIdle("calendar", rangeKind, addDays(day, -step)); prefetchIdle("calendar", rangeKind, addDays(day, step));
-      prefetch("traces", `${range.from}:${range.to}`, loadTraces(range.from, range.to));
     }, PREFETCH_IDLE_MS);
     return () => window.clearTimeout(timer);
-  }, [settled, rangeKind, day, range, loadTraces]);
+  }, [settled, rangeKind, day]);
 
   const colors = useColors(calendar.data);
   const filters = useMemo<CalendarFilters>(() => ({ query, category, projectId }), [query, category, projectId]);
@@ -290,8 +285,8 @@ function JournalPanel() {
   const dayCount = rangeKind === "all" ? 7 : RANGE_DAYS[rangeKind];
   const selectDay = (dayStart: number) => { setDay(dayStart); setRange("day"); chooseView("calendar"); };
   const rangeTitle = rangeKind === "all" ? "Every recorded work day" : rangeKind === "day" ? dayTitleFormat.format(range.from) : rangeTitleFormat.formatRange(range.from, range.to - 1);
-  const active = view === "activity" ? replay : view === "traces" ? traces : calendar;
-  const timeViewReady = visible !== null && (view !== "traces" || traces.data !== null);
+  const active = view === "activity" ? replay : calendar;
+  const timeViewReady = visible !== null;
 
   // Vertical padding sits inside the scroller, so sticky headers stick flush to its top.
   // The calendar and time sheet need a wider canvas for day columns. Text views match Settings.
@@ -321,7 +316,7 @@ function JournalPanel() {
       </TabsList></Tabs>
       <div className="ml-auto flex items-center gap-2">
         {active.isStale ? <span className="text-xs text-muted-foreground">Loading…</span> : null}
-        {view === "calendar" || view === "traces" ? <Button size="sm" variant="ghost" className="h-8 gap-1.5 px-2.5" aria-pressed={showCalls} aria-label="Show Dispatch calls" onClick={toggleCalls}>
+        {view === "calendar" ? <Button size="sm" variant="ghost" className="h-8 gap-1.5 px-2.5" aria-pressed={showCalls} aria-label="Show Dispatch calls" onClick={toggleCalls}>
           <Icon name="Call" />Calls</Button> : null}
         {view === "calendar" || view === "timesheet" ? <Segmented label="Merge gap" title="Merge agent turns separated by at most this many idle minutes. Blocks round out to quarter hours; child threads and side chats count toward their root thread." value={gap} onChange={setGap}
           onHover={(next) => prefetchView(view, rangeKind, day, next)}
@@ -342,7 +337,7 @@ function JournalPanel() {
           <TimesheetView activity={visible} rangeStart={range.from} dayCount={dayCount} grouping={grouping} colorMode={colorMode} colors={colors}
             now={now} onOpen={openThread} onSelectDay={selectDay} />
         </>
-        : <TracesView activity={visible} events={traces.data?.events ?? []} grouping={grouping} colorMode={colorMode} colors={colors} multiDay={dayCount > 1} now={now} onOpen={openThread} />}
+        : null}
       </div>}
   </div>
     <Dialog.Root open={openThreadId !== null} onOpenChange={(open) => { if (!open) setOpenThreadId(null); }}>
@@ -362,7 +357,7 @@ function JournalPanel() {
   </div>;
 }
 const rangeLabels: Record<RangeKind, string> = { day: "Day", "3days": "3 days", week: "Week", all: "All time" };
-const viewLabels: Record<View, string> = { calendar: "Calendar", timesheet: "Time sheet", activity: "Activity", traces: "Traces" };
+const viewLabels: Record<View, string> = { calendar: "Calendar", timesheet: "Time sheet", activity: "Activity" };
 
 /** The enriched view: what the work was, one entry per thread and work day. */
 function ActivityCard(props: {

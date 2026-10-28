@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Remove the legacy Traces view and its raw-turn and event feed. Calendar, its turn data, and optional Dispatch calls remain.
 
 - Move Catch up from the thread top bar into the native three-dot menu and sidebar thread menus, with the canonical Journal icon. Keep saved briefing reads, reload, and background refresh unchanged.
 - Shorten settings descriptions and remove the backend-details disclosure and Test button. Keep readiness CLI and inference RPC behavior unchanged; setup details remain in the dedicated guide.

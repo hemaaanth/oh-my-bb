@@ -139,7 +139,7 @@ export function JournalSetup() {
       <Button size="sm" variant="outline" asChild><UrlLink href="/settings/plugins/journal">Open Configuration</UrlLink></Button>
     </section>
     <section className="space-y-2 text-sm leading-relaxed"><h2 className="font-medium">Optional Dispatch calls</h2>
-      <p>The Calls toggle and Show Dispatch calls control under Oh My BB share one opt-in. While enabled, Calendar and Traces read Dispatch calls on demand. Missing Dispatch does not block Journal. Calls never count toward agent hours.</p>
+      <p>The Calls toggle and Show Dispatch calls control under Oh My BB share one opt-in. While enabled, Calendar reads Dispatch calls on demand. Missing Dispatch does not block Journal. Calls never count toward agent hours.</p>
       <p className="text-muted-foreground">Journal does not install, enable, or contact Dispatch at startup. Dispatch owns call memory and retention.</p>
     </section>
     <Button size="sm" variant="outline" onClick={() => navigate.toPluginPanel("journal")}>Back to Journal</Button>

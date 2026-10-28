@@ -40,7 +40,7 @@ bb journal log [--day today|yesterday|YYYY-MM-DD | --week this|last|YYYY-MM-DD] 
 
 To see what happened in a thread, use `bb journal show <id>` or `bb thread show <id>`.
 
-Dispatch voice calls are not agent hours. The CLI never shows them. When **Oh My BB → Show Dispatch calls** is on (off by default), the Journal Calendar and Traces show calls read from Dispatch on demand; Journal stores nothing about them.
+Dispatch voice calls are not agent hours. The CLI never shows them. When **Oh My BB → Show Dispatch calls** is on (off by default), the Journal Calendar shows calls read from Dispatch on demand; Journal stores nothing about them.
 
 ## Work history
 

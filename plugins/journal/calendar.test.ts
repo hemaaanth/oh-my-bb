@@ -19,7 +19,6 @@ import {
   startOfWeek,
   type TurnInterval,
 } from "./calendar";
-import { traceRows } from "./traces";
 
 // vitest.config.ts pins TZ to America/Toronto.
 const at = (day: number, hour: number, minute = 0) =>
@@ -234,20 +233,5 @@ describe("Dispatch call rail", () => {
     expect(filterCalls(calls, "")).toHaveLength(3);
     expect(filterCalls(calls, "release")).toEqual([calls[0]]);
     expect(filterCalls(calls, " billing ")).toEqual([calls[1]]);
-  });
-});
-
-describe("traceRows", () => {
-  it("lists calls with turns and events, newest first", () => {
-    const callRow = { id: "call_1", start: at(5, 10), end: at(5, 10, 5), channel: "app" as const, device: null, remembered: true,
-      title: "Standup", summary: "Went over the day.", threadIds: ["thr_a"] };
-    const rows = traceRows(
-      [{ threadId: "thr_a", start: at(5, 9), end: at(5, 9, 30) }, { threadId: "thr_a", start: at(5, 11), end: null }],
-      [{ id: 1, threadId: "thr_a", kind: "failed", occurredAt: at(5, 9, 30), preview: "boom" } as never, { id: 2, threadId: "thr_gone", kind: "input", occurredAt: at(5, 12), preview: null } as never],
-      [callRow],
-    );
-    expect(rows.map((row) => [row.kind, row.at])).toEqual([["turn", at(5, 11)], ["call", at(5, 10)], ["failed", at(5, 9, 30)], ["turn", at(5, 9)]]);
-    expect(rows[1]).toMatchObject({ key: "call:call_1", end: at(5, 10, 5), call: callRow });
-    expect(traceRows([], [])).toEqual([]);
   });
 });

@@ -69,15 +69,8 @@ const replayPeriodSchema = z.object({
   total: z.number().int(), narrative: z.string().nullable(), narrativeStale: z.boolean(),
 });
 
-// Older rows also hold "active" and "idle"; turns now cover those, so traces read only these two.
-const feedKindSchema = z.enum(["failed", "input"]);
-const feedEventSchema = z.object({
-  id: z.number().int(), threadId: z.string(), kind: feedKindSchema, occurredAt: z.number(), preview: z.string().nullable(),
-});
 
 export type JournalEntry = z.infer<typeof entrySchema>;
-export type FeedKind = z.infer<typeof feedKindSchema>;
-export type FeedEvent = z.infer<typeof feedEventSchema>;
 export type JournalCategory = z.infer<typeof categorySchema>;
 export type JournalEventType = z.infer<typeof eventTypeSchema>;
 
@@ -142,7 +135,7 @@ export const calendarSchema = z.object({
     childThreadIds: z.array(z.string()),
     work: calendarWorkSchema.nullable(),
   })),
-  /** Raw turns in range, not rolled up or merged: the spans the Traces view lists. */
+  /** Raw turns in range, retained for Calendar filtering and time calculations. */
   turns: z.array(z.object({ threadId: z.string(), start: z.number(), end: z.number().nullable() })),
   /** Dispatch calls overlapping the range, oldest first. Absent while "Show Dispatch calls" is off. */
   calls: z.array(calendarCallSchema).optional(),
@@ -236,7 +229,6 @@ export const rpcContract = defineRpcContract({
     input: z.object({ force: z.boolean().optional() }),
     output: catchUpNarrativeSchema,
   },
-  journal_traces: { input: z.object({ from: z.number().int().nonnegative(), to: z.number().int().positive() }), output: z.object({ events: z.array(feedEventSchema) }) },
   journal_set_show_calls: { input: z.object({ enabled: z.boolean() }), output: z.object({ enabled: z.boolean() }) },
 });
 
@@ -313,11 +305,6 @@ export const readContract = defineRpcContract({
 
 const JOURNAL_CHANGED = "journal-changed";
 export const BRIEF_CHANGED = "journal-brief";
-// A separate channel so a failure refreshes the traces, not the replay view.
-const FEED_CHANGED = "journal-feed";
-// Failures and input requests stay as long as the widest calendar range.
-export const FEED_WINDOW_MS = MAX_RANGE_MS;
-const FEED_MAX_EVENTS = 2_000;
 type ThreadLike = {
   id: string; projectId: string; providerId: string; title: string | null;
   titleFallback: string | null; parentThreadId: string | null; sourceThreadId: string | null; originPluginId: string | null;
@@ -457,13 +444,6 @@ export function plainPreview(text: string, max = 280): string {
   return oneLine(text.replace(/^\s{0,3}#{1,6}\s+/gmu, "").replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1").replace(/\*\*|__|`/gu, ""), max);
 }
 
-/** A short label for a pending interaction, from its payload alone. */
-export function interactionLabel(interaction: { payload?: unknown }): string {
-  const payload = interaction.payload as { kind?: unknown; title?: unknown } | undefined;
-  if (payload?.kind === "user_question") return "Asked a question";
-  if (payload?.kind === "approval") return "Needs approval";
-  return typeof payload?.title === "string" && payload.title.trim() ? oneLine(payload.title, 240) : "Needs input";
-}
 
 export function classifyThread(thread: Pick<ThreadLike, "title" | "titleFallback">): JournalCategory {
   const text = `${thread.title ?? ""} ${thread.titleFallback ?? ""}`;
@@ -611,6 +591,7 @@ export default async function plugin(bb: BbPluginApi) {
     );
     CREATE TABLE IF NOT EXISTS journal_brief_pending (thread_id TEXT PRIMARY KEY, idle_at INTEGER NOT NULL);`,
     `ALTER TABLE journal_ai_usage ADD COLUMN usage_unknown INTEGER NOT NULL DEFAULT 0;`,
+    `DROP TABLE IF EXISTS journal_feed_events;`,
   ]);
 
   // Side chats are forks: BB records their owner in sourceThreadId, not parentThreadId.
@@ -1658,13 +1639,6 @@ export default async function plugin(bb: BbPluginApi) {
     await upsertThread(thread); addEvent(thread.id, eventType, occurredAt);
     bb.realtime.publish(JOURNAL_CHANGED, { threadId: thread.id, eventType });
   }
-  // The feed stores only what the event payload already carries; the app
-  // reads each thread's live status and read state from bb's sidebar cache.
-  function addFeedEvent(threadId: string, kind: FeedKind, preview: string | null, occurredAt = Date.now()) {
-    db.prepare("DELETE FROM journal_feed_events WHERE occurred_at < ?").run(occurredAt - FEED_WINDOW_MS);
-    db.prepare("INSERT INTO journal_feed_events (thread_id, kind, occurred_at, preview) VALUES (?, ?, ?, ?)").run(threadId, kind, occurredAt, preview?.trim() ? plainPreview(preview) : null);
-    bb.realtime.publish(FEED_CHANGED, { threadId, kind });
-  }
   async function listAllThreads(archived: boolean): Promise<ThreadLike[]> {
     const collected: ThreadLike[] = []; const limit = 200;
     for (let offset = 0; ; offset += limit) {
@@ -2232,10 +2206,6 @@ export default async function plugin(bb: BbPluginApi) {
       }) };
     },
     journal_catch_up_narrative: (input) => catchUpNarrative(input),
-    journal_traces: ({ from, to }) => ({
-      events: db.prepare(`SELECT id, thread_id AS threadId, kind, occurred_at AS occurredAt, preview FROM journal_feed_events
-        WHERE kind IN ('failed', 'input') AND occurred_at >= ? AND occurred_at < ? ORDER BY occurred_at DESC, id DESC LIMIT ?`).all(from, to, FEED_MAX_EVENTS) as FeedEvent[],
-    }),
     // Calendar and Oh My BB write the same persisted integration opt-in.
     journal_set_show_calls: async ({ enabled }) => ({ enabled: (await preferences.update({ showDispatchCalls: enabled })).showDispatchCalls }),
   });
@@ -2244,7 +2214,6 @@ export default async function plugin(bb: BbPluginApi) {
   bb.events.on("thread.archived", async ({ thread }) => { await record(thread, "archived", thread.archivedAt ?? Date.now()); if (isJournalWorthy(thread)) noteArchived(thread.id); });
   bb.events.on("thread.unarchived", async ({ thread }) => { await record(thread, "unarchived"); db.prepare("UPDATE journal_pending_enrichment SET archived=0 WHERE thread_id=?").run(thread.id); });
   bb.events.on("thread.deleted", async ({ thread }) => {
-    db.prepare("DELETE FROM journal_feed_events WHERE thread_id=?").run(thread.id);
     // A deleted child stops counting toward its root's briefing; queue the root so the change is seen.
     const formerRoot = visibleRoot(thread.id);
     await record(thread, "deleted"); db.prepare("DELETE FROM journal_pending_enrichment WHERE thread_id=?").run(thread.id);
@@ -2279,12 +2248,10 @@ export default async function plugin(bb: BbPluginApi) {
       if (automaticBriefs()) noteBrief(thread.id);
     }
   });
-  bb.events.on("thread.failed", ({ thread, error }) => addFeedEvent(thread.id, "failed", error));
   for (const event of ["thread.active", "thread.idle", "thread.failed", "thread.archived", "thread.unarchived"] as const) {
     bb.events.on(event, ({ thread }) => scheduleTurnSync(thread));
   }
   bb.events.on("thread.deleted", ({ thread }) => { deleteTurnThread(db, thread.id); signalCalendar(); });
-  bb.events.on("interaction.pending", ({ thread, interaction }) => addFeedEvent(thread.id, "input", interactionLabel(interaction)));
 
   bb.background.service("enrichment-queue", {
     async start(signal) {
