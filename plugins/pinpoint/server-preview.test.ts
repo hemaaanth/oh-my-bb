@@ -26,7 +26,8 @@ async function host() {
   const routes = new Hono();
   const register = bb.http.route.bind(bb.http);
   bb.http.route = (method, path, handler, options) => {
-    routes.on(method, path, handler as Handler);
+    // BB matches plugin HTTP routes by exact path, not Hono's parameter syntax.
+    if (!/[:*]/.test(path)) routes.on(method, path, handler as Handler);
     return register(method, path, handler, options);
   };
   await plugin(bb);
@@ -50,6 +51,19 @@ async function bootstrap(harness: PreviewTestHost, target = TARGET + "/start?tab
 }
 
 describe("opaque preview resource capabilities", () => {
+  it("loads the preview root created by the address-bar redirect", async () => {
+    const harness = await host();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("<html><body>Demo page</body></html>", {
+      headers: { "content-type": "text/html" },
+    })));
+    const path = await bootstrap(harness, "http://localhost:8787/");
+    expect(path).toMatch(/\/preview\?token=[a-f0-9]{64}&path=%2F$/);
+    const response = await harness.behavior.fetchHttp("GET", path);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(await response.text()).toContain("Demo page");
+  });
+
   it("keeps queries and target resources while withholding BB credentials and response authority", async () => {
     const harness = await host();
     const upstream = vi.fn(async (_url: string, _options?: RequestInit) => new Response('<html><head><script src="/app.js"></script></head><body>synthetic<img src="https://*"><img src="https://bb.example.test/private"></body></html>', {
@@ -74,8 +88,25 @@ describe("opaque preview resource capabilities", () => {
     expect(csp).not.toContain(" https://bb.example.test ");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
     const text = await response.text();
-    expect(text).toContain(path.split("/start")[0] + "/app.js");
+    expect(text).toContain(`${path.split("&path=")[0]}&amp;path=%2Fapp.js`);
     expect(text).not.toContain("never_forward");
+  });
+
+  it("explains protected BB Connect previews without forwarding owner cookies", async () => {
+    const harness = await host();
+    const upstream = vi.fn(async (_url: string, _options?: RequestInit) => new Response("<html><head><title>bb connect</title></head><body>Sign in</body></html>", {
+      status: 401, headers: { "content-type": "text/html" },
+    }));
+    vi.stubGlobal("fetch", upstream);
+    const path = await bootstrap(harness, "https://owner--8787.getbb.app/demo?q=one");
+    const response = await harness.behavior.fetchHttp("GET", path, {
+      headers: { cookie: "synthetic_owner_session=never_forward" },
+    });
+    expect(response.status).toBe(401);
+    expect(response.headers.get("content-type")).toContain("text/plain");
+    expect(response.headers.get("content-security-policy")).toContain("sandbox ");
+    expect(await response.text()).toContain("http://localhost:8787/demo?q=one");
+    expect(new Headers(upstream.mock.calls[0]![1]?.headers).get("cookie")).toBeNull();
   });
 
   it("does not issue a capability to an opaque or cross-site document or to BB itself", async () => {
@@ -98,7 +129,7 @@ describe("opaque preview resource capabilities", () => {
     const upstream = vi.fn(async () => new Response(null, { status: 302, headers: { location: "https://bb.example.test/private" } }));
     vi.stubGlobal("fetch", upstream);
     const path = await bootstrap(harness);
-    expect((await harness.behavior.fetchHttp("GET", "/preview/not-a-capability/start")).status).toBe(410);
+    expect((await harness.behavior.fetchHttp("GET", "/preview?token=not-a-capability&path=%2Fstart")).status).toBe(410);
     expect((await harness.behavior.fetchHttp("POST", path, { body: "synthetic write" })).status).toBe(404);
     expect(upstream).not.toHaveBeenCalled();
     const response = await harness.behavior.fetchHttp("GET", path);

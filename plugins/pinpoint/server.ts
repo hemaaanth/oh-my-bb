@@ -1212,7 +1212,7 @@ export const PICKER_JS = `
       `<script>(function(){var done=false;function go(){if(done)return;done=true;var s=document.getElementById('pp-fouc');if(s)s.textContent='html{opacity:1;transition:opacity .14s ease-out}';}if(document.readyState==='complete')go();else window.addEventListener('load',go);setTimeout(go,${foucCapMs});})();</script>`;
     // Absolute capability URL: the app's <base> must not retarget this library.
     const pickerLib = SNAPDOM_SOURCE
-      ? `<script src="${escapeAttr(`${proxyUrl}/.pinpoint/picker-lib.js`)}"></script>`
+      ? `<script src="${escapeAttr(previewResourceUrl(proxyUrl, new URL('/.pinpoint/picker-lib.js', target)))}"></script>`
       : "";
     const head =
       foucGate +
@@ -2731,7 +2731,7 @@ export default async function plugin(bb: BbPluginApi) {
       const session = previews.create({
         threadId, origin: target.origin, viewerOrigin, hostId,
       });
-      const base = `${viewerOrigin}${proxyBase.replace(/\/proxy$/, "/preview")}/${session.token}`;
+      const base = `${viewerOrigin}${proxyBase.replace(/\/proxy$/, "/preview")}?token=${session.token}`;
       return new Response(null, {
         status: 303,
         headers: { location: previewResourceUrl(base, target), "cache-control": "no-store", "referrer-policy": "no-referrer" },
@@ -2743,15 +2743,14 @@ export default async function plugin(bb: BbPluginApi) {
 
   // The bearer reads only one selected origin. It cannot call BB RPC, write
   // feedback, forward browser credentials, or follow an off-origin redirect.
-  bb.http.route("GET", "/preview/:token/*", async (c) => {
-    const token = c.req.param("token") ?? "";
+  const previewResource: Parameters<typeof bb.http.route>[2] = async (c) => {
+    const token = c.req.query("token") ?? "";
     const session = previews.get(token);
     if (!session) return c.text("Preview expired. Reload it from Pinpoint.", 410);
-    const requestUrl = new URL(c.req.url);
-    const marker = `/preview/${token}`;
-    const path = requestUrl.pathname.slice(requestUrl.pathname.indexOf(marker) + marker.length);
-    const target = new URL(`${session.origin}${path}${requestUrl.search}`);
-    const base = `${session.viewerOrigin}${proxyBase.replace(/\/proxy$/, "/preview")}/${token}`;
+    const path = c.req.query("path") ?? "/";
+    if (!path.startsWith("/")) return c.text("Invalid preview resource path.", 400);
+    const target = new URL(`${session.origin}${path}`);
+    const base = `${session.viewerOrigin}${proxyBase.replace(/\/proxy$/, "/preview")}?token=${token}`;
     const headers = previewHeaders(session, base);
     try {
       assertPreviewUrl(target, session.origin);
@@ -2776,6 +2775,12 @@ export default async function plugin(bb: BbPluginApi) {
       let body: string | Uint8Array<ArrayBuffer> = bytes;
       if (contentType.includes("text/html")) {
         const html = new TextDecoder().decode(bytes);
+        if (upstream.status === 401 && /(^|\.)getbb\.app$/i.test(target.hostname) && /<title>\s*bb connect\s*<\/title>/i.test(html)) {
+          return new Response(
+            `Pinpoint cannot open this BB Connect sign-in page. It does not forward browser login cookies. If the app runs on this thread's host, enter http://localhost:${target.hostname.match(/--(\d+)\.getbb\.app$/i)?.[1] ?? "PORT"}${target.pathname}${target.search} in the Pinpoint address bar instead.`,
+            { status: 401, headers: { ...headers, "content-type": "text/plain; charset=utf-8" } },
+          );
+        }
         const protectedOrigins = new Set([session.viewerOrigin, new URL(bb.server.loopbackBaseUrl).origin]);
         if (bb.server.experimental_appUrl) protectedOrigins.add(new URL(bb.server.experimental_appUrl).origin);
         collectResourceOrigins(html, session, protectedOrigins);
@@ -2794,11 +2799,8 @@ export default async function plugin(bb: BbPluginApi) {
         status: 502, headers: { ...headers, "content-type": "text/plain; charset=utf-8" },
       });
     }
-  }, { auth: "none" });
-
-
-
-
+  };
+  bb.http.route("GET", "/preview", previewResource, { auth: "none" });
 
   // -------------------------------------------------------------------------
   // Native agent tools (bb-native harness-agnostic path)
@@ -3330,7 +3332,7 @@ export function proxyShim(
   return `(function(){var T=${quote(targetHref)},P=${quote(proxyBase)},O,H=location.hash;try{O=new URL(T).origin;}catch(_){O="";}
 function storage(name){try{if(window[name])return;}catch(_){}var data=Object.create(null),keys=[];var value={get length(){return keys.length;},key:function(i){return keys[i]===undefined?null:keys[i];},getItem:function(k){k=String(k);return Object.prototype.hasOwnProperty.call(data,k)?data[k]:null;},setItem:function(k,v){k=String(k);if(!Object.prototype.hasOwnProperty.call(data,k))keys.push(k);data[k]=String(v);},removeItem:function(k){k=String(k);if(!Object.prototype.hasOwnProperty.call(data,k))return;delete data[k];keys.splice(keys.indexOf(k),1);},clear:function(){data=Object.create(null);keys=[];}};try{Object.defineProperty(window,name,{configurable:true,enumerable:true,value:value});}catch(_){}}
 storage('localStorage');storage('sessionStorage');
-function wrap(u,base){try{if(u==null)return u;var s=String(u);if(!s||s.indexOf(P+'/')===0||/^(data:|blob:|#|javascript:)/i.test(s))return u;var a=new URL(s,base||T);if(a.origin!==O)return u;return P+a.pathname+a.search+a.hash;}catch(_){return u;}}
+function wrap(u,base){try{if(u==null)return u;var s=String(u);if(!s||s.indexOf(P+'/')===0||s.indexOf(P+'&path=')===0||/^(data:|blob:|#|javascript:)/i.test(s))return u;var a=new URL(s,base||T);if(a.origin!==O)return u;return P.indexOf('?token=')<0?P+a.pathname+a.search+a.hash:P+'&path='+encodeURIComponent(a.pathname+a.search)+a.hash;}catch(_){return u;}}
 window.__pinpointResourceUrl=wrap;
 window.__pinpointModuleUrl=function(value,base){return wrap(value,base);};
 window.__pinpointImport=function(base,specifier,options){return import(wrap(specifier,base),options);};
@@ -3342,7 +3344,7 @@ function patch(pr,p,fn){try{var d=Object.getOwnPropertyDescriptor(pr,p);if(!d||!
 var os=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.send=function(){this.withCredentials=false;return os.apply(this,arguments);};
 patch(HTMLScriptElement.prototype,'src');patch(HTMLLinkElement.prototype,'href');patch(HTMLImageElement.prototype,'src');patch(HTMLImageElement.prototype,'srcset',wset);if(typeof HTMLSourceElement!=='undefined'){patch(HTMLSourceElement.prototype,'src');patch(HTMLSourceElement.prototype,'srcset',wset);}
 var sa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){try{var k=n&&n.toLowerCase(),tag=this.tagName&&this.tagName.toLowerCase();if(k==='src'||(k==='href'&&tag==='link'))v=wrap(v);else if(k==='srcset'&&(tag==='img'||tag==='source'))v=wset(v);}catch(_){}return sa.call(this,n,v);};
-function unwrap(u){try{var p=new URL(P,location.href),a=new URL(String(u),location.href);if(a.origin===p.origin&&a.pathname.indexOf(p.pathname+'/')===0)return O+a.pathname.slice(p.pathname.length)+a.search+a.hash;}catch(_){}return u;}
+function unwrap(u){try{var p=new URL(P,location.href),a=new URL(String(u),location.href);if(a.origin!==p.origin)return u;if(p.searchParams.has('token')&&a.pathname===p.pathname&&a.searchParams.get('token')===p.searchParams.get('token')){var path=a.searchParams.get('path');return path?O+path+a.hash:u;}if(a.pathname.indexOf(p.pathname+'/')===0)return O+a.pathname.slice(p.pathname.length)+a.search+a.hash;}catch(_){}return u;}
 function reveal(pr,p){try{var d=Object.getOwnPropertyDescriptor(pr,p);if(!d||!d.get)return;Object.defineProperty(pr,p,{configurable:true,enumerable:d.enumerable,get:function(){return unwrap(d.get.call(this));},set:d.set});}catch(_){}}
 reveal(HTMLImageElement.prototype,'currentSrc');
 function histUrl(u){try{if(u==null)return u;var a=new URL(String(unwrap(u)),T);if(a.origin!==O)return u;return wrap(a.href);}catch(_){return u;}}

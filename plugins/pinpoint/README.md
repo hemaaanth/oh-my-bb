@@ -57,7 +57,7 @@ The authenticated address-bar route creates a random, expiring resource capabili
 
 Picking, screenshots, text editing, numbered pins, same-origin links, SPA navigation, and the panel's Back and Forward controls remain available. Send, reply, approve, dismiss, and delete requests from the reviewed document are untrusted. BB checks the source frame, current thread and page, then shows its own confirmation. The picker handshake token is not proof of user intent. Approving a fix from the preview never approves a learning.
 
-The resource bridge is not a general authenticated browser. POST APIs, WebSockets/HMR, sign-in flows, and undeclared third-party asset origins may not work. BB login cookies are never forwarded to preserve a preview login. For a protected BB Connect app, use its localhost URL from its owning thread when available. The known BB app origins and its server port cannot be preview targets.
+The resource bridge is not a general authenticated browser. POST APIs, WebSockets/HMR, sign-in flows, and undeclared third-party asset origins may not work. BB login cookies are never forwarded to preserve a preview login. For a protected BB Connect app, use its localhost URL from its owning thread when available. Pinpoint shows this workaround when the BB Connect sign-in page responds with HTTP 401; it never forwards login cookies. The known BB app origins and its server port cannot be preview targets.
 
 Older Session Share review servers do not meet the isolation contract. Their embedded previews are refused until that consumer is updated. Normal Pinpoint in BB does not require Session Share. This migration does not change Session Share or publish its private feedback.
 

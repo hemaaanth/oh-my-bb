@@ -51,11 +51,14 @@ export function assertPreviewUrl(target: URL, origin: string): void {
 }
 
 export function previewResourceUrl(base: string, target: URL): string {
-  return `${base}${target.pathname}${target.search}${target.hash}`;
+  return base.includes("?token=")
+    ? `${base}&path=${encodeURIComponent(target.pathname + target.search)}${target.hash}`
+    : `${base}${target.pathname}${target.search}${target.hash}`;
 }
 
 export function previewHeaders(session: Pick<PreviewSession, "origin" | "resourceOrigins">, base: string): Record<string, string> {
-  const resources = [base + "/", session.origin, ...session.resourceOrigins].join(" ");
+  const resourceBase = base.split("?")[0]!;
+  const resources = [resourceBase, session.origin, ...session.resourceOrigins].join(" ");
   return {
     "access-control-allow-origin": "*",
     "cache-control": "no-store",
@@ -66,9 +69,9 @@ export function previewHeaders(session: Pick<PreviewSession, "origin" | "resourc
       `default-src ${resources} data: blob:`,
       `script-src ${resources} 'unsafe-inline' 'unsafe-eval' blob:`,
       `style-src ${resources} 'unsafe-inline'`,
-      `connect-src ${base}/ ${session.origin} data: blob:`,
-      `form-action ${session.origin} ${base}/`,
-      `frame-src ${base}/ ${session.origin} blob:`,
+      `connect-src ${resourceBase} ${session.origin} data: blob:`,
+      `form-action ${session.origin} ${resourceBase}`,
+      `frame-src ${resourceBase} ${session.origin} blob:`,
       "object-src 'none'",
       `base-uri ${session.origin}`,
     ].join("; "),
