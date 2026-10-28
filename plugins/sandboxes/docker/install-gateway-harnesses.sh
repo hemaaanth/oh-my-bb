@@ -22,7 +22,7 @@ if [ "$(pi --version 2>/dev/null || true)" != "$PI_VERSION" ]; then
   # An interrupted install leaves these behind, and npm then fails with ENOTEMPTY.
   rm -rf "$P/lib/node_modules/@earendil-works/pi-coding-agent"
   find "$P/lib/node_modules/@earendil-works" -maxdepth 1 -type d -name ".pi-coding-agent-*" -exec rm -rf {} + 2>/dev/null || true
-  npm install --global --prefix "$P" --ignore-scripts "@earendil-works/pi-coding-agent@$PI_VERSION"
+  npm install --global --force --prefix "$P" --ignore-scripts "@earendil-works/pi-coding-agent@$PI_VERSION"
 fi
 
 fi
@@ -80,7 +80,7 @@ if [ -n "$need_adapters" ]; then
     # An interrupted install leaves these behind, and npm then fails with ENOTEMPTY.
     rm -rf "$P/lib/node_modules/$name"
     find "$P/lib/node_modules" -maxdepth 1 -type d -name ".$name-*" -exec rm -rf {} + 2>/dev/null || true
-    npm install --global --prefix "$P" --ignore-scripts "$work/$archive"
+    npm install --global --force --prefix "$P" --ignore-scripts "$work/$archive"
   done
 fi
 for name in fx-acp nanocodex-acp prime-agent-acp; do

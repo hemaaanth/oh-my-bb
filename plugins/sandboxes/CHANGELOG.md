@@ -1,5 +1,8 @@
 # Unreleased
 
+- Fix Modal bootstrap hanging on nonempty stdin; close the stream at its actual byte offset, stream progress immediately, and round exec timeouts to supported whole seconds.
+- Enforce shared-image agent CLI versions across standard providers, including old vendor-installed CLIs. Replace conflicting global npm links, preserve selected tools and explicit custom-image versions, cache image metadata, and verify repairs before allowing agent execution.
+
 - Remove manual image rollback/selection and project image pinning from settings, RPC and CLI. Keep current machines, provider defaults, build registration and historical database records.
 
 # Changelog

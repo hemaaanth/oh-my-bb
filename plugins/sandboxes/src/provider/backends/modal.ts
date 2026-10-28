@@ -54,6 +54,39 @@ const modalResourceSchema = z.object({
 });
 export type ModalResource = z.infer<typeof modalResourceSchema>;
 
+export function createModalExecutor(sandbox: Pick<ModalSandbox, "exec">): MachineExecutor {
+  return {
+    async exec(request) {
+      request.signal.throwIfAborted();
+      const process = await sandbox.exec([...request.command], {
+        stdout: "pipe", stderr: "pipe", timeoutMs: Math.max(1000, Math.ceil(request.timeoutMs / 1000) * 1000),
+      });
+      const forward = async (stream: typeof process.stdout) => {
+        const reader = stream.getReader();
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) return;
+            if (value) request.onOutput(value);
+          }
+        } finally { reader.releaseLock(); }
+      };
+      const [, , , exitCode] = await Promise.all([
+        (async () => {
+          const writer = process.stdin.getWriter();
+          try {
+            if (request.stdin.length > 0) await writer.write(request.stdin);
+            // closeStdin() sends EOF at offset zero, losing EOF after nonempty input.
+            await writer.close();
+          } finally { writer.releaseLock(); }
+        })(),
+        forward(process.stdout), forward(process.stderr), process.wait(),
+      ]);
+      return { exitCode };
+    },
+  };
+}
+
 export function createModalMachineBackend(
   config: ModalConfig,
 ): SandboxBackend<ModalInputs, ModalResource> {
@@ -79,28 +112,7 @@ export function createModalMachineBackend(
       ? inputs.size
       : DEFAULT_SANDBOX_SIZE_TIER;
 
-  const executorFor = (sandbox: ModalSandbox): MachineExecutor => ({
-    async exec(request) {
-      request.signal.throwIfAborted();
-      const process = await sandbox.exec([...request.command], {
-        stdout: "pipe",
-        stderr: "pipe",
-        timeoutMs: request.timeoutMs,
-      });
-      if (request.stdin.length > 0) {
-        await process.stdin.writeText(request.stdin);
-      }
-      await process.closeStdin();
-      const [stdout, stderr, exitCode] = await Promise.all([
-        process.stdout.readText(),
-        process.stderr.readText(),
-        process.wait(),
-      ]);
-      const combined = `${stdout}${stderr}`;
-      if (combined.length > 0) request.onOutput(combined);
-      return { exitCode };
-    },
-  });
+
 
   return {
     definition: {
@@ -170,7 +182,7 @@ export function createModalMachineBackend(
         sizeTier: tier,
       };
       await context.checkpoint(resource);
-      return { resource, executor: executorFor(sandbox) };
+      return { resource, executor: createModalExecutor(sandbox) };
     },
     async reconcileCleanup(context) {
       const { modal, NotFoundError } = await getClient();

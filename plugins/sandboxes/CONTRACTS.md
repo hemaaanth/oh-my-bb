@@ -61,3 +61,5 @@ Settings use a 760-pixel outer maximum, 16-pixel sides and 728-pixel content max
 ## Remaining release limits
 
 The unused legacy standalone snapshot publisher is retired from the public source and package. No replacement bootstrap or snapshot builder is supplied. Native Freestyle runtime, configured provider snapshot selection, settings and stored snapshot data are unchanged. No snapshot was built or published. Provider lifecycle, accounts, network and image acceptance require separate owner authorization. Offline synthetic fixtures do not certify paid infrastructure.
+
+Standard startup enforces enabled agent harness versions from the shared image, or bundled Dockerfile pins before any image is registered. Existing vendor binaries are not accepted solely because they are present. Repair failure blocks preparation; an explicit custom Dockerfile retains its versions. Modal stdin closes through its WritableStream so EOF follows the bytes written, and stdout/stderr are forwarded during execution.

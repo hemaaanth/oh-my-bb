@@ -78,10 +78,11 @@ import {
 } from "./image-catalog.js";
 import { SandboxImageManager } from "./image-manager.js";
 import { SandboxProviderConfigurationStore } from "./provider-configuration.js";
-import { prepareGatewayHarnesses, SandboxUpgrader } from "./upgrade.js";
+import { harnessNames, prepareGatewayHarnesses, SandboxUpgrader, type StartupHarnessPolicy, type HarnessVersions } from "./upgrade.js";
 import { gatewaySetupOnHost } from "./gateway-setup.js";
 import {
   latestHarnessVersions,
+  bundledHarnessVersions,
   readImageVersions,
 } from "./upgrade-sources.js";
 
@@ -460,6 +461,34 @@ export default async function plugin(bb: BbPluginApi) {
           bb.log.warn(`Preview restore on ${hostId}: ${error instanceof Error ? error.message : String(error)}`);
         }
     });
+    const startupPolicies = new Map<string, Promise<StartupHarnessPolicy>>();
+    const startupHarnessPolicy = async (): Promise<StartupHarnessPolicy> => {
+      const currentRecipe = await recipe.read();
+      if (currentRecipe.dockerfile) return { target: null, tools: null };
+      const image = sandboxImageProviders.map(provider => store.getDefaultImage(provider))
+        .find(candidate => candidate?.imageVersion != null);
+      const registry = sandboxImageRegistryConfig(await combinedSettings());
+      const tag = image?.imageVersion;
+      if (!tag || !registry.repository) {
+        return { target: await bundledHarnessVersions(), tools: currentRecipe.tools };
+      }
+      const key = `${registry.repository}:${tag}:${registry.platform}`;
+      let policy = startupPolicies.get(key);
+      if (!policy) {
+        policy = (async () => {
+          const [versions, tools] = await Promise.all([
+            readImageVersions({ registry, tag }),
+            readRegistryImageLabel({ registry, reference: tag, label: "bb.image.tools", platform: registry.platform }),
+          ]);
+          if (harnessNames.some(name => !versions.harness[name]) || tools === null) {
+            throw new Error("The shared sandbox image is missing toolchain version labels; rebuild it before starting another provider.");
+          }
+          return { target: versions.harness as HarnessVersions, tools: tools.split(",").filter(Boolean) };
+        })().catch(error => { startupPolicies.delete(key); throw error; });
+        startupPolicies.set(key, policy);
+      }
+      return policy;
+    };
     const optionsFor = (provider: SandboxProvider) => ({
       now: () => Date.now(),
       requireRuntime: async () => {
@@ -479,7 +508,7 @@ export default async function plugin(bb: BbPluginApi) {
         ...input
       }: { key: string; hostId: string } & Pick<Parameters<typeof provisionTrustedBrowser>[0], "executor" | "report" | "signal">) => {
         try {
-          await prepareGatewayHarnesses(bb, input);
+          await prepareGatewayHarnesses(bb, input, await startupHarnessPolicy());
         } catch (error) {
           input.signal.throwIfAborted();
           throw new Error(`Managed model setup failed after native connection on ${input.hostId}. Machine and data are retained; reconcile its native lifecycle state before retrying setup/resume. ${error instanceof Error ? error.message : String(error)}`);

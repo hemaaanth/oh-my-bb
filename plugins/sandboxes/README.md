@@ -709,3 +709,11 @@ Browser owns sandbox browsing, home routing, public-IP verification and personal
 ### Provider credential checks
 
 A provider without credentials has disabled setup controls. After adding credentials in Configuration, choose **Check connection** in Providers. This performs a bounded read-only list request; it creates no sandbox. Only a successful check enables the settings button and enabling that provider. A failed check keeps the controls locked. Changing credentials or Daytona's API URL invalidates the saved check. Existing running machines are not stopped or reconfigured by these UI checks. You can always turn an enabled provider off. Settings reads never contact a vendor.
+
+### Shared agent toolchain
+
+Standard sandbox startup checks enabled agent CLIs against the shared image’s version labels on every provider. Vendor-installed versions are replaced when they differ. The version metadata is cached per image; a current machine skips installation. Without a registered image, startup uses the same pins as the bundled Dockerfile. A saved custom Dockerfile explicitly retains its installed versions.
+
+Daytona, Modal and E2B boot the registered image. Boat and Freestyle start from a provider base, so a fresh machine also needs tool installation. Matching the agent CLIs does not make the provider operating systems or base packages identical.
+
+Modal’s executor closes the normal stdin stream after writing enrollment data and forwards output while commands run. The emergency zero-offset EOF method is not used for bootstrap.
