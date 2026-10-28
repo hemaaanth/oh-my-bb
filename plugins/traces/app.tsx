@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { definePluginApp, experimental_THREAD_ACTION_GROUPS, useBbNavigate, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
 import type { TraceResult, TraceSpan } from "./spans";
+import { ContextInspector } from "./context-view";
 import "./app.css";
 
 function duration(ms: number | null) {
@@ -137,13 +138,21 @@ function Waterfall({ threadId, compact = false }: { threadId: string; compact?: 
 function NavPanel({ subPath }: { subPath: string }) {
   const navigate = useBbNavigate();
   const [input, setInput] = useState("");
-  const threadId = decodeURIComponent(subPath.split("/")[0] ?? "");
+  const mode = subPath.startsWith("context") ? "context" : "waterfall";
+  const rawId = mode === "context" ? subPath.split("/")[1] : subPath.split("/")[0];
+  const threadId = rawId && /^thr_[a-z0-9]+$/.test(rawId) ? rawId : "";
+  const pathFor = (view: "context" | "waterfall", id: string) => view === "context" ? `context/${id}` : id;
   return <div className="traces-page"><div className="traces-container">
-    <form className="traces-open" onSubmit={(event) => { event.preventDefault(); const value = input.trim(); if (value) navigate.toPluginPanel("waterfall", { subPath: encodeURIComponent(value) }); }}>
-      <label htmlFor="traces-thread-id">Thread ID</label><input id="traces-thread-id" value={input} onChange={(event) => setInput(event.target.value)} placeholder="thr_…" />
-      <button type="submit">Open trace</button>
+    <nav className="traces-view-tabs" aria-label="Trace views">
+      <button type="button" aria-current={mode === "waterfall" ? "page" : undefined} onClick={() => navigate.toPluginPanel("waterfall", { subPath: pathFor("waterfall", threadId) })}>Waterfall</button>
+      <button type="button" aria-current={mode === "context" ? "page" : undefined} onClick={() => navigate.toPluginPanel("waterfall", { subPath: pathFor("context", threadId) })}>Context Inspector</button>
+    </nav>
+    <form className="traces-open" onSubmit={(event) => { event.preventDefault(); const value = input.trim(); if (/^thr_[a-z0-9]+$/.test(value)) navigate.toPluginPanel("waterfall", { subPath: pathFor(mode, value) }); }}>
+      <label htmlFor="traces-thread-id">Thread ID</label><input id="traces-thread-id" value={input} onChange={(event) => setInput(event.target.value)} placeholder="thr_…" pattern="thr_[a-z0-9]+" />
+      <button type="submit">Open {mode === "context" ? "context" : "trace"}</button>
     </form>
-    {threadId ? <Waterfall key={threadId} threadId={threadId} /> : <div className="traces-empty"><h2>Trace a thread</h2><p>Enter a thread ID, or use “Trace this thread” in a thread menu. This page reads BB's stored events without creating another database.</p></div>}
+    {threadId ? mode === "context" ? <ContextInspector key={threadId} threadId={threadId} /> : <Waterfall key={threadId} threadId={threadId} />
+      : <div className="traces-empty"><h2>Inspect a BB thread</h2><p>Enter a thread ID, or use “Trace this thread” in a thread menu. Waterfall shows timing. Context Inspector shows provider API prompts and token usage.</p></div>}
   </div></div>;
 }
 
@@ -151,6 +160,8 @@ export default definePluginApp((app) => {
   app.slots.navPanel({ id: "waterfall", title: "Traces", icon: "traces/traces", path: "waterfall", component: NavPanel });
   app.slots.experimental_tab({ context: { kind: "thread" }, availability: "action", id: "trace", title: "Trace this thread",
     icon: "traces/traces", layout: "flush", component: ({ threadId }) => <Waterfall threadId={threadId} compact /> });
+  app.slots.experimental_tab({ context: { kind: "thread" }, availability: "action", id: "context", title: "Context Inspector",
+    icon: "traces/traces", layout: "flush", component: ({ threadId }) => <ContextInspector key={threadId} threadId={threadId} compact /> });
   app.slots.experimental_threadAction({ id: "trace-thread", title: "Trace this thread", icon: "traces/traces", group: experimental_THREAD_ACTION_GROUPS.open,
     item: ({ thread, navigate }) => ({ label: "Trace this thread", icon: "traces/traces",
       run: () => navigate.toPluginPanel("waterfall", { subPath: encodeURIComponent(thread.id) }) }) });

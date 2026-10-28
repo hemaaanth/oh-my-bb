@@ -1,7 +1,7 @@
 {
   "name": "bb-plugin-traces",
-  "version": "0.1.0",
-  "description": "Read BB's own thread storage as a debugging trace: a per-thread waterfall of turns, tool calls, waits, and child threads.",
+  "version": "0.2.0",
+  "description": "Inspect BB thread events and provider transcripts as a timing waterfall and prompt context ledger.",
   "license": "MIT",
   "author": "Hemanth Soni",
   "homepage": "https://github.com/hemaaanth/oh-my-bb/tree/main/plugins/traces",
@@ -18,7 +18,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "build": "bb plugin build",
-    "fixtures": "node scripts/extract-fixtures.mjs"
+    "fixtures": "node scripts/extract-fixtures.mjs",
+    "prompt-fixtures": "node scripts/extract-prompt-fixtures.mjs"
   },
   "engines": {
     "bb": ">=0.47",
@@ -26,7 +27,7 @@
   },
   "bb": {
     "name": "Traces",
-    "description": "Read BB's own thread storage as a debugging trace: a per-thread waterfall of turns, tool calls, waits, and child threads.",
+    "description": "Inspect BB thread events and provider transcripts as a timing waterfall and prompt context ledger.",
     "branding": {
       "icon": "./assets/traces.svg",
       "experimental_icons": {
@@ -35,6 +36,7 @@
     },
     "server": "./server.ts",
     "app": "./app.tsx",
+    "host": "./host.ts",
     "skills": [
       "skills"
     ]

@@ -1,11 +1,11 @@
 ---
 name: traces
-description: Debug a BB thread's latency, tool errors, provider waits, and child work with `bb traces thread`.
+description: Debug BB thread timing and inspect Claude Code or Codex API prompts, tools, and token usage with `bb traces`.
 ---
 
-# Traces: thread waterfall
+# Traces: waterfall and prompt context
 
-Use `bb traces thread` before guessing why a thread was slow or failed.
+Use `bb traces thread` to see why a thread was slow or failed. Use `bb traces prompt` to inspect what Claude Code or Codex sent to the model.
 
 ```sh
 bb traces thread --self
@@ -28,6 +28,21 @@ The default output hides all inputs, outputs, and unstructured error details. Th
 - `idle · Idle between turns` is not agent work. The summary counts idle wall time separately.
 - `model / uninstrumented` is the remainder inside a turn without a recorded item or wait. It is **not** a measured model API latency.
 - `durationMs: null` means the span is still open or its completion was not stored. A completed-only item with no start has zero observed duration, not a fabricated cross-turn match.
-- `usage: null` means "not stored." BB prunes most historical per-turn token snapshots; do not report null as zero. Provider transcript usage comes in phase 2.
+- `usage: null` means "not stored." BB prunes most historical per-turn token snapshots; do not report null as zero. `bb traces prompt` reads provider usage per API call.
 
-Events are read through `bb.sdk.threads.get/list/events.list` in pages of 100. The plugin stores no trace data on disk. Its small in-memory LRU is invalidated by BB thread events. The raw event source is BB's own thread storage. Phase 1 does not read provider transcripts or scan the fleet.
+Events are read through `bb.sdk.threads.get/list/events.list` in pages of 100. The plugin stores no trace data on disk. Its small in-memory LRU is invalidated by BB thread events.
+
+## Inspect the model context
+
+```sh
+bb traces prompt --self
+bb traces prompt thr_kxvdvw5nsh --call 1
+bb traces prompt thr_kxvdvw5nsh --call 14 --json
+bb traces prompt thr_kxvdvw5nsh --call 14 --reveal
+```
+
+`--call` is 1-based across the provider session. Without it, the latest stored API call is selected. The CLI prints the system prompt sections, tool inventory, injected AGENTS/skills blocks when present, a nearby per-call token ledger, and a structured diff from the previous call. The default hides prompt text, tool definitions and injected content. `--reveal` is explicit and **may include credentials or personal data**; keep its output local. The UI has a Reveal control that clears the content again when switched off.
+
+Claude Code reports exact API input, cache reads, cache writes (including 5m/1h), output, and thinking tokens when present. Codex reports input, cached input, cache writes, output, and reasoning; its 5m/1h split and API request-start timing are not stored. `null`/“not stored” is not zero. Prompt section token sizes are rough character-based estimates, not provider billing. The Context Inspector bar uses provider usage where stored.
+
+The server resolves the thread's execution host through BB's SDK and asks this plugin's host entry to read that host's existing transcript. It never reads a server-local path for a remote thread. Claude Code transcripts live under `~/.claude/projects/*/<sessionId>.jsonl`. Codex transcripts live under `~/.codex/sessions/YYYY/MM/DD/rollout-*-<sessionId>.jsonl`. Other providers return `unsupported`. Missing sessions return `unavailable`. Reads are capped at 192 MiB, 60,000 lines, 2 MiB per line, and 5,000 calls. A truncated result says what was skipped. No new database or disk cache is written.

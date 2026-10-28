@@ -1,5 +1,11 @@
 .traces-page { min-height: 0; flex: 1; overflow: auto; background: var(--background); color: var(--foreground); }
 .traces-container { margin: 0 auto; max-width: 1440px; padding: 16px 20px 32px; }
+.traces-view-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.traces-view-tabs button { position: relative; padding: 7px 1px 10px; border: 0; background: transparent; color: var(--muted-foreground); font-size: 12px; font-weight: 500; cursor: pointer; }
+.traces-view-tabs button:hover { color: var(--foreground); }
+.traces-view-tabs button[aria-current="page"] { color: var(--foreground); }
+.traces-view-tabs button[aria-current="page"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--primary); }
+.traces-view-tabs button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .traces-panel { container-type: inline-size; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--background); color: var(--foreground); font-size: 12px; }
 .traces-panel-compact { height: 100%; border: 0; border-radius: 0; overflow-y: auto; }
 .traces-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--card); }
