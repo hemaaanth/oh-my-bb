@@ -13,7 +13,7 @@
 - Add an SDK-backed, project-grouped Traces sidebar with search, exact BB thread deep links, and opt-in hidden/archived threads; inspired by Agent Traces (Nicolas Charpentier, MIT).
 - Add turn summaries, stable turn links, collapsible nested lanes and keyboard selection; coalesce live signals, append from the last SDK event page, refetch rewritten/gapped history, and catch up on reconnect without adding storage or export paths.
 - Add expandable safe command/tool groups, previous-turn comparison of time and error counts with honest usage snapshots, and bounded timeline zoom/pan/minimap with slow-call focus. Keep original nested spans and read-only behavior.
-- Consolidate view navigation in the BB sidebar, use the same BB-styled Radix Window picker across fleet views, persist submitted fleet filters and windows in deep links, label each breakdown color, and separate scanned-match display caps from sampled metrics and actual source limits.
+- Consolidate view navigation in the BB sidebar with host-matched surfaces, use the same BB-styled Radix Window picker across fleet views, persist submitted fleet filters and windows in deep links, label each breakdown color, and separate scanned-match display caps from sampled metrics and actual source limits.
 
 ## 0.2.0 — 2026-10-28
 
