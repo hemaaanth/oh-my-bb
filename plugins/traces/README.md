@@ -4,7 +4,7 @@ Traces reads BB's own thread events, the existing read-only `bb.db`, and provide
 
 ## Use
 
-Open **Traces** in the BB navigation rail. Four sibling views share the page: Log Explorer, Waterfall, Context Inspector, and Fleet Metrics. Or select **Trace this thread** in any thread menu. The thread side panel offers separate Waterfall and Context Inspector action tabs. Fleet rows link back to those per-thread views. Waterfall opens the latest turn by default; select All turns or enable Children to expand it. Hatched bars are waits. The breakdown counts exclusive wall time.
+Open **Traces** in the BB navigation rail. Four sibling views share the page: Log Explorer, Waterfall, Context Inspector, and Fleet Metrics. Or select **Trace this thread** in any thread menu. The thread side panel offers separate Waterfall and Context Inspector action tabs. Fleet rows link back to those per-thread views. Waterfall opens the latest turn by default; choose another turn or All turns from the picker. The UI stays on the selected thread; `bb traces thread --children` remains available for deep CLI debugging. Hatched bars are waits. The breakdown counts exclusive wall time.
 
 ```sh
 bb traces thread <thread-id>
@@ -32,7 +32,7 @@ Reads stream through at most 192 MiB, 60,000 lines, and 2 MiB per line. Up to 5,
 
 ## Log Explorer and Fleet Metrics
 
-Log Explorer scans event metadata or derived spans. It offers a bounded time histogram, facets for project, thread, provider, model, environment/worktree, child relation, kind, tool, status, and category, and a row table. Click a row to open its detail pane, or focus the results and use j/k (or arrow keys) to move between rows; Close restores focus to the selected row, and a new scan clears the selection. The thread ID opens Waterfall without selecting the row. The detail pane also links to the BB thread and Context Inspector. Fleet rows hold only structural IDs and safe labels; raw event payloads are not indexed. The pane reads one event through `bb.sdk.threads.events.list`. Its Reveal toggle starts on and can hide the payload again. Query syntax opens from the info icon beside Window. Incomplete scans retain a visible Partial results indicator; detailed limits remain in CLI/JSON output.
+Log Explorer scans event metadata or derived spans. It offers a bounded time histogram (without a duplicate time-bin table), facets for project, thread, provider, model, environment/worktree, child relation, kind, tool, status, and category, and a row table. Click a row to open its detail pane, or focus the results and use j/k (or arrow keys) to move between rows; only the visible row window renders, and keyboard selection reads event detail after movement stops. Close restores focus to the selected row, and a new scan clears the selection. The thread ID opens Waterfall without selecting the row. The detail pane also links to the BB thread and Context Inspector. Fleet rows hold only structural IDs and safe labels; raw event payloads are not indexed. The pane reads one event through `bb.sdk.threads.events.list`. Its Reveal toggle starts on and can hide the payload again. Query syntax opens from the info icon beside Window. Incomplete scans retain a visible Partial results indicator; detailed limits remain in CLI/JSON output.
 
 The query grammar is AND-only `field:value`. Fields: `project`, `thread`, `provider`, `model`, `environment`, `worktree`, `child`, `kind`, `type`, `status`, `tool`, `category`, `duration`, and `metric`. Use quoted spaces, for example `project:"Oh My BB"`. Use `duration:>5s` or `@duration:<=100ms`. Metric drilldowns use `metric:turn-start`, `tool-completed`, `tool-measured`, `tool-failed`, `provider-retry`, or `recorded-failure` to show the exact counted event set while preserving the current filter. Aggregated “other” buckets cannot be filtered exactly and are not links. There is no free text, OR, or raw SQL. `--since` accepts 1h–99h or 1d–7d; the UI offers 1h, 6h, 24h, and 7d. Values are parsed at the boundary and parameterized where used in SQLite.
 
@@ -56,7 +56,7 @@ Child BB threads are loaded through `parent_thread_id` with `--children` or the 
 
 ## Layout
 
-All four Traces navigation views use a **1440px** maximum canvas instead of BB Settings' standard **760px**. Waterfall needs timing rows beside details. Context needs prompt sections beside a token ledger. Explorer needs facets, rows, and details. Metrics needs stat tiles and charts. Narrow containers stack these regions; tables scroll inside their own panels. The thread action tabs stack their detail areas in narrow side panels. Other plugin pages should use BB's standard width.
+All four Traces navigation views use the same open **1440px** maximum canvas instead of BB Settings' standard **760px**. Their outer views have no enclosing card; headings or controls align below the tabs, while detail panes, stat tiles, and charts retain useful separators. Waterfall needs timing rows beside details. Context needs prompt sections beside a token ledger. Explorer needs facets, rows, and details. Metrics needs stat tiles and charts. Narrow containers stack these regions; tables scroll inside their own panels. The thread action tabs stack their detail areas in narrow side panels. Other plugin pages should use BB's standard width.
 
 ## Development
 

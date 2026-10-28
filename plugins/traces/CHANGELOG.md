@@ -8,6 +8,7 @@
 - Add `bb traces query`, `slow`, `errors`, and `job` agent CLI commands with bounded JSON and partial-result status.
 - Fix background-task completion pairing when another turn reuses the same item ID; add synthetic SQLite and regression tests.
 - Refine the Explorer row/keyboard workflow and compact scan status, remove manual per-thread ID forms, adopt the BB-styled turn picker, and default per-thread UI Reveal on while keeping CLI output hidden without `--reveal`.
+- Remove the redundant Explorer time-bin table and Waterfall Children toggle, harmonize the four open view shells, and window Explorer rows with local keyboard scrolling and deferred detail reads.
 
 ## 0.2.0 — 2026-10-28
 

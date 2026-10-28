@@ -40,7 +40,8 @@ describe("Traces thread UI", () => {
     expect(await screen.findByText("sensitive-waterfall")).toBeTruthy();
     expect((screen.getByRole("checkbox", { name: "Reveal sensitive data" }) as HTMLInputElement).checked).toBe(true);
     expect(screen.getByRole("combobox", { name: "Turn" }).className).toContain("traces-turn-trigger");
-    expect(rendered.inspection.rpcCalls.find((call) => call.method === "traces_thread")?.input).toMatchObject({ reveal: true });
+    expect(screen.queryByRole("checkbox", { name: "Children" })).toBeNull();
+    expect(rendered.inspection.rpcCalls.find((call) => call.method === "traces_thread")?.input).toMatchObject({ reveal: true, includeChildren: false });
     expect(screen.queryByText(/error spans.*Select a red bar/)).toBeNull();
     expect(screen.queryByText(/Model \/ uninstrumented time is/)).toBeNull();
     await act(async () => { fireEvent.click(screen.getByRole("checkbox", { name: "Reveal sensitive data" })); });

@@ -64,7 +64,6 @@ function Detail({ span, revealed }: { span: TraceSpan; revealed: boolean }) {
 
 function Waterfall({ threadId, compact = false }: { threadId: string; compact?: boolean }) {
   const rpc = useRpc<typeof rpcContract>();
-  const [children, setChildren] = useState(false);
   const [reveal, setReveal] = useState(true);
   const [result, setResult] = useState<TraceResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,19 +74,19 @@ function Waterfall({ threadId, compact = false }: { threadId: string; compact?: 
   const [scrollTop, setScrollTop] = useState(0);
   const load = useCallback(() => {
     const generation = ++request.current;
-    rpc.call("traces_thread", { threadId, includeChildren: children, reveal }).then((trace) => {
+    rpc.call("traces_thread", { threadId, includeChildren: false, reveal }).then((trace) => {
       if (generation !== request.current) return;
       setResult(trace); setError(null);
     }, (cause: unknown) => {
       if (generation !== request.current) return;
       setError(cause instanceof Error ? cause.message : String(cause));
     });
-  }, [rpc, threadId, children, reveal]);
+  }, [rpc, threadId, reveal]);
   useEffect(() => { setResult(null); setSelectedId(null); setTurn("last"); }, [threadId]);
   useEffect(() => { load(); return () => { request.current++; }; }, [load]);
   useRealtime("traces-changed", (payload) => {
-    const changed = payload as { threadId?: string; parentThreadId?: string };
-    if (changed.threadId === threadId || changed.parentThreadId === threadId || children) load();
+    const changed = payload as { threadId?: string };
+    if (changed.threadId === threadId) load();
   });
   const trace = result?.tree.threadId === threadId ? result : null;
   const root = trace?.tree;
@@ -118,7 +117,6 @@ function Waterfall({ threadId, compact = false }: { threadId: string; compact?: 
             {turns.map((span, index) => <Select.Item key={span.id} className="traces-turn-item" value={span.id}><Select.ItemText>Turn {index + 1}</Select.ItemText><Select.ItemIndicator><Icon name="Check" aria-hidden="true" /></Select.ItemIndicator></Select.Item>)}
           </Select.Viewport></Select.Content></Select.Portal>
         </Select.Root></div>
-        <label><input type="checkbox" checked={children} onChange={(event) => { setChildren(event.target.checked); if (event.target.checked) setTurn("all"); }} /> Children</label>
         <label className={reveal ? "traces-reveal-on" : ""}><input type="checkbox" checked={reveal} onChange={(event) => { if (!event.target.checked) { setResult(null); setSelectedId(null); } setReveal(event.target.checked); }} /> Reveal sensitive data</label>
         <button type="button" onClick={load}>Refresh</button>
       </div>

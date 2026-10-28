@@ -1,6 +1,6 @@
-.traces-context { container-type: inline-size; border: 1px solid var(--border); border-radius: 10px; background: var(--background); color: var(--foreground); overflow: hidden; font-size: 12px; }
+.traces-context { container-type: inline-size; border: 0; border-radius: 0; background: transparent; color: var(--foreground); overflow: visible; font-size: 12px; }
 .traces-context-compact { height: 100%; overflow-y: auto; border: 0; border-radius: 0; }
-.traces-context-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--border); background: var(--card); }
+.traces-context-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 2px 0 14px; border-bottom: 1px solid var(--border); background: transparent; }
 .traces-context-header h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .traces-context-header p { margin: 3px 0 0; color: var(--muted-foreground); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .traces-context-actions, .traces-context-actions form { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }

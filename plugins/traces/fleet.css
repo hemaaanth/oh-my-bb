@@ -1,13 +1,10 @@
-.traces-fleet { container-type: inline-size; border: 1px solid var(--border); border-radius: 10px; background: var(--background); color: var(--foreground); overflow: hidden; font-size: 12px; }
-.traces-fleet-explorer { border: 0; border-radius: 0; background: transparent; overflow: visible; }
-.traces-fleet-explorer .traces-fleet-controls { padding: 12px 0; }
-.traces-fleet-explorer .traces-fleet-progress { position: relative; padding: 9px 0; background: transparent; }
-.traces-fleet-explorer .traces-fleet-histogram { padding: 16px 0 12px; }
-.traces-fleet-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 16px; background: var(--card); border-bottom: 1px solid var(--border); }
+.traces-fleet { container-type: inline-size; border: 0; border-radius: 0; background: transparent; color: var(--foreground); overflow: visible; font-size: 12px; }
+.traces-fleet-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 2px 0 14px; background: transparent; border-bottom: 1px solid var(--border); }
 .traces-fleet-header h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .traces-fleet-header p { margin: 3px 0 0; color: var(--muted-foreground); font-size: 11px; }
 .traces-fleet-range { color: var(--muted-foreground); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
-.traces-fleet-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+.traces-fleet-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.traces-fleet-explorer .traces-fleet-controls { padding-top: 2px; padding-bottom: 14px; }
 .traces-fleet-controls form { display: flex; align-items: center; flex: 1 1 340px; min-width: 0; gap: 7px; }
 .traces-fleet-controls form label, .traces-fleet-window { color: var(--muted-foreground); white-space: nowrap; }
 .traces-fleet-controls input { flex: 1; min-width: 120px; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -32,7 +29,7 @@
 .traces-fleet-query-help-popover { position: absolute; z-index: 10; right: 0; top: calc(100% + 12px); width: min(420px, calc(100vw - 48px)); max-height: min(370px, 65vh); overflow: auto; box-sizing: border-box; padding: 16px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--foreground); box-shadow: 0 10px 28px #0005; font-size: 11px; line-height: 1.6; }
 .traces-fleet-query-help-popover p { margin: 10px 0 0; }
 .traces-fleet-query-help-popover code { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
-.traces-fleet-progress { padding: 9px 16px; border-bottom: 1px solid var(--border); background: var(--card); }
+.traces-fleet-progress { padding: 9px 0; border-bottom: 1px solid var(--border); background: transparent; }
 .traces-fleet-progress-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted-foreground); font-size: 11px; }
 .traces-fleet-progress-line strong { color: var(--foreground); font-weight: 600; }
 .traces-fleet-progress-actions { margin-left: auto; display: flex; gap: 6px; }
@@ -50,7 +47,7 @@
 .traces-fleet-limits { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 7px 0 0; padding: 0; list-style: none; color: var(--muted-foreground); font-size: 10px; line-height: 1.4; }
 .traces-fleet-limits li { border-left: 2px solid var(--warning); padding-left: 7px; }
 .traces-fleet-limits strong { color: var(--foreground); }
-.traces-fleet-histogram { margin: 0; padding: 12px 16px 8px; border-bottom: 1px solid var(--border); }
+.traces-fleet-histogram { margin: 0; padding: 16px 0 12px; border-bottom: 1px solid var(--border); }
 .traces-fleet-histogram figcaption { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; }
 .traces-fleet-histogram figcaption strong { color: var(--foreground); font-size: 12px; }
 .traces-fleet-histogram figcaption span { color: var(--muted-foreground); }
@@ -60,10 +57,10 @@
 .traces-fleet-histogram-column:last-child > span { background: var(--success); }
 .traces-fleet-histogram-column i { position: absolute; bottom: 0; left: 0; right: 0; background: var(--destructive); }
 .traces-fleet-histogram-axis { display: flex; justify-content: space-between; color: var(--muted-foreground); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
-.traces-fleet-histogram details, .traces-fleet-card details { margin-top: 7px; color: var(--muted-foreground); font-size: 11px; }
-.traces-fleet-histogram summary, .traces-fleet-card summary { cursor: pointer; }
-.traces-fleet-histogram table, .traces-fleet-card details table { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 10px; }
-.traces-fleet-histogram td, .traces-fleet-histogram th, .traces-fleet-card details td, .traces-fleet-card details th { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: left; }
+.traces-fleet-card details { margin-top: 7px; color: var(--muted-foreground); font-size: 11px; }
+.traces-fleet-card summary { cursor: pointer; }
+.traces-fleet-card details table { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 10px; }
+.traces-fleet-card details td, .traces-fleet-card details th { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: left; }
 .traces-fleet-explorer-grid { display: grid; grid-template-columns: minmax(160px, 190px) minmax(0, 1fr); border-top: 1px solid var(--border); min-height: 500px; }
 .traces-fleet-explorer-grid.has-detail { grid-template-columns: minmax(160px, 190px) minmax(0, 1fr) minmax(300px, 340px); }
 .traces-fleet-facets { padding: 10px; border-right: 1px solid var(--border); overflow-y: auto; max-height: 680px; }
@@ -79,9 +76,11 @@
 .traces-fleet-rows table { width: 100%; min-width: 650px; border-collapse: collapse; font-size: 10px; white-space: nowrap; }
 .traces-fleet-rows th { position: sticky; top: 0; z-index: 1; padding: 7px 8px; color: var(--muted-foreground); background: var(--card); border-bottom: 1px solid var(--border); font-weight: 500; text-align: left; }
 .traces-fleet-rows td { padding: 6px 8px; border-bottom: 1px solid var(--border); max-width: 150px; overflow: hidden; text-overflow: ellipsis; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
-.traces-fleet-rows tbody tr { cursor: pointer; }
+.traces-fleet-rows tbody tr:not(.traces-fleet-row-spacer) { height: 27px; cursor: pointer; }
 .traces-fleet-rows tbody tr:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
-.traces-fleet-rows tr:hover, .traces-fleet-rows tr.selected { background: var(--accent); }
+.traces-fleet-rows tbody tr:not(.traces-fleet-row-spacer):hover, .traces-fleet-rows tr.selected { background: var(--accent); }
+.traces-fleet-row-spacer { pointer-events: none; }
+.traces-fleet-row-spacer td { padding: 0; border: 0; line-height: 0; }
 .traces-fleet-rows td button { padding: 0; border: 0; background: none; color: var(--primary); font: inherit; cursor: pointer; }
 .traces-fleet-rows td button:hover { text-decoration: underline; }
 .traces-fleet-rows .traces-fleet-muted { margin: 10px; }
@@ -108,7 +107,7 @@ button.traces-fleet-tile:hover { background: var(--accent); }
 .traces-fleet-tile span { color: var(--muted-foreground); font-size: 10px; }
 .traces-fleet-tile strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .traces-fleet-tile small { color: var(--muted-foreground); font-size: 10px; line-height: 1.35; }
-.traces-fleet-missing { margin: 0; padding: 9px 16px; border-bottom: 1px solid var(--border); color: var(--muted-foreground); font-size: 11px; }
+.traces-fleet-missing { margin: 0; padding: 9px 0; border-bottom: 1px solid var(--border); color: var(--muted-foreground); font-size: 11px; }
 .traces-fleet-missing strong { color: var(--foreground); }
 .traces-fleet-metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .traces-fleet-card { min-width: 0; padding: 14px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }

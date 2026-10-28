@@ -125,6 +125,31 @@ describe("fleet UI", () => {
     } finally { HTMLElement.prototype.scrollIntoView = original; rendered.lifecycle.unmount(); }
   });
 
+  it("keeps sustained keyboard traversal windowed and reads detail only after selection settles", async () => {
+    const base = snapshot("explorer", "");
+    const rows = Array.from({ length: 250 }, (_, index) => ({ ...base.rows[0]!, id: `evt_${index}`, at: 1_500 + index }));
+    const data = { ...base, rows, matchedEvents: rows.length };
+    const rendered = renderSlot(panel, { subPath: "explorer/_/24h" }, { rpc: {
+      traces_fleet_start: () => data, traces_fleet_cancel: () => data,
+      traces_fleet_detail: (input) => { const { threadId, seq } = fleetContract.traces_fleet_detail.input.parse(input);
+        return { threadId, seq, type: "item/completed", at: 1_500, input: null, output: null, inputSize: null, outputSize: null }; },
+    } });
+    const region = await screen.findByRole("region", { name: "Explorer results" });
+    Object.defineProperty(region, "clientHeight", { value: 270, configurable: true });
+    expect(region.querySelectorAll("tbody tr").length).toBeLessThan(55);
+    vi.useFakeTimers();
+    try {
+      region.focus();
+      for (let index = 0; index < 70; index++) await act(async () => { fireEvent.keyDown(region, { key: "j" }); });
+      expect(region.scrollTop).toBeGreaterThan(0);
+      expect(region.querySelectorAll("tbody tr").length).toBeLessThan(55);
+      expect(document.activeElement?.getAttribute("data-row-index")).toBe("69");
+      expect(rendered.inspection.rpcCalls.filter((call) => call.method === "traces_fleet_detail")).toHaveLength(0);
+      await act(async () => { await vi.advanceTimersByTimeAsync(180); });
+      expect(rendered.inspection.rpcCalls.filter((call) => call.method === "traces_fleet_detail")).toHaveLength(1);
+    } finally { rendered.lifecycle.unmount(); vi.useRealTimers(); }
+  });
+
   it("keeps query grammar behind an accessible info disclosure without an Explorer title strip", async () => {
     const rendered = renderSlot(panel, { subPath: "explorer/_/24h" }, { rpc: {
       traces_fleet_start: () => snapshot("explorer", ""),
@@ -133,6 +158,8 @@ describe("fleet UI", () => {
     await screen.findByRole("button", { name: /Inspect toolCall/ });
     expect(screen.getByLabelText("Query syntax help").closest("details")?.open).toBe(false);
     expect(screen.queryByRole("heading", { name: "Log Explorer" })).toBeNull();
+    expect(screen.getByRole("img", { name: "Matching event count by time interval" })).toBeTruthy();
+    expect(screen.queryByText("Time-bin data table")).toBeNull();
     await act(async () => { fireEvent.click(screen.getByLabelText("Query syntax help")); });
     expect(screen.getByLabelText("Query syntax help").closest("details")?.open).toBe(true);
     expect(screen.getByText(/AND-only/)).toBeTruthy();

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { experimental_Icon as Icon, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import { FLEET_CHANNEL, type FleetFacet, type FleetHistogramBin, type FleetRow, type FleetSnapshot, type FleetView, type FleetMode, type fleetContract } from "./fleet-contract";
 import { metricDrilldownQuery, parseFleetQuery, type FleetMetricPredicate } from "./fleet-query";
@@ -9,6 +9,8 @@ const compact = (value: number | null | undefined) => value == null ? "—" : va
 const duration = (ms: number | null) => ms === null ? "not measured" : ms >= 60_000 ? `${(ms / 60_000).toFixed(1)}m` : ms >= 1_000 ? `${(ms / 1_000).toFixed(1)}s` : `${ms}ms`;
 const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour12: false, hour: "2-digit", minute: "2-digit" });
 const terminal = (status: FleetSnapshot["status"]) => status !== "running" && status !== "cancelling";
+const ROW_HEIGHT = 27;
+const ROW_WINDOW = 50;
 
 function useFleetJob(view: FleetView, initialQuery: string, initialSince: string, initialMode: FleetMode) {
   const rpc = useRpc<typeof fleetContract>();
@@ -140,7 +142,6 @@ function Histogram({ bins, since }: { bins: FleetHistogramBin[]; since: string }
       </div>)}
     </div>
     <div className="traces-fleet-histogram-axis"><span>{bins[0] ? clock(bins[0].from) : "—"}</span><span>{bins.length > 24 ? "Live" : bins.at(-1) ? clock(bins.at(-1)!.to) : "—"}</span></div>
-    <details><summary>Time-bin data table</summary><table><thead><tr><th>Interval</th><th>Events</th><th>Errors</th></tr></thead><tbody>{bins.map((bin, index) => <tr key={index}><td>{index === 24 ? "Live" : `${clock(bin.from)}–${clock(bin.to)}`}</td><td>{bin.count}</td><td>{bin.errors}</td></tr>)}</tbody></table></details>
   </figure>;
 }
 
@@ -156,22 +157,24 @@ function Facets({ snapshot, onFacet }: { snapshot: FleetSnapshot; onFacet: (fiel
   })}</aside>;
 }
 
-function RowDetail({ row, onClose, onWaterfall, onContext, onOpenThread, scrollToDetail }: { row: FleetRow; onClose: () => void; onWaterfall: (id: string) => void; onContext: (id: string) => void; onOpenThread: (id: string) => void; scrollToDetail: boolean }) {
+function RowDetail({ row, onClose, onWaterfall, onContext, onOpenThread, keyboardSelection }: { row: FleetRow; onClose: () => void; onWaterfall: (id: string) => void; onContext: (id: string) => void; onOpenThread: (id: string) => void; keyboardSelection: boolean }) {
   const rpc = useRpc<typeof fleetContract>();
   const [reveal, setReveal] = useState(true);
   const [detail, setDetail] = useState<{ input: string | null; output: string | null; inputSize: number | null; outputSize: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const request = useRef(0);
   const pane = useRef<HTMLElement>(null);
-  useEffect(() => { if (scrollToDetail) pane.current?.scrollIntoView?.({ block: "nearest" }); }, [row.id, scrollToDetail]);
+  useEffect(() => { if (!keyboardSelection) pane.current?.scrollIntoView?.({ block: "nearest" }); }, [row.id, keyboardSelection]);
   useEffect(() => {
     if (row.seq <= 0) return;
     const generation = ++request.current;
-    rpc.call("traces_fleet_detail", { threadId: row.threadId, seq: row.seq, reveal }).then((value) => {
+    const fetch = () => { rpc.call("traces_fleet_detail", { threadId: row.threadId, seq: row.seq, reveal }).then((value) => {
       if (generation === request.current) { setDetail(value); setError(null); }
-    }, () => { if (generation === request.current) setError("Event detail is no longer available."); });
-    return () => { request.current++; };
-  }, [rpc, row.id, row.seq, row.threadId, reveal]);
+    }, () => { if (generation === request.current) setError("Event detail is no longer available."); }); };
+    const timer = keyboardSelection ? window.setTimeout(fetch, 180) : null;
+    if (timer === null) fetch();
+    return () => { request.current++; if (timer !== null) window.clearTimeout(timer); };
+  }, [rpc, row.id, row.seq, row.threadId, reveal, keyboardSelection]);
   return <aside ref={pane} className="traces-fleet-detail" aria-label="Selected event detail">
     <div className="traces-fleet-detail-heading"><h3>{row.name}</h3><button type="button" onClick={onClose} aria-label="Close event detail">×</button></div>
     <p className={row.status === "failed" ? "traces-fleet-error" : ""}>{row.status} · {row.type}</p>
@@ -191,6 +194,15 @@ function RowDetail({ row, onClose, onWaterfall, onContext, onOpenThread, scrollT
 function ExplorerRows({ snapshot, selectedId, selectedRef, onSelect, onWaterfall }: { snapshot: FleetSnapshot; selectedId: string | null;
   selectedRef: RefObject<HTMLButtonElement | null>; onSelect: (row: FleetRow, keyboard?: boolean) => void; onWaterfall: (id: string) => void }) {
   const rowsRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const focusIndex = useRef<number | null>(null);
+  const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 5);
+  const visible = snapshot.rows.slice(first, first + ROW_WINDOW);
+  useLayoutEffect(() => {
+    if (focusIndex.current === null) return;
+    rowsRef.current?.querySelector<HTMLTableRowElement>(`tr[data-row-index="${focusIndex.current}"]`)?.focus({ preventScroll: true });
+    focusIndex.current = null;
+  }, [selectedId, scrollTop]);
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (!["j", "k", "ArrowDown", "ArrowUp"].includes(event.key) || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !snapshot.rows.length) return;
     const target = event.target;
@@ -199,15 +211,24 @@ function ExplorerRows({ snapshot, selectedId, selectedRef, onSelect, onWaterfall
     const direction = event.key === "j" || event.key === "ArrowDown" ? 1 : -1;
     const index = selectedId === null ? (direction > 0 ? 0 : snapshot.rows.length - 1)
       : Math.max(0, Math.min(snapshot.rows.length - 1, snapshot.rows.findIndex((row) => row.id === selectedId) + direction));
-    const next = rowsRef.current?.querySelectorAll<HTMLTableRowElement>("tbody tr")[index];
-    next?.focus(); next?.scrollIntoView?.({ block: "nearest" });
+    const viewport = rowsRef.current;
+    if (viewport) {
+      const top = 30 + index * ROW_HEIGHT;
+      const nextTop = top < viewport.scrollTop + 30 ? index * ROW_HEIGHT
+        : top + ROW_HEIGHT > viewport.scrollTop + viewport.clientHeight ? top + ROW_HEIGHT - viewport.clientHeight : viewport.scrollTop;
+      if (nextTop !== viewport.scrollTop) { viewport.scrollTop = nextTop; setScrollTop(nextTop); }
+    }
+    focusIndex.current = index;
     onSelect(snapshot.rows[index]!, true);
   };
-  return <div ref={rowsRef} className="traces-fleet-rows" role="region" aria-label="Explorer results" tabIndex={0} onKeyDown={onKeyDown}><table><thead><tr><th>Time</th><th>Thread</th><th>Turn</th><th>Kind</th><th>Tool</th><th>Duration</th><th>Status</th></tr></thead><tbody>
-    {snapshot.rows.map((row) => <tr key={row.id} className={row.id === selectedId ? "selected" : ""} aria-selected={row.id === selectedId} tabIndex={row.id === selectedId ? 0 : -1} onClick={(event) => { event.currentTarget.focus(); onSelect(row); }}>
+  return <div ref={rowsRef} className="traces-fleet-rows" role="region" aria-label="Explorer results" tabIndex={0}
+    onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)} onKeyDown={onKeyDown}><table><thead><tr><th>Time</th><th>Thread</th><th>Turn</th><th>Kind</th><th>Tool</th><th>Duration</th><th>Status</th></tr></thead><tbody>
+    {first > 0 && <tr className="traces-fleet-row-spacer" aria-hidden="true"><td colSpan={7} style={{ height: first * ROW_HEIGHT }} /></tr>}
+    {visible.map((row, offset) => <tr key={row.id} data-row-index={first + offset} className={row.id === selectedId ? "selected" : ""} aria-selected={row.id === selectedId} tabIndex={row.id === selectedId ? 0 : -1} onClick={(event) => { event.currentTarget.focus(); onSelect(row); }}>
       <td><button type="button" ref={row.id === selectedId ? selectedRef : undefined} aria-current={row.id === selectedId ? "true" : undefined} aria-label={`Inspect ${row.kind} in ${row.threadId} at ${clock(row.at)}`}>{new Date(row.at).toLocaleTimeString()}</button></td>
       <td><button type="button" onClick={(event) => { event.stopPropagation(); onWaterfall(row.threadId); }} aria-label={`Open Waterfall for ${row.threadId}`}>{row.threadId}</button></td><td>{row.turnId?.split("-t").at(-1) ?? "—"}</td><td>{row.kind}</td><td>{row.tool ?? "—"}</td><td>{duration(row.durationMs)}</td><td className={row.status === "failed" ? "failed" : ""}>{row.status}</td>
-    </tr>)}</tbody></table>
+    </tr>)}
+    {first + visible.length < snapshot.rows.length && <tr className="traces-fleet-row-spacer" aria-hidden="true"><td colSpan={7} style={{ height: (snapshot.rows.length - first - visible.length) * ROW_HEIGHT }} /></tr>}</tbody></table>
     {!snapshot.rows.length && <p className="traces-fleet-muted">{snapshot.status === "running" ? "Rows will appear as threads are scanned." : "No matching events in this window."}</p>}
   </div>;
 }
@@ -233,7 +254,7 @@ export function ExplorerView({ initialQuery = "", initialSince = "24h", onDrilld
       <Histogram bins={job.snapshot.histogram} since={job.since} />
       <div className={`traces-fleet-explorer-grid${selected ? " has-detail" : ""}`}><Facets snapshot={job.snapshot} onFacet={applyFacet} />
         <ExplorerRows snapshot={job.snapshot} selectedId={selectedId} selectedRef={selectedRef} onSelect={(row, keyboard) => { setKeyboardSelection(Boolean(keyboard)); setSelectedId(row.id); }} onWaterfall={(id) => onDrilldown("waterfall", id)} />
-        {selected && <RowDetail key={selected.id} row={selected} scrollToDetail={!keyboardSelection} onClose={() => { selectedRef.current?.focus(); setSelectedId(null); }}
+        {selected && <RowDetail key={selected.id} row={selected} keyboardSelection={keyboardSelection} onClose={() => { selectedRef.current?.focus(); setSelectedId(null); }}
           onWaterfall={(id) => onDrilldown("waterfall", id)} onContext={(id) => onDrilldown("context", id)} onOpenThread={(id) => navigate.toThread(id)} />}
       </div>
     </>}
