@@ -31,6 +31,8 @@ const projects = [
 describe("Traces native sidebar", () => {
   it("groups live BB identities by project and opens the same thread ID in Waterfall", async () => {
     const rendered = renderSlot(sidebar, { subPath: "thr_one" }, { sidebarThreads: { threads: rows, projects } });
+    expect(screen.getByRole("navigation", { name: "Traces views" }).querySelectorAll("button")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "Waterfall" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("complementary", { name: "Traces threads" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Alpha" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Beta" })).toBeTruthy();
@@ -42,6 +44,19 @@ describe("Traces native sidebar", () => {
     expect(rendered.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", path: "waterfall", options: { subPath: "thr_two" } });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Log Explorer" })); });
     expect(rendered.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", options: { subPath: "" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Context Inspector" })); });
+    expect(rendered.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", options: { subPath: "context/thr_one" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Fleet Metrics" })); });
+    expect(rendered.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", options: { subPath: "metrics/_/24h" } });
+    rendered.lifecycle.unmount();
+  });
+
+  it("highlights the selected view and carries fleet filters between Metrics and Explorer", async () => {
+    const rendered = renderSlot(sidebar, { subPath: "metrics/qcHJvdmlkZXI6Y29kZXg/6h" }, { sidebarThreads: { threads: rows, projects } });
+    expect(screen.getByRole("button", { name: "Fleet Metrics" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "Log Explorer" }).getAttribute("aria-current")).toBeNull();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Log Explorer" })); });
+    expect(rendered.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", options: { subPath: "explorer/qcHJvdmlkZXI6Y29kZXg/6h" } });
     rendered.lifecycle.unmount();
   });
 

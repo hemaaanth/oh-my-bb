@@ -8,7 +8,7 @@
 .traces-fleet-controls form { display: flex; align-items: center; flex: 1 1 340px; min-width: 0; gap: 7px; }
 .traces-fleet-controls form label, .traces-fleet-window { color: var(--muted-foreground); white-space: nowrap; }
 .traces-fleet-controls input { flex: 1; min-width: 120px; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
-.traces-fleet-controls input, .traces-fleet-controls button, .traces-fleet-controls select, .traces-fleet-progress button, .traces-fleet-detail-links button { border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; background: var(--background); color: var(--foreground); font: inherit; }
+.traces-fleet-controls input, .traces-fleet-controls button, .traces-fleet-progress button, .traces-fleet-detail-links button { border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; background: var(--background); color: var(--foreground); font: inherit; }
 .traces-fleet-controls button, .traces-fleet-progress button, .traces-fleet-detail-links button { cursor: pointer; white-space: nowrap; }
 .traces-fleet-controls button:hover, .traces-fleet-progress button:hover, .traces-fleet-detail-links button:hover { background: var(--accent); border-color: var(--ring); }
 .traces-fleet-controls button:disabled, .traces-fleet-progress button:disabled { opacity: .45; cursor: default; }
@@ -17,6 +17,7 @@
 .traces-fleet-switch button + button { border-left: 1px solid var(--border); }
 .traces-fleet-switch button[aria-pressed="true"] { background: var(--accent); color: var(--foreground); }
 .traces-fleet-window { display: flex; align-items: center; gap: 6px; }
+.traces-fleet-window-trigger { min-width: 104px; }
 .traces-fleet-syntax { position: relative; color: var(--muted-foreground); }
 .traces-fleet-syntax summary { cursor: pointer; }
 .traces-fleet-syntax p { position: absolute; right: 0; top: 100%; z-index: 10; width: min(380px, 85vw); padding: 10px; margin: 4px 0 0; border: 1px solid var(--border); border-radius: 6px; background: var(--card); box-shadow: 0 8px 20px #0003; line-height: 1.5; }
@@ -41,12 +42,14 @@
 .traces-fleet-progress-track { height: 5px; margin: 7px 0; border-radius: 4px; overflow: hidden; background: var(--muted); }
 .traces-fleet-progress-track span { display: block; height: 100%; background: var(--primary); transition: width .2s ease; }
 .traces-fleet-partial { color: var(--warning); font-size: 11px; }
+.traces-fleet-coverage-line { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
+.traces-fleet-sampled, .traces-fleet-source-limit { color: var(--warning); }
 .traces-fleet-freshness, .traces-fleet-muted { color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
 .traces-fleet-error, .traces-fleet-rows .failed { color: var(--destructive); }
 .traces-fleet-error { margin: 5px 0 0; font-size: 11px; }
-.traces-fleet-limits { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 7px 0 0; padding: 0; list-style: none; color: var(--muted-foreground); font-size: 10px; line-height: 1.4; }
-.traces-fleet-limits li { border-left: 2px solid var(--warning); padding-left: 7px; }
-.traces-fleet-limits strong { color: var(--foreground); }
+.traces-fleet-source-limits { margin: 6px 0 0; padding: 0; list-style: none; color: var(--warning); font-size: 11px; line-height: 1.4; }
+.traces-fleet-source-limits li { border-left: 2px solid var(--warning); padding-left: 8px; }
+.traces-fleet-source-limits strong { color: var(--foreground); }
 .traces-fleet-histogram { margin: 0; padding: 16px 0 12px; border-bottom: 1px solid var(--border); }
 .traces-fleet-histogram figcaption { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; }
 .traces-fleet-histogram figcaption strong { color: var(--foreground); font-size: 12px; }

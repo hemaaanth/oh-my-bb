@@ -193,9 +193,10 @@ function Waterfall({ threadId, compact = false, initialTurnId = null, onTurnChan
   const fullDuration = Math.max(20, (display?.end ?? observedEnd) - origin);
   const view = clampWindow(zoom ?? { from: 0, to: fullDuration }, fullDuration);
   const zoomed = view.from > 0 || view.to < fullDuration;
-  const time = trace?.summary.timeMs ?? {};
-  const total = Object.values(time).reduce((sum, ms) => sum + ms, 0);
-  const entries = Object.entries(time).sort((a, b) => b[1] - a[1]);
+  const entries = useMemo(() => Object.entries(trace?.summary.timeMs ?? {}).sort((a, b) => b[1] - a[1])
+    .map(([kind, ms]) => ({ kind, ms, color: kind === WAIT ? "var(--muted-foreground)"
+      : kind.startsWith("failed ") ? "var(--destructive)" : kind === "idle" ? "#8b97cb" : palette[kind] ?? "#9b82d2" })), [trace]);
+  const total = entries.reduce((sum, entry) => sum + entry.ms, 0);
   const slowest = useMemo(() => summaryRows.reduce<TraceSpan | null>((best, { span }) =>
     Object.hasOwn(TOOL_SPANS, span.kind) && span.durationMs !== null && (!best || span.durationMs > best.durationMs!) ? span : best, null), [summaryRows]);
   const markers = useMemo(() => summaryRows.filter(({ span }) => Object.hasOwn(TOOL_SPANS, span.kind) && span.durationMs !== null && span.durationMs > 0)
@@ -273,8 +274,12 @@ function Waterfall({ threadId, compact = false, initialTurnId = null, onTurnChan
         {selected && <Detail span={selected} revealed={reveal} />}
       </div>
       <div className="traces-breakdown"><strong>Where thread time went · {duration(trace!.summary.elapsedMs)}</strong>
-        <div className="traces-stack" aria-hidden="true">{entries.map(([kind, ms]) => <span key={kind} style={{ width: `${total ? ms / total * 100 : 0}%`, background: kind === WAIT ? "var(--muted-foreground)" : palette[kind] ?? "#9b82d2" }} />)}</div>
-        <div>{entries.map(([kind, ms]) => <span key={kind}>{kind} {duration(ms)} ({total ? Math.round(ms / total * 100) : 0}%) · </span>)}</div>
+        <div className="traces-stack" aria-hidden="true">{entries.map(({ kind, ms, color }) => <span key={kind} style={{ width: `${total ? ms / total * 100 : 0}%`, background: color }} />)}</div>
+        <ul className="traces-breakdown-legend" aria-label="Thread time breakdown">{entries.map(({ kind, ms, color }) => <li key={kind}>
+          <span className="traces-breakdown-swatch" style={{ background: color }} aria-hidden="true" />
+          <span className="traces-breakdown-name">{kind}</span><span className="traces-breakdown-value">{duration(ms)}</span>
+          <span className="traces-breakdown-percent">{total && ms > 0 && ms / total < 0.005 ? "<1%" : `${total ? Math.round(ms / total * 100) : 0}%`}</span>
+        </li>)}</ul>
       </div>
     </>}
   </div>;
@@ -313,18 +318,14 @@ function NavPanel({ subPath }: { subPath: string }) {
   const openThreadView = (target: "waterfall" | "context", id: string) => open(target === "context" ? id ? `context/${id}` : "context" : id || "waterfall");
   const openFleetView = (target: "explorer" | "metrics", query = "", since = "24h") => open(`${target}/${encodeFleetFilter(query)}/${since}`);
   return <div className="traces-page"><div className="traces-container">
-    <nav className="traces-view-tabs" aria-label="Trace views">
-      <button type="button" aria-current={view === "explorer" ? "page" : undefined} onClick={() => openFleetView("explorer", view === "metrics" ? fleetQuery : "", view === "metrics" ? fleetSince : "24h")}>Log Explorer</button>
-      <button type="button" aria-current={view === "waterfall" ? "page" : undefined} onClick={() => openThreadView("waterfall", threadId)}>Waterfall</button>
-      <button type="button" aria-current={view === "context" ? "page" : undefined} onClick={() => openThreadView("context", threadId)}>Context Inspector</button>
-      <button type="button" aria-current={view === "metrics" ? "page" : undefined} onClick={() => openFleetView("metrics", view === "explorer" ? fleetQuery : "", view === "explorer" ? fleetSince : "24h")}>Fleet Metrics</button>
-    </nav>
-    {view === "explorer" ? <ExplorerView key={subPath} initialQuery={fleetQuery} initialSince={fleetSince} onDrilldown={openThreadView} />
-      : view === "metrics" ? <MetricsView key={subPath} initialQuery={fleetQuery} initialSince={fleetSince} onExplorer={(query, since) => openFleetView("explorer", query, since)} onWaterfall={(id) => openThreadView("waterfall", id)} />
+    {view === "explorer" ? <ExplorerView key={subPath} initialQuery={fleetQuery} initialSince={fleetSince} onDrilldown={openThreadView}
+        onFilter={(query, since) => openFleetView("explorer", query, since)} />
+      : view === "metrics" ? <MetricsView key={subPath} initialQuery={fleetQuery} initialSince={fleetSince} onExplorer={(query, since) => openFleetView("explorer", query, since)}
+          onWaterfall={(id) => openThreadView("waterfall", id)} onFilter={(query, since) => openFleetView("metrics", query, since)} />
       : threadId ? view === "context" ? <ContextInspector key={threadId} threadId={threadId} />
         : <Waterfall key={threadId} threadId={threadId} initialTurnId={focusedTurn}
           onTurnChange={(id) => open(id === "all" ? `${threadId}/all` : id ? `${threadId}/turn/${encodeURIComponent(id)}` : threadId)} />
-        : <div className="traces-thread-empty"><p>Select a thread in Log Explorer, or choose “Trace this thread” in a thread menu.</p><button type="button" onClick={() => openFleetView("explorer")}>Open Log Explorer</button></div>}
+        : <div className="traces-thread-empty"><p>Select a thread in the Traces sidebar, or choose “Trace this thread” in a thread menu.</p></div>}
   </div></div>;
 }
 

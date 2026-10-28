@@ -1,11 +1,5 @@
 .traces-page { min-height: 0; flex: 1; overflow: auto; background: var(--background); color: var(--foreground); }
 .traces-container { margin: 0 auto; max-width: 1440px; padding: 16px 20px 32px; }
-.traces-view-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
-.traces-view-tabs button { position: relative; padding: 7px 1px 10px; border: 0; background: transparent; color: var(--muted-foreground); font-size: 12px; font-weight: 500; cursor: pointer; }
-.traces-view-tabs button:hover { color: var(--foreground); }
-.traces-view-tabs button[aria-current="page"] { color: var(--foreground); }
-.traces-view-tabs button[aria-current="page"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--primary); }
-.traces-view-tabs button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .traces-panel { container-type: inline-size; border: 0; border-radius: 0; overflow: visible; background: transparent; color: var(--foreground); font-size: 12px; }
 .traces-panel-compact { height: 100%; border: 0; border-radius: 0; overflow-y: auto; }
 .traces-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 2px 0 14px; border-bottom: 1px solid var(--border); background: transparent; }
@@ -70,9 +64,14 @@
 .traces-error { color: var(--destructive); }
 .traces-breakdown { padding: 12px 0; border-top: 1px solid var(--border); background: transparent; font-size: 11px; line-height: 1.5; color: var(--muted-foreground); }
 .traces-breakdown strong { color: var(--foreground); font-size: 12px; }
-.traces-breakdown p { margin: 6px 0 0; }
 .traces-stack { height: 10px; margin: 9px 0 6px; display: flex; border-radius: 4px; overflow: hidden; background: var(--muted); }
 .traces-stack span { height: 100%; }
+.traces-breakdown-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 6px 18px; margin: 10px 0 0; padding: 0; list-style: none; }
+.traces-breakdown-legend li { display: grid; grid-template-columns: 11px minmax(0, 1fr) auto auto; align-items: center; gap: 7px; min-width: 0; }
+.traces-breakdown-swatch { width: 9px; height: 9px; border: 1px solid var(--border); border-radius: 2px; }
+.traces-breakdown-name { min-width: 0; overflow-wrap: anywhere; color: var(--foreground); }
+.traces-breakdown-value, .traces-breakdown-percent { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.traces-breakdown-percent { min-width: 30px; text-align: right; }
 .traces-empty { margin: 0; padding: 16px; color: var(--muted-foreground); font-size: 12px; }
 .traces-thread-empty { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 18px 0; color: var(--muted-foreground); font-size: 12px; }
 .traces-thread-empty p { margin: 0; }

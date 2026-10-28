@@ -43,7 +43,7 @@ describe("Traces thread UI", () => {
     const rendered = renderSlot(panel, { subPath: "thr_abc" }, { rpc: {
       traces_thread: (input) => { const { threadId, reveal } = rpcContract.traces_thread.input.parse(input); return trace(threadId, reveal); },
     } });
-    expect(screen.getByRole("button", { name: "Waterfall" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { name: "Thread Waterfall" })).toBeTruthy();
     expect(await screen.findByText("sensitive-waterfall")).toBeTruthy();
     expect((screen.getByRole("checkbox", { name: "Reveal sensitive data" }) as HTMLInputElement).checked).toBe(true);
     expect(screen.getByRole("combobox", { name: "Turn" }).className).toContain("traces-turn-trigger");
@@ -54,6 +54,27 @@ describe("Traces thread UI", () => {
     await act(async () => { fireEvent.click(screen.getByRole("checkbox", { name: "Reveal sensitive data" })); });
     expect(screen.queryByText("sensitive-waterfall")).toBeNull();
     expect(rendered.inspection.rpcCalls.filter((call) => call.method === "traces_thread").at(-1)?.input).toMatchObject({ reveal: false });
+    rendered.lifecycle.unmount();
+  });
+
+  it("labels each breakdown category with the chart's exact color and keeps tiny or zero values readable", async () => {
+    const rendered = renderSlot(panel, { subPath: "thr_abc" }, { rpc: {
+      traces_thread: (input) => { const { threadId, reveal } = rpcContract.traces_thread.input.parse(input);
+        const initial = trace(threadId, reveal);
+        return { ...initial, summary: { ...initial.summary, timeMs: { wait: 100_000, idle: 5_000,
+          commandExecution: 10, "failed commandExecution": 8, fileRead: 0, "model / uninstrumented": 50 } } }; },
+    } });
+    const legend = await screen.findByRole("list", { name: "Thread time breakdown" });
+    const items = within(legend).getAllByRole("listitem");
+    expect(items).toHaveLength(6);
+    expect(items[0]!.textContent).toContain("wait1.7m95%");
+    expect(items.find((item) => item.textContent?.includes("commandExecution"))?.textContent).toContain("<1%");
+    expect(items.find((item) => item.textContent?.includes("fileRead"))?.textContent).toContain("0ms0%");
+    expect(items.find((item) => item.textContent?.includes("failed commandExecution"))?.querySelector<HTMLElement>(".traces-breakdown-swatch")?.style.background).toBe("var(--destructive)");
+    expect(items.find((item) => item.textContent?.includes("idle"))?.querySelector<HTMLElement>(".traces-breakdown-swatch")?.style.background).not.toBe("var(--destructive)");
+    const bars = document.querySelectorAll<HTMLElement>(".traces-stack span");
+    const swatches = legend.querySelectorAll<HTMLElement>(".traces-breakdown-swatch");
+    for (let index = 0; index < items.length; index++) expect(swatches[index]!.style.background).toBe(bars[index]!.style.background);
     rendered.lifecycle.unmount();
   });
 
@@ -86,7 +107,7 @@ describe("Traces thread UI", () => {
     } });
     await screen.findByRole("region", { name: "Turn summary" });
     expect(screen.getByRole("region", { name: "Turn summary" }).textContent).toContain("Turn 1 of 2");
-    expect(screen.getByRole("button", { name: "Waterfall" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { name: "Thread Waterfall" })).toBeTruthy();
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Next turn" })); });
     expect(rendered.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", path: "waterfall", options: { subPath: "thr_abc/turn/turn-t2" } });
     rendered.lifecycle.unmount();
@@ -199,7 +220,7 @@ describe("Traces thread UI", () => {
     const rendered = renderSlot(panel, { subPath: "context/thr_abc" }, { rpc: {
       traces_prompt: (input) => { const { threadId, call, reveal } = rpcContract.traces_prompt.input.parse(input); return prompt(threadId, call, reveal); },
     } });
-    expect(screen.getByRole("button", { name: "Context Inspector" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { name: "Context Inspector" })).toBeTruthy();
     const section = await screen.findByText("System block");
     expect((screen.getByRole("checkbox", { name: "Reveal sensitive data" }) as HTMLInputElement).checked).toBe(true);
     expect(rendered.inspection.rpcCalls.find((call) => call.method === "traces_prompt")?.input).toMatchObject({ reveal: true });
@@ -220,21 +241,20 @@ describe("Traces thread UI", () => {
   it("opens the sidebar panel root in Explorer, including an unknown subPath", async () => {
     for (const subPath of ["", "unknown"]) {
       const rendered = renderSlot(panel, { subPath }, { rpc: { traces_fleet_start: () => { throw new Error("Route test does not scan storage."); } } });
-      expect(screen.getByRole("button", { name: "Log Explorer" }).getAttribute("aria-current")).toBe("page");
+      expect(screen.queryByRole("navigation", { name: "Trace views" })).toBeNull();
       expect(screen.getByRole("textbox", { name: "Filter" })).toBeTruthy();
-      expect(screen.queryByText(/Select a thread in Log Explorer/)).toBeNull();
+      expect(screen.queryByText(/Select a thread in Traces sidebar/)).toBeNull();
       rendered.lifecycle.unmount();
     }
   });
 
-  it("retains explicit empty Waterfall and Context routes without manual ID forms", async () => {
-    for (const [subPath, tab] of [["waterfall", "Waterfall"], ["context", "Context Inspector"]]) {
+  it("retains compact empty Waterfall and Context routes without duplicate navigation", () => {
+    for (const subPath of ["waterfall", "context"]) {
       const rendered = renderSlot(panel, { subPath }, {});
-      expect(screen.getByRole("button", { name: tab }).getAttribute("aria-current")).toBe("page");
+      expect(screen.queryByRole("navigation", { name: "Trace views" })).toBeNull();
       expect(screen.queryByRole("textbox", { name: "Thread ID" })).toBeNull();
-      expect(screen.getByText(/Select a thread in Log Explorer/)).toBeTruthy();
-      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Open Log Explorer" })); });
-      expect(rendered.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", options: { subPath: "explorer/_/24h" } });
+      expect(screen.getByText(/Select a thread in the Traces sidebar/)).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Open Log Explorer" })).toBeNull();
       rendered.lifecycle.unmount();
     }
   });

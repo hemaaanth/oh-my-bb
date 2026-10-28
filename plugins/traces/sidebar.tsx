@@ -16,6 +16,9 @@ export function TracesSidebar({ subPath }: { subPath: string }) {
   const segments = subPath.split("/");
   const id = segments[0] === "context" ? segments[1] : segments[0];
   const selectedId = id && /^thr_[a-z0-9]+$/.test(id) ? id : null;
+  const view = segments[0] === "metrics" || segments[0] === "context" || segments[0] === "explorer" ? segments[0]
+    : selectedId || segments[0] === "waterfall" ? "waterfall" : "explorer";
+  const fleetPath = view === "explorer" || view === "metrics" ? `${segments[1] ?? "_"}/${segments[2] ?? "24h"}` : "_/24h";
   const query = search.trim().toLocaleLowerCase();
   const groups = useMemo(() => {
     const matching = state.threads.filter((thread) => (showHidden || !thread.isHidden) && (showArchived || !thread.isArchived)
@@ -43,8 +46,16 @@ export function TracesSidebar({ subPath }: { subPath: string }) {
       <input type="search" value={search} onChange={(event) => setSearch(event.target.value)}
         onKeyDown={(event) => { if (event.key === "Escape" && search) { event.preventDefault(); setSearch(""); } }}
         placeholder="Search threads" aria-label="Search Traces threads" />
-      <button type="button" aria-current={selectedId === null ? "page" : undefined}
-        onClick={() => navigate.toPluginPanel("waterfall", { subPath: "" })}>Log Explorer</button>
+      <nav className="traces-sidebar-views" aria-label="Traces views">
+        <button type="button" aria-current={view === "explorer" ? "page" : undefined}
+          onClick={() => navigate.toPluginPanel("waterfall", { subPath: view === "metrics" ? `explorer/${fleetPath}` : "" })}>Log Explorer</button>
+        <button type="button" aria-current={view === "waterfall" ? "page" : undefined}
+          onClick={() => navigate.toPluginPanel("waterfall", { subPath: selectedId ?? "waterfall" })}>Waterfall</button>
+        <button type="button" aria-current={view === "context" ? "page" : undefined}
+          onClick={() => navigate.toPluginPanel("waterfall", { subPath: selectedId ? `context/${selectedId}` : "context" })}>Context Inspector</button>
+        <button type="button" aria-current={view === "metrics" ? "page" : undefined}
+          onClick={() => navigate.toPluginPanel("waterfall", { subPath: `metrics/${fleetPath}` })}>Fleet Metrics</button>
+      </nav>
     </div>
     <div className="traces-sidebar-groups">
       {state.status === "loading" && <p role="status">Loading BB threads…</p>}

@@ -140,6 +140,8 @@ describe("read-only thread-first scanner", () => {
     expect(global.rows[0]?.seq).toBe(309);
     expect(global.rows.every((row) => !("projectName" in row))).toBe(true);
     expect(global.rowsTruncated).toBe(global.matchedEvents - 250);
+    expect(global.status).toBe("complete");
+    expect(global.limited).toBe(false);
     expect(global.limitReasons.find((reason) => reason.code === "rows")?.count).toBe(global.rowsTruncated);
     await engine.dispose();
   });
@@ -162,6 +164,8 @@ describe("read-only thread-first scanner", () => {
     const started = engine.start({ query: "thread:thr_root", since: "1h", view: "metrics", mode: "events" });
     const snapshot = await engine.wait(started.jobId, 5_000);
     expect(snapshot.limitReasons.find((reason) => reason.code === "samples")?.count).toBeGreaterThan(4_000);
+    expect(snapshot.status).toBe("complete");
+    expect(snapshot.limited).toBe(true);
     await engine.dispose();
   });
   it("skips irrelevant oversized payloads without falsely marking the scan limited", async () => {

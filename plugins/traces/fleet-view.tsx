@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
+import * as Select from "@radix-ui/react-select";
 import { experimental_Icon as Icon, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import { FLEET_CHANNEL, type FleetFacet, type FleetHistogramBin, type FleetRow, type FleetSnapshot, type FleetView, type FleetMode, type fleetContract } from "./fleet-contract";
 import { metricDrilldownQuery, parseFleetQuery, type FleetMetricPredicate } from "./fleet-query";
@@ -11,12 +12,14 @@ const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour1
 const terminal = (status: FleetSnapshot["status"]) => status !== "running" && status !== "cancelling";
 const ROW_HEIGHT = 27;
 const ROW_WINDOW = 50;
+const WINDOWS = [{ value: "1h", label: "1 hour" }, { value: "6h", label: "6 hours" },
+  { value: "24h", label: "24 hours" }, { value: "7d", label: "7 days" }];
 
 function useFleetJob(view: FleetView, initialQuery: string, initialSince: string, initialMode: FleetMode) {
   const rpc = useRpc<typeof fleetContract>();
-  const [query, setQuery] = useState(initialQuery);
+  const query = initialQuery;
   const [draft, setDraft] = useState(initialQuery);
-  const [since, setSince] = useState(initialSince);
+  const since = initialSince;
   const [mode, setMode] = useState(initialMode);
   const [revision, setRevision] = useState(0);
   const [snapshot, setSnapshot] = useState<FleetSnapshot | null>(null);
@@ -85,8 +88,7 @@ function useFleetJob(view: FleetView, initialQuery: string, initialSince: string
   });
   const cancel = () => { const id = activeJob.current; if (!id) return;
     rpc.call("traces_fleet_cancel", { jobId: id }).then(setSnapshot, () => setError("Could not cancel the scan.")); };
-  const apply = (next: string) => { setDraft(next); setQuery(next); if (next === query) setRevision((value) => value + 1); };
-  return { query, draft, setDraft, apply, since, setSince, mode, setMode, snapshot, error, cancel,
+  return { query, draft, setDraft, since, mode, setMode, snapshot, error, cancel,
     refresh: () => setRevision((value) => value + 1), connection };
 }
 
@@ -98,24 +100,34 @@ function ScanProgress({ snapshot, error, onCancel, onRefresh, connection, quiet 
     : snapshot?.freshness === "snapshot" ? `Snapshot at ${clock(snapshot.completedAt ?? snapshot.updatedAt)}; ${snapshot.liveEnabled ? "live tail listens while connected" : "live tail stopped"}`
       : snapshot?.freshness === "cancelled" ? "Cancelled; results are partial" : snapshot?.freshness === "unavailable" ? "Fleet unavailable; per-thread views still work"
         : "Scanning existing BB storage…";
+  const sourceReasons = snapshot?.limitReasons.filter((reason) => reason.code !== "rows" && reason.code !== "samples" && reason.code !== "live-reservoir") ?? [];
+  const sampled = snapshot?.limitReasons.find((reason) => reason.code === "samples");
+  const staleRows = snapshot?.limitReasons.find((reason) => reason.code === "live-reservoir");
   return <div className="traces-fleet-progress">
     <div className="traces-fleet-progress-line"><span className={`traces-fleet-state traces-fleet-state-${state}`} role="status" aria-live="polite">{state}</span>
       <strong>{snapshot ? `${snapshot.scannedThreads.toLocaleString()} / ${snapshot.totalThreads.toLocaleString()} threads` : "Starting scan"}</strong>
       <span>{snapshot ? `${snapshot.scannedEvents.toLocaleString()} events scanned · ${snapshot.matchedEvents.toLocaleString()} matches` : ""}</span>
-      {quiet && snapshot && (snapshot.limited || snapshot.rowsTruncated > 0 || snapshot.matchedEvents > snapshot.rows.length || snapshot.status === "cancelled") && <span className="traces-fleet-partial">Partial results</span>}
       {quiet && connection !== "connected" && <span className="traces-fleet-partial">Live offline</span>}
       <span className="traces-fleet-progress-actions">{snapshot && (state === "running" || state === "cancelling") && <button type="button" onClick={onCancel} disabled={state === "cancelling"}>Cancel scan</button>}
         <button type="button" onClick={onRefresh}>Rescan</button></span></div>
     <div className="traces-fleet-progress-track" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label="Thread scan progress"><span style={{ width: `${progress}%` }} /></div>
-    {!quiet && <><div className="traces-fleet-freshness">{freshness}{snapshot?.retries ? ` · ${snapshot.retries} SQLite busy retries` : ""}{connection !== "connected" ? " · Live connection unavailable; reconnect triggers a new scan" : ""}</div>
-      {snapshot && snapshot.limitReasons.length > 0 && <ul className="traces-fleet-limits" aria-label="Scan limits and omitted data">{snapshot.limitReasons.map((reason) =>
-        <li key={reason.code}><strong>{reason.count.toLocaleString()}</strong> {reason.detail}</li>)}</ul>}</>}
+    <div className="traces-fleet-coverage-line">
+      {snapshot?.view === "explorer" && snapshot.matchedEvents > snapshot.rows.length && <span>Showing newest {snapshot.rows.length.toLocaleString()} of {snapshot.matchedEvents.toLocaleString()} scanned matches. Narrow the filter to inspect older events.</span>}
+      {sampled && <span className="traces-fleet-sampled">Latency sampled: {sampled.count.toLocaleString()} measured durations omitted from p50/p95.</span>}
+      {staleRows && <span className="traces-fleet-source-limit">Live rows need a source rescan ({staleRows.count.toLocaleString()} entries missing from the display).</span>}
+      {snapshot?.status === "cancelled" && <span className="traces-fleet-source-limit">Scan cancelled: counts cover scanned threads only.</span>}
+      {snapshot?.limited && !sourceReasons.length && !sampled && !staleRows && snapshot.status !== "cancelled" && <span className="traces-fleet-source-limit">Scan coverage limited; check the job status for details.</span>}
+    </div>
+    {sourceReasons.length > 0 && <ul className="traces-fleet-source-limits" aria-label="Source scan limits">{sourceReasons.map((reason) =>
+      <li key={reason.code}><strong>Source limited:</strong> {reason.count.toLocaleString()} {reason.detail}</li>)}</ul>}
+    {!quiet && <div className="traces-fleet-freshness">{freshness}{snapshot?.retries ? ` · ${snapshot.retries} SQLite busy retries` : ""}{connection !== "connected" ? " · Live connection unavailable; reconnect triggers a new scan" : ""}</div>}
     {(snapshot?.error || error) && <p className="traces-fleet-error" role="alert">{snapshot?.error ?? error}</p>}
   </div>;
 }
 
 function FleetControls({ view, draft, setDraft, onSubmit, since, setSince, mode, setMode }: { view: FleetView; draft: string; setDraft: (value: string) => void;
   onSubmit: () => void; since: string; setSince: (value: string) => void; mode: FleetMode; setMode: (value: FleetMode) => void }) {
+  const windows = WINDOWS.some((option) => option.value === since) ? WINDOWS : [...WINDOWS, { value: since, label: since }];
   return <div className="traces-fleet-controls">
     <form onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
       <label htmlFor={`traces-fleet-query-${view}`}>Filter</label>
@@ -123,7 +135,12 @@ function FleetControls({ view, draft, setDraft, onSubmit, since, setSince, mode,
       <button type="submit">Run scan</button>
     </form>
     {view === "explorer" && <div className="traces-fleet-switch" aria-label="Result mode"><button type="button" aria-pressed={mode === "events"} onClick={() => setMode("events")}>Events</button><button type="button" aria-pressed={mode === "spans"} onClick={() => setMode("spans")}>Spans</button></div>}
-    <label className="traces-fleet-window">Window <select value={since} onChange={(event) => setSince(event.target.value)}><option value="1h">1 hour</option><option value="6h">6 hours</option><option value="24h">24 hours</option><option value="7d">7 days</option></select></label>
+    <div className="traces-fleet-window"><span>Window</span><Select.Root value={since} onValueChange={setSince}>
+      <Select.Trigger aria-label="Window" className="traces-turn-trigger traces-fleet-window-trigger"><Select.Value /><Select.Icon><Icon name="ChevronDown" aria-hidden="true" /></Select.Icon></Select.Trigger>
+      <Select.Portal><Select.Content className="traces-turn-content" position="popper" sideOffset={6}><Select.Viewport>
+        {windows.map((option) => <Select.Item key={option.value} className="traces-turn-item" value={option.value}><Select.ItemText>{option.label}</Select.ItemText><Select.ItemIndicator><Icon name="Check" aria-hidden="true" /></Select.ItemIndicator></Select.Item>)}
+      </Select.Viewport></Select.Content></Select.Portal>
+    </Select.Root></div>
     {view === "explorer" ? <details className="traces-fleet-query-help"><summary aria-label="Query syntax help" title="Query syntax help"><Icon name="Info" aria-hidden="true" /></summary>
       <div className="traces-fleet-query-help-popover"><strong>Filter syntax</strong><p>AND-only <code>field:value</code> terms. Fields: project, thread, provider, model, environment, worktree, child, kind, type, status, tool, category, duration, metric.</p>
         <p>Quote spaces: <code>project:"My Project"</code>. Examples: <code>kind:toolCall status:failed</code>, <code>duration:&gt;5s</code>. No free text or OR. Maximum 7 days.</p></div></details>
@@ -233,7 +250,8 @@ function ExplorerRows({ snapshot, selectedId, selectedRef, onSelect, onWaterfall
   </div>;
 }
 
-export function ExplorerView({ initialQuery = "", initialSince = "24h", onDrilldown }: { initialQuery?: string; initialSince?: string; onDrilldown: (view: "waterfall" | "context", id: string) => void }) {
+export function ExplorerView({ initialQuery = "", initialSince = "24h", onDrilldown, onFilter }: { initialQuery?: string; initialSince?: string;
+  onDrilldown: (view: "waterfall" | "context", id: string) => void; onFilter: (query: string, since: string) => void }) {
   const job = useFleetJob("explorer", initialQuery, initialSince, "events");
   const navigate = useBbNavigate();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -243,12 +261,13 @@ export function ExplorerView({ initialQuery = "", initialSince = "24h", onDrilld
   const selected = job.snapshot?.rows.find((row) => row.id === selectedId) ?? null;
   const applyFacet = (field: string, value: string) => {
     const without = job.query.replace(new RegExp(`(?:^|\\s)${field}:(?:"[^"]*"|\\S+)`, "g"), " ").trim();
-    job.apply([without, `${field}:${value}`].filter(Boolean).join(" ").replace(/\s+/g, " "));
+    const next = [without, `${field}:${value}`].filter(Boolean).join(" ").replace(/\s+/g, " ");
+    if (next === job.query) job.refresh(); else onFilter(next, job.since);
     setSelectedId(null);
   };
   return <div className="traces-fleet traces-fleet-explorer">
-    <FleetControls view="explorer" draft={job.draft} setDraft={job.setDraft} onSubmit={() => { setSelectedId(null); job.apply(job.draft); }} since={job.since}
-      setSince={(value) => { setSelectedId(null); job.setSince(value); }} mode={job.mode} setMode={(value) => { setSelectedId(null); job.setMode(value); }} />
+    <FleetControls view="explorer" draft={job.draft} setDraft={job.setDraft} onSubmit={() => { setSelectedId(null); if (job.draft === job.query) job.refresh(); else onFilter(job.draft, job.since); }} since={job.since}
+      setSince={(value) => { setSelectedId(null); onFilter(job.query, value); }} mode={job.mode} setMode={(value) => { setSelectedId(null); job.setMode(value); }} />
     <ScanProgress snapshot={job.snapshot} error={job.error} onCancel={job.cancel} onRefresh={() => { setSelectedId(null); job.refresh(); }} connection={job.connection} quiet />
     {job.snapshot && <>
       <Histogram bins={job.snapshot.histogram} since={job.since} />
@@ -305,8 +324,8 @@ function SpawnTree({ snapshot, onOpen }: { snapshot: FleetSnapshot; onOpen: (thr
   </section>;
 }
 
-export function MetricsView({ initialQuery = "", initialSince = "24h", onExplorer, onWaterfall }: { initialQuery?: string; initialSince?: string;
-  onExplorer: (query: string, since: string) => void; onWaterfall: (id: string) => void }) {
+export function MetricsView({ initialQuery = "", initialSince = "24h", onExplorer, onWaterfall, onFilter }: { initialQuery?: string; initialSince?: string;
+  onExplorer: (query: string, since: string) => void; onWaterfall: (id: string) => void; onFilter: (query: string, since: string) => void }) {
   const job = useFleetJob("metrics", initialQuery, initialSince, "events");
   const snapshot = job.snapshot;
   const metrics = snapshot?.metrics;
@@ -322,7 +341,8 @@ export function MetricsView({ initialQuery = "", initialSince = "24h", onExplore
   };
   return <div className="traces-fleet traces-fleet-metrics">
     <div className="traces-fleet-header"><div><h2>Fleet Metrics</h2><p>Measured latency, failures and spawn structure from a bounded read-only scan.</p></div><span className="traces-fleet-range">{job.snapshot ? `${new Date(job.snapshot.from).toLocaleString()} → ${new Date(job.snapshot.to).toLocaleString()}` : "Bounded window"}</span></div>
-    <FleetControls view="metrics" draft={job.draft} setDraft={job.setDraft} onSubmit={() => job.apply(job.draft)} since={job.since} setSince={job.setSince} mode={job.mode} setMode={job.setMode} />
+    <FleetControls view="metrics" draft={job.draft} setDraft={job.setDraft} onSubmit={() => job.draft === job.query ? job.refresh() : onFilter(job.draft, job.since)}
+      since={job.since} setSince={(value) => onFilter(job.query, value)} mode={job.mode} setMode={job.setMode} />
     <ScanProgress snapshot={snapshot} error={job.error} onCancel={job.cancel} onRefresh={job.refresh} connection={job.connection} />
     {snapshot && <>
       <div className="traces-fleet-tiles">
