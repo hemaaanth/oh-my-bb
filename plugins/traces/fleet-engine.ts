@@ -1,26 +1,28 @@
 import { randomBytes } from "node:crypto";
 import type Database from "better-sqlite3";
-import { MAX_EVENTS, FleetSchemaError, fleetThreadById, listFleetThreads, openFleetDb, scanFleetThread, threadMatchesFleetFilter,
+import { MAX_EVENTS, MAX_THREADS, FleetSchemaError, fleetThreadById, listFleetThreads, openFleetDb, scanFleetThread, threadMatchesFleetFilter,
   type FleetThread, type ThreadContribution } from "./fleet-db";
 import { parseFleetQuery, parseFleetSince, type FleetFilter } from "./fleet-query";
-import type { FleetErrorStats, FleetFacet, FleetHistogramBin, FleetMetrics, FleetMode, FleetSnapshot, FleetStatus, FleetTtft, FleetView } from "./fleet-contract";
+import type { FleetErrorStats, FleetFacet, FleetHistogramBin, FleetLimitReason, FleetMetrics, FleetMode, FleetSnapshot, FleetStatus, FleetTtft, FleetView } from "./fleet-contract";
 
 const MAX_JOBS = 4;
 const MAX_ACTIVE = 2;
 const JOB_TTL_MS = 10 * 60_000;
 const MAX_ROWS = 250;
+const MAX_ROW_CANDIDATES = 5_000;
 const MAX_GROUPS = 200;
 const MAX_SAMPLES_PER_GROUP = 10_000;
 const BATCH_THREADS = 5;
 const RETRY_MS = 100;
 
 type StartInput = { query: string; since: string; view: FleetView; mode: FleetMode };
-type Publish = (event: { jobId: string; status: FleetStatus; scannedThreads: number; totalThreads: number; updatedAt: number }) => void;
+type Publish = (event: { jobId: string; status: FleetStatus; scannedThreads: number; totalThreads: number;
+  scannedEvents: number; matchedEvents: number; updatedAt: number }) => void;
 interface Job {
   id: string; input: StartInput; filter: FleetFilter; from: number; to: number;
   status: FleetStatus; error: string | null; startedAt: number; updatedAt: number; completedAt: number | null;
-  threads: FleetThread[]; totalThreads: number; scannedThreads: number; scannedEvents: number; limited: boolean; retries: number;
-  contributions: Map<string, ThreadContribution>; cancelRequested: boolean; dirty: Set<string>;
+  threads: FleetThread[]; totalThreads: number; scannedThreads: number; scannedEvents: number; matchedEvents: number; inFlightEvents: number; limited: boolean; retries: number;
+  contributions: Map<string, ThreadContribution>; cancelRequested: boolean; dirty: Set<string>; lastAccessAt: number; liveEnabled: boolean;
   liveSince: number | null; lastLiveEventAt: number | null; liveTimer: NodeJS.Timeout | null; liveRunning: boolean;
   done: Promise<void>; settle: () => void;
 }
@@ -70,7 +72,7 @@ function spawnTree(contributions: Iterable<ThreadContribution>): FleetMetrics["s
   return output;
 }
 
-function aggregate(job: Job): Pick<FleetSnapshot, "rows" | "rowsTruncated" | "histogram" | "facets" | "metrics" | "matchedEvents"> {
+function aggregate(job: Job): Pick<FleetSnapshot, "rows" | "rowsTruncated" | "histogram" | "facets" | "metrics" | "matchedEvents" | "limitReasons"> {
   const allRows: FleetSnapshot["rows"] = [];
   const bins = Array.from({ length: 25 }, () => ({ count: 0, errors: 0 }));
   const facetMaps = new Map<string, Map<string, number>>();
@@ -81,9 +83,12 @@ function aggregate(job: Job): Pick<FleetSnapshot, "rows" | "rowsTruncated" | "hi
   const toolSamples: number[] = [];
   let toolLatencyPartial = false;
   let turns = 0, toolCalls = 0, failedTools = 0, retries = 0, fallbacks = 0, matchedEvents = 0, activeThreads = 0, snapshots = 0;
+  let truncatedThreads = 0, skippedPayloads = 0, unknownDurations = 0;
   for (const contribution of job.contributions.values()) {
     if (contribution.scannedEvents) activeThreads++;
     if (contribution.withUsageSnapshot) snapshots++;
+    if (contribution.truncatedEvents) truncatedThreads++;
+    skippedPayloads += contribution.skippedPayloads;
     matchedEvents += contribution.matchedEvents;
     turns += contribution.turns; toolCalls += contribution.toolCalls; failedTools += contribution.failedTools;
     retries += contribution.retries; fallbacks += contribution.fallbacks;
@@ -96,6 +101,7 @@ function aggregate(job: Job): Pick<FleetSnapshot, "rows" | "rowsTruncated" | "hi
     for (const [name, entry] of contribution.toolDurations) {
       mergeSample(tools, name, entry);
       mergeSample(providers, contribution.thread.provider, entry);
+      unknownDurations += entry.unknown;
       const space = MAX_SAMPLES_PER_GROUP - toolSamples.length;
       toolSamples.push(...entry.samples.slice(0, space));
       if (entry.partial || entry.samples.length > space) toolLatencyPartial = true;
@@ -133,7 +139,18 @@ function aggregate(job: Job): Pick<FleetSnapshot, "rows" | "rowsTruncated" | "hi
     ttft: ttftRows, spawnTree: spawnTree(job.contributions.values()), tokenUsage: null,
     tokenCoverage: { threadsWithSnapshot: snapshots, threadsWithoutSnapshot: job.contributions.size - snapshots,
       reason: "BB prunes historical usage. The remaining thread totals can include work outside this window; no reliable fleet-window token total is stored." } };
-  return { rows, rowsTruncated: Math.max(0, matchedEvents - rows.length), histogram, facets, metrics, matchedEvents };
+  const rowsTruncated = Math.max(0, matchedEvents - rows.length);
+  const limitReasons: FleetLimitReason[] = [];
+  if (job.totalThreads > MAX_THREADS) limitReasons.push({ code: "thread-cap", count: job.totalThreads - MAX_THREADS, detail: "Candidate threads beyond the 2,000-thread cap were not scanned." });
+  if (job.scannedEvents >= MAX_EVENTS && job.scannedThreads < job.totalThreads) limitReasons.push({ code: "event-cap", count: job.totalThreads - job.scannedThreads, detail: "Threads left after the 3-million-event cap." });
+  if (truncatedThreads) limitReasons.push({ code: "thread-event-cap", count: truncatedThreads, detail: "Threads cut at 50,000 events each." });
+  if (skippedPayloads) limitReasons.push({ code: "payload", count: skippedPayloads, detail: "Relevant payloads over 2 MiB or malformed; metadata remains visible." });
+  if (rowsTruncated) limitReasons.push({ code: "rows", count: rowsTruncated, detail: "Matching rows omitted from the newest-250 response." });
+  const missingSamples = Math.max(0, toolCalls - unknownDurations - toolSamples.length);
+  if (missingSamples) limitReasons.push({ code: "samples", count: missingSamples, detail: "Measured tool durations omitted by sample caps; p50/p95 are partial." });
+  if (rows.length < Math.min(MAX_ROWS, matchedEvents)) limitReasons.push({ code: "live-reservoir", count: Math.min(MAX_ROWS, matchedEvents) - rows.length,
+    detail: "The live row reservoir needs a source rescan after changed threads were removed." });
+  return { rows, rowsTruncated, histogram, facets, metrics, matchedEvents, limitReasons };
 }
 
 function nextTurn(): Promise<void> {
@@ -145,12 +162,20 @@ export class FleetEngine {
   private readonly jobs = new Map<string, Job>();
   constructor(private readonly dataDir: () => string, private readonly publish: Publish, private readonly now = Date.now) {}
 
+  private pruneRows(job: Job) {
+    const rows = [...job.contributions.values()].flatMap((contribution) => contribution.rows);
+    if (rows.length <= MAX_ROW_CANDIDATES) return;
+    rows.sort((a, b) => b.at - a.at || b.seq - a.seq);
+    const keep = new Set(rows.slice(0, MAX_ROW_CANDIDATES));
+    for (const contribution of job.contributions.values()) contribution.rows = contribution.rows.filter((row) => keep.has(row));
+  }
   private notify(job: Job) {
     job.updatedAt = this.now();
-    this.publish({ jobId: job.id, status: job.status, scannedThreads: job.scannedThreads, totalThreads: job.totalThreads, updatedAt: job.updatedAt });
+    this.publish({ jobId: job.id, status: job.status, scannedThreads: job.scannedThreads, totalThreads: job.totalThreads,
+      scannedEvents: job.scannedEvents + job.inFlightEvents, matchedEvents: job.matchedEvents, updatedAt: job.updatedAt });
   }
   private prune(reserveSlot = false) {
-    for (const [id, job] of this.jobs) if (job.completedAt !== null && this.now() - job.completedAt > JOB_TTL_MS) {
+    for (const [id, job] of this.jobs) if (job.completedAt !== null && this.now() - job.lastAccessAt > JOB_TTL_MS) {
       clearTimeout(job.liveTimer ?? undefined); this.jobs.delete(id);
     }
     while (this.jobs.size > MAX_JOBS - (reserveSlot ? 1 : 0)) {
@@ -169,9 +194,9 @@ export class FleetEngine {
     const id = `scan_${randomBytes(8).toString("hex")}`;
     const { promise: done, resolve: settle } = Promise.withResolvers<void>();
     const job: Job = { id, input, filter, from, to, status: "running", error: null, startedAt: this.now(), updatedAt: this.now(),
-      completedAt: null, threads: [], totalThreads: 0, scannedThreads: 0, scannedEvents: 0, limited: false, retries: 0,
-      contributions: new Map(), cancelRequested: false, dirty: new Set(), liveSince: null, lastLiveEventAt: null,
-      liveTimer: null, liveRunning: false, done, settle };
+      completedAt: null, threads: [], totalThreads: 0, scannedThreads: 0, scannedEvents: 0, matchedEvents: 0, inFlightEvents: 0, limited: false, retries: 0,
+      contributions: new Map(), cancelRequested: false, dirty: new Set(), lastAccessAt: this.now(), liveEnabled: true,
+      liveSince: null, lastLiveEventAt: null, liveTimer: null, liveRunning: false, done, settle };
     this.jobs.set(id, job);
     try {
       const db = openFleetDb(this.dataDir());
@@ -195,7 +220,9 @@ export class FleetEngine {
         if (job.cancelRequested || job.scannedEvents >= MAX_EVENTS) { job.limited ||= job.scannedEvents >= MAX_EVENTS; break; }
         let contribution: ThreadContribution | null = null;
         for (let attempt = 0; attempt < 3 && !contribution; attempt++) {
-          try { contribution = scanFleetThread(db, thread, job.from, job.to, job.filter, job.input.mode); }
+          try { contribution = await scanFleetThread(db, thread, job.from, job.to, job.filter, job.input.mode, job.to,
+            () => job.cancelRequested || job.scannedEvents + job.inFlightEvents >= MAX_EVENTS,
+            (scanned) => { job.inFlightEvents = scanned; if (scanned % 2_048 === 0) this.notify(job); }); }
           catch (cause) {
             if (!(cause instanceof Error && "code" in cause && (cause.code === "SQLITE_BUSY" || cause.code === "SQLITE_LOCKED")) || attempt === 2) throw cause;
             job.retries++;
@@ -205,8 +232,10 @@ export class FleetEngine {
           }
         }
         if (!contribution) break;
+        job.inFlightEvents = 0;
         job.contributions.set(thread.id, contribution);
-        job.scannedThreads++; job.scannedEvents += contribution.scannedEvents;
+        this.pruneRows(job);
+        job.scannedThreads++; job.scannedEvents += contribution.scannedEvents; job.matchedEvents += contribution.matchedEvents;
         job.limited ||= contribution.limited;
         if (job.scannedThreads % BATCH_THREADS === 0) { this.notify(job); await nextTurn(); }
       }
@@ -224,21 +253,26 @@ export class FleetEngine {
     this.prune();
     const job = this.jobs.get(id);
     if (!job) throw new Error("Scan job expired. Start a new scan.");
+    job.lastAccessAt = this.now();
+    this.jobs.delete(id); this.jobs.set(id, job);
     const result = aggregate(job);
     return { jobId: id, view: job.input.view, mode: job.input.mode, query: job.input.query, since: job.input.since,
       status: job.status, error: job.error, from: job.from, to: job.to,
       startedAt: job.startedAt, updatedAt: job.updatedAt, completedAt: job.completedAt,
       scannedThreads: job.scannedThreads, totalThreads: job.totalThreads, scannedEvents: job.scannedEvents,
       ...result, freshness: job.status === "cancelled" ? "cancelled" : job.status === "error" || job.status === "schema-mismatch" ? "unavailable"
-        : job.lastLiveEventAt !== null ? "live-since-completion" : job.status === "complete" ? "snapshot" : "scanning",
-      liveSince: job.liveSince, lastLiveEventAt: job.lastLiveEventAt, limited: job.limited, retries: job.retries };
+        : job.liveEnabled && job.lastLiveEventAt !== null ? "live-since-completion" : job.status === "complete" ? "snapshot" : "scanning",
+      liveSince: job.liveSince, lastLiveEventAt: job.lastLiveEventAt, liveEnabled: job.liveEnabled,
+      limited: job.limited || result.limitReasons.some((reason) => reason.code !== "rows"), retries: job.retries };
   }
   cancel(id: string): FleetSnapshot {
     const job = this.jobs.get(id); if (!job) throw new Error("Scan job expired. Start a new scan.");
+    job.liveEnabled = false; job.dirty.clear();
     if (job.status === "running" || job.status === "cancelling") {
-      job.cancelRequested = true; job.status = "cancelling"; this.notify(job);
+      job.cancelRequested = true; job.status = "cancelling";
     }
     if (job.liveTimer) { clearTimeout(job.liveTimer); job.liveTimer = null; }
+    this.notify(job);
     return this.snapshot(id);
   }
   async wait(id: string, ms: number, signal?: AbortSignal): Promise<FleetSnapshot> {
@@ -256,37 +290,41 @@ export class FleetEngine {
   }
   onThreadEvent(threadId: string) {
     for (const job of this.jobs.values()) {
-      if (job.status !== "complete" && job.status !== "running") continue;
+      if (!job.liveEnabled || (job.status !== "complete" && job.status !== "running")) continue;
       job.dirty.add(threadId);
       if (job.status === "complete") this.scheduleLive(job);
     }
   }
   private scheduleLive(job: Job) {
-    if (job.liveTimer || job.liveRunning || job.status !== "complete") return;
+    if (!job.liveEnabled || job.liveTimer || job.liveRunning || job.status !== "complete") return;
     job.liveTimer = setTimeout(() => { job.liveTimer = null; void this.flushLive(job); }, 1_000);
   }
   private async flushLive(job: Job) {
-    if (job.liveRunning || job.status !== "complete") return;
+    if (!job.liveEnabled || job.liveRunning || job.status !== "complete") return;
     job.liveRunning = true;
     const ids = [...job.dirty].slice(0, 20); for (const id of ids) job.dirty.delete(id);
     try {
       const db = openFleetDb(this.dataDir());
       try {
         for (const id of ids) {
-          if (job.status !== "complete") break;
+          if (!job.liveEnabled || job.status !== "complete") break;
           const thread = fleetThreadById(db, id);
           if (!thread || (thread.updatedAt < job.from && thread.status !== "active") || !threadMatchesFleetFilter(thread, job.filter)) { job.contributions.delete(id); continue; }
-          const contribution = scanFleetThread(db, thread, job.from, this.now() + 1, job.filter, job.input.mode, job.to);
+          const contribution = await scanFleetThread(db, thread, job.from, this.now() + 1, job.filter, job.input.mode, job.to,
+            () => !job.liveEnabled);
+          if (!job.liveEnabled || contribution.stopped) break;
           if (contribution.scannedEvents) job.contributions.set(id, contribution);
           else job.contributions.delete(id);
-          job.limited ||= contribution.limited;
+          this.pruneRows(job);
           await nextTurn();
         }
         const candidates = listFleetThreads(db, job.filter, job.from);
-        job.totalThreads = candidates.total; job.limited ||= candidates.limited;
+        job.totalThreads = candidates.total; job.limited = candidates.limited;
       } finally { db.close(); }
       job.scannedThreads = job.contributions.size;
       job.scannedEvents = [...job.contributions.values()].reduce((sum, value) => sum + value.scannedEvents, 0);
+      job.matchedEvents = [...job.contributions.values()].reduce((sum, value) => sum + value.matchedEvents, 0);
+      job.limited ||= job.scannedEvents >= MAX_EVENTS || [...job.contributions.values()].some((value) => value.limited);
       job.lastLiveEventAt = this.now(); this.notify(job);
     } catch (cause) {
       if (cause instanceof FleetSchemaError) { job.status = "schema-mismatch"; job.error = cause.message; this.notify(job); }
@@ -297,6 +335,7 @@ export class FleetEngine {
   }
   async dispose() {
     for (const job of this.jobs.values()) {
+      job.liveEnabled = false;
       job.cancelRequested = true;
       clearTimeout(job.liveTimer ?? undefined);
     }

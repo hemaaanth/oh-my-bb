@@ -34,6 +34,9 @@
 .traces-fleet-freshness, .traces-fleet-muted, .traces-fleet-rows-footer { color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
 .traces-fleet-error, .traces-fleet-rows .failed { color: var(--destructive); }
 .traces-fleet-error { margin: 5px 0 0; font-size: 11px; }
+.traces-fleet-limits { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 7px 0 0; padding: 0; list-style: none; color: var(--muted-foreground); font-size: 10px; line-height: 1.4; }
+.traces-fleet-limits li { border-left: 2px solid var(--warning); padding-left: 7px; }
+.traces-fleet-limits strong { color: var(--foreground); }
 .traces-fleet-histogram { margin: 0; padding: 12px 16px 8px; border-bottom: 1px solid var(--border); }
 .traces-fleet-histogram figcaption { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; }
 .traces-fleet-histogram figcaption strong { color: var(--foreground); font-size: 12px; }
@@ -52,10 +55,12 @@
 .traces-fleet-facets { padding: 10px; border-right: 1px solid var(--border); overflow-y: auto; max-height: 680px; }
 .traces-fleet-facets section { margin-bottom: 12px; }
 .traces-fleet-facets h3 { margin: 0 0 5px; color: var(--muted-foreground); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
-.traces-fleet-facets button { display: flex; justify-content: space-between; gap: 6px; width: 100%; padding: 4px 3px; border: 0; border-radius: 4px; background: transparent; color: var(--foreground); text-align: left; cursor: pointer; font-size: 11px; }
-.traces-fleet-facets button:hover { background: var(--accent); }
-.traces-fleet-facets button span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.traces-fleet-facets button span:last-child { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.traces-fleet-facets button, .traces-fleet-facet-other { display: flex; justify-content: space-between; gap: 6px; width: 100%; padding: 4px 3px; border: 0; border-radius: 4px; background: transparent; color: var(--foreground); text-align: left; font-size: 11px; }
+.traces-fleet-facets button { cursor: pointer; }
+.traces-fleet-facets button:hover, .traces-fleet-facets button[aria-pressed="true"] { background: var(--accent); }
+.traces-fleet-facet-other { color: var(--muted-foreground); }
+.traces-fleet-facets :is(button, .traces-fleet-facet-other) span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.traces-fleet-facets :is(button, .traces-fleet-facet-other) span:last-child { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
 .traces-fleet-rows { min-width: 0; overflow: auto; max-height: 680px; }
 .traces-fleet-rows table { width: 100%; min-width: 650px; border-collapse: collapse; font-size: 10px; white-space: nowrap; }
 .traces-fleet-rows th { position: sticky; top: 0; z-index: 1; padding: 7px 8px; color: var(--muted-foreground); background: var(--card); border-bottom: 1px solid var(--border); font-weight: 500; text-align: left; }

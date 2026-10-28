@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import { FLEET_CHANNEL, type FleetFacet, type FleetHistogramBin, type FleetRow, type FleetSnapshot, type FleetView, type FleetMode, type fleetContract } from "./fleet-contract";
+import { metricDrilldownQuery, parseFleetQuery, type FleetMetricPredicate } from "./fleet-query";
 import "./fleet.css";
 
 const number = (value: number | null | undefined) => value == null ? "not stored" : value.toLocaleString();
@@ -20,17 +21,31 @@ function useFleetJob(view: FleetView, initialQuery: string, initialSince: string
   const [error, setError] = useState<string | null>(null);
   const activeJob = useRef<string | null>(null);
   const generation = useRef(0);
+  const statusTimer = useRef<number | null>(null);
   const connection = useRealtimeConnectionState();
   const previousConnection = useRef(connection);
+  const refreshStatus = useCallback(async (id: string) => {
+    try {
+      const next = await rpc.call("traces_fleet_status", { jobId: id });
+      if (activeJob.current !== id) return;
+      if (next.limitReasons.some((reason) => reason.code === "live-reservoir")) { setRevision((value) => value + 1); return; }
+      setSnapshot((previous) => previous && previous.updatedAt > next.updatedAt ? previous : next);
+    } catch {
+      // A bounded job can expire or be evicted while its view stays open.
+      // Rebuild from source with the same query instead of showing a stale error.
+      if (activeJob.current === id) { activeJob.current = null; void rpc.call("traces_fleet_cancel", { jobId: id }).catch(() => {}); setRevision((value) => value + 1); }
+    }
+  }, [rpc]);
   const launch = useCallback(async () => {
     const current = ++generation.current;
+    window.clearTimeout(statusTimer.current ?? undefined); statusTimer.current = null;
     const old = activeJob.current;
-    if (old) { try { await rpc.call("traces_fleet_cancel", { jobId: old }); } catch { /* A completed or expired job needs no cleanup. */ } }
+    if (old) { try { await rpc.call("traces_fleet_cancel", { jobId: old }); } catch { /* Expired jobs need no cleanup. */ } }
     if (current !== generation.current) return;
     activeJob.current = null; setSnapshot(null); setError(null);
     try {
       const next = await rpc.call("traces_fleet_start", { query, since, view, mode });
-      if (current !== generation.current) { if (!terminal(next.status)) void rpc.call("traces_fleet_cancel", { jobId: next.jobId }); return; }
+      if (current !== generation.current) { void rpc.call("traces_fleet_cancel", { jobId: next.jobId }).catch(() => {}); return; }
       activeJob.current = next.jobId; setSnapshot(next);
     } catch (cause) {
       if (current === generation.current) setError(cause instanceof Error ? cause.message : "Could not start a fleet scan.");
@@ -38,15 +53,33 @@ function useFleetJob(view: FleetView, initialQuery: string, initialSince: string
   }, [rpc, query, since, view, mode]);
   useEffect(() => { void launch(); return () => { generation.current++; }; }, [launch, revision]);
   useEffect(() => {
+    const heartbeat = window.setInterval(() => { if (activeJob.current) void refreshStatus(activeJob.current); }, 60_000);
+    return () => {
+      window.clearInterval(heartbeat); window.clearTimeout(statusTimer.current ?? undefined);
+      const id = activeJob.current; activeJob.current = null;
+      if (id) void rpc.call("traces_fleet_cancel", { jobId: id }).catch(() => {});
+    };
+  }, [rpc, refreshStatus]);
+  useEffect(() => {
     if (previousConnection.current === "reconnecting" && connection === "connected") setRevision((value) => value + 1);
     previousConnection.current = connection;
   }, [connection]);
   useRealtime(FLEET_CHANNEL, (payload) => {
-    const message = payload as { jobId?: string };
-    if (!message.jobId || message.jobId !== activeJob.current) return;
-    rpc.call("traces_fleet_status", { jobId: message.jobId }).then((next) => {
-      if (activeJob.current === next.jobId) setSnapshot((previous) => previous && previous.updatedAt > next.updatedAt ? previous : next);
-    }, () => setError("Scan status expired. Start a new scan."));
+    const message = payload as { jobId?: unknown; status?: unknown; scannedThreads?: unknown; totalThreads?: unknown;
+      scannedEvents?: unknown; matchedEvents?: unknown; updatedAt?: unknown };
+    const id = message.jobId;
+    if (typeof id !== "string" || id !== activeJob.current) return;
+    const { status, scannedThreads, totalThreads, scannedEvents, matchedEvents, updatedAt } = message;
+    if ((status === "running" || status === "cancelling") && typeof scannedThreads === "number"
+      && typeof totalThreads === "number" && typeof scannedEvents === "number"
+      && typeof matchedEvents === "number" && typeof updatedAt === "number") {
+      const progress = { status, scannedThreads, totalThreads, scannedEvents, matchedEvents, updatedAt } as const;
+      setSnapshot((previous) => previous && previous.jobId === id && updatedAt >= previous.updatedAt
+        ? { ...previous, ...progress } : previous);
+      return;
+    }
+    if (statusTimer.current !== null) return;
+    statusTimer.current = window.setTimeout(() => { statusTimer.current = null; void refreshStatus(id); }, snapshot?.status === "running" ? 0 : 2_000);
   });
   const cancel = () => { const id = activeJob.current; if (!id) return;
     rpc.call("traces_fleet_cancel", { jobId: id }).then(setSnapshot, () => setError("Could not cancel the scan.")); };
@@ -60,17 +93,19 @@ function ScanProgress({ snapshot, error, onCancel, onRefresh, connection }: { sn
   const progress = snapshot ? Math.min(100, snapshot.totalThreads ? Math.round(snapshot.scannedThreads / snapshot.totalThreads * 100) : 100) : 0;
   const state = snapshot?.status ?? "loading";
   const freshness = snapshot?.freshness === "live-since-completion" ? `Live since ${clock(snapshot.liveSince ?? snapshot.startedAt)}; last update ${clock(snapshot.lastLiveEventAt ?? snapshot.updatedAt)}`
-    : snapshot?.freshness === "snapshot" ? `Snapshot at ${clock(snapshot.completedAt ?? snapshot.updatedAt)}; live tail listens while connected`
+    : snapshot?.freshness === "snapshot" ? `Snapshot at ${clock(snapshot.completedAt ?? snapshot.updatedAt)}; ${snapshot.liveEnabled ? "live tail listens while connected" : "live tail stopped"}`
       : snapshot?.freshness === "cancelled" ? "Cancelled; results are partial" : snapshot?.freshness === "unavailable" ? "Fleet unavailable; per-thread views still work"
         : "Scanning existing BB storage…";
-  return <div className="traces-fleet-progress" role="status" aria-live="polite">
-    <div className="traces-fleet-progress-line"><span className={`traces-fleet-state traces-fleet-state-${state}`}>{state}</span>
+  return <div className="traces-fleet-progress">
+    <div className="traces-fleet-progress-line"><span className={`traces-fleet-state traces-fleet-state-${state}`} role="status" aria-live="polite">{state}</span>
       <strong>{snapshot ? `${snapshot.scannedThreads.toLocaleString()} / ${snapshot.totalThreads.toLocaleString()} threads` : "Starting scan"}</strong>
       <span>{snapshot ? `${snapshot.scannedEvents.toLocaleString()} events scanned · ${snapshot.matchedEvents.toLocaleString()} matches` : ""}</span>
       <span className="traces-fleet-progress-actions">{snapshot && (state === "running" || state === "cancelling") && <button type="button" onClick={onCancel} disabled={state === "cancelling"}>Cancel scan</button>}
         <button type="button" onClick={onRefresh}>Rescan</button></span></div>
     <div className="traces-fleet-progress-track" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label="Thread scan progress"><span style={{ width: `${progress}%` }} /></div>
-    <div className="traces-fleet-freshness">{freshness}{snapshot?.limited ? " · Bounded result; see scan limits" : ""}{snapshot?.retries ? ` · ${snapshot.retries} SQLite busy retries` : ""}{connection !== "connected" ? " · Live connection unavailable; reconnect triggers a new scan" : ""}</div>
+    <div className="traces-fleet-freshness">{freshness}{snapshot?.retries ? ` · ${snapshot.retries} SQLite busy retries` : ""}{connection !== "connected" ? " · Live connection unavailable; reconnect triggers a new scan" : ""}</div>
+    {snapshot && snapshot.limitReasons.length > 0 && <ul className="traces-fleet-limits" aria-label="Scan limits and omitted data">{snapshot.limitReasons.map((reason) =>
+      <li key={reason.code}><strong>{reason.count.toLocaleString()}</strong> {reason.detail}</li>)}</ul>}
     {(snapshot?.error || error) && <p className="traces-fleet-error" role="alert">{snapshot?.error ?? error}</p>}
   </div>;
 }
@@ -105,11 +140,14 @@ function Histogram({ bins, since }: { bins: FleetHistogramBin[]; since: string }
 }
 
 function Facets({ snapshot, onFacet }: { snapshot: FleetSnapshot; onFacet: (field: string, value: string) => void }) {
-  const fields = ["provider", "kind", "status", "tool", "project", "model", "environment", "worktree", "child", "category"];
+  const fields = ["provider", "kind", "status", "tool", "project", "model", "environment", "worktree", "child", "category"] as const;
+  const active = parseFleetQuery(snapshot.query).terms;
   return <aside className="traces-fleet-facets" aria-label="Filter facets">{fields.map((field) => {
     const values = snapshot.facets[field] ?? [];
     if (!values.length) return null;
-    return <section key={field}><h3>{field}</h3>{values.slice(0, 8).map(({ value, count }: FleetFacet) => <button type="button" key={value} onClick={() => onFacet(field, value)} title={`Filter ${field} to ${value}`}><span>{value}</span><span>{compact(count)}</span></button>)}</section>;
+    return <section key={field}><h3>{field}</h3>{values.slice(0, 8).map(({ value, count }: FleetFacet) => value === "other"
+      ? <div className="traces-fleet-facet-other" key={value} title="Aggregated values beyond the facet cap; this bucket cannot be filtered"><span>Other values (grouped)</span><span>{compact(count)}</span></div>
+      : <button type="button" key={value} aria-pressed={active[field] === value} aria-label={`Filter ${field} to ${value} (${count} matches)`} onClick={() => onFacet(field, value)} title={`Filter ${field} to ${value}`}><span>{value}</span><span>{compact(count)}</span></button>)}</section>;
   })}</aside>;
 }
 
@@ -147,8 +185,8 @@ function RowDetail({ row, onWaterfall, onContext, onOpenThread }: { row: FleetRo
 
 function ExplorerRows({ snapshot, selectedId, onSelect }: { snapshot: FleetSnapshot; selectedId: string | null; onSelect: (row: FleetRow) => void }) {
   return <div className="traces-fleet-rows"><table><thead><tr><th>Time</th><th>Thread</th><th>Turn</th><th>Kind</th><th>Tool</th><th>Duration</th><th>Status</th></tr></thead><tbody>
-    {snapshot.rows.map((row) => <tr key={row.id} className={row.id === selectedId ? "selected" : ""}>
-      <td><button type="button" onClick={() => onSelect(row)} aria-label={`Inspect ${row.kind} in ${row.threadId} at ${clock(row.at)}`}>{new Date(row.at).toLocaleTimeString()}</button></td>
+    {snapshot.rows.map((row) => <tr key={row.id} className={row.id === selectedId ? "selected" : ""} aria-selected={row.id === selectedId}>
+      <td><button type="button" onClick={() => onSelect(row)} aria-current={row.id === selectedId ? "true" : undefined} aria-label={`Inspect ${row.kind} in ${row.threadId} at ${clock(row.at)}`}>{new Date(row.at).toLocaleTimeString()}</button></td>
       <td>{row.threadId}</td><td>{row.turnId?.split("-t").at(-1) ?? "—"}</td><td>{row.kind}</td><td>{row.tool ?? "—"}</td><td>{duration(row.durationMs)}</td><td className={row.status === "failed" ? "failed" : ""}>{row.status}</td>
     </tr>)}</tbody></table>
     {!snapshot.rows.length && <p className="traces-fleet-muted">{snapshot.status === "running" ? "Rows will appear as threads are scanned." : "No matching events in this window."}</p>}
@@ -184,11 +222,11 @@ function MetricTile({ label, value, note, onClick }: { label: string; value: str
   const content = <><span>{label}</span><strong>{value}</strong><small>{note}</small></>;
   return onClick ? <button type="button" className="traces-fleet-tile" onClick={onClick}>{content}</button> : <div className="traces-fleet-tile">{content}</div>;
 }
-function MetricBars({ title, subtitle, items, max, onClick }: { title: string; subtitle: string;
-  items: Array<{ name: string; value: number | null; detail: string }>; max: number; onClick?: (name: string) => void }) {
+function MetricBars({ title, subtitle, items, max, onClick, canClick }: { title: string; subtitle: string;
+  items: Array<{ name: string; value: number | null; detail: string }>; max: number; onClick?: (name: string) => void; canClick?: (name: string) => boolean }) {
   return <section className="traces-fleet-card"><div className="traces-fleet-card-heading"><h3>{title}</h3><p>{subtitle}</p></div>
     <div className="traces-fleet-bar-list">{items.length ? items.map((item) => <div key={item.name} className="traces-fleet-bar-row">
-      {onClick ? <button type="button" onClick={() => onClick(item.name)}>{item.name}</button> : <span>{item.name}</span>}
+      {onClick && (!canClick || canClick(item.name)) ? <button type="button" onClick={() => onClick(item.name)}>{item.name}</button> : <span title="Grouped values cannot be filtered exactly">{item.name}</span>}
       <div className="traces-fleet-bar-track"><span style={{ width: `${item.value === null ? 0 : Math.max(2, item.value / Math.max(1, max) * 100)}%` }} /></div>
       <span className="traces-fleet-bar-value" title={item.detail}>{item.value === null ? "—" : item.detail}</span>
     </div>) : <p className="traces-fleet-muted">No measured samples in this window.</p>}</div>
@@ -233,27 +271,39 @@ export function MetricsView({ initialQuery = "", initialSince = "24h", onExplore
   const errors = metrics?.errors ?? [];
   const maxSlow = Math.max(1, ...slow.map((tool) => tool.p95Ms ?? 0));
   const maxErrors = Math.max(1, ...errors.map((entry) => entry.count));
+  const drilldown = (predicate: FleetMetricPredicate, group?: { field: "tool" | "category"; value: string }) =>
+    metricDrilldownQuery(job.query, predicate, group);
+  const openMetric = (predicate: FleetMetricPredicate, group?: { field: "tool" | "category"; value: string }) => {
+    const query = drilldown(predicate, group);
+    if (query !== null) onExplorer(query, job.since);
+  };
   return <div className="traces-fleet traces-fleet-metrics">
     <div className="traces-fleet-header"><div><h2>Fleet Metrics</h2><p>Measured latency, failures and spawn structure from a bounded read-only scan.</p></div><span className="traces-fleet-range">{job.snapshot ? `${new Date(job.snapshot.from).toLocaleString()} → ${new Date(job.snapshot.to).toLocaleString()}` : "Bounded window"}</span></div>
     <FleetControls view="metrics" draft={job.draft} setDraft={job.setDraft} onSubmit={() => job.apply(job.draft)} since={job.since} setSince={job.setSince} mode={job.mode} setMode={job.setMode} />
     <ScanProgress snapshot={snapshot} error={job.error} onCancel={job.cancel} onRefresh={job.refresh} connection={job.connection} />
     {snapshot && <>
       <div className="traces-fleet-tiles">
-        <MetricTile label="Turns" value={number(metrics?.turns)} note={`${metrics?.activeThreads ?? 0} active threads scanned`} onClick={() => onExplorer("type:turn/started", job.since)} />
-        <MetricTile label="Tool p95" value={duration(metrics?.toolP95Ms ?? null)} note={`${metrics?.toolCalls ?? 0} completed tools${metrics?.toolLatencyPartial ? " · sampled" : ""}`} onClick={() => onExplorer("type:item/completed", job.since)} />
-        <MetricTile label="Tool failure rate" value={metrics?.errorRate === null || metrics?.errorRate === undefined ? "not measured" : `${(metrics.errorRate * 100).toFixed(1)}%`} note={`${metrics?.failedTools ?? 0} failed of ${metrics?.toolCalls ?? 0}`} onClick={() => onExplorer("status:failed", job.since)} />
+        <MetricTile label="Turns" value={number(metrics?.turns)} note={`${metrics?.activeThreads ?? 0} active threads scanned`}
+          onClick={metrics?.turns && drilldown("turn-start") ? () => openMetric("turn-start") : undefined} />
+        <MetricTile label="Tool p95" value={duration(metrics?.toolP95Ms ?? null)} note={`${metrics?.toolCalls ?? 0} completed tools${metrics?.toolLatencyPartial ? " · sampled" : ""}`}
+          onClick={metrics?.toolP95Ms != null && drilldown("tool-measured") ? () => openMetric("tool-measured") : undefined} />
+        <MetricTile label="Tool failure rate" value={metrics?.errorRate === null || metrics?.errorRate === undefined ? "not measured" : `${(metrics.errorRate * 100).toFixed(1)}%`} note={`${metrics?.failedTools ?? 0} failed of ${metrics?.toolCalls ?? 0}`}
+          onClick={metrics?.failedTools && drilldown("tool-failed") ? () => openMetric("tool-failed") : undefined} />
         <MetricTile label="Cache read share" value="unknown" note={`${metrics?.tokenCoverage.threadsWithSnapshot ?? 0} latest thread snapshots · not window totals`} />
-        <MetricTile label="Provider retries" value={number(metrics?.providerRetries)} note={`${metrics?.modelFallbacks ?? 0} model fallbacks`} onClick={() => onExplorer("type:provider/error", job.since)} />
+        <MetricTile label="Provider retries" value={number(metrics?.providerRetries)} note={`${metrics?.modelFallbacks ?? 0} model fallbacks`}
+          onClick={metrics?.providerRetries && drilldown("provider-retry") ? () => openMetric("provider-retry") : undefined} />
         <MetricTile label="Matched events" value={number(snapshot.matchedEvents)} note={`${snapshot.scannedThreads}/${snapshot.totalThreads} threads · ${job.since}`} onClick={() => onExplorer(job.query, job.since)} />
       </div>
       <p className="traces-fleet-missing">Token/cache fleet-window totals: <strong>unknown</strong>. {metrics?.tokenCoverage.reason}</p>
       <div className="traces-fleet-metric-grid">
         <MetricBars title="Slowest tools by p95" subtitle={`Completed tool spans · ${job.since} · milliseconds; partial samples marked`} max={maxSlow}
           items={slow.slice(0, 8).map((tool) => ({ name: tool.name, value: tool.p95Ms, detail: `${duration(tool.p50Ms)} p50 / ${duration(tool.p95Ms)} p95 · ${tool.measured}/${tool.count}${tool.partial ? " partial" : ""}` }))}
-          onClick={(name) => onExplorer(name === "other tools" ? "type:item/completed" : `tool:${name}`, job.since)} />
+          canClick={(name) => drilldown("tool-measured", { field: "tool", value: name }) !== null}
+          onClick={(name) => openMetric("tool-measured", { field: "tool", value: name })} />
         <MetricBars title="Recorded failures by category" subtitle={`Provider and item failures · ${job.since} · counts`} max={maxErrors}
           items={errors.slice(0, 8).map((entry) => ({ name: entry.category, value: entry.count, detail: `${entry.count.toLocaleString()} failures` }))}
-          onClick={(category) => onExplorer(category === "other" ? "status:failed" : `category:${category}`, job.since)} />
+          canClick={(category) => drilldown("recorded-failure", { field: "category", value: category }) !== null}
+          onClick={(category) => openMetric("recorded-failure", { field: "category", value: category })} />
         <TtftHeatmap snapshot={snapshot} />
         <SpawnTree snapshot={snapshot} onOpen={onWaterfall} />
       </div>

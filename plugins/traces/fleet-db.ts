@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { join } from "node:path";
 import { buildTrace, type TraceEvent, type TraceSpan, type TraceThread } from "./spans";
-import { matchesFleetFilter, type FleetFilter } from "./fleet-query";
+import { matchesFleetFilter, TOOL_KINDS, type FleetFilter } from "./fleet-query";
 import type { FleetMode, FleetRow } from "./fleet-contract";
 
 // This is the BB schema shipped with desktop 0.47.1. A migration disables
@@ -10,10 +10,11 @@ export const EXPECTED_MIGRATION_HASH = "9fec044e3b7902083cde83067c20b03b3e71076a
 export const MAX_THREADS = 2_000;
 export const MAX_EVENTS = 3_000_000;
 const MAX_THREAD_EVENTS = 50_000;
-const MAX_ROWS_PER_THREAD = 20;
+const MAX_ROWS_PER_THREAD = 250;
 const MAX_TOOL_SAMPLES = 500;
-const TOOL_KINDS: Record<string, true> = { toolCall: true, commandExecution: true, fileRead: true, fileChange: true,
-  search: true, webSearch: true, webFetch: true, delegation: true };
+const SCAN_BATCH = 256;
+const NEEDS_DATA: Record<string, true> = { "item/started": true, "item/completed": true, "item/backgroundTask/completed": true,
+  "client/turn/requested": true, "turn/completed": true, "provider/error": true, "system/error": true, "client/turn/rejected": true };
 const EVENT_SQL = `SELECT id, thread_id AS threadId, sequence AS seq, scope_kind AS scopeKind, turn_id AS turnId,
   item_id AS itemId, item_kind AS itemKind, type, data, created_at AS at, parent_tool_call_id AS parentToolCallId
   FROM events INDEXED BY events_thread_sequence_idx WHERE thread_id=? AND created_at>=? AND created_at<? ORDER BY sequence`;
@@ -31,6 +32,7 @@ interface DbEvent {
 }
 export interface ThreadContribution {
   thread: FleetThread; scannedEvents: number; matchedEvents: number; lastSeq: number; limited: boolean; withUsageSnapshot: boolean;
+  truncatedEvents: number; skippedPayloads: number; stopped: boolean;
   rows: FleetRow[]; histogram: Array<{ count: number; errors: number }>;
   facets: Record<string, Map<string, number>>; toolDurations: Map<string, { count: number; unknown: number; samples: number[]; partial: boolean }>;
   errors: Map<string, number>; errorProviders: Map<string, number>; errorTools: Map<string, number>;
@@ -140,51 +142,63 @@ function boundedSample(map: Map<string, { count: number; samples: number[]; part
 function rowForEvent(event: DbEvent, raw: Record<string, unknown>, thread: FleetThread, model: string | null, durationMs: number | null): FleetRow {
   const item = object(raw.item);
   const kind = safeId(event.itemKind) ?? (event.type.startsWith("item/") ? safeId(item.type) : null) ?? event.type;
-  const tool = kind === "toolCall" ? safeId(item.tool) : kind === "commandExecution" ? "Command" : null;
+  const tool = kind === "toolCall" ? safeId(item.tool) ?? kind : kind === "commandExecution" ? "Command" : Object.hasOwn(TOOL_KINDS, kind) ? kind : null;
   const status = event.type === "item/started" ? "pending" : event.type === "turn/started" ? "running"
     : event.type === "provider/error" || event.type === "system/error" || event.type === "client/turn/rejected" ? "failed"
     : safeId(item.status) ?? (event.type === "turn/completed" ? safeId(raw.status) : null) ?? "recorded";
   const category = event.type === "provider/error" ? safeId(object(raw.errorInfo).category) ?? "unknown"
     : event.type === "system/error" ? safeId(raw.code) ?? "system" : status === "failed" ? "item-failed" : null;
   return { id: event.id, seq: event.seq, at: event.at, threadId: thread.id, turnId: event.turnId, itemId: event.itemId,
-    projectId: thread.projectId, projectName: thread.projectId, provider: thread.provider, model,
+    projectId: thread.projectId, provider: thread.provider, model,
     environmentId: thread.environmentId, worktree: thread.worktree, child: thread.parentThreadId !== null,
-    type: event.type, kind, status, tool, category, durationMs,
+    type: event.type, kind, status, tool, category, durationMs, retry: event.type === "provider/error" && raw.willRetry === true,
     name: tool ? `${kind} · ${tool}` : kind };
 }
 function rowForSpan(span: TraceSpan, thread: FleetThread): FleetRow | null {
   if (span.kind === "thread") return null;
-  const tool = span.kind === "toolCall" ? safeId(span.name) : span.kind === "commandExecution" ? "Command" : null;
+  const tool = span.kind === "toolCall" ? safeId(span.name) ?? span.kind : span.kind === "commandExecution" ? "Command" : Object.hasOwn(TOOL_KINDS, span.kind) ? span.kind : null;
   return { id: span.id, seq: 0, at: span.start, threadId: thread.id, turnId: span.turnId, itemId: span.itemId,
-    projectId: thread.projectId, projectName: thread.projectId, provider: thread.provider,
+    projectId: thread.projectId, provider: thread.provider,
     model: span.metadata.model ?? thread.model, environmentId: thread.environmentId, worktree: thread.worktree,
     child: thread.parentThreadId !== null, type: span.kind, kind: span.kind, status: span.status,
-    tool, category: span.error ? "item-failed" : null, durationMs: span.durationMs, name: tool ? `${span.kind} · ${tool}` : span.kind };
+    tool, category: span.error ? "item-failed" : null, durationMs: span.durationMs, retry: false, name: tool ? `${span.kind} · ${tool}` : span.kind };
 }
 
-export function scanFleetThread(db: Database.Database, thread: FleetThread, from: number, to: number, filter: FleetFilter, mode: FleetMode, bucketTo = to): ThreadContribution {
+export async function scanFleetThread(db: Database.Database, thread: FleetThread, from: number, to: number, filter: FleetFilter, mode: FleetMode,
+  bucketTo = to, shouldStop?: () => boolean, onChunk?: (scanned: number) => void): Promise<ThreadContribution> {
   const result: ThreadContribution = { thread, scannedEvents: 0, matchedEvents: 0, lastSeq: 0, limited: false, withUsageSnapshot: false,
+    truncatedEvents: 0, skippedPayloads: 0, stopped: false,
     rows: [], histogram: Array.from({ length: 25 }, () => ({ count: 0, errors: 0 })), facets: {},
     toolDurations: new Map(), errors: new Map(), errorProviders: new Map(), errorTools: new Map(), ttft: new Map(),
     turns: 0, toolCalls: 0, failedTools: 0, retries: 0, fallbacks: 0 };
   let model = safeId(thread.model);
   const previousRequest = db.prepare(`SELECT data FROM events INDEXED BY events_thread_type_sequence_idx
     WHERE thread_id=? AND type='client/turn/requested' AND created_at<? ORDER BY sequence DESC LIMIT 1`).get(thread.id, from) as { data: string } | undefined;
-  if (previousRequest && previousRequest.data.length <= 2_000_000) {
-    try { model = safeId(object(object(JSON.parse(previousRequest.data)).execution).model) ?? model; }
-    catch { result.limited = true; }
+  if (previousRequest) {
+    if (previousRequest.data.length <= 2_000_000) {
+      try { model = safeId(object(object(JSON.parse(previousRequest.data)).execution).model) ?? model; }
+      catch { result.limited = true; result.skippedPayloads++; }
+    } else { result.limited = true; result.skippedPayloads++; }
   }
   const starts = new Map<string, number[]>(); const backgrounds = new Map<string, number[]>();
   const turnStarts = new Map<string, number>(); const firstOutput = new Set<string>();
   const safeEvents: TraceEvent[] = [];
   const query = db.prepare(EVENT_SQL);
   for (const event of query.iterate(thread.id, from, to) as Iterable<DbEvent>) {
-    if (++result.scannedEvents > MAX_THREAD_EVENTS) { result.limited = true; break; }
+    if (result.scannedEvents >= MAX_THREAD_EVENTS) { result.truncatedEvents++; result.limited = true; break; }
+    if (result.scannedEvents > 0 && result.scannedEvents % SCAN_BATCH === 0) {
+      onChunk?.(result.scannedEvents);
+      if (shouldStop?.()) { result.stopped = true; break; }
+      const { promise, resolve } = Promise.withResolvers<void>(); setImmediate(resolve); await promise;
+    }
+    result.scannedEvents++;
     result.lastSeq = event.seq;
     let data: Record<string, unknown> = {};
-    if (event.data.length <= 2_000_000) {
-      try { data = object(JSON.parse(event.data)); } catch { result.limited = true; }
-    } else result.limited = true;
+    if (Object.hasOwn(NEEDS_DATA, event.type)) {
+      if (event.data.length <= 2_000_000) {
+        try { data = object(JSON.parse(event.data)); } catch { result.limited = true; result.skippedPayloads++; }
+      } else { result.limited = true; result.skippedPayloads++; }
+    }
     const item = object(data.item);
     if (event.type === "client/turn/requested") model = safeId(object(data.execution).model) ?? model;
     if (event.type === "thread/tokenUsage/updated") result.withUsageSnapshot = true;
@@ -252,10 +266,13 @@ export function scanFleetThread(db: Database.Database, thread: FleetThread, from
     for (const [field, value] of Object.entries({ project: row.projectId, provider: row.provider, model: row.model,
       environment: row.environmentId, worktree: String(row.worktree), child: String(row.child), kind: row.kind,
       status: row.status, tool: row.tool, category: row.category })) addFacet(result.facets, field, value);
-    result.rows.push(row);
-    if (result.rows.length > (filter.terms.thread ? 250 : MAX_ROWS_PER_THREAD)) {
-      result.rows.sort((a, b) => b.at - a.at || b.seq - a.seq);
-      result.rows.length = filter.terms.thread ? 250 : MAX_ROWS_PER_THREAD;
+    const rows = result.rows;
+    if (rows.length === MAX_ROWS_PER_THREAD && (row.at < rows[0]!.at || row.at === rows[0]!.at && row.seq <= rows[0]!.seq)) return;
+    let low = 0, high = rows.length;
+    while (low < high) { const mid = (low + high) >>> 1; const candidate = rows[mid]!;
+      if (candidate.at < row.at || candidate.at === row.at && candidate.seq <= row.seq) low = mid + 1; else high = mid;
     }
+    rows.splice(low, 0, row);
+    if (rows.length > MAX_ROWS_PER_THREAD) rows.shift();
   }
 }

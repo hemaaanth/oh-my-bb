@@ -1,12 +1,16 @@
+export type FleetMetricPredicate = "turn-start" | "tool-completed" | "tool-measured" | "tool-failed" | "provider-retry" | "recorded-failure";
+export const TOOL_KINDS: Record<string, true> = { toolCall: true, commandExecution: true, fileRead: true, fileChange: true,
+  search: true, webSearch: true, webFetch: true, delegation: true };
 export type FleetField = "project" | "thread" | "provider" | "model" | "environment" | "worktree" | "kind" | "type" | "status" | "tool" | "child" | "category";
 export interface FleetFilter {
   terms: Partial<Record<FleetField, string>>;
   duration: { op: ">" | ">=" | "<" | "<="; ms: number } | null;
+  metrics: FleetMetricPredicate[];
 }
 export interface FleetMatch {
   projectId: string; projectName: string; threadId: string; provider: string; model: string | null;
   environmentId: string | null; worktree: boolean; child: boolean;
-  kind: string; type: string; status: string; tool: string | null; category: string | null; durationMs: number | null;
+  kind: string; type: string; status: string; tool: string | null; category: string | null; durationMs: number | null; retry: boolean;
 }
 const FIELDS: Record<FleetField, true> = { project: true, thread: true, provider: true, model: true, environment: true,
   worktree: true, kind: true, type: true, status: true, tool: true, child: true, category: true };
@@ -18,6 +22,7 @@ export function parseFleetQuery(query: string): FleetFilter {
   if (query.length > MAX_QUERY_LENGTH) throw new Error("Query must be at most 512 characters.");
   const terms: FleetFilter["terms"] = {};
   let duration: FleetFilter["duration"] = null;
+  const metrics: FleetMetricPredicate[] = [];
   let offset = 0; let count = 0;
   while (offset < query.length) {
     while (/\s/.test(query[offset] ?? "")) offset++;
@@ -35,6 +40,9 @@ export function parseFleetQuery(query: string): FleetFilter {
       if (!parsed) throw new Error("Duration must look like duration:>5s or duration:<=100ms.");
       const multiplier = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 }[parsed[3] as "ms" | "s" | "m" | "h"];
       duration = { op: parsed[1] as ">" | ">=" | "<" | "<=", ms: Number(parsed[2]) * multiplier };
+    } else if (field === "metric") {
+      if (!["turn-start", "tool-completed", "tool-measured", "tool-failed", "provider-retry", "recorded-failure"].includes(value)) throw new Error("Unsupported metric predicate.");
+      metrics.push(value as FleetMetricPredicate);
     } else {
       if (!Object.hasOwn(FIELDS, field)) throw new Error(`Unsupported query field: ${field}.`);
       const key = field as FleetField;
@@ -46,7 +54,7 @@ export function parseFleetQuery(query: string): FleetFilter {
       terms[key] = value;
     }
   }
-  return { terms, duration };
+  return { terms, duration, metrics };
 }
 
 export function parseFleetSince(since: string, now = Date.now()): { from: number; to: number; hours: number } {
@@ -71,10 +79,31 @@ export function matchesFleetFilter(row: FleetMatch, filter: FleetFilter): boolea
   if (t.status && t.status !== row.status) return false;
   if (t.tool && t.tool !== row.tool) return false;
   if (t.category && t.category !== row.category) return false;
+  for (const metric of filter.metrics) {
+    const completedTool = row.type === "item/completed" && Object.hasOwn(TOOL_KINDS, row.kind);
+    if (metric === "turn-start" && row.type !== "turn/started") return false;
+    if (metric === "tool-completed" && !completedTool) return false;
+    if (metric === "tool-measured" && (!completedTool || row.durationMs === null)) return false;
+    if (metric === "tool-failed" && (!completedTool || row.status !== "failed")) return false;
+    if (metric === "provider-retry" && (row.type !== "provider/error" || !row.retry)) return false;
+    if (metric === "recorded-failure" && row.status !== "failed") return false;
+  }
   if (filter.duration) {
     if (row.durationMs === null) return false;
     const { op, ms } = filter.duration;
     if (!(op === ">" ? row.durationMs > ms : op === ">=" ? row.durationMs >= ms : op === "<" ? row.durationMs < ms : row.durationMs <= ms)) return false;
   }
   return true;
+}
+
+export function metricDrilldownQuery(base: string, predicate: FleetMetricPredicate,
+  group?: { field: "tool" | "category"; value: string }): string | null {
+  let filter: FleetFilter;
+  try { filter = parseFleetQuery(base); } catch { return null; }
+  if (group && (group.value === "other" || group.value === "other tools" || filter.terms[group.field] && filter.terms[group.field] !== group.value)) return null;
+  const terms = [base];
+  if (!filter.metrics.includes(predicate)) terms.push(`metric:${predicate}`);
+  if (group && !filter.terms[group.field]) terms.push(`${group.field}:${group.value}`);
+  const query = terms.filter(Boolean).join(" ");
+  try { parseFleetQuery(query); return query; } catch { return null; }
 }

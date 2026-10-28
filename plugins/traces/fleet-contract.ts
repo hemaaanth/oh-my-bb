@@ -6,7 +6,7 @@ export const FLEET_CHANNEL = "traces-fleet";
 export type FleetView = "explorer" | "metrics";
 export type FleetMode = "events" | "spans";
 export type FleetStatus = "running" | "cancelling" | "complete" | "cancelled" | "error" | "schema-mismatch";
-export interface FleetRow extends FleetMatch {
+export interface FleetRow extends Omit<FleetMatch, "projectName"> {
   id: string; seq: number; at: number; turnId: string | null; itemId: string | null; name: string;
 }
 export interface FleetFacet { value: string; count: number }
@@ -24,6 +24,8 @@ export interface FleetMetrics {
   ttft: FleetTtft[]; spawnTree: FleetSpawn[];
   tokenUsage: null; tokenCoverage: { threadsWithSnapshot: number; threadsWithoutSnapshot: number; reason: string };
 }
+export interface FleetLimitReason { code: "thread-cap" | "event-cap" | "thread-event-cap" | "payload" | "rows" | "samples" | "live-reservoir";
+  count: number; detail: string }
 export interface FleetSnapshot {
   jobId: string; view: FleetView; mode: FleetMode; query: string; since: string; status: FleetStatus; error: string | null;
   from: number; to: number; startedAt: number; updatedAt: number; completedAt: number | null;
@@ -31,7 +33,8 @@ export interface FleetSnapshot {
   rows: FleetRow[]; rowsTruncated: number; histogram: FleetHistogramBin[];
   facets: Record<string, FleetFacet[]>; metrics: FleetMetrics;
   freshness: "scanning" | "snapshot" | "live-since-completion" | "cancelled" | "unavailable";
-  liveSince: number | null; lastLiveEventAt: number | null; limited: boolean; retries: number;
+  liveSince: number | null; lastLiveEventAt: number | null; liveEnabled: boolean; limited: boolean; retries: number;
+  limitReasons: FleetLimitReason[];
 }
 
 const startInput = z.object({ query: z.string().max(512), since: z.string().max(4), view: z.enum(["explorer", "metrics"]), mode: z.enum(["events", "spans"]) }).strict();

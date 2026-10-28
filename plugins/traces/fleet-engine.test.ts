@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EXPECTED_MIGRATION_HASH, FleetSchemaError, listFleetThreads, openFleetDb, scanFleetThread } from "./fleet-db";
 import { FleetEngine } from "./fleet-engine";
-import { parseFleetQuery } from "./fleet-query";
+import { metricDrilldownQuery, parseFleetQuery } from "./fleet-query";
 
 const NOW = 1_000_000_000;
 const homes: string[] = [];
@@ -58,27 +58,27 @@ describe("read-only thread-first scanner", () => {
     read.close();
   });
 
-  it("parameterizes a quoted project value and never indexes secret payloads", () => {
+  it("parameterizes a quoted project value and never indexes secret payloads", async () => {
     const { home, db } = fixture(); db.close(); const read = openFleetDb(home);
     const from = NOW - 3_600_000;
     const literal = listFleetThreads(read, parseFleetQuery('project:"x\' OR 1=1"'), from);
     expect(literal.total).toBe(0);
     expect(listFleetThreads(read, parseFleetQuery('project:"Oh My BB"'), from).total).toBe(2);
     const root = listFleetThreads(read, parseFleetQuery("thread:thr_root"), from).threads[0]!;
-    const result = scanFleetThread(read, root, from, NOW, parseFleetQuery(""), "events");
+    const result = await scanFleetThread(read, root, from, NOW, parseFleetQuery(""), "events");
     expect(result.scannedEvents).toBe(7);
     expect(result.rows.find((row) => row.type === "item/completed")?.durationMs).toBe(1_000);
     expect(result.withUsageSnapshot).toBe(true);
     expect(JSON.stringify(result.rows)).not.toContain("opaque-secret-value");
     read.close();
   });
-  it("uses the last stored model request before the selected time window", () => {
+  it("uses the last stored model request before the selected time window", async () => {
     const { home, db, add } = fixture();
     const from = NOW - 3_600_000;
     add("thr_root", 0, "client/turn/requested", from - 100, { execution: { model: "gpt-current" }, input: "opaque-secret-value" });
     db.close(); const read = openFleetDb(home);
     const thread = listFleetThreads(read, parseFleetQuery("thread:thr_root"), from).threads[0]!;
-    const result = scanFleetThread(read, thread, from, NOW, parseFleetQuery("model:gpt-current"), "events");
+    const result = await scanFleetThread(read, thread, from, NOW, parseFleetQuery("model:gpt-current"), "events");
     expect(result.matchedEvents).toBe(7);
     expect(result.rows.every((row) => row.model === "gpt-current")).toBe(true);
     expect(JSON.stringify(result.rows)).not.toContain("opaque-secret-value");
@@ -99,7 +99,7 @@ describe("read-only thread-first scanner", () => {
     expect(result.matchedEvents).toBe(7);
     await engine.dispose();
   });
-  it("does not pair a background completion with a same-id foreground start", () => {
+  it("does not pair a background completion with a same-id foreground start", async () => {
     const { home, db, add } = fixture();
     add("thr_root", 8, "turn/started", NOW - 300, {}, null, null, "turnC");
     add("thr_root", 9, "item/started", NOW - 290, { item: { type: "backgroundTask", id: "same", status: "pending" } }, "same", "backgroundTask", "turnC");
@@ -109,7 +109,7 @@ describe("read-only thread-first scanner", () => {
     add("thr_root", 13, "item/backgroundTask/completed", NOW - 230, { item: { type: "backgroundTask", id: "same", status: "completed" } }, "same", "backgroundTask", "turnD");
     db.close(); const read = openFleetDb(home);
     const thread = listFleetThreads(read, parseFleetQuery("thread:thr_root"), NOW - 3_600_000).threads[0]!;
-    const result = scanFleetThread(read, thread, NOW - 3_600_000, NOW, parseFleetQuery(""), "events");
+    const result = await scanFleetThread(read, thread, NOW - 3_600_000, NOW, parseFleetQuery(""), "events");
     expect(result.rows.find((row) => row.type === "item/backgroundTask/completed")?.durationMs).toBe(60);
     expect(result.rows.find((row) => row.seq === 12)?.durationMs).toBeNull();
     read.close();
@@ -122,7 +122,7 @@ describe("read-only thread-first scanner", () => {
       .all("thr_root", NOW - 3_600_000) as Array<{ detail: string }>;
     expect(plan.some((row) => row.detail.includes("events_thread_sequence_idx"))).toBe(true);
     const meta = listFleetThreads(read, parseFleetQuery("thread:thr_root"), NOW - 3_600_000).threads[0]!;
-    const contribution = scanFleetThread(read, meta, NOW - 3_600_000, NOW, parseFleetQuery("thread:thr_root"), "events");
+    const contribution = await scanFleetThread(read, meta, NOW - 3_600_000, NOW, parseFleetQuery("thread:thr_root"), "events");
     expect(contribution.matchedEvents).toBe(309);
     expect(contribution.rows).toHaveLength(250);
     expect(JSON.stringify(contribution.rows)).not.toContain("opaque-secret-value");
@@ -132,6 +132,59 @@ describe("read-only thread-first scanner", () => {
     const result = await engine.wait(started.jobId, 5_000);
     expect(result.rows).toHaveLength(250);
     expect(result.rowsTruncated).toBe(59);
+    expect(result.limitReasons.find((reason) => reason.code === "rows")?.count).toBe(59);
+    const broad = engine.start({ query: "", since: "1h", view: "explorer", mode: "events" });
+    const global = await engine.wait(broad.jobId, 5_000);
+    expect(global.rows).toHaveLength(250);
+    expect(global.rows.filter((row) => row.threadId === "thr_root").length).toBeGreaterThan(220);
+    expect(global.rows[0]?.seq).toBe(309);
+    expect(global.rows.every((row) => !("projectName" in row))).toBe(true);
+    expect(global.rowsTruncated).toBe(global.matchedEvents - 250);
+    expect(global.limitReasons.find((reason) => reason.code === "rows")?.count).toBe(global.rowsTruncated);
+    await engine.dispose();
+  });
+  it("yields to other server work while parsing a busy thread", async () => {
+    const { home, db, add } = fixture();
+    db.transaction(() => { for (let seq = 8; seq < 5_008; seq++) add("thr_root", seq, "item/completed", NOW - 350 + seq / 100,
+      { item: { type: "toolCall", id: `i${seq}`, tool: "fetch", status: "completed", durationMs: 1_000, result: "opaque-secret-value" } }, `i${seq}`, "toolCall", "turnA"); })();
+    db.close(); const read = openFleetDb(home);
+    const thread = listFleetThreads(read, parseFleetQuery("thread:thr_root"), NOW - 3_600_000).threads[0]!;
+    let completed = false;
+    const scan = scanFleetThread(read, thread, NOW - 3_600_000, NOW, parseFleetQuery(""), "events").then((result) => { completed = true; return result; });
+    const tick = Promise.withResolvers<void>(); setImmediate(tick.resolve); await tick.promise;
+    expect(completed).toBe(false);
+    const result = await scan;
+    expect(result.scannedEvents).toBe(5_007);
+    expect(result.skippedPayloads).toBe(0);
+    expect(result.toolDurations.get("fetch")?.partial).toBe(true);
+    read.close();
+    const engine = new FleetEngine(() => home, () => {}, () => NOW);
+    const started = engine.start({ query: "thread:thr_root", since: "1h", view: "metrics", mode: "events" });
+    const snapshot = await engine.wait(started.jobId, 5_000);
+    expect(snapshot.limitReasons.find((reason) => reason.code === "samples")?.count).toBeGreaterThan(4_000);
+    await engine.dispose();
+  });
+  it("skips irrelevant oversized payloads without falsely marking the scan limited", async () => {
+    const { home, db, add } = fixture();
+    add("thr_root", 8, "provider/unhandled", NOW - 200, { rawEvent: "x".repeat(2_000_100) });
+    db.close(); const read = openFleetDb(home);
+    const thread = listFleetThreads(read, parseFleetQuery("thread:thr_root"), NOW - 3_600_000).threads[0]!;
+    const result = await scanFleetThread(read, thread, NOW - 3_600_000, NOW, parseFleetQuery(""), "events");
+    expect(result.scannedEvents).toBe(8);
+    expect(result.skippedPayloads).toBe(0);
+    expect(result.limited).toBe(false);
+    read.close();
+  });
+  it("reports relevant skipped payload counts without storing raw output", async () => {
+    const { home, db, add } = fixture();
+    add("thr_root", 8, "item/completed", NOW - 200, { item: { type: "toolCall", id: "huge", tool: "fetch", status: "failed", result: "x".repeat(2_000_100) } }, "huge", "toolCall", "turnA");
+    db.close();
+    const engine = new FleetEngine(() => home, () => {}, () => NOW);
+    const started = engine.start({ query: "thread:thr_root", since: "1h", view: "explorer", mode: "events" });
+    const result = await engine.wait(started.jobId, 5_000);
+    expect(result.limited).toBe(true);
+    expect(result.limitReasons.find((reason) => reason.code === "payload")?.count).toBe(1);
+    expect(JSON.stringify(result.rows)).not.toContain("x".repeat(100));
     await engine.dispose();
   });
 });
@@ -171,6 +224,24 @@ describe("progressive fleet engine", () => {
     await engine.dispose();
   });
 
+  it("drills through the same provider cohort and exact measured predicates", async () => {
+    const { home, db } = fixture(); db.close();
+    const engine = new FleetEngine(() => home, () => {}, () => NOW);
+    const base = "provider:codex";
+    const metricsJob = engine.start({ query: base, since: "1h", view: "metrics", mode: "events" });
+    const metrics = await engine.wait(metricsJob.jobId, 5_000);
+    expect(metrics.metrics.failedTools).toBe(1);
+    expect(metrics.metrics.providerRetries).toBe(1);
+    for (const [predicate, expected] of [["tool-failed", metrics.metrics.failedTools],
+      ["tool-measured", 1], ["provider-retry", metrics.metrics.providerRetries]] as const) {
+      const query = metricDrilldownQuery(base, predicate)!;
+      const started = engine.start({ query, since: "1h", view: "explorer", mode: "events" });
+      const result = await engine.wait(started.jobId, 5_000);
+      expect(result.matchedEvents).toBe(expected);
+      expect(result.rows.every((row) => row.provider === "codex")).toBe(true);
+    }
+    await engine.dispose();
+  });
   it("retains four completed jobs and evicts only when a fifth starts", async () => {
     const { home, db } = fixture(); db.close();
     const engine = new FleetEngine(() => home, () => {}, () => NOW);
@@ -181,10 +252,47 @@ describe("progressive fleet engine", () => {
       await engine.wait(started.jobId, 5_000);
     }
     for (const id of ids) expect(engine.snapshot(id).status).toBe("complete");
+    engine.snapshot(ids[0]!); // An open viewer refreshes this job's LRU position.
     const fifth = engine.start({ query: "", since: "1h", view: "explorer", mode: "events" });
-    expect(() => engine.snapshot(ids[0]!)).toThrow(/expired/);
+    expect(() => engine.snapshot(ids[1]!)).toThrow(/expired/);
+    expect(engine.snapshot(ids[0]!).status).toBe("complete");
     await engine.wait(fifth.jobId, 5_000);
     await engine.dispose();
+  });
+  it("keeps a viewed job beyond its original completion TTL, then expires it after inactivity", async () => {
+    const { home, db } = fixture(); db.close();
+    let now = NOW;
+    const engine = new FleetEngine(() => home, () => {}, () => now);
+    const started = engine.start({ query: "", since: "1h", view: "explorer", mode: "events" });
+    await engine.wait(started.jobId, 5_000);
+    now += 9 * 60_000;
+    expect(engine.snapshot(started.jobId).status).toBe("complete");
+    now += 2 * 60_000;
+    expect(engine.snapshot(started.jobId).status).toBe("complete");
+    now += 11 * 60_000;
+    expect(() => engine.snapshot(started.jobId)).toThrow(/expired/);
+    await engine.dispose();
+  });
+  it("stops a completed job's live tail when the viewer releases it", async () => {
+    const { home, db, add } = fixture();
+    let now = NOW;
+    const engine = new FleetEngine(() => home, () => {}, () => now);
+    const started = engine.start({ query: "", since: "1h", view: "explorer", mode: "events" });
+    const complete = await engine.wait(started.jobId, 5_000);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    engine.onThreadEvent("thr_root");
+    expect(vi.getTimerCount()).toBe(1);
+    const stopped = engine.cancel(started.jobId);
+    expect(stopped.status).toBe("complete");
+    expect(stopped.liveEnabled).toBe(false);
+    expect(stopped.freshness).toBe("snapshot");
+    expect(vi.getTimerCount()).toBe(0);
+    now += 200;
+    add("thr_root", 8, "provider/modelFallback", NOW + 100);
+    engine.onThreadEvent("thr_root");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(engine.snapshot(started.jobId).matchedEvents).toBe(complete.matchedEvents);
+    db.close(); await engine.dispose();
   });
   it("publishes progress, cancels between batches, and caps concurrent jobs", async () => {
     const { home, db, thread } = fixture();
