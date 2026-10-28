@@ -25,7 +25,7 @@ The plugin ID stays `pinpoint`. Installing a source package does not publish com
 
 Settings → Pinpoint keeps Default URL, Where picks go, and immediate dispatch in native Configuration. Existing setting keys and defaults are preserved. A review chat uses BB's normal child-thread capability when optional Agents integration is off or unavailable.
 
-More → Setup guide opens a dedicated guide. The same guide is reachable from the working panel's settings menu. The browser panel intentionally fills its thread panel; it is a navigation and inspection surface, not a 760px settings page. The setup guide uses the standard 760px outer frame, 16px side gutters, and overlay scrollbar.
+More → Setup guide opens a guide dialog. The same guide is reachable from the working panel's settings menu. The browser panel intentionally fills its thread panel; it is a navigation and inspection surface, not a 760px settings page. The setup guide is available without a sidebar rail page.
 
 The floating toolbar preserves picking, question mode, screenshot preference, text-edit confirmation, numbered pins, three review inboxes, and per-page history. Opening a menu does not dispatch a pick or save a learning. Deletion asks for confirmation naming the feedback; Cancel comes first.
 

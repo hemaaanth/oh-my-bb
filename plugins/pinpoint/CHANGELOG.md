@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Remove the sidebar rail page. Open the setup guide in a dialog from settings or the thread panel.
+
 - Prepare an independent `plugins/pinpoint` package with its own lockfile, SDK pin, build, tests, skill, icon, and setup guide.
 - Keep existing plugin ID, setting keys, stored feedback, screenshots, routing IDs, and learning choices.
 - Add explicit, default-off Agents, Provider Usage, and Clasi integration controls under Settings → Pinpoint → Oh My BB. No startup cross-plugin probes.

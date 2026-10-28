@@ -5,35 +5,33 @@
 // splitting), so the import() below is inlined, but esbuild still defers
 // evaluating the panel module (its schemas, icons, and UI) until Pinpoint is
 // first opened instead of on every app start.
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import {
   definePluginApp,
-  useBbNavigate,
   type PluginThreadPanelProps,
 } from "@get-bb/plugin-sdk/app";
 import * as sessions from "./lib/session-registry";
-import { IntegrationSettings, MoreSettings, SetupPage } from "./settings";
+import { IntegrationSettings, MoreSettings, SetupGuide } from "./settings";
 
 const LazyPinpointPanel = lazy(() =>
   import("./panel").then((module) => ({ default: module.PinpointPanel })),
 );
 
 function PinpointPanelEntry(props: PluginThreadPanelProps) {
-  const navigate = useBbNavigate();
+  const [setupOpen, setSetupOpen] = useState(false);
   return (
-    <Suspense fallback={null}>
-      <LazyPinpointPanel {...props} onOpenSetup={() => navigate.toPluginPanel("pinpoint")} />
-    </Suspense>
+    <>
+      <Suspense fallback={null}>
+        <LazyPinpointPanel {...props} onOpenSetup={() => setSetupOpen(true)} />
+      </Suspense>
+      <SetupGuide open={setupOpen} onOpenChange={setSetupOpen} />
+    </>
   );
 }
 
 export default definePluginApp((app) => {
   app.slots.settingsSection({ id: "more", component: MoreSettings });
   app.slots.settingsSection({ id: "oh-my-bb", component: IntegrationSettings });
-  app.slots.navPanel({
-    id: "pinpoint", title: "Pinpoint", icon: "pinpoint/target",
-    path: "pinpoint", component: SetupPage,
-  });
   app.contentScripts.register({
     id: "browser-session-lifecycle",
     mount() {
