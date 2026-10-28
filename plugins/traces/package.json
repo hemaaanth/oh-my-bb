@@ -1,7 +1,7 @@
 {
   "name": "bb-plugin-traces",
-  "version": "0.2.0",
-  "description": "Inspect BB thread events and provider transcripts as a timing waterfall and prompt context ledger.",
+  "version": "0.4.0",
+  "description": "Explore BB thread events and provider transcripts with waterfalls, prompt context, fleet search, and metrics.",
   "license": "MIT",
   "author": "Hemanth Soni",
   "homepage": "https://github.com/hemaaanth/oh-my-bb/tree/main/plugins/traces",
@@ -27,7 +27,7 @@
   },
   "bb": {
     "name": "Traces",
-    "description": "Inspect BB thread events and provider transcripts as a timing waterfall and prompt context ledger.",
+    "description": "Explore BB thread events and provider transcripts with waterfalls, prompt context, fleet search, and metrics.",
     "branding": {
       "icon": "./assets/traces.svg",
       "experimental_icons": {
@@ -42,6 +42,7 @@
     ]
   },
   "dependencies": {
+    "better-sqlite3": "^12.0.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -61,7 +62,6 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "better-sqlite3": "^12.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cron-parser": "^5.5.0",

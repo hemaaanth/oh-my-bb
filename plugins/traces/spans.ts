@@ -205,9 +205,10 @@ export function buildTrace(thread: TraceThread, events: readonly TraceEvent[], c
         if (turn) wait(turn, { ...row, createdAt: turn.start }, "wait", "First output", row.createdAt);
         firstOutputSeen.add(turnId);
       }
-      // Background completion is thread-scoped even though its start is turn-scoped.
-      let list = opens.get(itemKey);
-      if (!list?.length && row.type === "item/backgroundTask/completed") list = backgroundStarts.get(`${row.threadId}\0${id}`);
+      // A background completion may arrive in another turn; never consume a
+      // same-id foreground item from that turn.
+      const list = row.type === "item/backgroundTask/completed"
+        ? backgroundStarts.get(`${row.threadId}\0${id}`) : opens.get(itemKey);
       const matched = list?.pop();
       const parent = matched ? null : owner(row);
       const s = matched ?? span({ id: `item:${row.id}`, thread, turnId, itemId: id, kind: nonempty(item.type) ?? "item", name: itemName(item),

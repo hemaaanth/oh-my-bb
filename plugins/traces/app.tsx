@@ -3,6 +3,7 @@ import { definePluginApp, experimental_THREAD_ACTION_GROUPS, useBbNavigate, useR
 import type { rpcContract } from "./server";
 import type { TraceResult, TraceSpan } from "./spans";
 import { ContextInspector } from "./context-view";
+import { ExplorerView, MetricsView } from "./fleet-view";
 import "./app.css";
 
 function duration(ms: number | null) {
@@ -135,24 +136,51 @@ function Waterfall({ threadId, compact = false }: { threadId: string; compact?: 
   </div>;
 }
 
+function encodeFleetFilter(query: string): string {
+  if (!query) return "_";
+  let binary = "";
+  for (const byte of new TextEncoder().encode(query)) binary += String.fromCharCode(byte);
+  return `q${btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+}
+function decodeFleetFilter(segment: string | undefined): string {
+  if (!segment || segment === "_" || !/^q[A-Za-z0-9_-]{1,3000}$/.test(segment)) return "";
+  try {
+    const base = segment.slice(1).replace(/-/g, "+").replace(/_/g, "/");
+    const binary = atob(base.padEnd(Math.ceil(base.length / 4) * 4, "="));
+    const text = new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+    return text.length <= 512 ? text : "";
+  } catch { return ""; }
+}
+
 function NavPanel({ subPath }: { subPath: string }) {
   const navigate = useBbNavigate();
   const [input, setInput] = useState("");
-  const mode = subPath.startsWith("context") ? "context" : "waterfall";
-  const rawId = mode === "context" ? subPath.split("/")[1] : subPath.split("/")[0];
+  const parts = subPath.split("/");
+  const view = parts[0] === "context" || parts[0] === "explorer" || parts[0] === "metrics" ? parts[0] : "waterfall";
+  const rawId = view === "context" ? parts[1] : view === "waterfall" ? parts[0] : null;
   const threadId = rawId && /^thr_[a-z0-9]+$/.test(rawId) ? rawId : "";
-  const pathFor = (view: "context" | "waterfall", id: string) => view === "context" ? `context/${id}` : id;
+  const fleetQuery = view === "explorer" || view === "metrics" ? decodeFleetFilter(parts[1]) : "";
+  const fleetSince = /^(?:[1-9]\d?h|[1-7]d)$/.test(parts[2] ?? "") ? parts[2]! : "24h";
+  const open = (path: string) => navigate.toPluginPanel("waterfall", { subPath: path });
+  const openThreadView = (target: "waterfall" | "context", id: string) => open(target === "context" ? `context/${id}` : id);
+  const openFleetView = (target: "explorer" | "metrics", query = "", since = "24h") => open(`${target}/${encodeFleetFilter(query)}/${since}`);
   return <div className="traces-page"><div className="traces-container">
     <nav className="traces-view-tabs" aria-label="Trace views">
-      <button type="button" aria-current={mode === "waterfall" ? "page" : undefined} onClick={() => navigate.toPluginPanel("waterfall", { subPath: pathFor("waterfall", threadId) })}>Waterfall</button>
-      <button type="button" aria-current={mode === "context" ? "page" : undefined} onClick={() => navigate.toPluginPanel("waterfall", { subPath: pathFor("context", threadId) })}>Context Inspector</button>
+      <button type="button" aria-current={view === "explorer" ? "page" : undefined} onClick={() => openFleetView("explorer", view === "metrics" ? fleetQuery : "", view === "metrics" ? fleetSince : "24h")}>Log Explorer</button>
+      <button type="button" aria-current={view === "waterfall" ? "page" : undefined} onClick={() => openThreadView("waterfall", threadId)}>Waterfall</button>
+      <button type="button" aria-current={view === "context" ? "page" : undefined} onClick={() => openThreadView("context", threadId)}>Context Inspector</button>
+      <button type="button" aria-current={view === "metrics" ? "page" : undefined} onClick={() => openFleetView("metrics", view === "explorer" ? fleetQuery : "", view === "explorer" ? fleetSince : "24h")}>Fleet Metrics</button>
     </nav>
-    <form className="traces-open" onSubmit={(event) => { event.preventDefault(); const value = input.trim(); if (/^thr_[a-z0-9]+$/.test(value)) navigate.toPluginPanel("waterfall", { subPath: pathFor(mode, value) }); }}>
-      <label htmlFor="traces-thread-id">Thread ID</label><input id="traces-thread-id" value={input} onChange={(event) => setInput(event.target.value)} placeholder="thr_…" pattern="thr_[a-z0-9]+" />
-      <button type="submit">Open {mode === "context" ? "context" : "trace"}</button>
-    </form>
-    {threadId ? mode === "context" ? <ContextInspector key={threadId} threadId={threadId} /> : <Waterfall key={threadId} threadId={threadId} />
-      : <div className="traces-empty"><h2>Inspect a BB thread</h2><p>Enter a thread ID, or use “Trace this thread” in a thread menu. Waterfall shows timing. Context Inspector shows provider API prompts and token usage.</p></div>}
+    {view === "explorer" ? <ExplorerView key={subPath} initialQuery={fleetQuery} initialSince={fleetSince} onDrilldown={openThreadView} />
+      : view === "metrics" ? <MetricsView key={subPath} initialQuery={fleetQuery} initialSince={fleetSince} onExplorer={(query, since) => openFleetView("explorer", query, since)} onWaterfall={(id) => openThreadView("waterfall", id)} />
+      : <>
+        <form className="traces-open" onSubmit={(event) => { event.preventDefault(); const value = input.trim(); if (/^thr_[a-z0-9]+$/.test(value)) openThreadView(view, value); }}>
+          <label htmlFor="traces-thread-id">Thread ID</label><input id="traces-thread-id" value={input} onChange={(event) => setInput(event.target.value)} placeholder="thr_…" pattern="thr_[a-z0-9]+" />
+          <button type="submit">Open {view === "context" ? "context" : "trace"}</button>
+        </form>
+        {threadId ? view === "context" ? <ContextInspector key={threadId} threadId={threadId} /> : <Waterfall key={threadId} threadId={threadId} />
+          : <div className="traces-empty"><h2>Inspect a BB thread</h2><p>Enter a thread ID, or use “Trace this thread” in a thread menu. Waterfall shows timing. Context Inspector shows provider API prompts and token usage.</p></div>}
+      </>}
   </div></div>;
 }
 

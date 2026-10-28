@@ -4,6 +4,8 @@ import { buildTrace, type TraceEvent, type TraceResult, type TraceThread, type T
 import { presentTrace } from "./redact";
 import { promptHostContract, promptResultSchema, type PromptResult } from "./prompt-contract";
 import { presentPrompt } from "./prompt-redact";
+import { registerFleet } from "./fleet-server";
+import { fleetCliCommands } from "./fleet-cli";
 
 const MAX_CLI_BYTES = 1_000_000;
 const PAGE_SIZE = "100"; // BB's events.list maximum is 100.
@@ -26,6 +28,7 @@ type CacheEntry = { result: TraceResult; dependencies: Set<string> };
 export default function plugin(bb: BbPluginApi) {
   const cache = new Map<string, CacheEntry>();
   const promptHost = bb.hosts.experimental_client({ contract: promptHostContract });
+  const fleet = registerFleet(bb);
   let epoch = 0;
 
   async function readEvents(threadId: string): Promise<TraceEvent[]> {
@@ -265,7 +268,8 @@ export default function plugin(bb: BbPluginApi) {
           return { exitCode: result.status === "unsupported" || result.status === "unavailable" ? 1 : 0, stdout };
         },
       }),
+      ...fleetCliCommands(fleet),
     },
   }));
-  bb.log.info("Traces loaded (SDK-only; no persisted storage)");
+  bb.log.info("Traces loaded (read-only BB storage)");
 }

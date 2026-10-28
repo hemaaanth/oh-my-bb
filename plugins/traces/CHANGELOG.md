@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 — 2026-10-28
+
+- Add read-only, thread-first SQLite fleet scans with schema fingerprint checks, bounded windows, progressive realtime progress, cancellation, busy retries, connected-session live rescans, and active-thread inclusion when `updated_at` is stale.
+- Add Log Explorer with parsed filters, time histogram, facets, event/span rows, SDK-backed detail, and thread drilldowns.
+- Add Fleet Metrics with measured tool p50/p95, errors, first recorded output timing, spawn trees, and explicit unknown fleet-window token totals.
+- Add `bb traces query`, `slow`, `errors`, and `job` agent CLI commands with bounded JSON and partial-result status.
+- Fix background-task completion pairing when another turn reuses the same item ID; add synthetic SQLite and regression tests.
+
 ## 0.2.0 — 2026-10-28
 
 - Add the Context Inspector view and thread tab with per-call prompt sections, tool definitions, injected context, token/cache ledger, and adjacent-call diff.

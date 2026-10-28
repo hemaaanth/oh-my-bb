@@ -37,6 +37,27 @@ describe("real, redacted provider event fixtures", () => {
     expect(paired.every((s) => s.durationMs === 0)).toBe(true);
   });
 
+  it("does not close a same-id foreground item when a background task completes in another turn", () => {
+    const thread: TraceThread = { id: "thr_collision", title: "collision", providerId: "claude-code", environmentId: null,
+      parentThreadId: null, createdAt: 100, updatedAt: 210, status: "idle" };
+    const event = (seq: number, turnId: string, type: string, createdAt: number, item?: Record<string, unknown>): TraceEvent => ({
+      id: `evt_${seq}`, threadId: thread.id, seq, scope: { kind: "turn", turnId }, type, createdAt,
+      data: item ? { item } : type === "turn/completed" ? { status: "completed" } : {},
+    });
+    const events = [
+      event(1, "turnA", "turn/started", 100),
+      event(2, "turnA", "item/started", 110, { type: "backgroundTask", id: "same", status: "pending", description: "background" }),
+      event(3, "turnA", "turn/completed", 130),
+      event(4, "turnB", "turn/started", 150),
+      event(5, "turnB", "item/started", 160, { type: "commandExecution", id: "same", status: "pending", command: "foreground" }),
+      event(6, "turnB", "item/backgroundTask/completed", 180, { type: "backgroundTask", id: "same", status: "completed", description: "background" }),
+      event(7, "turnB", "turn/completed", 210),
+    ];
+    const spans = all(buildTrace(thread, events).tree).filter((s) => s.itemId === "same");
+    expect(spans).toHaveLength(2);
+    expect(spans.find((s) => s.kind === "backgroundTask")?.durationMs).toBe(70);
+    expect(spans.find((s) => s.kind === "commandExecution")?.end).toBeNull();
+  });
   it("nests Codex in-provider child turns under their delegation item", () => {
     const { thread, events } = fixture("codex-delegation");
     const result = buildTrace(thread, events);

@@ -1,19 +1,15 @@
-Inspect BB thread events and provider transcripts as a timing waterfall and prompt context ledger.
+Explore BB thread events and provider transcripts with waterfalls, prompt context, fleet search, and metrics.
 
-## Find where time went
+## Four views, one source of truth
 
-Open a thread from Traces in BB's navigation rail, a thread menu, or the side panel. Waterfall bars show turns, tools, child threads, and hatched queue, approval, retry and fallback waits. The breakdown counts exclusive wall time. Select a span for its metadata and hidden-by-default input and output.
-
-## Inspect what the model saw
-
-Context Inspector reads existing Claude Code and Codex transcripts on the thread's execution host. Select an API call to see system prompt sections, tool definitions, injected AGENTS/skills blocks, exact stored token and cache usage, and a diff from the previous call. Section sizes are estimates. Codex has no 5m/1h cache-write split or API request-start time; missing values say “not stored.” Other providers show an honest unsupported state.
+Log Explorer searches bounded windows of BB's existing event metadata. It offers a time histogram, provider/tool/status/project facets, event or span rows, and an on-demand detail drawer. Waterfall shows one thread's turns, tools, waits, errors, and child work. Context Inspector reads Claude Code and Codex transcripts on the execution host to show system prompt sections, tools, injected AGENTS/skills blocks, per-call token/cache usage, and adjacent-call changes. Fleet Metrics shows measured p50/p95 tool latency, recorded failures, first-output timing where measured, and parent-thread trees. Drilldowns open the matching Explorer filter or per-thread view.
 
 ## Debug from the CLI
 
-`bb traces thread <id|--self> [--json] [--children] [--reveal]` puts errors and slow spans first. `bb traces prompt <id|--self> [--call N] [--json] [--reveal]` prints prompt sections and a per-call token ledger. JSON is bounded and agent-readable. Inputs, outputs, system prompts, tool definitions, and injected content are hidden by default. Reveal is explicit and may expose secrets.
+`bb traces thread`, `bb traces prompt`, `bb traces query`, `bb traces slow`, and `bb traces errors` return compact text or bounded JSON. Long fleet scans report progress and a `scan_` ID. Use `bb traces job <id>` to read or cancel one. Query terms are parsed AND-only field filters; no raw SQL or unbounded free text.
 
-## No extra storage
+## Read-only and honest about missing data
 
-Waterfall reads BB's thread SDK. Context Inspector reads provider JSONL through this plugin's host entry. Traces writes no plugin database or disk cache. A small invalidated in-memory LRU holds only derived event trees, not transcripts. Redacted fixtures cover claude-code, codex, acp-omp, and pi events, plus Claude Code and Codex prompt records. The Log Explorer and Fleet Metrics belong to later phases.
+Traces writes no plugin database, disk cache, or durable mirror. Fleet jobs read `bb.db` read-only, select threads first, then seek each thread's indexed events. They stream partial results, cap memory and time windows, and can be cancelled. A BB schema change disables only fleet views; SDK-backed thread views remain. The live tail covers the connected session, not missed events after a restart. Fleet-window token/cache totals remain **unknown** because BB prunes historical usage; a first recorded output is not network TTFT. Raw event payloads, prompts, tool definitions, and unstructured errors stay hidden until an explicit reveal in per-thread views.
 
-Both navigation views use a wider canvas than standard Settings pages so timing rows and the token ledger stay legible. Thread side-panel tabs stack their detail areas in narrow space.
+All four navigation views use a wider canvas than Settings so timing tracks, prompt ledgers, facet tables, and metrics charts stay legible. Side-panel views stack for narrow space.
