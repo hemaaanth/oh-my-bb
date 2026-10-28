@@ -11,7 +11,7 @@ function render() {
   const setAssignment = vi.fn(async (input: { bundleId: string; kind: string; targetId: string; enabled: boolean }) => { if (input.enabled) assignments.push(input); return { ok: true }; });
   const executorOverview = vi.fn(async () => ({ error: null, warnings: [] }));
   const slot = renderSlot(app.settingsSections.find(section => section.id === "catalog")!, {}, { rpc: {
-    catalogOverview: () => ({ sources, skills: Array.from({ length: 36 }, (_, i) => ({ id: `skill-${i}`, sourceId: sources[0]!.id, name: `Skill ${i}`, description: `A long description for skill ${i} that should stay on one line and be available in full on hover.`, enabled: true })), bundles: [{ id: "set-one", name: "Source set", description: "Every enabled skill from Source 0.", skillIds: [], sourceId: sources[0]!.id, nativeCapability: null }], targets: [], assignments: null, assignmentState: { state: "uninitialized" }, harnesses: [] }),
+    catalogOverview: () => ({ sources, skills: Array.from({ length: 36 }, (_, i) => ({ id: `skill-${i}`, sourceId: sources[0]!.id, name: `Skill ${i}`, description: `A long description for skill ${i} that should stay on one line and be available in full on hover.`, enabled: true })), bundles: [{ id: "set-one", name: "Source set", description: "Every enabled skill from Source 0.", skillIds: [], sourceId: sources[0]!.id, nativeCapability: null }, { id: "custom", name: "Security review", description: "Selected security skills.", skillIds: ["skill-0"], sourceId: null, nativeCapability: null }, { id: "plugin", name: "Prospecting", description: "Prospecting tools.", skillIds: [], sourceId: null, nativeCapability: { pluginId: "prospecting", toolIds: ["tool-one"], skillIds: ["skill-one"] } }], targets: [], assignments: null, assignmentState: { state: "uninitialized" }, harnesses: [] }),
     preferences: () => ({ agentsIntegration: false }), executorConfiguration: () => ({ configured: true, mappings: [] }),
     snapshot, executorOverview, setAssignment,
   } as never });
@@ -40,7 +40,7 @@ it("bounds and filters source rows without syncing or editing anything", async (
 });
 it("keeps assignment reads and remote checks behind their explicit actions", async () => {
   const { slot, snapshot, executorOverview } = render();
-  const load = await slot.findByRole("button", { name: "Project availability for Source 0" });
+  const load = await slot.findByRole("button", { name: "Projects for Source 0" });
   expect(snapshot).not.toHaveBeenCalled(); expect(executorOverview).not.toHaveBeenCalled();
   fireEvent.click(load);
   await waitFor(() => expect(snapshot).toHaveBeenCalledTimes(1));
@@ -59,7 +59,7 @@ it("opens the guide without initializing assignments", async () => {
 
 it("combines source availability with its source row and edits it in one modal", async () => {
   const { slot, setAssignment, snapshot } = render();
-  const button = await slot.findByRole("button", { name: "Project availability for Source 0" });
+  const button = await slot.findByRole("button", { name: "Projects for Source 0" });
   expect(slot.queryByText("Source set")).toBeNull();
   expect(slot.queryByRole("button", { name: "Load assignments" })).toBeNull();
   fireEvent.click(button);
@@ -81,4 +81,16 @@ it("exposes the total and full descriptions for a bounded skill list", async () 
   expect(slot.getByRole("region", { name: "Source 0 skills", hidden: true }).querySelectorAll('[role="switch"]')).toHaveLength(36);
   const description = "A long description for skill 0 that should stay on one line and be available in full on hover.";
   expect(slot.getByTitle(description).textContent).toBe(description);
+});
+
+it("presents custom and plugin-provided sets together with clear ownership", async () => {
+  const { slot } = render();
+  await slot.findByRole("heading", { name: "Sets", exact: true });
+  expect(slot.queryByRole("heading", { name: "Plugin capabilities" })).toBeNull();
+  expect(slot.getByText("1 skill · Custom")).toBeTruthy();
+  expect(slot.getByText("1 tool · 1 skill · Provided by prospecting")).toBeTruthy();
+  expect(slot.getByRole("button", { name: "Projects for Security review" }).textContent).toBe("Projects");
+  expect(slot.getByRole("button", { name: "Projects for Prospecting" }).textContent).toBe("Projects");
+  expect(slot.getByRole("button", { name: "Edit Security review" })).toBeTruthy();
+  expect(slot.queryByRole("button", { name: "Edit Prospecting" })).toBeNull();
 });
