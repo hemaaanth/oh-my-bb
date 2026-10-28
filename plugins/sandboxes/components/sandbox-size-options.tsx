@@ -12,8 +12,9 @@ export function SandboxSizeOptions({ projectDefault = false }: { projectDefault?
     </div>
     {sandboxSizeTierValues.map(tier => {
       const size = sizeTierUnits(tier);
-      return <SelectItem key={tier} value={tier} className="whitespace-nowrap" textValue={formatSizeTier(tier)} aria-label={formatSizeTier(tier)}>
-        <span className={COLUMNS}>
+      return <SelectItem key={tier} value={tier} className="whitespace-nowrap" textValue={formatSizeTier(tier)}>
+        <span className="sr-only">{formatSizeTier(tier)}</span>
+        <span aria-hidden="true" className={COLUMNS}>
           <span className="text-left font-medium">{tier}</span>
           <span className="text-muted-foreground">{size.cpu}</span>
           <span className="text-muted-foreground">{size.memoryGiB} GiB</span>
