@@ -160,13 +160,14 @@ function decodeFleetFilter(segment: string | undefined): string {
 function NavPanel({ subPath }: { subPath: string }) {
   const navigate = useBbNavigate();
   const parts = subPath.split("/");
-  const view = parts[0] === "context" || parts[0] === "explorer" || parts[0] === "metrics" ? parts[0] : "waterfall";
+  const view = parts[0] === "context" || parts[0] === "explorer" || parts[0] === "metrics" ? parts[0]
+    : parts[0] === "waterfall" || /^thr_[a-z0-9]+$/.test(parts[0] ?? "") ? "waterfall" : "explorer";
   const rawId = view === "context" ? parts[1] : view === "waterfall" ? parts[0] : null;
   const threadId = rawId && /^thr_[a-z0-9]+$/.test(rawId) ? rawId : "";
   const fleetQuery = view === "explorer" || view === "metrics" ? decodeFleetFilter(parts[1]) : "";
   const fleetSince = /^(?:[1-9]\d?h|[1-7]d)$/.test(parts[2] ?? "") ? parts[2]! : "24h";
   const open = (path: string) => navigate.toPluginPanel("waterfall", { subPath: path });
-  const openThreadView = (target: "waterfall" | "context", id: string) => open(target === "context" ? `context/${id}` : id);
+  const openThreadView = (target: "waterfall" | "context", id: string) => open(target === "context" ? id ? `context/${id}` : "context" : id || "waterfall");
   const openFleetView = (target: "explorer" | "metrics", query = "", since = "24h") => open(`${target}/${encodeFleetFilter(query)}/${since}`);
   return <div className="traces-page"><div className="traces-container">
     <nav className="traces-view-tabs" aria-label="Trace views">

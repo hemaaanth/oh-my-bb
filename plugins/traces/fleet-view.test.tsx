@@ -184,6 +184,7 @@ describe("fleet UI", () => {
       traces_fleet_cancel: () => snapshot("metrics", query),
       traces_fleet_status: () => snapshot("metrics", query),
     } });
+    expect(screen.getByRole("button", { name: "Fleet Metrics" }).getAttribute("aria-current")).toBe("page");
     await screen.findByRole("button", { name: /Tool failure rate/ });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Tool failure rate/ })); });
     const last = rendered.inspection.navigateCalls.at(-1);

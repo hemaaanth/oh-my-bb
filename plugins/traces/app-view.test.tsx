@@ -37,6 +37,7 @@ describe("Traces thread UI", () => {
     const rendered = renderSlot(panel, { subPath: "thr_abc" }, { rpc: {
       traces_thread: (input) => { const { threadId, reveal } = rpcContract.traces_thread.input.parse(input); return trace(threadId, reveal); },
     } });
+    expect(screen.getByRole("button", { name: "Waterfall" }).getAttribute("aria-current")).toBe("page");
     expect(await screen.findByText("sensitive-waterfall")).toBeTruthy();
     expect((screen.getByRole("checkbox", { name: "Reveal sensitive data" }) as HTMLInputElement).checked).toBe(true);
     expect(screen.getByRole("combobox", { name: "Turn" }).className).toContain("traces-turn-trigger");
@@ -54,6 +55,7 @@ describe("Traces thread UI", () => {
     const rendered = renderSlot(panel, { subPath: "context/thr_abc" }, { rpc: {
       traces_prompt: (input) => { const { threadId, call, reveal } = rpcContract.traces_prompt.input.parse(input); return prompt(threadId, call, reveal); },
     } });
+    expect(screen.getByRole("button", { name: "Context Inspector" }).getAttribute("aria-current")).toBe("page");
     const section = await screen.findByText("System block");
     expect((screen.getByRole("checkbox", { name: "Reveal sensitive data" }) as HTMLInputElement).checked).toBe(true);
     expect(rendered.inspection.rpcCalls.find((call) => call.method === "traces_prompt")?.input).toMatchObject({ reveal: true });
@@ -71,9 +73,20 @@ describe("Traces thread UI", () => {
     rendered.lifecycle.unmount();
   });
 
-  it("replaces manual thread ID forms with a compact Explorer route in both tabs", async () => {
-    for (const subPath of ["", "context"]) {
+  it("opens the sidebar panel root in Explorer, including an unknown subPath", async () => {
+    for (const subPath of ["", "unknown"]) {
+      const rendered = renderSlot(panel, { subPath }, { rpc: { traces_fleet_start: () => { throw new Error("Route test does not scan storage."); } } });
+      expect(screen.getByRole("button", { name: "Log Explorer" }).getAttribute("aria-current")).toBe("page");
+      expect(screen.getByRole("textbox", { name: "Filter" })).toBeTruthy();
+      expect(screen.queryByText(/Select a thread in Log Explorer/)).toBeNull();
+      rendered.lifecycle.unmount();
+    }
+  });
+
+  it("retains explicit empty Waterfall and Context routes without manual ID forms", async () => {
+    for (const [subPath, tab] of [["waterfall", "Waterfall"], ["context", "Context Inspector"]]) {
       const rendered = renderSlot(panel, { subPath }, {});
+      expect(screen.getByRole("button", { name: tab }).getAttribute("aria-current")).toBe("page");
       expect(screen.queryByRole("textbox", { name: "Thread ID" })).toBeNull();
       expect(screen.getByText(/Select a thread in Log Explorer/)).toBeTruthy();
       await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Open Log Explorer" })); });

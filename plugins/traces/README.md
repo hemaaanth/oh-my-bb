@@ -4,7 +4,7 @@ Traces reads BB's own thread events, the existing read-only `bb.db`, and provide
 
 ## Use
 
-Open **Traces** in the BB navigation rail. Four sibling views share the page: Log Explorer, Waterfall, Context Inspector, and Fleet Metrics. Or select **Trace this thread** in any thread menu. The thread side panel offers separate Waterfall and Context Inspector action tabs. Fleet rows link back to those per-thread views. Waterfall opens the latest turn by default; choose another turn or All turns from the picker. The UI stays on the selected thread; `bb traces thread --children` remains available for deep CLI debugging. Hatched bars are waits. The breakdown counts exclusive wall time.
+Open **Traces** in the BB navigation rail to start in Log Explorer. Four sibling views share the page: Log Explorer, Waterfall, Context Inspector, and Fleet Metrics. Explicit thread links from Explorer or **Trace this thread** in a thread menu still open that thread's Waterfall or Context Inspector. The thread side panel offers separate Waterfall and Context Inspector action tabs. Waterfall opens the latest turn by default; choose another turn or All turns from the picker. The UI stays on the selected thread; `bb traces thread --children` remains available for deep CLI debugging. Hatched bars are waits. The breakdown counts exclusive wall time.
 
 ```sh
 bb traces thread <thread-id>
