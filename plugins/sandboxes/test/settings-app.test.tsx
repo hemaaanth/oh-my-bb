@@ -32,7 +32,7 @@ it("keeps an unsent preferences draft across realtime refresh and failed save", 
 it("keeps a provider snapshot draft when metadata refreshes, without view-time capacity or setup", async () => {
   const slot = renderSlot(app.settingsSections.find(section => section.id === "providers")!, {}, { rpc: baseRpc as never });
   fireEvent.click(await slot.findByRole("button", { name: "Freestyle options" }));
-  const input = await slot.findByPlaceholderText("Freestyle snapshot ID");
+  const input = await slot.findByPlaceholderText("freestyle/ubuntu (default)");
   fireEvent.change(input, { target: { value: "snapshot-unsent" } });
   await slot.behavior.emitRealtime("sandbox-provider-settings", { type: "changed" });
   await waitFor(() => expect((input as HTMLInputElement).value).toBe("snapshot-unsent"));

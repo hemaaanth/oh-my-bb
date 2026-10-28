@@ -138,6 +138,13 @@ export function createFreestyleMachineBackend(
         // BB owns idle pause. Only persistent mode requires uncapped retention.
         idleTimeoutSeconds: -1,
         ...(persistent ? { autoDeleteSeconds: -1, ttlSeconds: -1 } : {}),
+      }).catch((error: unknown) => {
+        if (snapshotId !== null && error instanceof FreestyleApiError &&
+          (error.status === 400 || error.status === 404) &&
+          /snapshot.*(?:does not exist|not found)/iu.test(error.message)) {
+          throw new Error(`Freestyle snapshot "${snapshotId}" is unavailable. In Sandboxes settings → Freestyle, clear Base snapshot to use Ubuntu, or choose an existing snapshot.`, { cause: error });
+        }
+        throw error;
       });
       try {
         if (data.autoDeleteSeconds === 0) {
@@ -165,6 +172,9 @@ export function createFreestyleMachineBackend(
         }
       } catch (error) {
         await client.vms.delete(vmId).catch(() => undefined);
+        if (error instanceof FreestyleApiError && error.status === 429 && /this plan allows/iu.test(error.message)) {
+          throw new Error(`Freestyle cannot run size ${tier} on this plan. Choose a smaller size in the thread's environment options, or upgrade your Freestyle plan. ${error.message}`, { cause: error });
+        }
         throw error;
       }
       const resource: FreestyleResource = {

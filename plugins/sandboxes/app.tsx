@@ -348,8 +348,9 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
                     </Select>
                   </label>
                   <label className="block min-w-0 space-y-1 text-xs text-muted-foreground">
-                    <span>Bootstrap snapshot <span className="opacity-70">(recommended)</span></span>
-                    <Input value={snapshotIdDraft} placeholder="Freestyle snapshot ID" onChange={(event) => setSnapshotIdDraft(event.target.value)} />
+                    <span>Base snapshot <span className="opacity-70">(optional)</span></span>
+                    <Input value={snapshotIdDraft} placeholder="freestyle/ubuntu (default)" onChange={(event) => setSnapshotIdDraft(event.target.value)} />
+                    <span>Public image slug or your snapshot ID. Leave blank for Ubuntu.</span>
                   </label>
                 </>
               ) : null}
