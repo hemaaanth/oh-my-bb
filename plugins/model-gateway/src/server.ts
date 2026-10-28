@@ -238,7 +238,9 @@ export function createAccountPoolPlugin(
         }),
     );
     // BB drops failed env contributions. Keep transport configured even when no upstream can serve.
+    // BB 0.47 model discovery has no thread; never mint thread credentials for it.
     bb.providers.experimental_contributeEnv("claude-code", async (context) => {
+      if (context.threadId == null) return [];
       if (await isAccountPoolRouting(bb)) return [];
       if (
         !(await operations.isRoutingEnabled("claude")) ||
@@ -303,6 +305,7 @@ export function createAccountPoolPlugin(
         : null;
     });
     bb.providers.experimental_contributeEnv("codex", async (context) => {
+      if (context.threadId == null) return [];
       if (await isAccountPoolRouting(bb)) return [];
       if (
         !(await operations.isRoutingEnabled("codex")) ||
@@ -410,6 +413,7 @@ export function createAccountPoolPlugin(
         (await operations.isRoutingEnabled(harness)) &&
         (await chainUsable(harness));
       bb.providers.experimental_contributeEnv(harness, async (context) => {
+        if (context.threadId == null) return [];
         if (!(await operations.isRoutingEnabled(harness)) || await routing.isBypassed(context.threadId)) return [];
         return [{ name: "MODEL_GATEWAY_REQUIRED", value: "1", reason: "BB-managed inference must use Model Gateway" }, ...entries(
           await hubTokens.forThread({
@@ -447,6 +451,7 @@ export function createAccountPoolPlugin(
         for (const id of activePi) {
           if (registeredPi.has(id)) continue;
           bb.providers.experimental_contributeEnv(id, async (context) => {
+            if (context.threadId == null) return [];
             if (!activePi.has(id) || !(await operations.isRoutingEnabled("pi")) || await routing.isBypassed(context.threadId)) return [];
             return [{ name: "MODEL_GATEWAY_REQUIRED", value: "1", reason: "BB-managed inference must use Model Gateway" }, ...acpEnv.pi(await hubTokens.forThread({
               hostId: context.hostId, threadId: context.threadId, harness: "pi",

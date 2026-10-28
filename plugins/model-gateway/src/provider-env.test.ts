@@ -112,6 +112,17 @@ it("keeps every managed transport on the gateway when all accounts are disabled"
   expect(response.status).toBe(503);
 });
 
+it("skips thread-scoped routing for BB model discovery with null thread and project ids", async () => {
+  const gw = await gateway();
+  await vi.waitFor(async () => expect(await gw.env("hempi")).toHaveLength(3));
+  // SDK 0.6.49 predates the nullable discovery context introduced by BB 0.47.
+  const context = { threadId: null, projectId: null, hostId: "host-one" } as unknown as Parameters<typeof gw.host.harness.behavior.resolveProviderEnv>[1];
+  for (const provider of ["claude-code", "codex", "acp-omp", "acp-fx", "acp-nanocodex", "acp-prime-agent", "pi", "hempi"])
+    expect(await gw.host.harness.behavior.resolveProviderEnv(provider, context), provider).toEqual([]);
+  expect(gw.host.harness.logEntries.filter(({ message }) => message.includes("provider environment contribution failed"))).toEqual([]);
+  expect((await gw.env("claude-code")).find(({ name }) => name === "ANTHROPIC_AUTH_TOKEN")?.value).toEqual(expect.any(String));
+});
+
 it("returns host setup files over the schema RPC with the caller's server URL", async () => {
   const gw = await gateway();
   const result = await gw.host.harness.behavior.callRpc("host.setupFiles", { hostId: "remote-host", serverBaseUrl: "https://remote.example", piAgentDirs: [".pi/agent", ".profiles/sol"] }) as { files: Array<{ content: string; path: string }> };
