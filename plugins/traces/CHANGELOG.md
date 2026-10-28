@@ -10,6 +10,7 @@
 - Refine the Explorer row/keyboard workflow and compact scan status, remove manual per-thread ID forms, adopt the BB-styled turn picker, and default per-thread UI Reveal on while keeping CLI output hidden without `--reveal`.
 - Remove the redundant Explorer time-bin table and Waterfall Children toggle, harmonize the four open view shells, and window Explorer rows with local keyboard scrolling and deferred detail reads.
 - Open the navigation-rail Traces root in Log Explorer while keeping explicit thread, Context Inspector, and Metrics deep links intact.
+- Add an SDK-backed, project-grouped Traces sidebar with search, exact BB thread deep links, and opt-in hidden/archived threads; inspired by Agent Traces (Nicolas Charpentier, MIT).
 
 ## 0.2.0 — 2026-10-28
 

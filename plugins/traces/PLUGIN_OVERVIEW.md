@@ -2,7 +2,7 @@ Explore BB thread events and provider transcripts with waterfalls, prompt contex
 
 ## Four views, one source of truth
 
-Log Explorer searches bounded windows of BB's existing event metadata. It offers a time histogram, provider/tool/status/project facets, event or span rows, and an on-demand detail drawer. Waterfall shows one thread's turns, tools, waits, errors, and child work. Context Inspector reads Claude Code and Codex transcripts on the execution host to show system prompt sections, tools, injected AGENTS/skills blocks, per-call token/cache usage, and adjacent-call changes. Fleet Metrics shows measured p50/p95 tool latency, recorded failures, first-output timing where measured, and parent-thread trees. Drilldowns open the matching Explorer filter or per-thread view.
+Traces opens Log Explorer by default. Its BB-native sidebar groups and searches the host's own threads by project and `thr_` ID, with opt-in hidden and archived results. Log Explorer searches bounded windows of BB's existing event metadata. It offers a time histogram, provider/tool/status/project facets, event or span rows, and an on-demand detail drawer. Waterfall shows one thread's turns, tools, waits, errors, and child work. Context Inspector reads Claude Code and Codex transcripts on the execution host to show system prompt sections, tools, injected AGENTS/skills blocks, per-call token/cache usage, and adjacent-call changes. Fleet Metrics shows measured p50/p95 tool latency, recorded failures, first-output timing where measured, and parent-thread trees. Drilldowns open the matching Explorer filter or per-thread view.
 
 ## Debug from the CLI
 

@@ -6,6 +6,8 @@ Traces reads BB's own thread events, the existing read-only `bb.db`, and provide
 
 Open **Traces** in the BB navigation rail to start in Log Explorer. Four sibling views share the page: Log Explorer, Waterfall, Context Inspector, and Fleet Metrics. Explicit thread links from Explorer or **Trace this thread** in a thread menu still open that thread's Waterfall or Context Inspector. The thread side panel offers separate Waterfall and Context Inspector action tabs. Waterfall opens the latest turn by default; choose another turn or All turns from the picker. The UI stays on the selected thread; `bb traces thread --children` remains available for deep CLI debugging. Hatched bars are waits. The breakdown counts exclusive wall time.
 
+The Traces sidebar uses BB's own live thread list. It groups threads by project, searches titles and `thr_` IDs, and opens Waterfall using the exact BB thread ID. Hidden and archived threads are opt-in; a missing selection is labeled unavailable rather than assigned to another thread. On narrow screens, open BB's sidebar drawer to use the search. This sidebar and per-thread interaction design draw on [Agent Traces](https://github.com/charpeni/bb-plugins/tree/main/plugins/agent-traces) by Nicolas Charpentier (MIT); the original copyright notice is retained in `LICENSE`.
+
 ```sh
 bb traces thread <thread-id>
 bb traces thread --self

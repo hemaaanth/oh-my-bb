@@ -5,6 +5,7 @@ import type { rpcContract } from "./server";
 import type { TraceResult, TraceSpan } from "./spans";
 import { ContextInspector } from "./context-view";
 import { ExplorerView, MetricsView } from "./fleet-view";
+import { TracesSidebar } from "./sidebar";
 import "./app.css";
 
 function duration(ms: number | null) {
@@ -184,7 +185,7 @@ function NavPanel({ subPath }: { subPath: string }) {
 }
 
 export default definePluginApp((app) => {
-  app.slots.navPanel({ id: "waterfall", title: "Traces", icon: "traces/traces", path: "waterfall", component: NavPanel });
+  app.slots.navPanel({ id: "waterfall", title: "Traces", icon: "traces/traces", path: "waterfall", component: NavPanel, experimental_sidebar: TracesSidebar });
   app.slots.experimental_tab({ context: { kind: "thread" }, availability: "action", id: "trace", title: "Trace this thread",
     icon: "traces/traces", layout: "flush", component: ({ threadId }) => <Waterfall threadId={threadId} compact /> });
   app.slots.experimental_tab({ context: { kind: "thread" }, availability: "action", id: "context", title: "Context Inspector",

@@ -1,0 +1,71 @@
+import { useMemo, useState } from "react";
+import { experimental_useSidebarThreads, useBbNavigate, type PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import "./sidebar.css";
+
+const PER_PROJECT = 12;
+const BUSY_STATUSES: Record<string, true> = { active: true, starting: true, stopping: true };
+
+/** The host's sidebar thread objects carry the same BB IDs as traces_thread. */
+export function TracesSidebar({ subPath }: { subPath: string }) {
+  const navigate = useBbNavigate();
+  const [search, setSearch] = useState("");
+  const [showHidden, setShowHidden] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const state = experimental_useSidebarThreads(showArchived ? { experimental_lifecycles: ["active", "archived"] } : undefined);
+  const segments = subPath.split("/");
+  const id = segments[0] === "context" ? segments[1] : segments[0];
+  const selectedId = id && /^thr_[a-z0-9]+$/.test(id) ? id : null;
+  const query = search.trim().toLocaleLowerCase();
+  const groups = useMemo(() => {
+    const matching = state.threads.filter((thread) => (showHidden || !thread.isHidden) && (showArchived || !thread.isArchived)
+      && (!query || thread.displayTitle.toLocaleLowerCase().includes(query) || thread.id.toLocaleLowerCase().includes(query)));
+    matching.sort((a, b) => Number(Object.hasOwn(BUSY_STATUSES, b.status)) - Number(Object.hasOwn(BUSY_STATUSES, a.status))
+      || Math.max(b.updatedAt, b.latestAttentionAt) - Math.max(a.updatedAt, a.latestAttentionAt));
+    const grouped = new Map<string, PluginSidebarThread[]>();
+    for (const thread of matching) {
+      const list = grouped.get(thread.projectId) ?? [];
+      list.push(thread); grouped.set(thread.projectId, list);
+    }
+    return grouped;
+  }, [state.threads, showHidden, showArchived, query]);
+  const projects = new Map(state.projects.map((project) => [project.id, project.name]));
+  const selectedVisible = selectedId === null || [...groups.values()].some((threads) => threads.some((thread) => thread.id === selectedId));
+  return <aside className="traces-sidebar" aria-label="Traces threads">
+    <div className="traces-sidebar-search">
+      <input type="search" value={search} onChange={(event) => setSearch(event.target.value)}
+        onKeyDown={(event) => { if (event.key === "Escape" && search) { event.preventDefault(); setSearch(""); } }}
+        placeholder="Search threads" aria-label="Search Traces threads" />
+      <button type="button" aria-current={selectedId === null ? "page" : undefined}
+        onClick={() => navigate.toPluginPanel("waterfall", { subPath: "" })}>Log Explorer</button>
+    </div>
+    <div className="traces-sidebar-groups">
+      {state.status === "loading" && <p role="status">Loading BB threads…</p>}
+      {state.status === "error" && <p role="alert">BB thread list unavailable.</p>}
+      {state.status === "ready" && !groups.size && <p>{query ? "No matching threads." : "No threads in this view."}</p>}
+      {state.status === "ready" && !selectedVisible && <p className="traces-sidebar-unlisted">Selected thread is hidden, archived, or unavailable in this list.</p>}
+      {[...groups].map(([projectId, threads]) => {
+        const shown = query || expanded.has(projectId) ? threads : threads.filter((thread, index) => index < PER_PROJECT || thread.id === selectedId);
+        const omitted = threads.length - shown.length;
+        return <section key={projectId} aria-label={projects.get(projectId) ?? projectId}>
+          <h3>{projects.get(projectId) ?? projectId}<span>{threads.length}</span></h3>
+          <ul>{shown.map((thread) => <li key={thread.id}><button type="button" aria-current={thread.id === selectedId ? "page" : undefined}
+            aria-label={`${thread.displayTitle}, ${thread.id}${thread.isArchived ? ", archived" : ""}${thread.isHidden ? ", hidden" : ""}`}
+            title={thread.displayTitle} onClick={() => navigate.toPluginPanel("waterfall", { subPath: thread.id })}>
+            <span className="traces-sidebar-title">{thread.parentThreadId && <span aria-hidden="true">↳ </span>}{thread.displayTitle}</span>
+            <small>{thread.id}{thread.isArchived ? " · archived" : thread.isHidden ? " · hidden" : Object.hasOwn(BUSY_STATUSES, thread.status) ? " · running" : ""}</small>
+          </button></li>)}</ul>
+          {omitted > 0 && <button type="button" className="traces-sidebar-more" onClick={() => setExpanded(new Set([...expanded, projectId]))}>Show {omitted} more</button>}
+        </section>;
+      })}
+      {showArchived && state.experimental_archived?.status === "error" && <p role="alert">Archived threads unavailable.</p>}
+      {showArchived && state.experimental_archived?.hasNextPage && <button type="button" className="traces-sidebar-more"
+        disabled={state.experimental_archived.isFetchingNextPage} onClick={() => void state.experimental_archived?.fetchNextPage()}>
+        {state.experimental_archived.isFetchingNextPage ? "Loading archived threads…" : "Load more archived threads"}</button>}
+    </div>
+    <div className="traces-sidebar-options">
+      <label><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Archived</label>
+      <label><input type="checkbox" checked={showHidden} onChange={(event) => setShowHidden(event.target.checked)} /> Hidden</label>
+    </div>
+  </aside>;
+}
