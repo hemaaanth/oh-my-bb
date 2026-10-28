@@ -591,7 +591,6 @@ export default async function plugin(bb: BbPluginApi) {
     );
     CREATE TABLE IF NOT EXISTS journal_brief_pending (thread_id TEXT PRIMARY KEY, idle_at INTEGER NOT NULL);`,
     `ALTER TABLE journal_ai_usage ADD COLUMN usage_unknown INTEGER NOT NULL DEFAULT 0;`,
-    `DROP TABLE IF EXISTS journal_feed_events;`,
   ]);
 
   // Side chats are forks: BB records their owner in sourceThreadId, not parentThreadId.
