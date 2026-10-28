@@ -328,7 +328,8 @@ if [ -n "$packages" ] && [ "\${free_kb:-0}" -lt 1048576 ]; then
 fi
 if [ -n "$packages" ]; then
   npm cache clean --force >/dev/null 2>&1 || true
-  npm install --global --prefix "$P" --allow-scripts=${allowScripts} $packages >/tmp/bb-upgrade-npm.log 2>&1 \\
+  # Vendor images can link these CLIs from another npm prefix. Replace those links.
+  npm install --global --force --prefix "$P" --allow-scripts=${allowScripts} $packages >/tmp/bb-upgrade-npm.log 2>&1 \\
     || tail -n 20 /tmp/bb-upgrade-npm.log >&2
   # The OMP download below needs the room the npm cache now holds.
   npm cache clean --force >/dev/null 2>&1 || true
@@ -392,19 +393,32 @@ export function parseHealResult(output: string): CarriedVersions | null {
   }
 }
 
+export interface StartupHarnessPolicy {
+  /** null preserves an explicitly customized Dockerfile's installed versions. */
+  target: HarnessVersions | null;
+  tools: readonly string[] | null;
+}
+
 export async function prepareGatewayHarnesses(
   bb: BbPluginApi,
   input: { hostId: string; executor: MachineExecutor; signal: AbortSignal },
+  policy: StartupHarnessPolicy,
 ): Promise<void> {
-  const run = executorRunner(input.executor, input.signal);
+  const execute = executorRunner(input.executor, input.signal);
+  const run = (command: string[], stdin?: string) => execute(
+    policy.tools === null ? command : ["env", `BB_IMAGE_TOOLS=${policy.tools.join(",")}`, ...command], stdin,
+  );
   const carried = parseHealResult(await run(["bash", "-c", probeScript()]));
   if (!carried) throw new Error("Sandbox did not return a harness inventory");
-  if (harnessNames.some(name => carried.harness[name] === null)) {
-    const target = await latestHarnessVersions();
-    // Creation repairs missing CLIs without changing versions already on PATH.
+  let target = policy.target;
+  if (target === null && harnessNames.some(name => carried.harness[name] === null)) {
+    target = await latestHarnessVersions();
+    // Explicit custom images retain their versions; only fill missing harnesses.
     for (const name of harnessNames) {
       if (carried.harness[name] !== null) target[name] = carried.harness[name]!;
     }
+  }
+  if (target !== null && staleParts(carried, { bb: "", harness: target }, { includeBb: false }).length > 0) {
     const output = await run(["bash", "-c", healScript(target)]);
     const stale = staleParts(parseHealResult(output), { bb: "", harness: target }, { includeBb: false });
     if (stale.length) throw new Error(`Sandbox harness preparation failed: ${stale.join(", ")}${outputTail(output)}`);

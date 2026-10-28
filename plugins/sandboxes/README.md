@@ -710,7 +710,22 @@ Browser owns sandbox browsing, home routing, public-IP verification and personal
 
 A provider without credentials has disabled setup controls. After adding credentials in Configuration, choose **Check connection** in Providers. This performs a bounded read-only list request; it creates no sandbox. Only a successful check enables the settings button and enabling that provider. A failed check keeps the controls locked. Changing credentials or Daytona's API URL invalidates the saved check. Existing running machines are not stopped or reconfigured by these UI checks. You can always turn an enabled provider off. Settings reads never contact a vendor.
 
+### Boat auto-stop
+
+BB pauses Boat sandboxes after 15 minutes of inactivity by default. Stop saves disk state; it interrupts running processes. Resume restores the saved disk. Deleting a sandbox removes it.
+
+Boat also has a separate two-hour wall-clock auto-stop, reset on each create or resume. This permits trial accounts to start. It can interrupt an active turn after two hours, including with Always on enabled. BB idle sleep does not extend this deadline.
+
+Boat was formerly Box. Existing saved keys, sandbox IDs and internal `box` / `sandbox-box` identifiers remain valid. New API requests use `boat.dev`.
 
 Freestyle boots its public Ubuntu image when Base snapshot is blank. To use a custom image, enter an existing snapshot ID or public image slug such as `freestyle/ubuntu-sm`. A deleted or inaccessible custom snapshot must be cleared or replaced in settings; Sandboxes does not silently substitute another image.
 
 The shared M tier requests 12 GiB of RAM. Freestyle plans capped at 8 GiB must use S in the thread’s environment options. A rejected resize removes the newly created VM.
+
+### Shared agent toolchain
+
+Standard sandbox startup checks enabled agent CLIs against the shared image’s version labels on every provider. Vendor-installed versions are replaced when they differ. The version metadata is cached per image; a current machine skips installation. Without a registered image, startup uses the same pins as the bundled Dockerfile. A saved custom Dockerfile explicitly retains its installed versions.
+
+Daytona, Modal and E2B boot the registered image. Boat and Freestyle start from a provider base, so a fresh machine also needs tool installation. Matching the agent CLIs does not make the provider operating systems or base packages identical.
+
+Modal’s executor closes the normal stdin stream after writing enrollment data and forwards output while commands run. The emergency zero-offset EOF method is not used for bootstrap.

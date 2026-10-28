@@ -126,3 +126,25 @@ export async function readImageVersions(input: {
     ) as Record<HarnessName, string | null>,
   };
 }
+
+/** Startup uses the same pinned versions as the Dockerfile, never moving latest releases. */
+let bundledVersions: Promise<HarnessVersions> | undefined;
+export function bundledHarnessVersions(): Promise<HarnessVersions> {
+  return bundledVersions ??= (async () => {
+    const dockerfile = readFileSync(new URL("../docker/Dockerfile", import.meta.url), "utf8");
+    const pin = (name: string) => {
+      const version = new RegExp(`^ARG ${name}=([^\\s]+)$`, "mu").exec(dockerfile)?.[1];
+      if (!version) throw new Error(`Missing sandbox Dockerfile pin ${name}`);
+      return version;
+    };
+    const [fxAcp, nanocodexAcp, primeAcp] = await Promise.all([
+      adapterDigest("fx-acp"), adapterDigest("nanocodex-acp"), adapterDigest("prime-agent-acp"),
+    ]);
+    return {
+      "claude-code": pin("CLAUDE_CODE_VERSION"), codex: pin("CODEX_VERSION"),
+      omp: pin("OMP_VERSION"), fx: pin("FX_VERSION"), pi: pin("PI_VERSION"),
+      "prime-agent": pin("PRIME_AGENT_VERSION"),
+      "fx-acp": fxAcp, "nanocodex-acp": nanocodexAcp, "prime-agent-acp": primeAcp,
+    };
+  })().catch(error => { bundledVersions = undefined; throw error; });
+}

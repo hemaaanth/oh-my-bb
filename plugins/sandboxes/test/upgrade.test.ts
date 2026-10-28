@@ -103,7 +103,7 @@ describe("heal script", () => {
     const prefix = healPrefix("2.1.261");
     const output = runHeal(prefix);
     expect(npmInstalls(prefix)).toEqual([
-      `install --global --prefix ${prefix} --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code@${latest["claude-code"]}`,
+      `install --global --force --prefix ${prefix} --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code@${latest["claude-code"]}`,
     ]);
     expect(parseHealResult(output)?.harness["claude-code"]).toBe(latest["claude-code"]);
   });
@@ -113,7 +113,7 @@ describe("heal script", () => {
     rmSync(join(prefix, "bin", "claude"));
     const output = runHeal(prefix);
     expect(npmInstalls(prefix)).toEqual([
-      `install --global --prefix ${prefix} --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code@${latest["claude-code"]}`,
+      `install --global --force --prefix ${prefix} --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code@${latest["claude-code"]}`,
     ]);
     expect(parseHealResult(output)?.harness["claude-code"]).toBe(latest["claude-code"]);
   });
@@ -140,7 +140,7 @@ describe("heal script", () => {
     const output = runHeal(prefix);
     expect(parseHealResult(output)?.harness.pi).toBe(latest.pi);
     expect(npmInstalls(prefix)).toEqual([
-      `install --global --prefix ${prefix} --ignore-scripts @earendil-works/pi-coding-agent@${latest.pi}`,
+      `install --global --force --prefix ${prefix} --ignore-scripts @earendil-works/pi-coding-agent@${latest.pi}`,
     ]);
   });
 
@@ -225,7 +225,7 @@ describe("legacy heal script", () => {
     const { prefix, entrypoint } = legacyPrefix(false);
     runLegacyHeal(prefix, entrypoint);
     expect(npmInstalls(prefix)).toEqual([
-      `install --global --prefix ${prefix} --allow-scripts=@anthropic-ai/claude-code,@parcel/watcher,better-sqlite3,node-pty,@google/genai,protobufjs bb-app@0.46.0`,
+      `install --global --force --prefix ${prefix} --allow-scripts=@anthropic-ai/claude-code,@parcel/watcher,better-sqlite3,node-pty,@google/genai,protobufjs bb-app@0.46.0`,
     ]);
     const patched = readFileSync(entrypoint, "utf8");
     expect(patched).toContain("if false; then # bb-fix BB_SANDBOX_CLAUDE_AUTH_BASE64");
