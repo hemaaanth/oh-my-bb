@@ -53,7 +53,7 @@ export class SandboxNetworkHost {
       return await exec(binary, args, { timeout: 90_000, maxBuffer: 1024 * 1024, signal });
     } catch {
       // Tailscale diagnostics can contain login URLs. Do not forward raw output.
-      throw new Error(`Sandbox SSH: ${args.includes("up") ? "Tailscale enrollment failed; check the auth key and device approval" : "Tailscale command failed"}`);
+      throw new Error(`Sandbox SSH: ${args.includes("up") ? "Tailscale enrollment failed" : "Tailscale command failed"}`);
     }
   }
 
@@ -149,7 +149,10 @@ export class SandboxNetworkHost {
       try {
         await writeFile(keyFile, input.authKey, { mode: 0o600 });
         await this.run(client, [...args, "up", `--auth-key=file:${keyFile}`, "--accept-dns=false",
-          `--hostname=bb-${input.hostId.replaceAll("_", "-")}`, "--timeout=60s"], signal);
+          `--hostname=bb-${input.hostId.replaceAll("_", "-")}`, "--timeout=60s",
+          // `up` must repeat all preferences this owner previously set; otherwise
+          // Tailscale refuses re-enrollment before attempting authentication.
+          ...(this.kind === "ssh" ? ["--ssh=true"] : [`--exit-node=${input.exitNode}`])], signal);
       } finally { await rm(temporary, { recursive: true, force: true }); }
       current = await status();
     }

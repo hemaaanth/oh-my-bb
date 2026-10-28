@@ -35,6 +35,7 @@ if (args.includes('status')) {
   console.log(JSON.stringify({BackendState:ready?'Running':'NeedsLogin',Self:ready?{ID:'node-test',DNSName:'bb-host-test.tailnet.ts.net.'}:{ID:'',DNSName:''}}));
   if (!ready) process.exitCode = 1;
 } else if (args.includes('up')) {
+  if (fs.existsSync(path.join(root, 'required-up-flag')) && !args.includes(fs.readFileSync(path.join(root, 'required-up-flag'),'utf8'))) { console.error('changing settings via tailscale up requires mentioning all non-default flags'); process.exit(1); }
   const file = args.find(arg => arg.startsWith('--auth-key=file:')).slice('--auth-key=file:'.length);
   fs.writeFileSync(path.join(root, 'enrollment'), JSON.stringify({key:fs.readFileSync(file,'utf8'),mode:fs.statSync(file).mode&0o777,file}));
   if (fs.existsSync(path.join(root, 'fail-up'))) { console.error('secret ' + fs.readFileSync(file,'utf8')); process.exit(1); }
@@ -56,6 +57,16 @@ if (args.includes('status')) {
 }
 
 describe("sandbox SSH host worker", () => {
+  it.each(["ssh", "browser"] as const)("repeats the existing %s preference during enrollment", async (kind) => {
+    const { directory, storage, input, signal, calls } = await setup();
+    const flag = kind === "ssh" ? "--ssh=true" : "--exit-node=home-node";
+    await writeFile(join(directory, "required-up-flag"), flag);
+    const network = new SandboxNetworkHost(storage, kind);
+    running.push(network);
+    await network.acquire("owner", { ...input, ...(kind === "browser" ? { exitNode: "home-node" } : {}) }, signal);
+    expect((await calls()).find(args => args.includes("up"))).toContain(flag);
+  });
+
   it("starts a private userspace daemon and resumes with the existing node state", async () => {
     const { directory, host, input, signal, calls } = await setup();
     await writeFile(join(directory, "require-daemon"), "1");
@@ -114,7 +125,7 @@ describe("sandbox SSH host worker", () => {
     await host.configure(input, signal);
     const arguments_ = await calls();
     expect(arguments_.filter((args) => args.includes("up"))).toHaveLength(1);
-    expect(arguments_.filter((args) => args.includes("--ssh=true"))).toHaveLength(2);
+    expect(arguments_.filter((args) => args.includes("set") && args.includes("--ssh=true"))).toHaveLength(2);
     expect(JSON.stringify(arguments_)).not.toContain(SECRET);
     expect(JSON.stringify(arguments_)).not.toContain("--reset");
     expect(JSON.stringify(arguments_)).not.toContain("--exit-node");
