@@ -45,6 +45,12 @@ describe("Traces thread UI", () => {
     } });
     expect(screen.getByRole("heading", { name: "Thread Waterfall" })).toBeTruthy();
     expect(await screen.findByText("sensitive-waterfall")).toBeTruthy();
+    const detail = screen.getByRole("complementary", { name: "Span detail" });
+    expect(within(detail).getByRole("heading", { name: "Usage · latest stored snapshot" })).toBeTruthy();
+    expect(within(detail).getByRole("heading", { name: "Context · latest stored snapshot" })).toBeTruthy();
+    expect(within(detail).getByRole("heading", { name: "Input · 19 bytes" })).toBeTruthy();
+    expect(detail.textContent).toContain('"totalTokens": 42');
+    expect(detail.textContent).toContain('"usedTokens": 21');
     expect((screen.getByRole("checkbox", { name: "Reveal sensitive data" }) as HTMLInputElement).checked).toBe(true);
     expect(screen.getByRole("combobox", { name: "Turn" }).className).toContain("traces-turn-trigger");
     expect(screen.queryByRole("checkbox", { name: "Children" })).toBeNull();
@@ -52,6 +58,7 @@ describe("Traces thread UI", () => {
     expect(screen.queryByText(/error spans.*Select a red bar/)).toBeNull();
     expect(screen.queryByText(/Model \/ uninstrumented time is/)).toBeNull();
     await act(async () => { fireEvent.click(screen.getByRole("checkbox", { name: "Reveal sensitive data" })); });
+    expect(screen.getByRole("complementary", { name: "Span detail" }).textContent).toContain("Inputs and outputs are hidden");
     expect(screen.queryByText("sensitive-waterfall")).toBeNull();
     expect(rendered.inspection.rpcCalls.filter((call) => call.method === "traces_thread").at(-1)?.input).toMatchObject({ reveal: false });
     rendered.lifecycle.unmount();
@@ -128,6 +135,8 @@ describe("Traces thread UI", () => {
     } });
     expect((await screen.findByRole("region", { name: "Turn summary" })).textContent).toContain("31 tools");
     expect(screen.getByRole("button", { name: "Zoom in" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Timeline zoom controls" }).querySelectorAll("button")).toHaveLength(7);
+    expect(screen.getByRole("button", { name: "Focus slowest call" }).getAttribute("title")).toBe("Focus slowest call");
     expect(screen.getByRole("slider", { name: "Pan zoomed timeline" })).toHaveProperty("disabled", true);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Compare with previous turn" })); });
     const comparison = screen.getByRole("region", { name: "Turn comparison" });

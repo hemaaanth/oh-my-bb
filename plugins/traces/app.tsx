@@ -59,13 +59,13 @@ function Detail({ span, revealed }: { span: TraceSpan; revealed: boolean }) {
     ["Environment", span.metadata.environment ?? "none"], ["Initiator", span.metadata.initiator ?? "not stored"],
     ["Turn", span.turnId ?? "—"], ["Item", span.itemId ?? "—"],
   ];
-  return <aside className="traces-detail" aria-label="Span detail">
+  return <aside className="traces-detail" aria-label="Span detail" tabIndex={0}>
     <h3>{span.name}</h3>
     <dl>{fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     {span.error && <p className="traces-error">Error: {span.error}</p>}
-    {span.kind === "turn" && <p>Token usage: {span.usage ? "latest stored snapshot" : "not stored"}. Context usage: {span.contextUsage ? "latest stored snapshot" : "not stored"}.</p>}
-    {span.usage != null && <pre>Usage: {JSON.stringify(span.usage, null, 2)}</pre>}
-    {span.contextUsage != null && <pre>Context: {JSON.stringify(span.contextUsage, null, 2)}</pre>}
+    {span.kind === "turn" && (!span.usage || !span.contextUsage) && <p className="traces-hint">{!span.usage && "Token usage not stored. "}{!span.contextUsage && "Context usage not stored."}</p>}
+    {span.usage != null && <section><h4>Usage · latest stored snapshot</h4><pre>{JSON.stringify(span.usage, null, 2)}</pre></section>}
+    {span.contextUsage != null && <section><h4>Context · latest stored snapshot</h4><pre>{JSON.stringify(span.contextUsage, null, 2)}</pre></section>}
     {span.input && <section><h4>Input · {span.inputSize?.toLocaleString()} bytes</h4><pre>{span.input}</pre></section>}
     {span.output && <section><h4>Output · {span.outputSize?.toLocaleString()} bytes</h4><pre>{span.output}</pre></section>}
     {!revealed && <p className="traces-hint">Inputs and outputs are hidden. Turn on Reveal sensitive data to inspect them.</p>}
@@ -222,10 +222,10 @@ function Waterfall({ threadId, compact = false, initialTurnId = null, onTurnChan
             {turns.map((span, index) => <Select.Item key={span.id} className="traces-turn-item" value={span.id}><Select.ItemText>Turn {index + 1}</Select.ItemText><Select.ItemIndicator><Icon name="Check" aria-hidden="true" /></Select.ItemIndicator></Select.Item>)}
           </Select.Viewport></Select.Content></Select.Portal>
         </Select.Root></div>
-        <button type="button" aria-label="Previous turn" disabled={turnIndex <= 0} onClick={() => selectTurn(turns[turnIndex - 1]!.id)}>←</button>
-        <button type="button" aria-label="Next turn" disabled={turnIndex < 0 || turnIndex >= turns.length - 1} onClick={() => selectTurn(turns[turnIndex + 1]!.id)}>→</button>
-        <label className={reveal ? "traces-reveal-on" : ""}><input type="checkbox" checked={reveal} onChange={(event) => { if (!event.target.checked) { setResult(null); setSelectedId(null); } setReveal(event.target.checked); }} /> Reveal sensitive data</label>
-        <button type="button" onClick={load}>Refresh</button>
+        <button type="button" aria-label="Previous turn" title="Previous turn" disabled={turnIndex <= 0} onClick={() => selectTurn(turns[turnIndex - 1]!.id)}>←</button>
+        <button type="button" aria-label="Next turn" title="Next turn" disabled={turnIndex < 0 || turnIndex >= turns.length - 1} onClick={() => selectTurn(turns[turnIndex + 1]!.id)}>→</button>
+        <label className={reveal ? "traces-reveal-on" : ""} title="Reveal sensitive data"><input type="checkbox" aria-label="Reveal sensitive data" checked={reveal} onChange={(event) => { if (!event.target.checked) { setResult(null); setSelectedId(null); } setReveal(event.target.checked); }} /> Reveal</label>
+        <button type="button" aria-label="Refresh thread" title="Refresh thread" onClick={load}>↻</button>
       </div>
     </div>
     {error && <p role="alert" className="traces-error">{error}</p>}
@@ -236,25 +236,27 @@ function Waterfall({ threadId, compact = false, initialTurnId = null, onTurnChan
         <span>{display?.status ?? "not started"} · {running ? duration(Math.max(0, now - (display?.start ?? now))) : duration(display?.durationMs ?? null)} · {display?.metadata.model ?? "model not stored"}</span>
         <span>{counts.tools} tools · {counts.waits} waits · {counts.errors} errors</span>
       </section>
-      <div className="traces-investigate-actions">
-        <button type="button" disabled={display?.kind !== "turn"} aria-pressed={analysis === "calls"}
-          onClick={() => setAnalysis(analysis === "calls" ? "none" : "calls")}>Calls by command/tool</button>
-        <button type="button" disabled={turnIndex <= 0 || display?.kind !== "turn"} aria-pressed={analysis === "compare"}
-          onClick={() => setAnalysis(analysis === "compare" ? "none" : "compare")}>Compare with previous turn</button>
+      <div className="traces-timeline-tools">
+        <div className="traces-investigate-actions" role="group" aria-label="Turn analysis">
+          <button type="button" disabled={display?.kind !== "turn"} aria-label="Calls by command/tool" title="Calls by command/tool" aria-pressed={analysis === "calls"}
+            onClick={() => setAnalysis(analysis === "calls" ? "none" : "calls")}>Calls</button>
+          <button type="button" disabled={turnIndex <= 0 || display?.kind !== "turn"} aria-label="Compare with previous turn" title="Compare with previous turn" aria-pressed={analysis === "compare"}
+            onClick={() => setAnalysis(analysis === "compare" ? "none" : "compare")}>Compare</button>
+        </div>
+        {fullDuration >= 1_000 && summaryRows.length > 4 && <div className="traces-zoom-controls" role="group" aria-label="Timeline zoom controls">
+          <span className="traces-tool-group"><button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => setZoom(zoomWindow(view, fullDuration, 0.5))}>+</button>
+            <button type="button" aria-label="Zoom out" title="Zoom out" disabled={!zoomed} onClick={() => setZoom(zoomWindow(view, fullDuration, 2))}>−</button></span>
+          <span className="traces-tool-group"><button type="button" aria-label="Pan left" title="Pan left" disabled={!zoomed} onClick={() => setZoom(panWindow(view, fullDuration, -(view.to - view.from) / 3))}>←</button>
+            <button type="button" aria-label="Pan right" title="Pan right" disabled={!zoomed} onClick={() => setZoom(panWindow(view, fullDuration, (view.to - view.from) / 3))}>→</button></span>
+          <span className="traces-tool-group"><button type="button" aria-label="Reset zoom" title="Reset zoom" disabled={!zoomed} onClick={() => setZoom(null)}>↺</button>
+            <button type="button" aria-label="Focus selected" title="Focus selected" disabled={!selectedId || !selected} onClick={() => selected && setZoom(fitWindow(selected.start - origin, (selected.end ?? observedEnd) - origin, fullDuration))}>◎</button>
+            <button type="button" aria-label="Focus slowest call" title="Focus slowest call" disabled={!slowest} onClick={() => slowest && openRun(slowest)}>⌁</button></span>
+          <output>{zoomed ? `${duration(view.from)}–${duration(view.to)} of ${duration(fullDuration)}` : `Full ${duration(fullDuration)}`}</output>
+        </div>}
       </div>
       {analysis === "calls" && display?.kind === "turn" && <CallGroups key={display.id} turn={display} onOpen={openRun} />}
       {analysis === "compare" && display?.kind === "turn" && turnIndex > 0 &&
         <TurnComparison previous={turns[turnIndex - 1]!} current={display} previousNumber={turnIndex} currentNumber={turnIndex + 1} />}
-      {fullDuration >= 1_000 && summaryRows.length > 4 && <div className="traces-zoom-controls" aria-label="Timeline zoom controls">
-        <button type="button" onClick={() => setZoom(zoomWindow(view, fullDuration, 0.5))}>Zoom in</button>
-        <button type="button" disabled={!zoomed} onClick={() => setZoom(zoomWindow(view, fullDuration, 2))}>Zoom out</button>
-        <button type="button" disabled={!zoomed} onClick={() => setZoom(panWindow(view, fullDuration, -(view.to - view.from) / 3))}>Pan left</button>
-        <button type="button" disabled={!zoomed} onClick={() => setZoom(panWindow(view, fullDuration, (view.to - view.from) / 3))}>Pan right</button>
-        <button type="button" disabled={!zoomed} onClick={() => setZoom(null)}>Reset zoom</button>
-        <button type="button" disabled={!selectedId || !selected} onClick={() => selected && setZoom(fitWindow(selected.start - origin, (selected.end ?? observedEnd) - origin, fullDuration))}>Focus selected</button>
-        <button type="button" disabled={!slowest} onClick={() => slowest && openRun(slowest)}>Focus slowest call</button>
-        <span>{zoomed ? `${duration(view.from)}–${duration(view.to)} of ${duration(fullDuration)}` : `Full ${duration(fullDuration)}`}</span>
-      </div>}
       <div className="traces-axis"><span>Span · {trace!.eventCount.toLocaleString()} events</span><span className="traces-ticks"><span>{clock(origin + view.from)}</span><span>+{duration(view.from + (view.to - view.from) / 2)}</span><span>+{duration(view.to)}</span></span><span>Dur.</span></div>
       {fullDuration >= 5_000 && summaryRows.length > 8 && <div className="traces-minimap" aria-label="Timeline overview">
         {markers.map((span) => <span key={span.id} aria-hidden="true" style={{ left: `${100 * (span.start - origin) / fullDuration}%`, width: `${Math.max(0.3, 100 * span.durationMs! / fullDuration)}%` }} />)}

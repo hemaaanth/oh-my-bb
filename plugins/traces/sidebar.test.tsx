@@ -36,6 +36,7 @@ describe("Traces native sidebar", () => {
     expect(screen.getByRole("complementary", { name: "Traces threads" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Alpha" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Beta" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Alpha" }).querySelector("h3")?.textContent).toBe("Alpha1");
     expect(screen.getByRole("button", { name: /First run, thr_one/ }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("button", { name: /Second run, thr_two/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Hidden worker/ })).toBeNull();
@@ -60,21 +61,31 @@ describe("Traces native sidebar", () => {
     rendered.lifecycle.unmount();
   });
 
-  it("searches BB titles and IDs, and reveals hidden and archived threads only on request", async () => {
+  it("excludes hidden and archived threads from counts and search without blocking explicit deep links", async () => {
     const rendered = renderSlot(sidebar, { subPath: "context/thr_archived" }, { sidebarThreads: { threads: rows, projects } });
-    expect(screen.getByText("Selected thread is archived. Enable Archived to show it.")).toBeTruthy();
-    await act(async () => { fireEvent.click(screen.getByRole("checkbox", { name: "Hidden" })); });
-    expect(screen.getByRole("button", { name: /Hidden worker, thr_hidden, hidden/ })).toBeTruthy();
-    await act(async () => { fireEvent.click(screen.getByRole("checkbox", { name: "Archived" })); });
-    expect(screen.getByRole("button", { name: /Older work, thr_archived, archived/ }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByText("Selected thread is outside this sidebar list.")).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "Hidden" })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "Archived" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Alpha" }).querySelector("h3")?.textContent).toBe("Alpha1");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Context Inspector" })); });
+    expect(rendered.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", options: { subPath: "context/thr_archived" } });
     const search = screen.getByRole("searchbox", { name: "Search Traces threads" });
+    for (const value of ["thr_hidden", "Older work"]) {
+      await act(async () => { fireEvent.change(search, { target: { value } }); });
+      expect(screen.queryByRole("button", { name: /Hidden worker|Older work/ })).toBeNull();
+      expect(screen.getByText("No matching threads.")).toBeTruthy();
+    }
     await act(async () => { fireEvent.change(search, { target: { value: "thr_two" } }); });
     expect(screen.getByRole("button", { name: /Second run, thr_two/ })).toBeTruthy();
-    expect(screen.getByText("Selected thread does not match this search.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /First run, thr_one/ })).toBeNull();
+    expect(screen.getByText("Selected thread is outside this sidebar list.")).toBeTruthy();
     await act(async () => { fireEvent.keyDown(search, { key: "Escape" }); });
     expect(screen.getByRole("button", { name: /First run, thr_one/ })).toBeTruthy();
     rendered.lifecycle.unmount();
+    const hidden = renderSlot(sidebar, { subPath: "thr_hidden" }, { sidebarThreads: { threads: rows, projects } });
+    expect(screen.getByText("Selected thread is outside this sidebar list.")).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Waterfall" })); });
+    expect(hidden.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", options: { subPath: "thr_hidden" } });
+    hidden.lifecycle.unmount();
   });
 
   it("bounds broad searches and expands only one project's rows at a time", async () => {

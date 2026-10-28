@@ -200,6 +200,24 @@ describe("fleet UI", () => {
     expect(screen.queryByText(/Latency sampled/)).toBeNull();
     second.lifecycle.unmount();
   });
+  it("keeps Metrics source and latency limits visible while expanding the unknown-token explanation", async () => {
+    const base = snapshot("metrics", "");
+    const limited = { ...base, limited: true, limitReasons: [
+      { code: "samples" as const, count: 2, detail: "Measured tool durations omitted by sample caps." },
+      { code: "thread-cap" as const, count: 1, detail: "Candidate threads beyond the 2,000-thread cap were not scanned." },
+    ] };
+    const rendered = renderSlot(panel, { subPath: "metrics/_/24h" }, { rpc: {
+      traces_fleet_start: () => limited, traces_fleet_cancel: () => limited,
+    } });
+    await screen.findByRole("button", { name: /Tool failure rate/ });
+    expect(screen.getByText(/Latency sampled: 2 measured durations omitted/)).toBeTruthy();
+    expect(screen.getByRole("list", { name: "Source scan limits" }).textContent).toContain("Source limited: 1 Candidate threads");
+    const explanation = screen.getByText("Why token/cache totals are unknown").closest("details")!;
+    expect(explanation.hasAttribute("open")).toBe(false);
+    await act(async () => { fireEvent.click(screen.getByText("Why token/cache totals are unknown")); });
+    expect(explanation.textContent).toContain("No window totals stored");
+    rendered.lifecycle.unmount();
+  });
   it("preserves the active Metrics filter when drilling into failed tools", async () => {
     const query = "provider:codex";
     const encoded = `q${btoa(query).replace(/=+$/, "")}`;

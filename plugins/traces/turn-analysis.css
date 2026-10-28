@@ -1,3 +1,4 @@
+.traces-timeline-tools { display: flex; align-items: center; justify-content: space-between; gap: 4px 16px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
 .traces-investigate-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .traces-investigate-actions button, .traces-zoom-controls button { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); cursor: pointer; font: inherit; }
 .traces-investigate-actions button:hover, .traces-zoom-controls button:hover { background: var(--accent); border-color: var(--ring); }
@@ -22,9 +23,11 @@
 .traces-turn-comparison th:first-child { text-align: left; }
 .traces-turn-comparison thead th { color: var(--muted-foreground); }
 .traces-turn-comparison > p:last-child { margin: 8px 0 0; }
-.traces-zoom-controls { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 8px 0; color: var(--muted-foreground); font-size: 11px; }
-.traces-zoom-controls button { padding: 3px 7px; }
-.traces-zoom-controls span { margin-left: auto; font-variant-numeric: tabular-nums; }
+.traces-zoom-controls { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 5px 0; color: var(--muted-foreground); font-size: 11px; }
+.traces-zoom-controls .traces-tool-group { display: inline-flex; margin: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.traces-zoom-controls .traces-tool-group button { width: 28px; height: 27px; padding: 0; border: 0; border-radius: 0; font-size: 15px; line-height: 1; }
+.traces-zoom-controls .traces-tool-group button + button { border-left: 1px solid var(--border); }
+.traces-zoom-controls output { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .traces-minimap { position: relative; height: 22px; margin: 0 0 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--muted); overflow: hidden; }
 .traces-minimap > span { position: absolute; top: 0; bottom: 0; background: var(--primary); opacity: .35; pointer-events: none; }
 .traces-minimap .traces-minimap-window { background: color-mix(in srgb, var(--primary) 35%, transparent); border: 1px solid var(--primary); opacity: 1; }
@@ -32,7 +35,7 @@
 .traces-minimap:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
 .traces-panel :is(.traces-investigate-actions, .traces-zoom-controls, .traces-minimap, .traces-call-groups, .traces-turn-comparison) :is(button, summary, input):focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 @container (max-width: 700px) {
-  .traces-investigate-actions { width: 100%; }
+  .traces-investigate-actions { max-width: 100%; }
   .traces-call-group summary { flex-wrap: wrap; }
   .traces-call-group summary span:last-child { width: 100%; text-align: left; margin-left: 0; }
 }

@@ -96,10 +96,10 @@ function ScanProgress({ snapshot, error, onCancel, onRefresh, connection, quiet 
   onCancel: () => void; onRefresh: () => void; connection: string; quiet?: boolean }) {
   const progress = snapshot ? Math.min(100, snapshot.totalThreads ? Math.round(snapshot.scannedThreads / snapshot.totalThreads * 100) : 100) : 0;
   const state = snapshot?.status ?? "loading";
-  const freshness = snapshot?.freshness === "live-since-completion" ? `Live since ${clock(snapshot.liveSince ?? snapshot.startedAt)}; last update ${clock(snapshot.lastLiveEventAt ?? snapshot.updatedAt)}`
-    : snapshot?.freshness === "snapshot" ? `Snapshot at ${clock(snapshot.completedAt ?? snapshot.updatedAt)}; ${snapshot.liveEnabled ? "live tail listens while connected" : "live tail stopped"}`
-      : snapshot?.freshness === "cancelled" ? "Cancelled; results are partial" : snapshot?.freshness === "unavailable" ? "Fleet unavailable; per-thread views still work"
-        : "Scanning existing BB storage…";
+  const freshness = snapshot?.freshness === "live-since-completion" ? `Live since ${clock(snapshot.liveSince ?? snapshot.startedAt)} · updated ${clock(snapshot.lastLiveEventAt ?? snapshot.updatedAt)}`
+    : snapshot?.freshness === "snapshot" ? `Snapshot ${clock(snapshot.completedAt ?? snapshot.updatedAt)} · ${snapshot.liveEnabled ? "live while connected" : "live stopped"}`
+      : snapshot?.freshness === "cancelled" ? "Cancelled · scanned threads only" : snapshot?.freshness === "unavailable" ? "Fleet unavailable · thread views still work"
+        : "Scanning BB storage…";
   const sourceReasons = snapshot?.limitReasons.filter((reason) => reason.code !== "rows" && reason.code !== "samples" && reason.code !== "live-reservoir") ?? [];
   const sampled = snapshot?.limitReasons.find((reason) => reason.code === "samples");
   const staleRows = snapshot?.limitReasons.find((reason) => reason.code === "live-reservoir");
@@ -300,7 +300,7 @@ function TtftHeatmap({ snapshot }: { snapshot: FleetSnapshot }) {
   const providers = [...new Set(rows.map((row) => row.provider))];
   const byKey = new Map(rows.map((row) => [`${row.provider}:${row.hour}`, row]));
   const max = Math.max(1, ...rows.map((row) => row.p50Ms ?? 0));
-  return <section className="traces-fleet-card"><div className="traces-fleet-card-heading"><h3>First recorded output by provider and UTC hour</h3><p>Median turn start → first reasoning or message delta · milliseconds · measured samples only; not network TTFT</p></div>
+  return <section className="traces-fleet-card"><div className="traces-fleet-card-heading"><h3>First recorded output · UTC hour</h3><p>Median turn → first output · ms; not network TTFT</p></div>
     <div className="traces-fleet-heat-wrap"><table className="traces-fleet-heat"><thead><tr><th>Provider</th>{Array.from({ length: 24 }, (_, hour) => <th key={hour}>{hour}</th>)}</tr></thead><tbody>
       {providers.map((provider) => <tr key={provider}><th>{provider}</th>{Array.from({ length: 24 }, (_, hour) => {
         const cell = byKey.get(`${provider}:${hour}`);
@@ -317,7 +317,7 @@ function SpawnTree({ snapshot, onOpen }: { snapshot: FleetSnapshot; onOpen: (thr
   const depthOf = (id: string) => { let depth = 0, node = byId.get(id);
     while (node?.parentThreadId && byId.has(node.parentThreadId) && depth < 8) { depth++; node = byId.get(node.parentThreadId); }
     return depth; };
-  return <section className="traces-fleet-card"><div className="traces-fleet-card-heading"><h3>Largest visible spawn trees</h3><p>BB parent_thread_id among scanned threads · identifiers only; titles may contain secrets</p></div>
+  return <section className="traces-fleet-card"><div className="traces-fleet-card-heading"><h3>Largest visible spawn trees</h3><p>Scanned thread IDs only · no titles</p></div>
     <div className="traces-fleet-spawn">{nodes.length ? nodes.map((node) => <button key={node.threadId} type="button" onClick={() => onOpen(node.threadId)} style={{ paddingLeft: `${10 + depthOf(node.threadId) * 16}px` }}>
       <span>{depthOf(node.threadId) ? "↳" : "●"} {node.threadId}</span><small>{node.provider} · {node.children} children</small>
     </button>) : <p className="traces-fleet-muted">No parent/child relations were found in the scanned threads.</p>}</div>
@@ -340,30 +340,30 @@ export function MetricsView({ initialQuery = "", initialSince = "24h", onExplore
     if (query !== null) onExplorer(query, job.since);
   };
   return <div className="traces-fleet traces-fleet-metrics">
-    <div className="traces-fleet-header"><div><h2>Fleet Metrics</h2><p>Measured latency, failures and spawn structure from a bounded read-only scan.</p></div><span className="traces-fleet-range">{job.snapshot ? `${new Date(job.snapshot.from).toLocaleString()} → ${new Date(job.snapshot.to).toLocaleString()}` : "Bounded window"}</span></div>
+    <div className="traces-fleet-header"><h2>Fleet Metrics</h2><span className="traces-fleet-range">{job.snapshot ? `${new Date(job.snapshot.from).toLocaleString()} → ${new Date(job.snapshot.to).toLocaleString()}` : "Bounded window"}</span></div>
     <FleetControls view="metrics" draft={job.draft} setDraft={job.setDraft} onSubmit={() => job.draft === job.query ? job.refresh() : onFilter(job.draft, job.since)}
       since={job.since} setSince={(value) => onFilter(job.query, value)} mode={job.mode} setMode={job.setMode} />
     <ScanProgress snapshot={snapshot} error={job.error} onCancel={job.cancel} onRefresh={job.refresh} connection={job.connection} />
     {snapshot && <>
       <div className="traces-fleet-tiles">
-        <MetricTile label="Turns" value={number(metrics?.turns)} note={`${metrics?.activeThreads ?? 0} active threads scanned`}
+        <MetricTile label="Turns" value={number(metrics?.turns)} note={`${metrics?.activeThreads ?? 0} threads with events`}
           onClick={metrics?.turns && drilldown("turn-start") ? () => openMetric("turn-start") : undefined} />
-        <MetricTile label="Tool p95" value={duration(metrics?.toolP95Ms ?? null)} note={`${metrics?.toolCalls ?? 0} completed tools${metrics?.toolLatencyPartial ? " · sampled" : ""}`}
+        <MetricTile label="Tool p95" value={duration(metrics?.toolP95Ms ?? null)} note={`${metrics?.toolCalls ?? 0} tools${metrics?.toolLatencyPartial ? " · sampled" : ""}`}
           onClick={metrics?.toolP95Ms != null && drilldown("tool-measured") ? () => openMetric("tool-measured") : undefined} />
         <MetricTile label="Tool failure rate" value={metrics?.errorRate === null || metrics?.errorRate === undefined ? "not measured" : `${(metrics.errorRate * 100).toFixed(1)}%`} note={`${metrics?.failedTools ?? 0} failed of ${metrics?.toolCalls ?? 0}`}
           onClick={metrics?.failedTools && drilldown("tool-failed") ? () => openMetric("tool-failed") : undefined} />
-        <MetricTile label="Cache read share" value="unknown" note={`${metrics?.tokenCoverage.threadsWithSnapshot ?? 0} latest thread snapshots · not window totals`} />
+        <MetricTile label="Cache read share" value="unknown" note="No reliable window total" />
         <MetricTile label="Provider retries" value={number(metrics?.providerRetries)} note={`${metrics?.modelFallbacks ?? 0} model fallbacks`}
           onClick={metrics?.providerRetries && drilldown("provider-retry") ? () => openMetric("provider-retry") : undefined} />
-        <MetricTile label="Matched events" value={number(snapshot.matchedEvents)} note={`${snapshot.scannedThreads}/${snapshot.totalThreads} threads · ${job.since}`} onClick={() => onExplorer(job.query, job.since)} />
+        <MetricTile label="Matched events" value={number(snapshot.matchedEvents)} note={`${snapshot.scannedThreads}/${snapshot.totalThreads} threads`} onClick={() => onExplorer(job.query, job.since)} />
       </div>
-      <p className="traces-fleet-missing">Token/cache fleet-window totals: <strong>unknown</strong>. {metrics?.tokenCoverage.reason}</p>
+      <details className="traces-fleet-missing"><summary>Why token/cache totals are unknown</summary><p>{metrics?.tokenCoverage.reason}</p></details>
       <div className="traces-fleet-metric-grid">
-        <MetricBars title="Slowest tools by p95" subtitle={`Completed tool spans · ${job.since} · milliseconds; partial samples marked`} max={maxSlow}
+        <MetricBars title="Slowest tools by p95" subtitle="Measured tool spans · partial samples marked" max={maxSlow}
           items={slow.slice(0, 8).map((tool) => ({ name: tool.name, value: tool.p95Ms, detail: `${duration(tool.p50Ms)} p50 / ${duration(tool.p95Ms)} p95 · ${tool.measured}/${tool.count}${tool.partial ? " partial" : ""}` }))}
           canClick={(name) => drilldown("tool-measured", { field: "tool", value: name }) !== null}
           onClick={(name) => openMetric("tool-measured", { field: "tool", value: name })} />
-        <MetricBars title="Recorded failures by category" subtitle={`Provider and item failures · ${job.since} · counts`} max={maxErrors}
+        <MetricBars title="Recorded failures by category" subtitle="Provider and item failures · counts" max={maxErrors}
           items={errors.slice(0, 8).map((entry) => ({ name: entry.category, value: entry.count, detail: `${entry.count.toLocaleString()} failures` }))}
           canClick={(category) => drilldown("recorded-failure", { field: "category", value: category }) !== null}
           onClick={(category) => openMetric("recorded-failure", { field: "category", value: category })} />
