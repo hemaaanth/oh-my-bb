@@ -7,6 +7,7 @@
 - Add Fleet Metrics with measured tool p50/p95, errors, first recorded output timing, spawn trees, and explicit unknown fleet-window token totals.
 - Add `bb traces query`, `slow`, `errors`, and `job` agent CLI commands with bounded JSON and partial-result status.
 - Fix background-task completion pairing when another turn reuses the same item ID; add synthetic SQLite and regression tests.
+- Refine the Explorer row/keyboard workflow and compact scan status, remove manual per-thread ID forms, adopt the BB-styled turn picker, and default per-thread UI Reveal on while keeping CLI output hidden without `--reveal`.
 
 ## 0.2.0 — 2026-10-28
 

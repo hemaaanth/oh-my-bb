@@ -43,7 +43,7 @@ describe("fleet UI", () => {
     const inspect = await screen.findByRole("button", { name: /Inspect toolCall/ });
     expect(screen.queryByRole("complementary", { name: "Selected event detail" })).toBeNull();
     expect(screen.getByText("Partial results")).toBeTruthy();
-    expect(screen.getByLabelText("Scan coverage and limits").closest("details")?.open).toBe(false);
+    expect(screen.queryByLabelText("Scan coverage and limits")).toBeNull();
     expect(screen.getByText("Other values (grouped)").closest("button")).toBeNull();
     await act(async () => { fireEvent.click(inspect); });
     expect(screen.getByRole("complementary", { name: "Selected event detail" })).toBeTruthy();
@@ -80,19 +80,73 @@ describe("fleet UI", () => {
     rendered.lifecycle.unmount();
   });
 
-  it("keeps scan coverage and query grammar behind keyboard-accessible disclosures", async () => {
+  it("opens detail from non-link cells and navigates rows with bounded j/k keys", async () => {
+    const base = snapshot("explorer", "");
+    const rows = [base.rows[0]!, { ...base.rows[0]!, id: "evt_2", threadId: "thr_def", at: 1_600 }];
+    const rendered = renderSlot(panel, { subPath: "explorer/_/24h" }, { rpc: {
+      traces_fleet_start: () => ({ ...base, rows }),
+      traces_fleet_cancel: () => ({ ...base, rows }),
+      traces_fleet_detail: (input) => { const { threadId, seq, reveal } = fleetContract.traces_fleet_detail.input.parse(input);
+        return { threadId, seq, type: "item/completed", at: 1_500, input: reveal ? `sensitive-${threadId}` : null, output: null, inputSize: 4, outputSize: null }; },
+    } });
+    const region = await screen.findByRole("region", { name: "Explorer results" });
+    const [first, second] = within(region).getAllByRole("row").slice(1);
+    const original = HTMLElement.prototype.scrollIntoView;
+    const scrolled = vi.fn(); HTMLElement.prototype.scrollIntoView = scrolled;
+    try {
+      await act(async () => { fireEvent.click(second!.querySelector("td:last-child")!); });
+      expect(second!.getAttribute("aria-selected")).toBe("true");
+      expect(within(screen.getByRole("complementary", { name: "Selected event detail" })).getByText("sensitive-thr_def")).toBeTruthy();
+      expect((within(screen.getByRole("complementary", { name: "Selected event detail" })).getByRole("checkbox", { name: "Reveal sensitive data" }) as HTMLInputElement).checked).toBe(true);
+      const reveal = within(screen.getByRole("complementary", { name: "Selected event detail" })).getByRole("checkbox", { name: "Reveal sensitive data" });
+      await act(async () => { fireEvent.click(reveal); });
+      expect(screen.queryByText("sensitive-thr_def")).toBeNull();
+      expect(rendered.inspection.rpcCalls.filter((call) => call.method === "traces_fleet_detail").at(-1)?.input).toMatchObject({ reveal: false });
+      region.focus();
+      await act(async () => { fireEvent.keyDown(region, { key: "k" }); });
+      expect(first!.getAttribute("aria-selected")).toBe("true");
+      expect(screen.queryByText("sensitive-thr_def")).toBeNull();
+      expect(await screen.findByText("sensitive-thr_abc")).toBeTruthy();
+      expect((screen.getByRole("checkbox", { name: "Reveal sensitive data" }) as HTMLInputElement).checked).toBe(true);
+      expect(document.activeElement).toBe(first);
+      expect(scrolled).toHaveBeenCalled();
+      await act(async () => { fireEvent.keyDown(first!, { key: "k" }); });
+      expect(first!.getAttribute("aria-selected")).toBe("true");
+      await act(async () => { fireEvent.keyDown(first!, { key: "j" }); });
+      expect(second!.getAttribute("aria-selected")).toBe("true");
+      await act(async () => { fireEvent.keyDown(second!, { key: "j" }); });
+      expect(second!.getAttribute("aria-selected")).toBe("true");
+      const filter = screen.getByRole("textbox", { name: "Filter" }); filter.focus();
+      await act(async () => { fireEvent.keyDown(filter, { key: "k" }); });
+      expect(second!.getAttribute("aria-selected")).toBe("true");
+      await act(async () => { fireEvent.click(within(second!).getByRole("button", { name: "Open Waterfall for thr_def" })); });
+      expect(second!.getAttribute("aria-selected")).toBe("true");
+      expect(rendered.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", options: { subPath: "thr_def" } });
+    } finally { HTMLElement.prototype.scrollIntoView = original; rendered.lifecycle.unmount(); }
+  });
+
+  it("keeps query grammar behind an accessible info disclosure without an Explorer title strip", async () => {
     const rendered = renderSlot(panel, { subPath: "explorer/_/24h" }, { rpc: {
       traces_fleet_start: () => snapshot("explorer", ""),
       traces_fleet_cancel: () => snapshot("explorer", ""),
     } });
     await screen.findByRole("button", { name: /Inspect toolCall/ });
     expect(screen.getByLabelText("Query syntax help").closest("details")?.open).toBe(false);
-    expect(screen.getByLabelText("Scan coverage and limits").closest("details")?.open).toBe(false);
+    expect(screen.queryByRole("heading", { name: "Log Explorer" })).toBeNull();
     await act(async () => { fireEvent.click(screen.getByLabelText("Query syntax help")); });
     expect(screen.getByLabelText("Query syntax help").closest("details")?.open).toBe(true);
     expect(screen.getByText(/AND-only/)).toBeTruthy();
-    await act(async () => { fireEvent.click(screen.getByLabelText("Scan coverage and limits")); });
-    expect(screen.getByRole("list", { name: "Scan limits and omitted data" }).textContent).toContain("1 matching row omitted");
+    expect(screen.queryByLabelText("Scan coverage and limits")).toBeNull();
+    rendered.lifecycle.unmount();
+  });
+  it("marks a capped row display partial even if the source scan itself completed", async () => {
+    const complete = { ...snapshot("explorer", ""), limited: false, rowsTruncated: 0, limitReasons: [] };
+    const rendered = renderSlot(panel, { subPath: "explorer/_/24h" }, { rpc: {
+      traces_fleet_start: () => complete, traces_fleet_cancel: () => complete,
+    } });
+    await screen.findByRole("button", { name: /Inspect toolCall/ });
+    expect(screen.getByText("Partial results")).toBeTruthy();
+    expect(screen.queryByLabelText("Scan coverage and limits")).toBeNull();
     rendered.lifecycle.unmount();
   });
   it("preserves the active Metrics filter when drilling into failed tools", async () => {

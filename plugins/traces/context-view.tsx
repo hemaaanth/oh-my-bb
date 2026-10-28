@@ -98,7 +98,7 @@ export function ContextInspector({ threadId, compact = false }: { threadId: stri
   const rpc = useRpc<typeof rpcContract>();
   const [callIndex, setCallIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
-  const [reveal, setReveal] = useState(false);
+  const [reveal, setReveal] = useState(true);
   const [result, setResult] = useState<PromptResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const request = useRef(0);
@@ -114,6 +114,7 @@ export function ContextInspector({ threadId, compact = false }: { threadId: stri
     });
   }, [rpc, threadId, callIndex, reveal]);
   useEffect(() => { load(); return () => { request.current++; }; }, [load]);
+  useEffect(() => { setResult(null); setCallIndex(null); }, [threadId]);
   useEffect(() => { if (result?.selectedIndex !== null && result?.selectedIndex !== undefined) setDraft(String(result.selectedIndex)); }, [result?.selectedIndex]);
   useEffect(() => () => { window.clearTimeout(refreshTimer.current ?? undefined); }, []);
   useRealtime("traces-changed", (payload) => {
@@ -121,20 +122,21 @@ export function ContextInspector({ threadId, compact = false }: { threadId: stri
     if (changed.threadId !== threadId || callIndex !== null || refreshTimer.current) return;
     refreshTimer.current = window.setTimeout(() => { refreshTimer.current = null; load(); }, 15_000);
   });
-  const selected = result?.selected;
+  const current = result?.threadId === threadId ? result : null;
+  const selected = current?.selected;
   const usage = selected?.usage ?? null;
-  const hit = useMemo(() => cacheShare(usage, result?.provider ?? ""), [usage, result?.provider]);
-  const changeCall = (index: number) => { if (result && index >= 1 && index <= result.callCount) setCallIndex(index); };
+  const hit = useMemo(() => cacheShare(usage, current?.provider ?? ""), [usage, current?.provider]);
+  const changeCall = (index: number) => { if (current && index >= 1 && index <= current.callCount) { setResult(null); setCallIndex(index); } };
   return <section className={`traces-context ${compact ? "traces-context-compact" : ""}`} aria-label="Context Inspector">
     <header className="traces-context-header">
-      <div><h2>Context Inspector</h2><p>{threadId} {result?.provider && <span>· {result.provider}</span>}</p></div>
+      <div><h2>Context Inspector</h2><p>{threadId} {current?.provider && <span>· {current.provider}</span>}</p></div>
       <div className="traces-context-actions">
         <button type="button" disabled={!selected || selected.index <= 1} onClick={() => selected && changeCall(selected.index - 1)} aria-label="Previous API call">←</button>
         <form onSubmit={(event) => { event.preventDefault(); const value = Number(draft); if (Number.isSafeInteger(value)) changeCall(value); }}>
           <label htmlFor="traces-call-index">Call</label><input id="traces-call-index" inputMode="numeric" value={draft} onChange={(event) => setDraft(event.target.value)} aria-label="API call number" />
-          <span>of {result?.callCount ?? "—"}</span><button type="submit" disabled={!result}>Go</button>
+          <span>of {current?.callCount ?? "—"}</span><button type="submit" disabled={!current}>Go</button>
         </form>
-        <button type="button" disabled={!selected || selected.index >= (result?.callCount ?? 0)} onClick={() => selected && changeCall(selected.index + 1)} aria-label="Next API call">→</button>
+        <button type="button" disabled={!selected || selected.index >= (current?.callCount ?? 0)} onClick={() => selected && changeCall(selected.index + 1)} aria-label="Next API call">→</button>
         <label className={reveal ? "traces-context-revealed" : ""}><input type="checkbox" checked={reveal} onChange={(event) => {
           if (!event.target.checked) { request.current++; setResult(null); }
           setReveal(event.target.checked);
@@ -143,10 +145,10 @@ export function ContextInspector({ threadId, compact = false }: { threadId: stri
       </div>
     </header>
     {error && <p role="alert" className="traces-context-alert">{error}</p>}
-    {!result && !error && <p className="traces-context-empty">Reading the provider transcript…</p>}
-    {result && !selected && <div className="traces-context-empty"><h3>{result.status === "unsupported" ? "Provider not supported" : "Transcript unavailable"}</h3><p>{result.reason}</p><p>No prompt or token usage was inferred.</p></div>}
-    {selected && result && <>
-      {result.reason && <p className="traces-context-alert">Partial transcript: {result.reason}</p>}
+    {!current && !error && <p className="traces-context-empty">Reading the provider transcript…</p>}
+    {current && !selected && <div className="traces-context-empty"><h3>{current.status === "unsupported" ? "Provider not supported" : "Transcript unavailable"}</h3><p>{current.reason}</p><p>No prompt or token usage was inferred.</p></div>}
+    {selected && current && <>
+      {current.reason && <p className="traces-context-alert">Partial transcript: {current.reason}</p>}
       <div className="traces-context-summary">
         <div><span>Model</span><strong>{selected.model ?? "not stored"}</strong></div>
         <div><span>Input</span><strong>{short(usage?.inputTokens)}</strong></div>
@@ -157,7 +159,7 @@ export function ContextInspector({ threadId, compact = false }: { threadId: stri
       </div>
       <div className="traces-context-grid">
         <div className="traces-context-left">
-          <ContextBar result={result} />
+          <ContextBar result={current} />
           <div className="traces-context-section-heading"><h3>System prompt</h3><span>{selected.system.length} sections</span></div>
           {selected.system.length ? selected.system.map((section) => <SectionCard key={section.id} section={section} reveal={reveal} />) : <p className="traces-context-muted">System prompt not stored.</p>}
           <div className="traces-context-section-heading"><h3>Tool definitions</h3><span>{selected.tools.length} tools</span></div>
@@ -168,9 +170,9 @@ export function ContextInspector({ threadId, compact = false }: { threadId: stri
         <div className="traces-context-right">
           <div className="traces-context-call-meta"><span>Response {selected.requestId ?? "not stored"}</span><span>{time(selected.at)} · {selected.durationMs === null ? "API duration not stored" : `${(selected.durationMs / 1_000).toFixed(1)}s`}</span></div>
           <div className="traces-context-request"><span>Max output {display(selected.params.maxTokens)}</span><span>Thinking {selected.params.thinking ?? "not stored"}</span><span>Effort {selected.params.effort ?? "not stored"}</span></div>
-          <Ledger result={result} onSelect={changeCall} />
-          <DiffCard result={result} />
-          <p className="traces-context-footnote">{result.scan.linesRead.toLocaleString()} JSONL lines read on the execution host. {result.scan.oversizedLines ? `${result.scan.oversizedLines} oversized lines skipped. ` : ""}Nothing was stored by Traces.</p>
+          <Ledger result={current} onSelect={changeCall} />
+          <DiffCard result={current} />
+          <p className="traces-context-footnote">{current.scan.linesRead.toLocaleString()} JSONL lines read on the execution host. {current.scan.oversizedLines ? `${current.scan.oversizedLines} oversized lines skipped. ` : ""}Nothing was stored by Traces.</p>
         </div>
       </div>
     </>}

@@ -1,6 +1,5 @@
 .traces-fleet { container-type: inline-size; border: 1px solid var(--border); border-radius: 10px; background: var(--background); color: var(--foreground); overflow: hidden; font-size: 12px; }
 .traces-fleet-explorer { border: 0; border-radius: 0; background: transparent; overflow: visible; }
-.traces-fleet-explorer .traces-fleet-header { padding: 2px 0 14px; background: transparent; }
 .traces-fleet-explorer .traces-fleet-controls { padding: 12px 0; }
 .traces-fleet-explorer .traces-fleet-progress { position: relative; padding: 9px 0; background: transparent; }
 .traces-fleet-explorer .traces-fleet-histogram { padding: 16px 0 12px; }
@@ -27,11 +26,11 @@
 .traces-fleet-syntax code { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--foreground); }
 .traces-fleet-query-help { position: relative; flex: none; }
 .traces-fleet-query-help summary { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 6px; color: var(--muted-foreground); cursor: pointer; list-style: none; }
-.traces-fleet-query-help summary::-webkit-details-marker, .traces-fleet-coverage summary::-webkit-details-marker { display: none; }
+.traces-fleet-query-help summary::-webkit-details-marker { display: none; }
 .traces-fleet-query-help summary:hover, .traces-fleet-query-help[open] summary { color: var(--foreground); background: var(--accent); }
-.traces-fleet-query-help summary svg, .traces-fleet-coverage summary svg { width: 15px; height: 15px; }
-.traces-fleet-query-help-popover, .traces-fleet-coverage-popover { position: absolute; z-index: 10; right: 0; top: 100%; width: min(380px, 85vw); box-sizing: border-box; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--foreground); box-shadow: 0 10px 28px #0005; font-size: 11px; line-height: 1.5; }
-.traces-fleet-query-help-popover p, .traces-fleet-coverage-popover p { margin: 6px 0 0; }
+.traces-fleet-query-help summary svg { width: 15px; height: 15px; }
+.traces-fleet-query-help-popover { position: absolute; z-index: 10; right: 0; top: calc(100% + 12px); width: min(420px, calc(100vw - 48px)); max-height: min(370px, 65vh); overflow: auto; box-sizing: border-box; padding: 16px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--foreground); box-shadow: 0 10px 28px #0005; font-size: 11px; line-height: 1.6; }
+.traces-fleet-query-help-popover p { margin: 10px 0 0; }
 .traces-fleet-query-help-popover code { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .traces-fleet-progress { padding: 9px 16px; border-bottom: 1px solid var(--border); background: var(--card); }
 .traces-fleet-progress-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted-foreground); font-size: 11px; }
@@ -45,10 +44,6 @@
 .traces-fleet-progress-track { height: 5px; margin: 7px 0; border-radius: 4px; overflow: hidden; background: var(--muted); }
 .traces-fleet-progress-track span { display: block; height: 100%; background: var(--primary); transition: width .2s ease; }
 .traces-fleet-partial { color: var(--warning); font-size: 11px; }
-.traces-fleet-coverage { width: fit-content; margin-left: auto; color: var(--muted-foreground); }
-.traces-fleet-coverage summary { display: flex; align-items: center; gap: 5px; width: fit-content; cursor: pointer; list-style: none; font-size: 11px; }
-.traces-fleet-coverage summary:hover, .traces-fleet-coverage[open] summary { color: var(--foreground); }
-.traces-fleet-coverage-popover { top: 100%; max-height: min(340px, 60vh); overflow: auto; }
 .traces-fleet-freshness, .traces-fleet-muted { color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
 .traces-fleet-error, .traces-fleet-rows .failed { color: var(--destructive); }
 .traces-fleet-error { margin: 5px 0 0; font-size: 11px; }
@@ -84,6 +79,8 @@
 .traces-fleet-rows table { width: 100%; min-width: 650px; border-collapse: collapse; font-size: 10px; white-space: nowrap; }
 .traces-fleet-rows th { position: sticky; top: 0; z-index: 1; padding: 7px 8px; color: var(--muted-foreground); background: var(--card); border-bottom: 1px solid var(--border); font-weight: 500; text-align: left; }
 .traces-fleet-rows td { padding: 6px 8px; border-bottom: 1px solid var(--border); max-width: 150px; overflow: hidden; text-overflow: ellipsis; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.traces-fleet-rows tbody tr { cursor: pointer; }
+.traces-fleet-rows tbody tr:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .traces-fleet-rows tr:hover, .traces-fleet-rows tr.selected { background: var(--accent); }
 .traces-fleet-rows td button { padding: 0; border: 0; background: none; color: var(--primary); font: inherit; cursor: pointer; }
 .traces-fleet-rows td button:hover { text-decoration: underline; }

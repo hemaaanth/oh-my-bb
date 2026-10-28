@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { definePluginApp, experimental_THREAD_ACTION_GROUPS, useBbNavigate, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import * as Select from "@radix-ui/react-select";
+import { experimental_Icon as Icon, definePluginApp, experimental_THREAD_ACTION_GROUPS, useBbNavigate, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
 import type { TraceResult, TraceSpan } from "./spans";
 import { ContextInspector } from "./context-view";
@@ -57,14 +58,14 @@ function Detail({ span, revealed }: { span: TraceSpan; revealed: boolean }) {
     {span.contextUsage != null && <pre>Context: {JSON.stringify(span.contextUsage, null, 2)}</pre>}
     {span.input && <section><h4>Input · {span.inputSize?.toLocaleString()} bytes</h4><pre>{span.input}</pre></section>}
     {span.output && <section><h4>Output · {span.outputSize?.toLocaleString()} bytes</h4><pre>{span.output}</pre></section>}
-    {!revealed && <p className="traces-hint">Inputs and outputs are hidden by default. Reveal is explicit and stays in this view only.</p>}
+    {!revealed && <p className="traces-hint">Inputs and outputs are hidden. Turn on Reveal sensitive data to inspect them.</p>}
   </aside>;
 }
 
 function Waterfall({ threadId, compact = false }: { threadId: string; compact?: boolean }) {
   const rpc = useRpc<typeof rpcContract>();
   const [children, setChildren] = useState(false);
-  const [reveal, setReveal] = useState(false);
+  const [reveal, setReveal] = useState(true);
   const [result, setResult] = useState<TraceResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -88,7 +89,8 @@ function Waterfall({ threadId, compact = false }: { threadId: string; compact?: 
     const changed = payload as { threadId?: string; parentThreadId?: string };
     if (changed.threadId === threadId || changed.parentThreadId === threadId || children) load();
   });
-  const root = result?.tree;
+  const trace = result?.tree.threadId === threadId ? result : null;
+  const root = trace?.tree;
   const all = useMemo(() => root ? flatten(root) : [], [root]);
   const byId = useMemo(() => new Map(all.map(({ span }) => [span.id, span])), [all]);
   const turns = all.filter(({ span }) => span.kind === "turn" && span.threadId === threadId).map(({ span }) => span);
@@ -101,23 +103,30 @@ function Waterfall({ threadId, compact = false }: { threadId: string; compact?: 
   const origin = display?.start ?? 0;
   const observedEnd = Math.max(origin, root?.end ?? origin);
   const width = Math.max(1, (display?.end ?? observedEnd) - origin);
-  const time = result?.summary.timeMs ?? {};
+  const time = trace?.summary.timeMs ?? {};
   const total = Object.values(time).reduce((sum, ms) => sum + ms, 0);
   const entries = Object.entries(time).sort((a, b) => b[1] - a[1]);
   return <div className={`traces-panel ${compact ? "traces-panel-compact" : ""}`}>
     <div className="traces-toolbar">
       <div className="traces-heading"><h2>Thread Waterfall</h2><span>{threadId}</span></div>
       <div className="traces-controls">
-        <label>Turn <select value={turn} onChange={(event) => { setTurn(event.target.value); setSelectedId(null); }}><option value="last">Latest turn</option><option value="all">All turns</option>{turns.map((s, index) => <option key={s.id} value={s.id}>Turn {index + 1}</option>)}</select></label>
+        <div className="traces-turn-control"><span>Turn</span><Select.Root value={turn} onValueChange={(value) => { setTurn(value); setSelectedId(null); }}>
+          <Select.Trigger className="traces-turn-trigger" aria-label="Turn"><Select.Value /><Select.Icon><Icon name="ChevronDown" aria-hidden="true" /></Select.Icon></Select.Trigger>
+          <Select.Portal><Select.Content className="traces-turn-content" position="popper" sideOffset={6}><Select.Viewport>
+            <Select.Item className="traces-turn-item" value="last"><Select.ItemText>Latest turn</Select.ItemText><Select.ItemIndicator><Icon name="Check" aria-hidden="true" /></Select.ItemIndicator></Select.Item>
+            <Select.Item className="traces-turn-item" value="all"><Select.ItemText>All turns</Select.ItemText><Select.ItemIndicator><Icon name="Check" aria-hidden="true" /></Select.ItemIndicator></Select.Item>
+            {turns.map((span, index) => <Select.Item key={span.id} className="traces-turn-item" value={span.id}><Select.ItemText>Turn {index + 1}</Select.ItemText><Select.ItemIndicator><Icon name="Check" aria-hidden="true" /></Select.ItemIndicator></Select.Item>)}
+          </Select.Viewport></Select.Content></Select.Portal>
+        </Select.Root></div>
         <label><input type="checkbox" checked={children} onChange={(event) => { setChildren(event.target.checked); if (event.target.checked) setTurn("all"); }} /> Children</label>
         <label className={reveal ? "traces-reveal-on" : ""}><input type="checkbox" checked={reveal} onChange={(event) => { if (!event.target.checked) { setResult(null); setSelectedId(null); } setReveal(event.target.checked); }} /> Reveal sensitive data</label>
         <button type="button" onClick={load}>Refresh</button>
       </div>
     </div>
     {error && <p role="alert" className="traces-error">{error}</p>}
-    {!result && !error && <p className="traces-empty">Loading thread events…</p>}
+    {!trace && !error && <p className="traces-empty">Loading thread events…</p>}
     {root && <>
-      <div className="traces-axis"><span>Span · {result.eventCount.toLocaleString()} events</span><span className="traces-ticks"><span>{clock(origin)}</span><span>+{duration(width / 2)}</span><span>+{duration(width)}</span></span><span>Dur.</span></div>
+      <div className="traces-axis"><span>Span · {trace!.eventCount.toLocaleString()} events</span><span className="traces-ticks"><span>{clock(origin)}</span><span>+{duration(width / 2)}</span><span>+{duration(width)}</span></span><span>Dur.</span></div>
       <div className="traces-body">
         <div className="traces-list" ref={listRef} onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
           <div style={{ height: firstRow * 27 }} />
@@ -126,11 +135,9 @@ function Waterfall({ threadId, compact = false }: { threadId: string; compact?: 
         </div>
         {selected && <Detail span={selected} revealed={reveal} />}
       </div>
-      <div className="traces-breakdown"><strong>Where thread time went · {duration(result.summary.elapsedMs)}</strong>
+      <div className="traces-breakdown"><strong>Where thread time went · {duration(trace!.summary.elapsedMs)}</strong>
         <div className="traces-stack" aria-hidden="true">{entries.map(([kind, ms]) => <span key={kind} style={{ width: `${total ? ms / total * 100 : 0}%`, background: kind === WAIT ? "var(--muted-foreground)" : palette[kind] ?? "#9b82d2" }} />)}</div>
         <div>{entries.map(([kind, ms]) => <span key={kind}>{kind} {duration(ms)} ({total ? Math.round(ms / total * 100) : 0}%) · </span>)}</div>
-        {result.summary.errors.length > 0 && <p className="traces-error">{result.summary.errors.length} error span{result.summary.errors.length === 1 ? "" : "s"}. Select a red bar for details.</p>}
-        <p>Model / uninstrumented time is the part of a turn without a recorded item or wait. It is not measured model latency. Per-turn token usage is shown only where BB stored it.</p>
       </div>
     </>}
   </div>;
@@ -154,7 +161,6 @@ function decodeFleetFilter(segment: string | undefined): string {
 
 function NavPanel({ subPath }: { subPath: string }) {
   const navigate = useBbNavigate();
-  const [input, setInput] = useState("");
   const parts = subPath.split("/");
   const view = parts[0] === "context" || parts[0] === "explorer" || parts[0] === "metrics" ? parts[0] : "waterfall";
   const rawId = view === "context" ? parts[1] : view === "waterfall" ? parts[0] : null;
@@ -173,14 +179,8 @@ function NavPanel({ subPath }: { subPath: string }) {
     </nav>
     {view === "explorer" ? <ExplorerView key={subPath} initialQuery={fleetQuery} initialSince={fleetSince} onDrilldown={openThreadView} />
       : view === "metrics" ? <MetricsView key={subPath} initialQuery={fleetQuery} initialSince={fleetSince} onExplorer={(query, since) => openFleetView("explorer", query, since)} onWaterfall={(id) => openThreadView("waterfall", id)} />
-      : <>
-        <form className="traces-open" onSubmit={(event) => { event.preventDefault(); const value = input.trim(); if (/^thr_[a-z0-9]+$/.test(value)) openThreadView(view, value); }}>
-          <label htmlFor="traces-thread-id">Thread ID</label><input id="traces-thread-id" value={input} onChange={(event) => setInput(event.target.value)} placeholder="thr_…" pattern="thr_[a-z0-9]+" />
-          <button type="submit">Open {view === "context" ? "context" : "trace"}</button>
-        </form>
-        {threadId ? view === "context" ? <ContextInspector key={threadId} threadId={threadId} /> : <Waterfall key={threadId} threadId={threadId} />
-          : <div className="traces-empty"><h2>Inspect a BB thread</h2><p>Enter a thread ID, or use “Trace this thread” in a thread menu. Waterfall shows timing. Context Inspector shows provider API prompts and token usage.</p></div>}
-      </>}
+      : threadId ? view === "context" ? <ContextInspector key={threadId} threadId={threadId} /> : <Waterfall key={threadId} threadId={threadId} />
+        : <div className="traces-thread-empty"><p>Select a thread in Log Explorer, or choose “Trace this thread” in a thread menu.</p><button type="button" onClick={() => openFleetView("explorer")}>Open Log Explorer</button></div>}
   </div></div>;
 }
 

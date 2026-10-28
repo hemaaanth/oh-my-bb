@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { experimental_Icon as Icon, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import { FLEET_CHANNEL, type FleetFacet, type FleetHistogramBin, type FleetRow, type FleetSnapshot, type FleetView, type FleetMode, type fleetContract } from "./fleet-contract";
 import { metricDrilldownQuery, parseFleetQuery, type FleetMetricPredicate } from "./fleet-query";
@@ -100,19 +100,14 @@ function ScanProgress({ snapshot, error, onCancel, onRefresh, connection, quiet 
     <div className="traces-fleet-progress-line"><span className={`traces-fleet-state traces-fleet-state-${state}`} role="status" aria-live="polite">{state}</span>
       <strong>{snapshot ? `${snapshot.scannedThreads.toLocaleString()} / ${snapshot.totalThreads.toLocaleString()} threads` : "Starting scan"}</strong>
       <span>{snapshot ? `${snapshot.scannedEvents.toLocaleString()} events scanned · ${snapshot.matchedEvents.toLocaleString()} matches` : ""}</span>
-      {quiet && snapshot?.limited && <span className="traces-fleet-partial">Partial results</span>}
+      {quiet && snapshot && (snapshot.limited || snapshot.rowsTruncated > 0 || snapshot.matchedEvents > snapshot.rows.length || snapshot.status === "cancelled") && <span className="traces-fleet-partial">Partial results</span>}
       {quiet && connection !== "connected" && <span className="traces-fleet-partial">Live offline</span>}
       <span className="traces-fleet-progress-actions">{snapshot && (state === "running" || state === "cancelling") && <button type="button" onClick={onCancel} disabled={state === "cancelling"}>Cancel scan</button>}
         <button type="button" onClick={onRefresh}>Rescan</button></span></div>
     <div className="traces-fleet-progress-track" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label="Thread scan progress"><span style={{ width: `${progress}%` }} /></div>
-    {quiet ? <details className="traces-fleet-coverage"><summary aria-label="Scan coverage and limits" title="Scan coverage and limits"><Icon name="Info" aria-hidden="true" /> Coverage</summary>
-      <div className="traces-fleet-coverage-popover"><p>{freshness}{snapshot?.retries ? ` · ${snapshot.retries} SQLite busy retries` : ""}{connection !== "connected" ? " · Live connection unavailable; reconnect triggers a new scan" : ""}</p>
-        <p>{snapshot ? `${snapshot.rows.length} newest rows shown · ${snapshot.matchedEvents.toLocaleString()} matches across ${snapshot.scannedThreads}/${snapshot.totalThreads} threads` : "Scan has not started."}</p>
-        {snapshot && snapshot.limitReasons.length > 0 && <ul className="traces-fleet-limits" aria-label="Scan limits and omitted data">{snapshot.limitReasons.map((reason) =>
-          <li key={reason.code}><strong>{reason.count.toLocaleString()}</strong> {reason.detail}</li>)}</ul>}</div></details>
-      : <><div className="traces-fleet-freshness">{freshness}{snapshot?.retries ? ` · ${snapshot.retries} SQLite busy retries` : ""}{connection !== "connected" ? " · Live connection unavailable; reconnect triggers a new scan" : ""}</div>
-        {snapshot && snapshot.limitReasons.length > 0 && <ul className="traces-fleet-limits" aria-label="Scan limits and omitted data">{snapshot.limitReasons.map((reason) =>
-          <li key={reason.code}><strong>{reason.count.toLocaleString()}</strong> {reason.detail}</li>)}</ul>}</>}
+    {!quiet && <><div className="traces-fleet-freshness">{freshness}{snapshot?.retries ? ` · ${snapshot.retries} SQLite busy retries` : ""}{connection !== "connected" ? " · Live connection unavailable; reconnect triggers a new scan" : ""}</div>
+      {snapshot && snapshot.limitReasons.length > 0 && <ul className="traces-fleet-limits" aria-label="Scan limits and omitted data">{snapshot.limitReasons.map((reason) =>
+        <li key={reason.code}><strong>{reason.count.toLocaleString()}</strong> {reason.detail}</li>)}</ul>}</>}
     {(snapshot?.error || error) && <p className="traces-fleet-error" role="alert">{snapshot?.error ?? error}</p>}
   </div>;
 }
@@ -161,15 +156,14 @@ function Facets({ snapshot, onFacet }: { snapshot: FleetSnapshot; onFacet: (fiel
   })}</aside>;
 }
 
-function RowDetail({ row, onClose, onWaterfall, onContext, onOpenThread }: { row: FleetRow; onClose: () => void; onWaterfall: (id: string) => void; onContext: (id: string) => void; onOpenThread: (id: string) => void }) {
+function RowDetail({ row, onClose, onWaterfall, onContext, onOpenThread, scrollToDetail }: { row: FleetRow; onClose: () => void; onWaterfall: (id: string) => void; onContext: (id: string) => void; onOpenThread: (id: string) => void; scrollToDetail: boolean }) {
   const rpc = useRpc<typeof fleetContract>();
-  const [reveal, setReveal] = useState(false);
+  const [reveal, setReveal] = useState(true);
   const [detail, setDetail] = useState<{ input: string | null; output: string | null; inputSize: number | null; outputSize: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const request = useRef(0);
   const pane = useRef<HTMLElement>(null);
-  useEffect(() => { pane.current?.scrollIntoView?.({ block: "nearest" }); }, [row.id]);
-  useEffect(() => { setReveal(false); setDetail(null); setError(null); }, [row.id]);
+  useEffect(() => { if (scrollToDetail) pane.current?.scrollIntoView?.({ block: "nearest" }); }, [row.id, scrollToDetail]);
   useEffect(() => {
     if (row.seq <= 0) return;
     const generation = ++request.current;
@@ -195,11 +189,24 @@ function RowDetail({ row, onClose, onWaterfall, onContext, onOpenThread }: { row
 }
 
 function ExplorerRows({ snapshot, selectedId, selectedRef, onSelect, onWaterfall }: { snapshot: FleetSnapshot; selectedId: string | null;
-  selectedRef: RefObject<HTMLButtonElement | null>; onSelect: (row: FleetRow) => void; onWaterfall: (id: string) => void }) {
-  return <div className="traces-fleet-rows"><table><thead><tr><th>Time</th><th>Thread</th><th>Turn</th><th>Kind</th><th>Tool</th><th>Duration</th><th>Status</th></tr></thead><tbody>
-    {snapshot.rows.map((row) => <tr key={row.id} className={row.id === selectedId ? "selected" : ""} aria-selected={row.id === selectedId}>
-      <td><button type="button" ref={row.id === selectedId ? selectedRef : undefined} onClick={() => onSelect(row)} aria-current={row.id === selectedId ? "true" : undefined} aria-label={`Inspect ${row.kind} in ${row.threadId} at ${clock(row.at)}`}>{new Date(row.at).toLocaleTimeString()}</button></td>
-      <td><button type="button" onClick={() => onWaterfall(row.threadId)} aria-label={`Open Waterfall for ${row.threadId}`}>{row.threadId}</button></td><td>{row.turnId?.split("-t").at(-1) ?? "—"}</td><td>{row.kind}</td><td>{row.tool ?? "—"}</td><td>{duration(row.durationMs)}</td><td className={row.status === "failed" ? "failed" : ""}>{row.status}</td>
+  selectedRef: RefObject<HTMLButtonElement | null>; onSelect: (row: FleetRow, keyboard?: boolean) => void; onWaterfall: (id: string) => void }) {
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!["j", "k", "ArrowDown", "ArrowUp"].includes(event.key) || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !snapshot.rows.length) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, select, [contenteditable=true], [role=combobox]"))) return;
+    event.preventDefault();
+    const direction = event.key === "j" || event.key === "ArrowDown" ? 1 : -1;
+    const index = selectedId === null ? (direction > 0 ? 0 : snapshot.rows.length - 1)
+      : Math.max(0, Math.min(snapshot.rows.length - 1, snapshot.rows.findIndex((row) => row.id === selectedId) + direction));
+    const next = rowsRef.current?.querySelectorAll<HTMLTableRowElement>("tbody tr")[index];
+    next?.focus(); next?.scrollIntoView?.({ block: "nearest" });
+    onSelect(snapshot.rows[index]!, true);
+  };
+  return <div ref={rowsRef} className="traces-fleet-rows" role="region" aria-label="Explorer results" tabIndex={0} onKeyDown={onKeyDown}><table><thead><tr><th>Time</th><th>Thread</th><th>Turn</th><th>Kind</th><th>Tool</th><th>Duration</th><th>Status</th></tr></thead><tbody>
+    {snapshot.rows.map((row) => <tr key={row.id} className={row.id === selectedId ? "selected" : ""} aria-selected={row.id === selectedId} tabIndex={row.id === selectedId ? 0 : -1} onClick={(event) => { event.currentTarget.focus(); onSelect(row); }}>
+      <td><button type="button" ref={row.id === selectedId ? selectedRef : undefined} aria-current={row.id === selectedId ? "true" : undefined} aria-label={`Inspect ${row.kind} in ${row.threadId} at ${clock(row.at)}`}>{new Date(row.at).toLocaleTimeString()}</button></td>
+      <td><button type="button" onClick={(event) => { event.stopPropagation(); onWaterfall(row.threadId); }} aria-label={`Open Waterfall for ${row.threadId}`}>{row.threadId}</button></td><td>{row.turnId?.split("-t").at(-1) ?? "—"}</td><td>{row.kind}</td><td>{row.tool ?? "—"}</td><td>{duration(row.durationMs)}</td><td className={row.status === "failed" ? "failed" : ""}>{row.status}</td>
     </tr>)}</tbody></table>
     {!snapshot.rows.length && <p className="traces-fleet-muted">{snapshot.status === "running" ? "Rows will appear as threads are scanned." : "No matching events in this window."}</p>}
   </div>;
@@ -209,6 +216,7 @@ export function ExplorerView({ initialQuery = "", initialSince = "24h", onDrilld
   const job = useFleetJob("explorer", initialQuery, initialSince, "events");
   const navigate = useBbNavigate();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [keyboardSelection, setKeyboardSelection] = useState(false);
   const selectedRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { setSelectedId(null); }, [job.snapshot?.jobId]);
   const selected = job.snapshot?.rows.find((row) => row.id === selectedId) ?? null;
@@ -218,15 +226,14 @@ export function ExplorerView({ initialQuery = "", initialSince = "24h", onDrilld
     setSelectedId(null);
   };
   return <div className="traces-fleet traces-fleet-explorer">
-    <div className="traces-fleet-header"><div><h2>Log Explorer</h2><p>Event metadata and derived spans from BB's existing storage. Payloads are never indexed.</p></div><span className="traces-fleet-range">{job.snapshot ? `${new Date(job.snapshot.from).toLocaleString()} → ${new Date(job.snapshot.to).toLocaleString()}` : "Bounded window"}</span></div>
     <FleetControls view="explorer" draft={job.draft} setDraft={job.setDraft} onSubmit={() => { setSelectedId(null); job.apply(job.draft); }} since={job.since}
       setSince={(value) => { setSelectedId(null); job.setSince(value); }} mode={job.mode} setMode={(value) => { setSelectedId(null); job.setMode(value); }} />
     <ScanProgress snapshot={job.snapshot} error={job.error} onCancel={job.cancel} onRefresh={() => { setSelectedId(null); job.refresh(); }} connection={job.connection} quiet />
     {job.snapshot && <>
       <Histogram bins={job.snapshot.histogram} since={job.since} />
       <div className={`traces-fleet-explorer-grid${selected ? " has-detail" : ""}`}><Facets snapshot={job.snapshot} onFacet={applyFacet} />
-        <ExplorerRows snapshot={job.snapshot} selectedId={selectedId} selectedRef={selectedRef} onSelect={(row) => setSelectedId(row.id)} onWaterfall={(id) => onDrilldown("waterfall", id)} />
-        {selected && <RowDetail row={selected} onClose={() => { selectedRef.current?.focus(); setSelectedId(null); }}
+        <ExplorerRows snapshot={job.snapshot} selectedId={selectedId} selectedRef={selectedRef} onSelect={(row, keyboard) => { setKeyboardSelection(Boolean(keyboard)); setSelectedId(row.id); }} onWaterfall={(id) => onDrilldown("waterfall", id)} />
+        {selected && <RowDetail key={selected.id} row={selected} scrollToDetail={!keyboardSelection} onClose={() => { selectedRef.current?.focus(); setSelectedId(null); }}
           onWaterfall={(id) => onDrilldown("waterfall", id)} onContext={(id) => onDrilldown("context", id)} onOpenThread={(id) => navigate.toThread(id)} />}
       </div>
     </>}
