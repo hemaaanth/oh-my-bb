@@ -239,8 +239,5 @@ export function createFreestyleMachineBackend(
         if (!isNotFound(error)) throw error;
       });
     },
-    displayName(context) {
-      return context.resource.name;
-    },
   };
 }

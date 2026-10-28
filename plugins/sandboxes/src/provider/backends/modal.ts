@@ -224,8 +224,5 @@ export function createModalMachineBackend(
         if (!(error instanceof NotFoundError)) throw error;
       }
     },
-    displayName(context) {
-      return context.resource.name;
-    },
   };
 }

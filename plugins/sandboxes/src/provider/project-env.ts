@@ -36,7 +36,6 @@ const observationFor = (outcome: SourceOutcome): Observation => ({
   state: outcome.state === "complete" ? outcome.ready ? "ready" : "not-ready" : outcome.state,
   jobId: outcome.jobId, reason: outcomeReasons[outcome.reason], retryable: outcome.retryable, sourceVersion: 1,
 });
-const vendorLabels = { daytona: "Daytona", modal: "Modal", e2b: "E2B", box: "Boat", freestyle: "Freestyle", } as const;
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 interface Target {
   environment: { id: string; projectId: string; hostId: string; path: string | null; status: string };
@@ -51,7 +50,6 @@ export function registerNativeProjectEnvironmentSync(
 ) {
   const controller = new AbortController();
   bb.onDispose(() => controller.abort());
-  const renamed = new Set<string>();
   const inFlight = new Map<string, { mode: "observe" | "retry" | "reconcile"; promise: Promise<Observation>; refresh: Promise<Observation> | undefined }>();
   const enabled = () => deps.enabled?.() ?? Promise.resolve(true);
   const resolve = async (thread: { id: string; environmentId: string | null }) => {
@@ -183,13 +181,6 @@ export function registerNativeProjectEnvironmentSync(
     const target = await resolve(thread);
     if (!target) return;
     const { host, environment, vendor } = target;
-    if (!renamed.has(host.id) && host.name.startsWith("bb-")) {
-      renamed.add(host.id);
-      try {
-        const project = await bb.sdk.projects.get({ projectId: environment.projectId });
-        await bb.sdk.hosts.update({ hostId: host.id, name: `${vendorLabels[vendor]} · ${project.name}` });
-      } catch (error) { renamed.delete(host.id); bb.log.warn(`Could not rename sandbox host ${host.id}: ${message(error)}`); }
-    }
     if (!await enabled()) return;
     if (environment.status !== "ready" || environment.path === null) return;
     const result = await observe(target);

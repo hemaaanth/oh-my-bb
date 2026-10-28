@@ -729,3 +729,9 @@ Standard sandbox startup checks enabled agent CLIs against the shared image’s 
 Daytona, Modal and E2B boot the registered image. Boat and Freestyle start from a provider base, so a fresh machine also needs tool installation. Matching the agent CLIs does not make the provider operating systems or base packages identical.
 
 Modal’s executor closes the normal stdin stream after writing enrollment data and forwards output while commands run. The emergency zero-offset EOF method is not used for bootstrap.
+
+### Common provider lifecycle
+
+All five connectors use one registration layer for bootstrap, runtime preparation, resume and user-facing machine names. That layer resolves names as `Provider · Project` before returning a created machine, rather than relying on a later thread event or the VM hostname. Provider allocation IDs and stable internal names remain separate for cleanup.
+
+Runtime commands use the directory of the real Node executable first, matching BB’s agent launcher. Standard harness repair installs into that same Node prefix. This prevents a vendor’s old Node-local Claude or Codex from shadowing the updated CLI. Tests cover the launcher environment, not just a vendor API shell.

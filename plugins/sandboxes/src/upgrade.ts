@@ -293,7 +293,7 @@ if [ -z "$(daemons)" ] && [ -x "$E" ]; then
 fi
 `;
   return `set -u
-P="\${BB_HARNESS_PREFIX:-$(if [ "$(id -u)" = 0 ]; then printf /usr/local; else printf '%s/.local' "$HOME"; fi)}"
+P="\${BB_HARNESS_PREFIX:-$(if [ "$(id -u)" = 0 ]; then node -p 'require("node:path").dirname(require("node:path").dirname(process.execPath))'; else printf '%s/.local' "$HOME"; fi)}"
 export PATH="$P/bin:$PATH"
 image_tool_enabled() { [ "\${BB_IMAGE_TOOLS+x}" != x ] || case ",\${BB_IMAGE_TOOLS}," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 mkdir -p "$P/bin"

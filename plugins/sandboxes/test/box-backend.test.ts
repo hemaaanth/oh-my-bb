@@ -53,3 +53,13 @@ it("resumes old Box records with finite auto-stop, executes, pauses and deletes"
   ]);
   expect(calls.at(-1)!.headers.get("X-Ascii-Confirm-Delete")).toBe("bx_fixture");
 });
+
+it("confirms an old uncheckpointed allocation is gone only when the complete account is empty", async () => {
+  const operation = { ...context(), key: resource.key };
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ sandboxes: [], pageInfo: { hasMore: false } })));
+  await expect(backend().reconcileCleanup(operation)).resolves.toBeUndefined();
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ sandboxes: [{ id: "other" }], pageInfo: { hasMore: false } })));
+  await expect(backend().reconcileCleanup(operation)).rejects.toThrow("cannot confirm cleanup");
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ sandboxes: [], pageInfo: { hasMore: true } })));
+  await expect(backend().reconcileCleanup(operation)).rejects.toThrow("cannot confirm cleanup");
+});

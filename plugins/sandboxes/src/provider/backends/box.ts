@@ -179,6 +179,7 @@ export function createBoxMachineBackend(
           method: "POST",
           body: JSON.stringify({
             type: machineClass,
+            name: `bb-${context.key}`,
             ttlSeconds: AUTO_STOP_SECONDS,
             environment: config.environment,
           }),
@@ -197,6 +198,11 @@ export function createBoxMachineBackend(
       return { resource, executor: executorFor(created.sandbox.id) };
     },
     async reconcileCleanup() {
+      const listed = z.object({
+        sandboxes: z.array(z.unknown()), pageInfo: z.object({ hasMore: z.boolean() }),
+      }).parse(await request("/sandboxes?limit=1"));
+      // Older creates had no allocation name. Only a completely empty account proves absence.
+      if (listed.sandboxes.length === 0 && !listed.pageInfo.hasMore) return;
       throw new Error("Boat cannot confirm cleanup by allocation key; retain the native resource for manual reconciliation");
     },
     async suspend(context) {
@@ -235,9 +241,6 @@ export function createBoxMachineBackend(
         method: "DELETE",
         headers: { "X-Ascii-Confirm-Delete": providerSandboxId },
       });
-    },
-    displayName(context) {
-      return context.resource.name;
     },
   };
 }

@@ -11,6 +11,7 @@ import type {
   PluginMachineProviderProgress,
   PluginMachineProviderResource,
 } from "@get-bb/plugin-sdk/machine-provider";
+import { sandboxExecutor, sandboxName } from "./runtime.js";
 import type { SandboxBackend } from "./sandbox-backend.js";
 
 /** Environment provider id BB core owns for cloning a project checkout. */
@@ -81,6 +82,20 @@ export function registerSandboxBackend<
     typeof backend.suspend === "function" &&
     typeof backend.resume === "function";
 
+  const connect = async ({ key, executor: transport, report, signal, hostId: existingHostId }: {
+    key: string; executor: MachineExecutor; report: PluginMachineProviderProgress;
+    signal: AbortSignal; hostId?: string;
+  }) => {
+    const executor = sandboxExecutor(transport);
+    const startedAt = options.now();
+    const connected = await bb.experimental_machines.bootstrap({ key, executor, report, signal });
+    const hostId = existingHostId ?? connected.hostId;
+    report.log(`${definition.runtimeName} daemon connected in ${options.now() - startedAt} ms\n`);
+    signal.throwIfAborted();
+    await options.prepareMachine?.({ key, hostId, executor, report, signal });
+    await options.onConnected(hostId);
+  };
+
   bb.experimental_machines.register({
     id: definition.id,
     displayName: definition.displayName,
@@ -115,25 +130,7 @@ export function registerSandboxBackend<
               ...context,
               resource: backend.parseResource(context.resource),
             });
-            const startedAt = options.now();
-            const key = backend.allocationKey(resumed.resource);
-            await bb.experimental_machines.bootstrap({
-              key,
-              executor: resumed.executor,
-              report: context.report,
-              signal: context.signal,
-            });
-            context.report.log(
-              `${definition.runtimeName} daemon connected in ${options.now() - startedAt} ms\n`,
-            );
-            await options.prepareMachine?.({
-              key,
-              hostId: context.hostId,
-              executor: resumed.executor,
-              report: context.report,
-              signal: context.signal,
-            });
-            await options.onConnected(context.hostId);
+            await connect({ ...context, key: backend.allocationKey(resumed.resource), executor: resumed.executor });
             return { resource: resumed.resource };
           },
         }
@@ -155,28 +152,10 @@ export function registerSandboxBackend<
           inputs: backend.parseInputs(mergedInputs),
         });
         context.signal.throwIfAborted();
-        const startedAt = options.now();
-        const { hostId } = await bb.experimental_machines.bootstrap({
-          key: context.key,
-          executor: created.executor,
-          report: context.report,
-          signal: context.signal,
-        });
-        context.report.log(
-          `${definition.runtimeName} daemon connected in ${options.now() - startedAt} ms\n`,
-        );
-        context.signal.throwIfAborted();
-        await options.prepareMachine?.({
-          key: context.key,
-          hostId,
-          executor: created.executor,
-          report: context.report,
-          signal: context.signal,
-        });
-        await options.onConnected(hostId);
+        await connect({ ...context, executor: created.executor });
         return {
           status: "created",
-          name: backend.displayName({ hostId, resource: created.resource }),
+          name: await sandboxName(bb, definition.runtimeName, context.key),
           resource: created.resource,
         };
       } catch (error) {

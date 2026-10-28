@@ -314,8 +314,5 @@ export function createDaytonaMachineBackend(
       const sandbox = await daytona.get(providerSandboxId);
       if (String(sandbox.state) === "started") await sandbox.stop(60, false);
     },
-    displayName(context) {
-      return context.resource.name;
-    },
   };
 }

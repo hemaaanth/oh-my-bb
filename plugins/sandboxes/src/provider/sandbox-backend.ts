@@ -136,6 +136,4 @@ export interface SandboxBackend<
   ): Promise<{ exitCode: number; output: string; started: boolean }>;
   /** Stop a legacy VM that {@link execLegacy} started. */
   stopLegacy?(providerSandboxId: string): Promise<void>;
-  /** Machine name shown in the UI once a host id is known. */
-  displayName(context: { hostId: string; resource: Resource }): string;
 }

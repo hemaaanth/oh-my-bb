@@ -1,5 +1,7 @@
 # Unreleased
 
+- Align every provider executor and harness installation with the Node directory used by BB agents. Share create/resume connection setup and project-based machine naming; remove duplicated connector naming and event-based rename heuristics. Confirm empty Boat accounts can retire old uncheckpointed allocations.
+
 - Fix Modal bootstrap hanging on nonempty stdin; close the stream at its actual byte offset, stream progress immediately, and round exec timeouts to supported whole seconds.
 - Enforce shared-image agent CLI versions across standard providers, including old vendor-installed CLIs. Replace conflicting global npm links, preserve selected tools and explicit custom-image versions, cache image metadata, and verify repairs before allowing agent execution.
 - Clarify Freestyle’s optional base snapshot and Ubuntu default. Explain how to clear or replace a missing custom snapshot without silently changing the selected image. Relate plan-limit resize errors to the selected size and preserve cleanup of the failed VM.

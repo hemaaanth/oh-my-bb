@@ -13,6 +13,7 @@ function setup(runtimeError?: Error) {
   const bb = {
     experimental_environments: { register: vi.fn() },
     log: { warn },
+    sdk: { threads: { get: vi.fn(async () => ({ projectId: "proj_1", environmentId: null })) }, projects: { get: vi.fn(async () => ({ name: "Shared project" })) } },
     experimental_machines: {
       register: vi.fn((definition) => {
         machine = definition;
@@ -38,7 +39,6 @@ function setup(runtimeError?: Error) {
     parseInputs: (value: unknown) => value,
     parseResource: (value: unknown) => value as Resource,
     allocationKey: (resource: Resource) => resource.key,
-    displayName: () => "Test VM",
     create: vi.fn(async () => ({ resource: { id: "vm_1", key: "thr_created" }, executor })),
     suspend: async ({ resource }: { resource: Resource }) => resource,
     resume: vi.fn(async ({ resource }: { resource: Resource }) => ({ resource, executor })),
@@ -47,7 +47,8 @@ function setup(runtimeError?: Error) {
   } as unknown as SandboxBackend<unknown, Resource>;
   const prepareMachine = vi.fn(async (input: { key: string; executor: MachineExecutor }) => {
     calls.push(`prepare ${input.key}`);
-    expect(input.executor).toBe(executor);
+    expect(input.executor).not.toBe(executor);
+    expect(input.executor.exec).toBeTypeOf("function");
   });
   registerSandboxBackend(bb, backend, {
     now: () => 0,
@@ -86,7 +87,7 @@ describe("registerSandboxBackend prepareMachine", () => {
   it("prepares a created machine with its key before it is connected", async () => {
     const { machine, calls, context } = setup();
     const result = await machine.create({ ...context, key: "thr_created", inputs: {} });
-    expect(result).toMatchObject({ status: "created" });
+    expect(result).toMatchObject({ status: "created", name: "Test · Shared project" });
     expect(calls).toEqual(["bootstrap thr_created", "prepare thr_created", "connected host_1"]);
   });
 

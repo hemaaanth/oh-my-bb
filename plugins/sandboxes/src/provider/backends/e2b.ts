@@ -262,8 +262,5 @@ export function createE2bMachineBackend(
     async removeLegacy(providerSandboxId) {
       await callRuntime(config.apiKey, "destroy", { providerSandboxId });
     },
-    displayName(context) {
-      return context.resource.name;
-    },
   };
 }
