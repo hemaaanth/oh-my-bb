@@ -2,7 +2,7 @@
 
 ## Native ownership and cleanup
 
-BB owns machine allocation, durable checkpoints, enrollment, retirement and retries. Native provider IDs are unchanged. A failed provider delete or an unsupported allocation-key lookup returns `failed`, never `removed`. Cancellation stops the local operation without confirming removal. Box, E2B cannot currently prove allocation-key cleanup. Their native pending resource stays retained.
+BB owns machine allocation, durable checkpoints, enrollment, retirement and retries. Native provider IDs are unchanged. A failed provider delete or an unsupported allocation-key lookup returns `failed`, never `removed`. Cancellation stops the local operation without confirming removal. Boat, E2B cannot currently prove allocation-key cleanup. Their native pending resource stays retained.
 
 For uncertain cleanup, retain the native resource and provider ID. Review the exact allocation in the provider's supported console or API under separate owner authorization. Verify removal there before reconciling BB's pending cleanup through supported native controls. Do not edit the core database or delete an unrelated machine. There is no package command that safely clears an unidentified orphan. If native controls cannot reconcile an old malformed resource, request native BB support with the retained resource evidence. Legacy checkpoints and BB hosts remain until provider removal succeeds.
 

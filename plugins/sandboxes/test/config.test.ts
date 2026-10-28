@@ -195,3 +195,9 @@ describe("sandboxImageRegistryConfig", () => {
     });
   });
 });
+
+it("accepts Boat environment keys while preserving saved Box credentials", () => {
+  expect(loadSandboxRuntimeConfig(settings(), { BOAT_API_KEY: "new-key", BOX_API_KEY: "old-key" }).box?.apiKey).toBe("new-key");
+  expect(loadSandboxRuntimeConfig(settings(), { BOX_API_KEY: "old-key" }).box?.apiKey).toBe("old-key");
+  expect(loadSandboxRuntimeConfig(settings({ boxApiKey: "saved-key" }), { BOAT_API_KEY: "new-key" }).box?.apiKey).toBe("saved-key");
+});

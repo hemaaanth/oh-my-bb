@@ -33,7 +33,7 @@ import type {
   SandboxUpgradeReport,
 } from "./upgrade.js";
 
-const providerUsage = sandboxProviderValues.join("|");
+const providerUsage = sandboxProviderValues.map((provider) => provider === "box" ? "boat" : provider).join("|");
 const imageProviderUsage = sandboxImageProviders.join("|");
 
 export interface SandboxCliDeps {
@@ -82,6 +82,10 @@ function option(argv: string[], name: string): string | undefined {
     throw new Error(`${name} requires a value`);
   }
   return value;
+}
+
+function providerAlias(value: string | undefined): string | undefined {
+  return value === "boat" ? "box" : value;
 }
 
 function isProvider(value: string): value is SandboxProvider {
@@ -523,13 +527,13 @@ export function registerSandboxCli(
               stdout: `${providers
                 .map(
                   ({ provider, configured, enabled }) =>
-                    `${provider}\t${enabled ? "enabled" : "disabled"}\t${configured ? "configured" : "not configured"}`,
+                    `${provider === "box" ? "boat" : provider}\t${enabled ? "enabled" : "disabled"}\t${configured ? "configured" : "not configured"}`,
                 )
                 .join("\n")}\n`,
             };
       }
       if (command === "provider") {
-        const providerValue = args.find((arg) => isProvider(arg));
+        const providerValue = args.map(providerAlias).find((arg): arg is SandboxProvider => arg !== undefined && isProvider(arg));
         const action = args.find(
           (arg) => arg === "enable" || arg === "disable",
         );
@@ -552,7 +556,7 @@ export function registerSandboxCli(
           ? json({ provider })
           : {
               exitCode: 0,
-              stdout: `${action === "enable" ? "Enabled" : "Disabled"} ${providerValue}.\n`,
+              stdout: `${action === "enable" ? "Enabled" : "Disabled"} ${providerValue === "box" ? "boat" : providerValue}.\n`,
             };
       }
       if (command === "capacity") {
@@ -581,7 +585,7 @@ export function registerSandboxCli(
         if (deps.listImages === undefined) {
           throw new Error("Image management is unavailable");
         }
-        const providerValue = option(args, "--provider");
+        const providerValue = providerAlias(option(args, "--provider"));
         if (providerValue !== undefined && !isProvider(providerValue)) {
           throw new Error(`--provider must be one of ${sandboxProviderValues.join(", ")}`);
         }
@@ -677,7 +681,7 @@ export function registerSandboxCli(
       }
       if (command === "set-size" || command === "clear-size") {
         const projectId = option(args, "--project") ?? context.projectId;
-        const providerValue = option(args, "--provider");
+        const providerValue = providerAlias(option(args, "--provider"));
         if (!projectId) {
           throw new Error("--project is required outside a project thread");
         }

@@ -1,6 +1,6 @@
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { expect, it, vi } from "vitest";
-import { providerCredentialChecks } from "../src/credential-check.js";
+import { checkProviderCredentials, providerCredentialChecks } from "../src/credential-check.js";
 import type { SandboxSettings } from "../src/config.js";
 
 it("keeps settings reads local, validates explicitly and invalidates changed credentials", async () => {
@@ -34,4 +34,13 @@ it("does not accept a check completed after its credentials changed", async () =
     expect(await checks.verify("e2b")).toBe("unchecked");
     expect(await fake.bb.storage.kv.get("credential-check:e2b")).toBeUndefined();
   } finally { await fake.harness.dispose(); }
+});
+
+it("checks existing Box keys against the Boat API", async () => {
+  const request = vi.fn(async () => Response.json({ sandboxes: [] }));
+  vi.stubGlobal("fetch", request);
+  try {
+    await checkProviderCredentials("box", { boxApiKey: "existing-key" } as SandboxSettings);
+    expect(request.mock.calls[0]).toMatchObject([new URL("https://boat.dev/api/v1/sandboxes"), { headers: { Authorization: "Bearer existing-key" } }]);
+  } finally { vi.unstubAllGlobals(); }
 });
