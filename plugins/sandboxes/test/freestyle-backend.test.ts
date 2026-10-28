@@ -77,6 +77,33 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Freestyle backend transport", () => {
+  it("omits a blank snapshot selection so Freestyle uses its Ubuntu default", async () => {
+    const created = await createFreestyleMachineBackend(config()).create({ ...context(), key: resource.key, attempt: 1, inputs: {} });
+    expect(calls[0]!.body).not.toHaveProperty("snapshotId");
+    expect(created.resource.snapshotId).toBeNull();
+  });
+
+  it("explains how to replace a missing custom snapshot without silently changing images", async () => {
+    respond = () => Response.json({ code: "BAD_REQUEST", message: "snapshot sh-missing does not exist" }, { status: 400 });
+    const operation = context();
+    await expect(createFreestyleMachineBackend({ ...config(), snapshotId: "sh-missing" }).create({ ...operation, key: resource.key, attempt: 1, inputs: {} }))
+      .rejects.toThrow("clear Base snapshot to use Ubuntu");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.body).toMatchObject({ snapshotId: "sh-missing" });
+    expect(operation.checkpoint).not.toHaveBeenCalled();
+  });
+
+  it("explains plan limits in terms of the selected size and removes the failed VM", async () => {
+    respond = (call) => call.path.endsWith("/resize")
+      ? Response.json({ code: "LIMIT_EXCEEDED", message: "This plan allows up to 8192 MiB of memory per VM, but this VM requested 12288 MiB." }, { status: 429 })
+      : call.method === "DELETE" ? new Response(null, { status: 204 }) : Response.json(vmData);
+    const operation = context();
+    await expect(createFreestyleMachineBackend(config()).create({ ...operation, key: resource.key, attempt: 1, inputs: { size: "M" } }))
+      .rejects.toThrow("Freestyle cannot run size M on this plan. Choose a smaller size");
+    expect(calls.at(-1)).toMatchObject({ method: "DELETE", path: "/v5/vms/vm-fixture" });
+    expect(operation.checkpoint).not.toHaveBeenCalled();
+  });
+
   it("lists through the current v5 API", async () => {
     await createFreestyleMachineBackend(config()).reconcileCleanup({ ...context(), key: resource.key });
     expect(calls.map(({ method, path }) => ({ method, path }))).toEqual([
