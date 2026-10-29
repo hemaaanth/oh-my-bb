@@ -22,6 +22,7 @@ bb-browser open https://example.com
 bb-browser snapshot -i
 bb-browser click @e1
 bb-browser screenshot /tmp/page.png
+bb-browser screenshot /tmp/high-density.png --scale 2
 bb-browser render frames ./film-render.json
 bb-browser doctor
 bb-browser dialog inspect
@@ -32,7 +33,7 @@ bb-browser close --all
 
 Isolated sessions retain the general engine for frames, shadow DOM and widgets. Relay accepts CSS selectors, not general-engine `@ref` handles. Use `observe` and `act` for portable observed handles. Unsupported relay widgets return control; use an explicitly authorized isolated session instead of another public browser tool.
 
-A JavaScript dialog needs an explicit accept/dismiss decision. Do not accept a destructive confirmation without user authorization. Browser operations do not raise windows or change workspaces. Background screenshots temporarily start a tiny screencast, capture, then stop it. No foreground fallback.
+A JavaScript dialog needs an explicit accept/dismiss decision. Do not accept a destructive confirmation without user authorization. Browser operations do not raise windows or change workspaces. Background screenshots temporarily start a tiny screencast, capture, then stop it. Use `--scale 1` through `--scale 4` for a higher-density viewport capture when a focal crop must stay crisp. It does not resize or zoom the live page. `--scale` cannot be combined with `--full`; keep high-density captures bounded to the visible viewport. No foreground fallback.
 
 ## Deterministic film frames
 

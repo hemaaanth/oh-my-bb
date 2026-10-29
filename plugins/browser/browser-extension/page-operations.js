@@ -91,7 +91,22 @@ export async function pageOperation(call, argv, { owned = true, dialog = null } 
   }
   if (command === 'screenshot') {
     // OMP whileDrawing technique (MIT; see THIRD-PARTY-NOTICES): no activation or visibility override.
-    try {await call('Page.startScreencast',{format:'jpeg',quality:1,maxWidth:1,maxHeight:1});return await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:args.includes('--full')});}
+    const scaleIndex = args.indexOf('--scale');
+    const scale = scaleIndex < 0 ? 1 : Number(args[scaleIndex + 1]);
+    if (!Number.isFinite(scale) || scale < 1 || scale > 4) throw Error('Screenshot scale must be between 1 and 4');
+    const full = args.includes('--full');
+    if (full && scaleIndex >= 0) throw Error('Screenshot scale cannot be combined with full-page capture');
+    try {
+      await call('Page.startScreencast',{format:'jpeg',quality:1,maxWidth:1,maxHeight:1});
+      const options = {format:'png',captureBeyondViewport:full};
+      if (scale !== 1) {
+        const metrics = await call('Page.getLayoutMetrics');
+        const viewport = metrics.cssVisualViewport || metrics.visualViewport;
+        if (!viewport?.clientWidth || !viewport?.clientHeight) throw Error('Screenshot viewport is unavailable');
+        options.clip = {x:0,y:0,width:viewport.clientWidth,height:viewport.clientHeight,scale};
+      }
+      return await call('Page.captureScreenshot',options);
+    }
     finally{await call('Page.stopScreencast').catch(()=>{});}
   }
   if (command === 'press' || command === 'key') { await call('Input.dispatchKeyEvent', { type: 'keyDown', key: args[0] }); await call('Input.dispatchKeyEvent', { type: 'keyUp', key: args[0] }); return { key: args[0] }; }

@@ -321,6 +321,14 @@ describe("bb-browser identity", () => {
     expect(flag(call.argv, "--args")).toContain("--disable-blink-features=AutomationControlled");
   });
 
+  it("permits only bounded screenshot capture scale", async () => {
+    expect(run(["screenshot", "frame.png", "--scale", "3"]).status).toBe(0);
+    expect((await calls("agent-browser")).at(-1)?.argv).toEqual(expect.arrayContaining(["screenshot", "frame.png", "--scale", "3"]));
+    expect(run(["screenshot", "frame.png", "--scale", "4.1"]).stderr).toContain("between 1 and 4");
+    expect(run(["screenshot", "frame.png", "--full", "--scale", "2"]).stderr).toContain("cannot combine");
+    expect(run(["snapshot", "--scale", "2"]).stderr).toContain("only applies");
+  });
+
   it("finds the command after flags and their values", async () => {
     expect(run(["--session", "work", "--headed", "true", "open", "about:blank"]).status).toBe(0);
     expect(run(["--headers", '{"Accept-Language":"en"}', "read"]).status).toBe(0);

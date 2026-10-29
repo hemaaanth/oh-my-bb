@@ -157,6 +157,7 @@ const VALUE_FLAGS = new Set([
   "--idle-timeout",
   "--filter",
   "--timeout",
+  "--scale",
 ]);
 // Commands that act on the launched Brave. Everything else is refused: connect
 // swaps in another browser, batch/chat/mcp run commands bb-browser cannot see,
@@ -2035,6 +2036,7 @@ function splitArgs(argv) {
   const rest = [];
   const browserArgs = [];
   const flags = [];
+  const flagValues = new Map();
   const positionals = [];
   let stateName;
   for (let index = 0; index < argv.length; index += 1) {
@@ -2064,6 +2066,7 @@ function splitArgs(argv) {
     rest.push(arg);
     if (VALUE_FLAGS.has(flag)) {
       const given = value();
+      flagValues.set(flag, given);
       if (equals < 0) rest.push(given);
       if (flag === "--headers") checkHeaders(given);
     } else if (equals < 0 && (argv[index + 1] === "true" || argv[index + 1] === "false")) {
@@ -2073,7 +2076,21 @@ function splitArgs(argv) {
   }
   const [command, ...args] = positionals;
   checkCommand(command, args, flags);
-  return { rest, browserArgs, stateName, command, args, flags };
+  if (flagValues.has("--scale")) {
+    if (command !== "screenshot") fail("--scale only applies to bb-browser screenshot");
+    const scale = Number(flagValues.get("--scale"));
+    if (!Number.isFinite(scale) || scale < 1 || scale > 4) fail("bb-browser screenshot --scale must be between 1 and 4");
+    if (flags.includes("--full")) fail("bb-browser screenshot cannot combine --full and --scale");
+  }
+  return { rest, browserArgs, stateName, command, args, flags, flagValues };
+}
+
+function pageOperationArgv(parsed) {
+  const flags = parsed.flags.filter(flag => ["--delta", "--full"].includes(flag));
+  if (parsed.command === "screenshot" && parsed.flagValues.has("--scale")) {
+    flags.push("--scale", parsed.flagValues.get("--scale"));
+  }
+  return [parsed.command, ...parsed.args, ...flags];
 }
 
 // The native profile is one persistent Brave profile that every session
@@ -2538,7 +2555,7 @@ function passthrough(argv) {
       ensureThreadTab(identity, browser, requestedSession(rest));
       if (["observe", "act", "dialog", "screenshot"].includes(command)) {
         const record = readThreadRecord(identity);
-        const output = threadCdp(identity, browser, "page", {targetId:record.sessions[requestedSession(rest)], argv:[command,...args,...flags.filter(flag=>['--delta','--full'].includes(flag))], operations:new URL("../browser-extension/page-operations.js", import.meta.url).href});
+        const output = threadCdp(identity, browser, "page", {targetId:record.sessions[requestedSession(rest)], argv:pageOperationArgv(parsed), operations:new URL("../browser-extension/page-operations.js", import.meta.url).href});
         if (command === "screenshot" && args[0] && !args[0].startsWith("--")) { writeFileSync(args[0], Buffer.from(output.data, "base64"), {mode:0o600}); console.log(JSON.stringify({path:args[0]})); }
         else console.log(JSON.stringify(output));
         return 0;
@@ -2744,7 +2761,7 @@ function main(argv) {
     try { identity = command === "close" || command === "thread" ? plannedIdentity(parsed?.stateName) : verifiedIdentity(parsed?.stateName); }
     finally { if (configured === undefined) delete env.BB_BROWSER_BACKEND; else env.BB_BROWSER_BACKEND = configured; }
     const expectedIps = identity.egress ? setting('BB_BROWSER_HOME_EGRESS_IP','home-egress-ip') || publicIp(identity.proxy) : '';
-    const operation = command === 'state' && rest[0] === 'save' ? ['identity','save',...rest.slice(1)] : parsed ? [parsed.command,...parsed.args,...parsed.flags.filter(flag=>['--delta','--full'].includes(flag))] : argv;
+    const operation = command === 'state' && rest[0] === 'save' ? ['identity','save',...rest.slice(1)] : parsed ? pageOperationArgv(parsed) : argv;
     const result = spawnSync(nodeRuntime(), [join(runtimeDirectory, "session.mjs")], { input:JSON.stringify({home, thread:threadOwner(), identity:{...identity,networkGeneration,networkSession:running?current.session:undefined}, argv:parsed?.rest || argv, operation, expectedIps, agentConfig:agentBrowserConfig()}), encoding:"utf8", timeout:90_000, maxBuffer:12*1024*1024 });
     if (result.status === 75 && attempt === 0) continue;
     if (result.stdout) process.stdout.write(result.stdout);
