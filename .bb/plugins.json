@@ -20,6 +20,7 @@
     { "name": "sandboxes", "source": "./plugins/sandboxes" },
     { "name": "catalog", "source": "./plugins/catalog" },
     { "name": "agent-profiles", "source": "./plugins/agent-profiles" },
-    { "name": "traces", "source": "./plugins/traces" }
+    { "name": "traces", "source": "./plugins/traces" },
+    { "name": "revyl", "source": "./plugins/revyl" }
   ]
 }

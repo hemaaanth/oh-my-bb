@@ -346,6 +346,7 @@
       "tags": ["traces", "debugging", "waterfall", "threads", "performance", "logs", "metrics"],
       "author": { "name": "Hemanth Soni", "github": "hemaaanth", "url": "https://github.com/hemaaanth" },
       "source": { "git": { "url": "https://github.com/hemaaanth/oh-my-bb.git", "subdir": "plugins/traces", "ref": "main" } }
-    }
+    },
+    {"id":"revyl","displayName":"Revyl","description":"Try iOS and Android app builds in a live Revyl device beside a BB thread.","icon":"Smartphone","overview":"Try an Android or iOS app build in an interactive cloud device beside a BB project thread. The Device tab shows a quiet empty state until an app's public Revyl embed is configured in project chat. Opening it shows a poster; the visitor starts and stops the demo within Revyl's iframe. Revyl ends a session after 3 minutes idle or 10 minutes active and bills device time to the organization.\n\nCreate a public embed in the Revyl app's settings and select its build. Anyone holding its URL can start a device on that build, so use disposable app data and revoke unused embeds. One project-level URL per platform works across local and sandbox threads. The embed is a separate device from any private development session. No Revyl CLI, API key, or authentication is required on a BB environment host; uploading new builds is a separate step.\n","tags":["mobile","ios","android","devices"],"author":{"name":"Hemanth Soni","github":"hemaaanth","url":"https://github.com/hemaaanth"},"source":{"git":{"url":"https://github.com/hemaaanth/oh-my-bb.git","subdir":"plugins/revyl","ref":"main"}}}
   ]
 }

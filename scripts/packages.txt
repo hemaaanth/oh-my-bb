@@ -21,3 +21,4 @@ plugins/traces
 agents/fx-acp
 agents/nanocodex-acp
 agents/prime-agent-acp
+plugins/revyl
