@@ -22,6 +22,7 @@ bb-browser open https://example.com
 bb-browser snapshot -i
 bb-browser click @e1
 bb-browser screenshot /tmp/page.png
+bb-browser render frames ./film-render.json
 bb-browser doctor
 bb-browser dialog inspect
 bb-browser dialog accept
@@ -32,6 +33,31 @@ bb-browser close --all
 Isolated sessions retain the general engine for frames, shadow DOM and widgets. Relay accepts CSS selectors, not general-engine `@ref` handles. Use `observe` and `act` for portable observed handles. Unsupported relay widgets return control; use an explicitly authorized isolated session instead of another public browser tool.
 
 A JavaScript dialog needs an explicit accept/dismiss decision. Do not accept a destructive confirmation without user authorization. Browser operations do not raise windows or change workspaces. Background screenshots temporarily start a tiny screencast, capture, then stop it. No foreground fallback.
+
+## Deterministic film frames
+
+`bb-browser render frames <spec.json>` runs a disposable, signed-out Brave
+session. It never attaches to the thread's interactive tab or imports login
+state. The spec supplies an HTTP(S) preview URL, fixed viewport/DPR, and frame
+times. For each frame it awaits `window.__video.show(time)` and captures a PNG
+in order; the temporary session always closes.
+
+```json
+{
+  "url": "http://127.0.0.1:4173/?render",
+  "viewport": { "width": 1440, "height": 810, "scale": 2 },
+  "clip": { "x": 0, "y": 0, "width": 1440, "height": 810 },
+  "frames": [
+    { "time": 0, "path": "out/000000.png" },
+    { "time": 0.033333333, "path": "out/000001.png", "selector": "#stage" }
+  ]
+}
+```
+
+`clip` is optional and expressed in stage pixels; ImageMagick performs the
+crop after capture. A frame can instead name one selector. Keep frames pure
+and use a local preview URL. This is frame-exact capture, not real-time video
+recording; do not use it for an authenticated product workspace.
 
 ## Compact observation and guarded actions
 

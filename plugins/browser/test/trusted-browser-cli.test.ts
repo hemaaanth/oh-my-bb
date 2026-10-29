@@ -331,6 +331,29 @@ describe("bb-browser identity", () => {
     expect(viewport.argv.slice(-4)).toEqual(["set", "viewport", "800", "600"]);
   });
 
+  it("renders exact frames in a disposable Brave session", async () => {
+    const spec = join(root, "film.json");
+    await writeFile(spec, JSON.stringify({
+      url: "http://127.0.0.1:4173/?render",
+      viewport: { width: 1440, height: 810, scale: 2 },
+      frames: [
+        { time: 0, path: "out/000000.png" },
+        { time: 1 / 30, path: "out/000001.png", selector: "#stage" },
+      ],
+    }));
+    const result = run(["render", "frames", spec], { env: { BB_THREAD_ID: "thr_render", BB_BROWSER_BACKEND: "agent" } });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ rendered: 2, viewport: { width: 1440, height: 810, scale: 2 } });
+    const browser = await calls("agent-browser");
+    const session = flag(browser[0].argv, "--session");
+    expect(session).toMatch(/^render-[0-9a-f]{16}$/);
+    expect(browser.every(call => flag(call.argv, "--session") === session)).toBe(true);
+    expect(browser.some(call => call.argv.includes("set") && call.argv.includes("viewport") && call.argv.includes("2"))).toBe(true);
+    expect(browser.filter(call => call.argv.includes("eval"))).toHaveLength(2);
+    expect(browser.some(call => call.argv.includes("screenshot") && call.argv.includes("#stage"))).toBe(true);
+    expect(browser.at(-1)?.argv).toContain("close");
+  });
+
   it("keeps the daemon namespace when state is saved or imported", async () => {
     const source = join(root, "export.json");
     await writeFile(source, JSON.stringify({ cookies: [{ name: "sid", value: SECRET, domain: "example.com" }] }));

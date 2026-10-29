@@ -59,7 +59,7 @@ import {
 } from "node:fs";
 import { isIP } from "node:net";
 import { homedir, hostname } from "node:os";
-import { delimiter, dirname, isAbsolute, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { nodeRuntime } from './node-runtime.mjs';
 
@@ -2569,6 +2569,74 @@ function passthrough(argv) {
   return result.status ?? 1;
 }
 
+// A render job is intentionally separate from the thread-owned interactive
+// session. It has no imported state and always tears down its Agent Browser
+// session, so frame seeking cannot resize, navigate, or capture a user's tab.
+function renderFrames(args) {
+  if (args.length !== 2 || args[0] !== "frames") {
+    fail("usage: bb-browser render frames <spec.json>");
+  }
+  const specPath = resolve(args[1]);
+  let spec;
+  try { spec = JSON.parse(readFileSync(specPath, "utf8")); }
+  catch { fail("render spec must be valid JSON"); }
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) fail("render spec must be an object");
+  let url;
+  try { url = new URL(spec.url); } catch { fail("render spec needs an absolute url"); }
+  if (!/^https?:$/.test(url.protocol)) fail("render url must use http or https");
+  const viewport = spec.viewport;
+  if (!viewport || typeof viewport !== "object" || !Number.isInteger(viewport.width) || !Number.isInteger(viewport.height) ||
+      viewport.width < 1 || viewport.width > 7680 || viewport.height < 1 || viewport.height > 7680 ||
+      !Number.isFinite(viewport.scale) || viewport.scale < 0.5 || viewport.scale > 4) {
+    fail("render viewport needs width, height, and scale (0.5 through 4)");
+  }
+  const clip = spec.clip;
+  if (clip !== undefined && (!clip || typeof clip !== "object" || !Number.isInteger(clip.x) || !Number.isInteger(clip.y) ||
+      !Number.isInteger(clip.width) || !Number.isInteger(clip.height) || clip.x < 0 || clip.y < 0 || clip.width < 1 || clip.height < 1 ||
+      clip.x + clip.width > viewport.width || clip.y + clip.height > viewport.height)) {
+    fail("render clip must fit inside the viewport");
+  }
+  if (!Array.isArray(spec.frames) || spec.frames.length < 1 || spec.frames.length > 10000) fail("render frames must contain 1 through 10000 frames");
+  const frames = spec.frames.map((frame, index) => {
+    if (!frame || typeof frame !== "object" || !Number.isFinite(frame.time) || frame.time < 0 || frame.time > 86400 ||
+        typeof frame.path !== "string" || !frame.path || (frame.selector !== undefined && typeof frame.selector !== "string")) {
+      fail(`render frame ${index} needs a non-negative time, path, and optional selector`);
+    }
+    return { time: frame.time, path: resolve(dirname(specPath), frame.path), selector: frame.selector };
+  });
+  const base = verifiedIdentity();
+  if (base.backend === "existing") fail("render jobs never attach to a regular Brave profile");
+  const session = `render-${randomBytes(8).toString("hex")}`;
+  const identity = { ...base, backend: "agent", state: null, namespace: `bb-render-${randomBytes(8).toString("hex")}` };
+  const call = (operation) => {
+    const result = agentBrowser(identity, ["--session", session, ...operation], { includeState: false, timeoutMs: 90_000 });
+    if (result.status !== 0) fail(`render ${operation[0]} failed`);
+  };
+  const crop = (path) => {
+    if (!clip) return;
+    const scale = viewport.scale;
+    const geometry = `${Math.round(clip.width * scale)}x${Math.round(clip.height * scale)}+${Math.round(clip.x * scale)}+${Math.round(clip.y * scale)}`;
+    const temporary = `${path}.bb-render-${process.pid}.png`;
+    const result = spawnSync("magick", [path, "-crop", geometry, "+repage", temporary], { encoding: "utf8", timeout: 30_000 });
+    if (result.error?.code === "ENOENT") fail("render clip needs ImageMagick (magick) on PATH");
+    if (result.status !== 0) fail("render clip failed");
+    renameSync(temporary, path);
+  };
+  try {
+    call(["open", url.href]);
+    call(["set", "viewport", String(viewport.width), String(viewport.height), String(viewport.scale)]);
+    for (const frame of frames) {
+      call(["eval", `(() => { const video = window.__video; if (!video || typeof video.show !== 'function') throw new Error('window.__video.show is required'); return video.show(${frame.time}); })()`]);
+      call(frame.selector ? ["screenshot", frame.selector, frame.path] : ["screenshot", frame.path]);
+      crop(frame.path);
+    }
+  } finally {
+    agentBrowser(identity, ["--session", session, "close"], { includeState: false, timeoutMs: 30_000 });
+  }
+  console.log(JSON.stringify({ rendered: frames.length, viewport, ...(clip ? { clip } : {}), paths: frames.map(frame => frame.path) }));
+  return 0;
+}
+
 const USAGE = `bb-browser — Brave through agent-browser with a pinned identity
 
   bb-browser <agent-browser command> [args]   e.g. open, snapshot, click, screenshot
@@ -2582,6 +2650,7 @@ const USAGE = `bb-browser — Brave through agent-browser with a pinned identity
   bb-browser state sync <name> [file|-]       apply authoritative live cookie snapshots
   bb-browser state save <name>                save the running browser's state
   bb-browser state list | rm <name>
+  bb-browser render frames <spec.json>       deterministic, isolated Brave frame capture
   bb-browser provision < settings.json        used by the sandboxes plugin
 
 Use --state-name <name> (or BB_BROWSER_STATE) to pick an imported state, or
@@ -2625,7 +2694,7 @@ function main(argv) {
   }
   let backend = setting("BB_BROWSER_BACKEND", "backend").trim();
   if(setting('','network-service')==='sandboxes-v1'&&existsSync(join(home,'shared-network.json')))useNetworkConnection(JSON.parse(readFileSync(join(home,'shared-network.json'),'utf8')));
-  const scopedCommand=command&&!['help','--help','-h','provision','egress','workspace','layout'].includes(command)&&(command!=='state'||rest[0]==='save')&&!(command==='thread'&&rest[0]==='label');
+  const scopedCommand=command&&!['help','--help','-h','provision','egress','workspace','layout','render'].includes(command)&&(command!=='state'||rest[0]==='save')&&!(command==='thread'&&rest[0]==='label');
   if(threadOwner()&&scopedCommand){
     const file=join(threadDir(),threadOwner()+'.backend');let prior='';try{prior=readFileSync(file,'utf8').trim();}catch{}
     if(prior){
@@ -2639,7 +2708,7 @@ function main(argv) {
     }
   }
   const isolated = backend === 'isolated' || !backend && usesUserspaceTailscale() && !!threadOwner();
-  const runtimeCommand = command && (!['help','--help','-h','provision','state','egress','workspace','layout'].includes(command) || isolated && command === 'state' && rest[0] === 'save');
+  const runtimeCommand = command && (!['help','--help','-h','provision','state','egress','workspace','layout','render'].includes(command) || isolated && command === 'state' && rest[0] === 'save');
   if (runtimeCommand && (backend === "relay" || command === "fast")) {
     if (!threadOwner()) fail("relay requires BB_THREAD_ID");
     const result = spawnSync("bb", ["plugin", "run", "browser", Buffer.from(JSON.stringify({argv})).toString("base64url")], {encoding:'utf8', timeout:command === 'fast' ? 70_000 : 35_000,maxBuffer:12*1024*1024});
@@ -2738,6 +2807,8 @@ function main(argv) {
       return doctor(rest);
     case "state":
       return stateCommand(rest);
+    case "render":
+      return renderFrames(rest);
     case "provision":
       return provision(readFileSync(0, "utf8"));
     case "egress": {
