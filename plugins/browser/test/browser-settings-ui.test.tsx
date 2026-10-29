@@ -42,6 +42,21 @@ it('preserves saved choices during loading and unsaved edits during realtime ref
   } finally { slot.lifecycle.unmount(); }
 });
 
+it('separates a paired source from its live relay and new-session cookie export', async () => {
+  let relayConnected = false;
+  const slot = renderSlot(app.settingsSections.find(section => section.id === 'more')!, {}, { rpc: {
+    browserCookieStatus: () => ({ paired: true, relayConnected, lastSyncAt: null, cookies: 0, skippedPartitioned: 0, localImported: null }),
+  } });
+  try {
+    expect(await slot.findByRole('status')).toHaveProperty('textContent', 'Regular profile: paired, but relay offline.');
+    expect(slot.getByRole('button', { name: 'Replace regular profile' })).toBeTruthy();
+    expect(slot.getByText(/Agent and sandbox profiles do not pair here/)).toBeTruthy();
+    relayConnected = true;
+    await slot.behavior.emitRealtime('browser-cookies', null);
+    await waitFor(() => expect(slot.getByRole('status').textContent).toBe('Regular profile: connected.'));
+  } finally { slot.lifecycle.unmount(); }
+});
+
 it('places controls in Preferences and locks fast options until a key is configured', async () => {
   const slot = renderSlot(app.settingsSections.find(section => section.id === 'preferences')!, {}, { rpc: { browserPreferences: () => initial } });
   try {

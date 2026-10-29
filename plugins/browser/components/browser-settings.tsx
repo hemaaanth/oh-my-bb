@@ -98,7 +98,7 @@ export function BrowserMoreSettings() {
       <div className="mt-3 space-y-3 border-t border-border pt-3 text-sm text-muted-foreground">
         <p>Use <code>bb-browser</code> from a BB thread. Each thread owns its tabs. Isolated sessions also keep separate logins.</p>
         <p>To pair a regular profile, open Browser connection and download the extension. Extract it, then use Extensions → Developer mode → Load unpacked in Brave or Chrome. Enter the BB address and pairing code in the extension’s options. Do not replace an existing paired extension without approval.</p>
-        <p>Paired profiles share their logins. Cookie export is a separate extension opt-in. Disconnecting stops future updates; existing sessions keep received logins.</p>
+        <p>Only pair the regular profile. Its relay shares that profile’s live login state. For new isolated sessions, enable cookie export in the regular profile’s extension and Share personal logins in Preferences. Agent profiles do not pair; their later login changes stay private. Disconnecting stops future seeds but does not sign out existing sessions.</p>
         <p>Enable Sandboxes under Oh My BB for managed provisioning and private desktop handoff. Home routing and login sharing stay separate opt-ins under Preferences.</p>
         <p>For fast tasks, configure the endpoint and model under Preferences and the key in Configuration. Each task also needs <code>--allow-model</code> to send page content.</p>
       </div>

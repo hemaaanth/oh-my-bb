@@ -10,7 +10,7 @@ export function registerRelay(bb: BbPluginApi, cookies: BrowserCookieConnection,
   let identity: { installation: string; run: string } | null = null;
   let pairedToken = "";
   const pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
-  const fail = () => { socket = null; identity = null; for (const job of pending.values()) { clearTimeout(job.timer); job.reject(new Error("Browser relay disconnected; inspect before retrying a mutation")); } pending.clear(); };
+  const fail = () => { socket = null; identity = null; cookies.setRelayToken(null); for (const job of pending.values()) { clearTimeout(job.timer); job.reject(new Error("Browser relay disconnected; inspect before retrying a mutation")); } pending.clear(); };
   bb.onDispose(() => { socket?.close(); fail(); });
   bb.http.experimental_websocket("/relay", context => {
     let authenticated = false;
@@ -25,7 +25,7 @@ export function registerRelay(bb: BbPluginApi, cookies: BrowserCookieConnection,
           if (!authenticated) {
             if (context.headers.get("origin") !== await browserExtensionOrigin() || !await cookies.authorized(String(message.token ?? ""))) throw new Error("Pairing required");
             if (!/^[a-zA-Z0-9_-]{8,128}$/.test(message.installation) || !/^[a-zA-Z0-9_-]{8,128}$/.test(message.run) || message.protocol !== 1) throw new Error("Update BB Browser extension");
-            socket?.close(1000, "Connection replaced"); fail(); socket = s; pairedToken = message.token; identity = { installation: message.installation, run: message.run }; authenticated = true; clearTimeout(timer); return;
+            socket?.close(1000, "Connection replaced"); fail(); socket = s; pairedToken = message.token; identity = { installation: message.installation, run: message.run }; cookies.setRelayToken(pairedToken); authenticated = true; clearTimeout(timer); return;
           }
           if (socket !== s) throw new Error("Stale browser connection");
           const job = pending.get(message.id);

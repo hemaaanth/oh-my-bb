@@ -6,12 +6,24 @@ import { BrowserCookieConnection } from "../src/browser-cookie-connection.js";
 import { browserExtensionOrigin } from "../src/browser-extension-download.js";
 import { browserSettingDescriptors } from "../src/config.js";
 const dispose:Array<()=>Promise<void>>=[];afterEach(async()=>{for(const fn of dispose.splice(0))await fn();});
-async function setup(){const fake=createFakePluginHost({pluginId:'browser',sdk:{threads:{get:async()=>null as never}}});dispose.push(()=>fake.harness.lifecycle.dispose());const settings=fake.bb.settings.define(browserSettingDescriptors);const cookies=new BrowserCookieConnection(fake.bb,'/nonexistent/fixture');const token='t'.repeat(43);await fake.bb.storage.kv.set('browser-cookie-connection',{tokenHash:createHash('sha256').update(token).digest('hex'),lastSyncAt:null,cookies:0,skippedPartitioned:0,localImported:null});registerRelay(fake.bb,cookies,()=>settings.get());const origin=await browserExtensionOrigin();const open=()=>fake.harness.behavior.experimental_openWebSocket('/relay',{headers:{origin}});const command=(argv:string[],threadId='thr_a')=>fake.harness.behavior.runCli([Buffer.from(JSON.stringify({argv})).toString('base64url')],{threadId});return {...fake,token,open,command};
+async function setup(){const fake=createFakePluginHost({pluginId:'browser',sdk:{threads:{get:async()=>null as never}}});dispose.push(()=>fake.harness.lifecycle.dispose());const settings=fake.bb.settings.define(browserSettingDescriptors);const cookies=new BrowserCookieConnection(fake.bb,'/nonexistent/fixture');const token='t'.repeat(43);await fake.bb.storage.kv.set('browser-cookie-connection',{tokenHash:createHash('sha256').update(token).digest('hex'),lastSyncAt:null,cookies:0,skippedPartitioned:0,localImported:null});registerRelay(fake.bb,cookies,()=>settings.get());const origin=await browserExtensionOrigin();const open=()=>fake.harness.behavior.experimental_openWebSocket('/relay',{headers:{origin}});const command=(argv:string[],threadId='thr_a')=>fake.harness.behavior.runCli([Buffer.from(JSON.stringify({argv})).toString('base64url')],{threadId});return {...fake,cookies,token,open,command};
 }
 it('rejects unauthenticated extension messages and revoked pairing',async()=>{
  const {open,token,command,bb}=await setup();const bad=await open();await bad.receive(JSON.stringify({token:'wrong',protocol:1,installation:'installation-fixture',run:'run-fixture'}));expect(bad.closeCalls).toEqual([{code:1008,reason:"Invalid or unauthorized relay"}]);
  const socket=await open();await socket.receive(JSON.stringify({token,protocol:1,installation:'installation-fixture',run:'run-fixture'}));
  await bb.storage.kv.delete('browser-cookie-connection');expect((await command(['observe'])).stderr).toContain('revoked');expect(socket.sent).toEqual([]);
+});
+it('reports a paired relay as online only while its authorized socket is open', async () => {
+ const {open,token,cookies,bb}=await setup();
+ expect(await cookies.status()).toMatchObject({paired:true,relayConnected:false});
+ const socket=await open();await socket.receive(JSON.stringify({token,protocol:1,installation:'installation-fixture',run:'run-fixture'}));
+ expect((await cookies.status()).relayConnected).toBe(true);
+ await socket.close();
+ expect(await cookies.status()).toMatchObject({paired:true,relayConnected:false});
+ const reconnected=await open();await reconnected.receive(JSON.stringify({token,protocol:1,installation:'installation-fixture',run:'run-fixture-2'}));
+ expect((await cookies.status()).relayConnected).toBe(true);
+ await bb.storage.kv.delete('browser-cookie-connection');
+ expect(await cookies.status()).toMatchObject({paired:false,relayConnected:false});
 });
 it('pins browser-run identity and sends only the requesting thread context',async()=>{
  const {open,token,command,bb}=await setup();const socket=await open();await socket.receive(JSON.stringify({token,protocol:1,installation:'installation-fixture',run:'run-fixture'}));
@@ -27,7 +39,7 @@ it('pins browser-run identity and sends only the requesting thread context',asyn
 it('validates and forwards network generations without needing a paired browser', async () => {
  const fake=createFakePluginHost({pluginId:'browser'});dispose.push(()=>fake.harness.lifecycle.dispose());
  const calls:unknown[][]=[];
- registerRelay(fake.bb,{} as BrowserCookieConnection,async()=>({}) as never,async(...args)=>{calls.push(args);return null;});
+ registerRelay(fake.bb,new BrowserCookieConnection(fake.bb,'/nonexistent/fixture'),async()=>({}) as never,async(...args)=>{calls.push(args);return null;});
  const command=(argv:string[])=>fake.harness.behavior.runCli([Buffer.from(JSON.stringify({argv})).toString('base64url')],{threadId:'thr_fixture'});
  const generation='a'.repeat(32);
  expect((await command(['network','ensure',generation])).exitCode).toBe(0);

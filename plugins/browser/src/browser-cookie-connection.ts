@@ -11,10 +11,10 @@ const MAX_BYTES = 5 * 1024 * 1024;
 const CONNECTION = "browser-cookie-connection";
 const PENDING = "browser-cookie-pairing";
 export const browserCookieStatusSchema = z.object({
-  paired: z.boolean(), lastSyncAt: z.number().nullable(), cookies: z.number(),
+  paired: z.boolean(), relayConnected: z.boolean(), lastSyncAt: z.number().nullable(), cookies: z.number(),
   skippedPartitioned: z.number(), localImported: z.boolean().nullable(),
 });
-const recordSchema = browserCookieStatusSchema.omit({ paired: true }).extend({ tokenHash: z.string() });
+const recordSchema = browserCookieStatusSchema.omit({ paired: true, relayConnected: true }).extend({ tokenHash: z.string() });
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const matches = (value: string, expected: string) => timingSafeEqual(Buffer.from(hash(value), "hex"), Buffer.from(expected, "hex"));
 
@@ -27,6 +27,12 @@ export const browserCookieRpcContract = defineRpcContract({
 export class BrowserCookieConnection {
   readonly stateFile: string;
   private pending: Promise<unknown> = Promise.resolve();
+  private relayToken: string | null = null;
+  setRelayToken(token: string | null) {
+    if (this.relayToken === token) return;
+    this.relayToken = token;
+    this.bb.realtime.publish("browser-cookies", {});
+  }
   constructor(private bb: BbPluginApi, private directory: string) {
     this.stateFile = join(directory, "state.json");
   }
@@ -62,7 +68,7 @@ export class BrowserCookieConnection {
   }
   async status() {
     const record = await this.record();
-    return { paired: record !== null, lastSyncAt: record?.lastSyncAt ?? null, cookies: record?.cookies ?? 0,
+    return { paired: record !== null, relayConnected: record !== null && this.relayToken !== null && matches(this.relayToken, record.tokenHash), lastSyncAt: record?.lastSyncAt ?? null, cookies: record?.cookies ?? 0,
       skippedPartitioned: record?.skippedPartitioned ?? 0, localImported: record?.localImported ?? null };
   }
   async settings<T extends TrustedBrowserSettings>(settings: T): Promise<T> {
