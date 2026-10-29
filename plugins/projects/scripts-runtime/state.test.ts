@@ -92,6 +92,18 @@ describe("workspace manifest precedence", () => {
     expect((await f.inspect()).manifestFile).toBe("bb.json");
   });
 
+  it("accepts repository setup status without changing script discovery", async () => {
+    const manifest = {
+      repositorySetup: { configuredAt: "2026-10-28", verified: true, verifiedAt: "2026-10-29" },
+      scripts: { check: { command: "npm test" } },
+    };
+    expect(parseWorkspaceManifest(JSON.stringify(manifest), "bb.json").repositorySetup).toEqual(manifest.repositorySetup);
+    const f = await workspace({ "bb.json": JSON.stringify(manifest) });
+    expect((await f.inspect()).actions.map((action) => action.id)).toEqual(["script:check"]);
+    expect(() => parseWorkspaceManifest(JSON.stringify({ repositorySetup: { verified: true } }), "bb.json"))
+      .toThrow(/verified repository setup requires verifiedAt/);
+  });
+
   it("keeps native hooks ahead of JSON fallbacks and never reruns them on thread.active", async () => {
     const f = await workspace({
       "bb.json": JSON.stringify({ worktree: { setup: ["printf first", "printf second"], teardown: "printf fallback" } }),

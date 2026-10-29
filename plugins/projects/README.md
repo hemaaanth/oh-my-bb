@@ -92,6 +92,24 @@ The package is MIT-licensed under [LICENSE](./LICENSE). [THIRD_PARTY.md](./THIRD
 
 Isolated SDK fixtures and browser component harnesses prove local handlers, state transitions and UI behavior. They do not certify provider lifecycle, paid model behavior, real secret access, native host overlay arbitration or live plugin activation. Those require separate owner-controlled acceptance.
 
+## Repository setup status
+
+A tracked `bb.json` may contain this optional, human-updated record:
+
+```json
+{
+  "repositorySetup": {
+    "configuredAt": "2026-10-27",
+    "verified": true,
+    "verifiedAt": "2026-10-28"
+  }
+}
+```
+
+Use ISO calendar dates (`YYYY-MM-DD`). `configuredAt` is the last date an agent changed the repository's setup instructions or configuration. `verified` is true only after the agent has run the relevant checks successfully, and `verifiedAt` records that check date. Set `verified` false after a setup change that has not yet been checked; `verifiedAt` may retain the last successful verification date. A true value requires `verifiedAt`.
+
+This is repository history, not a machine or worktree health claim. `.bb-env-setup.sh` never updates it when a worktree is created. It stores no secrets and does not replace the setup checks themselves.
+
 ## Application environments
 
 Projects now owns the former Credentials implementation. Open **Settings → Projects → Projects**, then edit a project and select **Environment**. Each project has its own environment configuration. Existing shared configurations are retained with an explicit shared-edit warning.

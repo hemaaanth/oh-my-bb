@@ -40,8 +40,16 @@ const paseoManifestSchema = z
   })
   .passthrough();
 const portSchema = z.number().int().min(1).max(65_535);
+const repositorySetupSchema = z.object({
+  configuredAt: z.iso.date().optional(),
+  verified: z.boolean().optional(),
+  verifiedAt: z.iso.date().optional(),
+}).refine((status) => status.verified !== true || status.verifiedAt !== undefined, {
+  message: "verified repository setup requires verifiedAt",
+});
 const bbManifestSchema = paseoManifestSchema.extend({
   agentSetup: agentSetupConfigSchema.optional(),
+  repositorySetup: repositorySetupSchema.optional(),
   scripts: z.record(z.string().trim().min(1).max(100), paseoScriptSchema.extend({
     port: portSchema.optional(),
   }).refine((script) => script.port === undefined || script.type === "service", {
