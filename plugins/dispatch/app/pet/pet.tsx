@@ -321,16 +321,16 @@ export function FooterControls({ dismiss }: ExperimentalSidebarFooterDisclosureP
   const waiting = call.phase === "dialing" || call.phase === "ringing";
   const phoneBlocked = setup !== null && !setup.phone.ready;
   return (
-    <div role="group" aria-label="Dispatch call controls" className="grid grid-cols-2 gap-1 p-1">
-      <Button variant="ghost" className="h-8 min-w-0 gap-1.5 px-2 text-xs" onClick={() => { dismiss(); void toggleCall(); }}>
+    <div role="group" aria-label="Dispatch call controls" className="dispatch-footer-controls grid gap-0.5 p-1">
+      <Button variant="ghost" className="h-9 w-full justify-start gap-2 px-2.5 text-xs" onClick={() => { dismiss(); void toggleCall(); }}>
         <Icon name={state === "idle" ? "Mic" : "Square"} className="size-4 text-muted-foreground" aria-hidden="true" />
         {state === "idle" ? "Talk in app" : "End call"}
       </Button>
-      <Button variant="ghost" className="h-8 min-w-0 gap-1.5 px-2 text-xs" disabled={phoneBlocked || waiting} onClick={() => { dismiss(); void callMyPhone(); }}>
+      <Button variant="ghost" className="h-9 w-full justify-start gap-2 px-2.5 text-xs" disabled={phoneBlocked || waiting} onClick={() => { dismiss(); void callMyPhone(); }}>
         <Icon name="Smartphone" className="size-4 text-muted-foreground" aria-hidden="true" />
         {waiting ? "Calling…" : "Call my phone"}
       </Button>
-      {phoneBlocked ? <p className="col-span-2 px-2 pb-1 text-xs text-muted-foreground">Needs: {setup.phone.missing.join(", ") || "phone setup"}</p> : null}
+      {phoneBlocked ? <p className="px-2.5 pb-1 text-xs text-muted-foreground">Phone calling needs setup.</p> : null}
     </div>
   );
 }

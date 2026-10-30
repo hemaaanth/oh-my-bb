@@ -102,6 +102,25 @@ describe("footer pet", () => {
     }
   });
 
+  it("opens quietly and dismisses before either call action", () => {
+    setupStore.set(setup(true));
+    const dismiss = vi.fn();
+    const controls = renderSlot({ component: FooterControls }, { dismiss });
+    try {
+      expect(engine.toggleCall).not.toHaveBeenCalled();
+      expect(engine.callMyPhone).not.toHaveBeenCalled();
+      const buttons = controls.container.querySelectorAll("button");
+      fireEvent.click(buttons[0]!);
+      expect(engine.toggleCall).toHaveBeenCalledTimes(1);
+      expect(dismiss.mock.invocationCallOrder[0]).toBeLessThan(engine.toggleCall.mock.invocationCallOrder[0]!);
+      fireEvent.click(buttons[1]!);
+      expect(engine.callMyPhone).toHaveBeenCalledTimes(1);
+      expect(dismiss.mock.invocationCallOrder[1]).toBeLessThan(engine.callMyPhone.mock.invocationCallOrder[0]!);
+    } finally {
+      controls.unmount();
+    }
+  });
+
   it("keeps phone calls disabled until setup is ready, and while dialing", async () => {
     setupStore.set(setup(false));
     const dismiss = vi.fn();

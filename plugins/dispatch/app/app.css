@@ -85,3 +85,11 @@
     animation-duration: 0.01s;
   }
 }
+
+/* BB reuses the last footer panel height. This compact menu sizes to its rows. */
+section[data-testid="plugin-sidebar-footer-disclosure-dispatch-pet"]:has(.dispatch-footer-controls) {
+  width: 14rem;
+  max-width: 100%;
+  height: auto !important;
+  transition: none !important;
+}
