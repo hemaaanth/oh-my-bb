@@ -106,7 +106,7 @@ function GroupRows({ group, showThreads, dayStarts, threads, threadColor, ongoin
 }) {
   return <>
     <tr className="border-b border-border bg-muted/40 font-medium">
-      <td className="px-3 py-1.5"><span className="flex items-center gap-2"><Swatch color={group.project?.color ?? OTHER_COLOR} />{group.project?.name ?? "Unknown project"}</span></td>
+      <td data-bb-demo-sensitive className="px-3 py-1.5"><span className="flex items-center gap-2"><Swatch color={group.project?.color ?? OTHER_COLOR} />{group.project?.name ?? "Unknown project"}</span></td>
       {group.dayMs.map((ms, day) => dayCell(ms, dayStarts[day]!))}
       <td className="px-3 py-1.5 text-right tabular-nums">{formatHours(group.totalMs)}</td>
     </tr>
@@ -114,7 +114,7 @@ function GroupRows({ group, showThreads, dayStarts, threads, threadColor, ongoin
       const thread = threads.get(row.threadId); const color = threadColor.get(row.threadId);
       return <tr key={row.threadId} className="border-b border-border/60 hover:bg-muted/30">
         <td className="max-w-0 py-1.5 pl-7 pr-3">
-          <button type="button" onClick={() => onOpen(row.threadId)} title={`${thread?.title ?? row.threadId} · ${formatDuration(row.activeMs) || "<1m"} of agent turns`}
+          <button data-bb-demo-sensitive type="button" onClick={() => onOpen(row.threadId)} title={`${thread?.title ?? row.threadId} · ${formatDuration(row.activeMs) || "<1m"} of agent turns`}
             className="flex w-full min-w-0 items-center gap-1.5 text-left hover:underline">
             {color ? <Swatch color={color} /> : null}{ongoing.has(row.threadId) ? <RunningDot /> : null}
             <span className="truncate">{thread?.title ?? row.threadId}</span>

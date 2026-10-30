@@ -183,7 +183,7 @@ export function CalendarLegend({ activity, colorMode, colors }: { activity: Acti
   const shown = items.filter((item) => present.has(item.key));
   if (activity.calls?.length) shown.push({ key: "dispatch-calls", label: "Dispatch calls", color: colors.call });
   return <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted-foreground" aria-label={colorMode === "project" ? "Projects" : "Work types"}>{shown.map((item) => <li key={item.key} className="flex items-center gap-1.5">
-    <Swatch color={item.color} />{item.label}
+    <Swatch color={item.color} /><span data-bb-demo-sensitive={colorMode === "project" && item.key !== "dispatch-calls" ? "" : undefined}>{item.label}</span>
   </li>)}</ul>;
 }
 
@@ -251,7 +251,7 @@ type Popover = { left: number; top: number } & ({ entry: Entry; call?: undefined
 function PopoverCard({ popover, label, onHold, onRelease, children }: {
   popover: Popover; label: string; onHold: () => void; onRelease: () => void; children: ReactNode;
 }) {
-  return <div role="dialog" aria-label={label} data-journal-calendar-popover=""
+  return <div data-bb-demo-sensitive role="dialog" aria-label={label} data-journal-calendar-popover=""
     onMouseEnter={onHold} onMouseLeave={onRelease} onFocus={onHold}
     onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onRelease(); }}
     className="absolute z-30 overflow-y-auto rounded-md border border-border bg-popover p-3 text-xs text-popover-foreground shadow-lg"
@@ -438,7 +438,7 @@ export function CalendarView({ activity, grouping, gap, colorMode, colors, range
                   left: `calc(${segment.lane * lane}% + 2px)`, width: `calc(${segment.span * lane}% - 4px)`,
                 };
                 // A thread block opens its thread; a project block has no single thread, so it keeps the card.
-                return <button key={`${entry.key}:${entry.start}`} type="button" style={style} data-journal-calendar-block=""
+                return <button key={`${entry.key}:${entry.start}`} type="button" style={style} data-bb-demo-sensitive data-journal-calendar-block=""
                   onClick={(event) => { const threadId = grouping === "thread" ? entry.blocks[0]?.threadId : undefined; if (threadId) onOpen(threadId); else show(entry, event.currentTarget); }}
                   onMouseEnter={(event) => show(entry, event.currentTarget)} onMouseLeave={release}
                   onFocus={(event) => show(entry, event.currentTarget)} onBlur={release}
@@ -473,7 +473,7 @@ function CallPill({ segment, color, hourPx, offset, active, onShow, onRelease }:
   const { call } = segment;
   const height = Math.max(CALL_RAIL_MIN_PX, ((segment.bottom - segment.top) / 60) * hourPx - 2);
   const label = `Dispatch call${call.remembered && call.title ? `, ${call.title}` : ""}, ${longDayFormat.format(call.start)} ${callSpan(call)}`;
-  return <button type="button" data-journal-calendar-block="" aria-label={label} aria-pressed={active}
+  return <button type="button" data-bb-demo-sensitive data-journal-calendar-block="" aria-label={label} aria-pressed={active}
     onClick={(event) => onShow(event.currentTarget, true)}
     onMouseEnter={(event) => onShow(event.currentTarget, false)} onMouseLeave={onRelease}
     onFocus={(event) => onShow(event.currentTarget, false)} onBlur={onRelease}

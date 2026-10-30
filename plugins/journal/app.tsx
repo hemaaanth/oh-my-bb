@@ -290,7 +290,7 @@ function JournalPanel() {
 
   // Vertical padding sits inside the scroller, so sticky headers stick flush to its top.
   // The calendar and time sheet need a wider canvas for day columns. Text views match Settings.
-  return <div className="journal-panel min-h-0 flex-1 overflow-y-auto"><div className={`mx-auto w-full space-y-4 px-4 py-4 ${view === "calendar" || view === "timesheet" ? "max-w-7xl" : "max-w-[760px]"}`}>
+  return <div data-bb-demo-ready className="journal-panel min-h-0 flex-1 overflow-y-auto"><div className={`mx-auto w-full space-y-4 px-4 py-4 ${view === "calendar" || view === "timesheet" ? "max-w-7xl" : "max-w-[760px]"}`}>
     <section className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <Segmented label="Range" value={rangeKind} onChange={setRange} onHover={(kind) => prefetchView(view, kind, day)}
@@ -306,8 +306,8 @@ function JournalPanel() {
           <Segmented label="Color" title="Color by project or by work type" value={colorMode} onChange={setColorMode} options={[{ value: "project", label: "Project" }, { value: "work", label: "Work type" }]} />
         </div>
       </div>
-      <div className="journal-filters flex flex-wrap gap-2"><div className="relative min-w-0 basis-full flex-1"><Icon name="Search" className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" /><Input aria-label="Search threads and summaries" className="pl-9" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search threads and summaries" /></div>
-        <FilterSelect label="Project" value={projectId} onChange={setProjectId} items={[{ value: "all", label: "All projects" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} />
+      <div className="journal-filters flex flex-wrap gap-2"><div className="relative min-w-0 basis-full flex-1"><Icon name="Search" className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" /><Input data-bb-demo-sensitive aria-label="Search threads and summaries" className="pl-9" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search threads and summaries" /></div>
+        <FilterSelect sensitive label="Project" value={projectId} onChange={setProjectId} items={[{ value: "all", label: "All projects" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} />
         <FilterSelect label="Work type" value={category} onChange={(value) => setCategory(value as JournalCategory | "all")} items={[{ value: "all", label: "All work types" }, ...CATEGORIES.map((value) => ({ value, label: categoryLabels[value] }))]} /></div>
     </section>
     <div className="flex min-h-9 flex-wrap items-center gap-3">
@@ -325,7 +325,7 @@ function JournalPanel() {
     </div>
     {view === "activity" ? <ActivityCard mode={rangeKind === "all" ? "all" : rangeKind === "day" ? "day" : "week"} period={replay.data} stale={replay.isStale} error={replay.error}
       grouping={grouping} colorMode={colorMode} colors={colors} timeZone={timeZone} onOpenThread={openThread} onSetCategory={setWorkCategory} />
-      : (active.error && !active.data) ? <CalendarEmpty>{active.error}</CalendarEmpty>
+      : (active.error && !active.data) ? <CalendarEmpty><span data-bb-demo-sensitive>{active.error}</span></CalendarEmpty>
       : !timeViewReady ? <Skeleton className="h-[32rem] w-full" />
       : <div className={`space-y-3 transition-opacity ${active.isStale ? "opacity-60" : ""}`}>
         {view === "calendar" ? <>
@@ -345,7 +345,7 @@ function JournalPanel() {
         <Dialog.Overlay {...portalScope} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px]" />
         <Dialog.Content {...portalScope} onCloseAutoFocus={(event) => { if (threadOpener.current?.isConnected) { event.preventDefault(); threadOpener.current.focus(); } }} className="journal-dialog fixed left-1/2 top-1/2 z-50 flex h-[min(88dvh,60rem)] w-[min(96vw,39rem)] flex-col overflow-hidden rounded-md border border-border bg-background shadow-2xl">
           <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
-            <Dialog.Title className="min-w-0 flex-1 truncate text-sm font-medium">{openThreadId ? <ThreadTitle threadId={openThreadId} /> : "Chat"}</Dialog.Title>
+            <Dialog.Title data-bb-demo-sensitive className="min-w-0 flex-1 truncate text-sm font-medium">{openThreadId ? <ThreadTitle threadId={openThreadId} /> : "Chat"}</Dialog.Title>
             <Dialog.Description className="sr-only">Chat preview. Close to return to the journal.</Dialog.Description>
             <Button size="icon" variant="ghost" aria-label="Open full thread" onClick={() => { if (openThreadId) { navigate.toThread(openThreadId); setOpenThreadId(null); } }}><Icon name="ArrowRight" className="size-4" /></Button>
             <Dialog.Close asChild><Button size="icon" variant="ghost" aria-label="Close chat"><span aria-hidden="true" className="text-lg">×</span></Button></Dialog.Close>
@@ -365,12 +365,12 @@ function ActivityCard(props: {
   timeZone: string; onOpenThread: (id: string) => void; onSetCategory: (id: string, category: JournalCategory) => void;
 }) {
   const period = props.period;
-  if (props.error && !period) return <CalendarEmpty>{props.error}</CalendarEmpty>;
+  if (props.error && !period) return <CalendarEmpty><span data-bb-demo-sensitive>{props.error}</span></CalendarEmpty>;
   if (period === null) return <section className="rounded-md border border-border bg-surface-recessed/70"><ReplaySkeleton /></section>;
   const colorOf = (entry: ActivityEntry) => props.colorMode === "work" ? props.colors.categoryColor(entry.category) : props.colors.projects.get(entry.projectId)?.color ?? OTHER_COLOR;
   return <section className={`overflow-hidden rounded-md border border-border bg-surface-recessed/70 transition-opacity ${props.stale ? "opacity-60" : ""}`}>
     <div className="space-y-2 border-b border-border p-3">
-      <p className="text-sm leading-6 text-foreground">{period.narrative ?? fallbackNarrative(period)}</p>
+      <p data-bb-demo-sensitive className="text-sm leading-6 text-foreground">{period.narrative ?? fallbackNarrative(period)}</p>
       {period.narrative ? <p className="text-xs text-muted-foreground">{period.activeThreads} active threads · {period.workDays} work entries · {period.messages} messages · {period.started} created · {period.archived} archived</p> : null}
     </div>
     <ActivityList mode={props.mode} grouping={props.grouping} entries={period.entries} total={period.total} timeZone={props.timeZone} colorOf={colorOf}
@@ -397,10 +397,10 @@ function ActivityList({ mode, grouping, entries, total, timeZone, colorOf, proje
   return <div>{days.map((dayGroup) => <div key={dayGroup.dayStart}>
     {mode !== "day" ? <div className="border-b border-border bg-muted/30 px-4 py-2 text-xs font-medium text-muted-foreground">{new Date(dayGroup.dayStart).toLocaleDateString([], { timeZone, weekday: "long", month: "long", day: "numeric", year: mode === "all" ? "numeric" : undefined })}</div> : null}
     {dayGroup.groups.map((group) => <div key={group.projectId}>
-      {grouping === "project" ? <div className="flex items-center gap-2 border-b border-border px-4 py-1.5 text-xs font-medium"><Swatch color={projectColor(group.projectId)} />{group.projectName} · {group.entries.length}</div> : null}
+      {grouping === "project" ? <div data-bb-demo-sensitive className="flex items-center gap-2 border-b border-border px-4 py-1.5 text-xs font-medium"><Swatch color={projectColor(group.projectId)} />{group.projectName} · {group.entries.length}</div> : null}
       <ul>{group.entries.map((entry) => <li key={`${entry.threadId}:${entry.dayStart}`} className="border-b border-border px-4 py-3 last:border-b-0">
         <div className="journal-entry flex items-start gap-3"><span className="mt-1.5"><Swatch color={colorOf(entry)} /></span>
-          <button className="min-w-0 flex-1 text-left" onClick={() => onOpenThread(entry.threadId)}><span className="block text-sm font-medium hover:underline">{entry.summary}</span>{entry.outcome && entry.outcome !== entry.summary ? <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{entry.outcome}</span> : null}<span className="mt-1 block text-xs text-muted-foreground">{grouping === "project" ? "" : `${entry.projectName} · `}{entry.messageCount} messages{entry.activeMs ? ` · ${formatDuration(entry.activeMs) || "<1m"} agent time` : ""}</span></button>
+          <button data-bb-demo-sensitive className="min-w-0 flex-1 text-left" onClick={() => onOpenThread(entry.threadId)}><span className="block text-sm font-medium hover:underline">{entry.summary}</span>{entry.outcome && entry.outcome !== entry.summary ? <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{entry.outcome}</span> : null}<span className="mt-1 block text-xs text-muted-foreground">{grouping === "project" ? "" : `${entry.projectName} · `}{entry.messageCount} messages{entry.activeMs ? ` · ${formatDuration(entry.activeMs) || "<1m"} agent time` : ""}</span></button>
           <Select value={entry.category} onValueChange={(value) => { if (CATEGORIES.includes(value as JournalCategory)) onSetCategory(entry.threadId, value as JournalCategory); }}>
             <SelectTrigger aria-label="Work type" className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>{CATEGORIES.map((value) => <SelectItem key={value} value={value} className="text-xs">{categoryLabels[value]}</SelectItem>)}</SelectContent></Select></div>
@@ -414,14 +414,14 @@ function ChildThreads({ items, onOpenThread }: { items: ActivityEntry["children"
   if (items.length === 0) return null;
   return <div className="mt-2 pl-4"><button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
     <Icon name="ChevronDown" className={`size-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />{items.length} child {items.length === 1 ? "thread" : "threads"}</button>
-    {open ? items.map((child) => <button key={child.threadId} className="mt-1.5 block max-w-full truncate pl-4 text-left text-xs text-muted-foreground hover:underline" onClick={() => onOpenThread(child.threadId)}>
+    {open ? items.map((child) => <button data-bb-demo-sensitive key={child.threadId} className="mt-1.5 block max-w-full truncate pl-4 text-left text-xs text-muted-foreground hover:underline" onClick={() => onOpenThread(child.threadId)}>
       ↳ {child.title}{child.outcome ? ` · ${child.outcome}` : ""}
     </button>) : null}</div>;
 }
 
-function FilterSelect({ label, value, onChange, items }: { label: string; value: string; onChange: (value: string) => void; items: Array<{ value: string; label: string }> }) {
-  return <Select value={value} onValueChange={(next) => { if (items.some((item) => item.value === next)) onChange(next); }}><SelectTrigger aria-label={label} className="min-w-0 flex-1 basis-0"><SelectValue /></SelectTrigger>
-    <SelectContent>{items.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select>;
+function FilterSelect({ label, value, onChange, items, sensitive = false }: { label: string; value: string; onChange: (value: string) => void; sensitive?: boolean; items: Array<{ value: string; label: string }> }) {
+  return <Select value={value} onValueChange={(next) => { if (items.some((item) => item.value === next)) onChange(next); }}><SelectTrigger data-bb-demo-sensitive={sensitive && value !== "all" ? "" : undefined} aria-label={label} className="min-w-0 flex-1 basis-0"><SelectValue /></SelectTrigger>
+    <SelectContent>{items.map((item) => <SelectItem data-bb-demo-sensitive={sensitive && item.value !== "all" ? "" : undefined} key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select>;
 }
 function fallbackNarrative(period: ReplayPeriod) { return period.activeThreads === 0 ? "No work activity was recorded in this period." : `${period.activeThreads} active ${period.activeThreads === 1 ? "thread" : "threads"} across ${period.projects.length} ${period.projects.length === 1 ? "project" : "projects"}. ${period.started} started and ${period.archived} archived.`; }
 function EmptyState({ message }: { message: string }) { return <div className="flex items-center justify-center px-6 py-12 text-center"><p className="max-w-md text-sm text-muted-foreground">{message}</p></div>; }

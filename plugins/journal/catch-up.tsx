@@ -64,11 +64,11 @@ export function CatchUpOverlay() {
         </div>
       </header>
       <div className="min-h-0 overflow-y-auto px-5 py-4 sm:px-6">
-        {error ? <div className="text-sm text-destructive">{error} <Button size="sm" variant="outline" onClick={refresh}>Retry</Button></div>
+        {error ? <div data-bb-demo-sensitive className="text-sm text-destructive">{error} <Button size="sm" variant="outline" onClick={refresh}>Retry</Button></div>
           : loading ? <div className="space-y-4"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div>
           : !items.length ? <p className="text-sm text-muted-foreground">No open work across your projects.</p>
           : <>
-            <section aria-label="Summary" className="space-y-4">
+            <section data-bb-demo-sensitive aria-label="Summary" className="space-y-4">
               {narrativeError && <p role="alert" className="text-sm text-destructive">Catch-up failed: {narrativeError}</p>}
               {narrativeNotice && <p role="status" className="text-sm text-muted-foreground">{narrativeNotice}</p>}
               {!paragraphs?.length && !narrativeError && !narrativeNotice && <p className="text-sm text-muted-foreground">Preparing your catch-up in the background…</p>}
@@ -88,7 +88,7 @@ export function CatchUpOverlay() {
 }
 
 function DetailSection({ title, items, onOpen }: { title: string; items: CatchUpItem[]; onOpen: (id: string) => void }) {
-  return <div><h4 className="mb-2 text-xs font-semibold text-muted-foreground">{title}</h4><ul className="space-y-2">{items.map(({ work, reason }) => <li key={work.thread.id} className="text-xs"><button type="button" className="text-left text-foreground hover:underline" onClick={() => onOpen(work.thread.id)}>{work.thread.displayTitle || work.entry?.summary || "Untitled thread"}</button><span className="text-muted-foreground"> · {work.project} · {reason}{work.entry?.worked ? ` · ${work.entry.worked}` : ""}</span></li>)}</ul></div>;
+  return <div><h4 className="mb-2 text-xs font-semibold text-muted-foreground">{title}</h4><ul className="space-y-2">{items.map(({ work, reason }) => <li data-bb-demo-sensitive key={work.thread.id} className="text-xs"><button type="button" className="text-left text-foreground hover:underline" onClick={() => onOpen(work.thread.id)}>{work.thread.displayTitle || work.entry?.summary || "Untitled thread"}</button><span className="text-muted-foreground"> · {work.project} · {reason}{work.entry?.worked ? ` · ${work.entry.worked}` : ""}</span></li>)}</ul></div>;
 }
 
 function linkedText(paragraph: Paragraph, openThread: (id: string) => void): ReactNode[] {

@@ -82,7 +82,7 @@ export function ThreadBriefOverlay() {
   return <Dialog.Root open={open} onOpenChange={setOpen}>
     <Dialog.Portal>
       <Dialog.Overlay {...portalScope} className="fixed inset-0 z-50 bg-black/60" />
-      <Dialog.Content {...portalScope} onCloseAutoFocus={(event) => { if (opener.current?.isConnected) { event.preventDefault(); opener.current.focus(); } }} className="journal-dialog fixed left-1/2 top-1/2 z-50 flex max-h-[min(85dvh,760px)] w-[calc(100vw-1.5rem)] max-w-lg flex-col overflow-hidden rounded-md border border-border bg-background shadow-2xl">
+      <Dialog.Content data-bb-demo-sensitive {...portalScope} onCloseAutoFocus={(event) => { if (opener.current?.isConnected) { event.preventDefault(); opener.current.focus(); } }} className="journal-dialog fixed left-1/2 top-1/2 z-50 flex max-h-[min(85dvh,760px)] w-[calc(100vw-1.5rem)] max-w-lg flex-col overflow-hidden rounded-md border border-border bg-background shadow-2xl">
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-3">
           <div className="min-w-0">
             <Dialog.Title className="text-base font-semibold">Catch up on this thread</Dialog.Title>

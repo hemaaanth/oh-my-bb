@@ -15,3 +15,7 @@
 - Add a dedicated setup guide under More. Text views and setup use the Settings content width. Calendar and time sheet retain an explicit wider-canvas exception for their day columns.
 - Scope catch-up dialog portals, restore focus to the opener, and use a bottom drawer only at narrow viewport widths. Keep desktop dialogs centered. Size filters by their container, constrain long-label select popups, and ignore invalid select emissions.
 - Replace project-specific examples with harmless fixtures and include package licensing and third-party notices. No runtime data is included.
+
+## Demo Mode compatibility
+
+- Keep Journal's calendar, time sheet, and activity visible in Demo Mode, with private text and search values masked. Cover popovers, project menus, catch-up, and the sidebar Summary without requiring Demo Mode to be installed.

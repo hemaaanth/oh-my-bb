@@ -45,3 +45,10 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/* Demo Mode's text highlights do not cover native input values. */
+body[data-bb-demo-mode] .journal-panel input[data-bb-demo-sensitive] {
+  color: transparent !important;
+  caret-color: transparent !important;
+  text-shadow: none !important;
+}

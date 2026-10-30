@@ -139,3 +139,7 @@ The configurable `America/New_York` work-day default is retained deliberately fo
 ## Credits
 
 The turn index, block merging, time sheet, and calendar layout are ported from [Agent Calendar](https://github.com/charpeni/bb-plugins/tree/main/plugins/agent-calendar) by charpeni, MIT License. Ported files keep the attribution in their headers.
+
+### Demo Mode
+
+Journal supports Demo Mode through optional `data-bb-demo-ready` and `data-bb-demo-sensitive` markers. Calendar, time sheet, and activity stay visible; project and thread names, work summaries, call details, chat titles, catch-up text, and sidebar Summary content are masked. Typed searches are hidden while Demo Mode is on. No integration setup or dependency is required. This is presentation masking; stored data and CSV exports retain their original values.

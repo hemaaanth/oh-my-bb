@@ -31,3 +31,7 @@ Existing non-secret settings import without resetting saved values. One finishin
 Use `bb journal list` for paginated work days, `bb journal list --lifecycle` for events, and `bb journal summary` for dated highlights. `bb journal brief <id>` reads a saved briefing; `--refresh` explicitly requests a model pass. `bb journal ai-status` reads backend readiness without a model request. `bb journal backfill --dry-run` estimates all-time coverage and cost before any AI calls. `bb journal backfill --limit 5` saves a cursor and resumes in bounded batches, with at most 100 daily AI attempts per invocation. `bb journal backfill --status` shows failed days, provider blocks, and today's automatic budget without sending work to a provider. `bb journal cost` reports token and spend totals. JSON output is available.
 
 All data stays in the plugin's BB-managed SQLite database. API keys remain host-local; transcripts go to the configured AI backend (OpenRouter, or ChatGPT subscription through Model Gateway) only when intelligence is enabled.
+
+### Demo Mode
+
+Journal supports Demo Mode through optional `data-bb-demo-ready` and `data-bb-demo-sensitive` markers. Calendar, time sheet, and activity stay visible; project and thread names, work summaries, call details, chat titles, catch-up text, and sidebar Summary content are masked. Typed searches are hidden while Demo Mode is on. No integration setup or dependency is required. This is presentation masking; stored data and CSV exports retain their original values.
