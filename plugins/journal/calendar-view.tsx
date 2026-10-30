@@ -251,7 +251,7 @@ type Popover = { left: number; top: number } & ({ entry: Entry; call?: undefined
 function PopoverCard({ popover, label, onHold, onRelease, children }: {
   popover: Popover; label: string; onHold: () => void; onRelease: () => void; children: ReactNode;
 }) {
-  return <div data-bb-demo-sensitive role="dialog" aria-label={label} data-journal-calendar-popover=""
+  return <div role="dialog" aria-label={label} data-journal-calendar-popover=""
     onMouseEnter={onHold} onMouseLeave={onRelease} onFocus={onHold}
     onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onRelease(); }}
     className="absolute z-30 overflow-y-auto rounded-md border border-border bg-popover p-3 text-xs text-popover-foreground shadow-lg"
@@ -270,12 +270,12 @@ function EntryPopover({ popover, entry, grouping, color, threads, onOpen, onSetC
   const childOutcome = new Map(work?.children.map((child) => [child.threadId, child]) ?? []);
   const childIds = block ? [...new Set([...block.childThreadIds, ...childOutcome.keys()])] : [];
   const status = [thread?.archived ? "archived" : thread?.status, work?.workStatus && work.workStatus !== "unknown" ? work.workStatus : null].filter(Boolean).join(" · ");
-  return <PopoverCard popover={popover} label={entry.title} onHold={onHold} onRelease={onRelease}>
-    <p className="text-sm font-medium leading-snug">{entry.title}</p>
-    <p className="mt-1 flex items-center gap-1.5 text-muted-foreground"><Swatch color={color} /><span className="truncate">{entry.detail}</span>
+  return <PopoverCard popover={popover} label="Session details" onHold={onHold} onRelease={onRelease}>
+    <p data-bb-demo-sensitive className="text-sm font-medium leading-snug">{entry.title}</p>
+    <p className="mt-1 flex items-center gap-1.5 text-muted-foreground"><Swatch color={color} /><span data-bb-demo-sensitive={grouping === "thread" ? "" : undefined} className="truncate">{entry.detail}</span>
       {status ? <span className="shrink-0">· {status}</span> : null}{work?.provisional ? <span className="shrink-0 italic">· provisional</span> : null}</p>
-    {showSummary ? <p className="mt-2 leading-5">{work.summary}</p> : null}
-    {work?.outcome && work.outcome !== work.summary ? <p className="mt-1 leading-5 text-muted-foreground">{work.outcome}</p> : null}
+    {showSummary ? <p data-bb-demo-sensitive className="mt-2 leading-5">{work.summary}</p> : null}
+    {work?.outcome && work.outcome !== work.summary ? <p data-bb-demo-sensitive className="mt-1 leading-5 text-muted-foreground">{work.outcome}</p> : null}
     <p className="mt-2 tabular-nums">{longDayFormat.format(entry.start)} · {formatSpan(entry.start, entry.end)}</p>
     <p className="mt-0.5 tabular-nums text-muted-foreground">{formatDuration(entry.end - entry.start)} on the calendar · {formatDuration(entry.activeMs) || "<1m"} of agent turns</p>
     {entry.ongoing ? <p className="mt-2 flex items-center gap-1.5 font-medium"><RunningDot /> Running now</p> : null}
@@ -286,11 +286,11 @@ function EntryPopover({ popover, entry, grouping, color, threads, onOpen, onSetC
         <SelectContent data-journal-calendar-popover="">{CATEGORIES.map((value) => <SelectItem key={value} value={value} className="text-xs">{categoryLabels[value]}</SelectItem>)}</SelectContent>
       </Select></div> : null}
     {childIds.length > 0 ? <ul className="mt-2 space-y-px border-t border-border pt-2">{childIds.map((id) => {
-      const child = childOutcome.get(id); const text = `↳ ${threads.get(id)?.title ?? child?.title ?? id}${child?.outcome ? ` · ${child.outcome}` : ""}`;
-      return <li key={id}><button type="button" onClick={() => onOpen(id)} className="block w-full truncate rounded px-1 py-0.5 text-left text-muted-foreground hover:bg-muted hover:text-foreground">{text}</button></li>;
+      const child = childOutcome.get(id); const text = `${threads.get(id)?.title ?? child?.title ?? id}${child?.outcome ? ` · ${child.outcome}` : ""}`;
+      return <li key={id}><button type="button" onClick={() => onOpen(id)} className="block w-full truncate rounded px-1 py-0.5 text-left text-muted-foreground hover:bg-muted hover:text-foreground">↳ <span data-bb-demo-sensitive>{text}</span></button></li>;
     })}</ul> : null}
     {grouping === "project" ? <ul className="mt-2 max-h-64 space-y-px overflow-y-auto border-t border-border pt-2">{entry.threads.map((item) => {
-      const content = <><span className="min-w-0 flex-1 truncate">{threads.get(item.threadId)?.title ?? item.threadId}</span><span className="shrink-0 tabular-nums text-muted-foreground">{formatDuration(item.ms)}</span></>;
+      const content = <><span data-bb-demo-sensitive className="min-w-0 flex-1 truncate">{threads.get(item.threadId)?.title ?? item.threadId}</span><span className="shrink-0 tabular-nums text-muted-foreground">{formatDuration(item.ms)}</span></>;
       return <li key={item.threadId}><button type="button" onClick={() => onOpen(item.threadId)} className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left transition-colors hover:bg-muted">{content}</button></li>;
     })}</ul> : null}
     {block ? <Button size="sm" variant="outline" className="mt-3 h-7 w-full text-xs" onClick={() => onOpen(block.threadId)}>Open thread<Icon name="ArrowRight" className="size-3.5" /></Button> : null}
@@ -306,15 +306,15 @@ function CallPopover({ popover, call, color, threads, now, onOpen, onHold, onRel
   onOpen: (threadId: string) => void; onHold: () => void; onRelease: () => void;
 }) {
   const title = (call.remembered && call.title) || "Dispatch call";
-  return <PopoverCard popover={popover} label={title} onHold={onHold} onRelease={onRelease}>
-    <p className="text-sm font-medium leading-snug">{title}</p>
-    <p className="mt-1 flex items-center gap-1.5 text-muted-foreground"><Swatch color={color} /><span className="truncate">Dispatch · {callDevice(call)}</span></p>
-    {call.remembered && call.summary ? <p className="mt-2 leading-5">{call.summary}</p> : null}
+  return <PopoverCard popover={popover} label="Dispatch call details" onHold={onHold} onRelease={onRelease}>
+    <p data-bb-demo-sensitive={call.remembered && call.title ? "" : undefined} className="text-sm font-medium leading-snug">{title}</p>
+    <p className="mt-1 flex items-center gap-1.5 text-muted-foreground"><Swatch color={color} /><span className="truncate">Dispatch · <span data-bb-demo-sensitive>{callDevice(call)}</span></span></p>
+    {call.remembered && call.summary ? <p data-bb-demo-sensitive className="mt-2 leading-5">{call.summary}</p> : null}
     <p className="mt-2 tabular-nums">{longDayFormat.format(call.start)} · {callSpan(call)}</p>
     <p className="mt-0.5 tabular-nums text-muted-foreground">{formatDuration((call.end ?? now) - call.start) || "<1m"} on the call</p>
     {call.end === null ? <p className="mt-2 flex items-center gap-1.5 font-medium"><RunningDot /> On the call now</p> : null}
     {call.threadIds.length > 0 ? <ul className="mt-2 space-y-px border-t border-border pt-2">{call.threadIds.map((id) => <li key={id}>
-      <button type="button" onClick={() => onOpen(id)} className="block w-full truncate rounded px-1 py-0.5 text-left text-muted-foreground hover:bg-muted hover:text-foreground">↳ {threads.get(id)?.title ?? id}</button>
+      <button type="button" onClick={() => onOpen(id)} className="block w-full truncate rounded px-1 py-0.5 text-left text-muted-foreground hover:bg-muted hover:text-foreground">↳ <span data-bb-demo-sensitive>{threads.get(id)?.title ?? id}</span></button>
     </li>)}</ul> : null}
   </PopoverCard>;
 }
@@ -438,15 +438,15 @@ export function CalendarView({ activity, grouping, gap, colorMode, colors, range
                   left: `calc(${segment.lane * lane}% + 2px)`, width: `calc(${segment.span * lane}% - 4px)`,
                 };
                 // A thread block opens its thread; a project block has no single thread, so it keeps the card.
-                return <button key={`${entry.key}:${entry.start}`} type="button" style={style} data-bb-demo-sensitive data-journal-calendar-block=""
+                return <button key={`${entry.key}:${entry.start}`} type="button" style={style} data-journal-calendar-block=""
                   onClick={(event) => { const threadId = grouping === "thread" ? entry.blocks[0]?.threadId : undefined; if (threadId) onOpen(threadId); else show(entry, event.currentTarget); }}
                   onMouseEnter={(event) => show(entry, event.currentTarget)} onMouseLeave={release}
                   onFocus={(event) => show(entry, event.currentTarget)} onBlur={release}
-                  aria-label={`${entry.title}, ${entry.detail}, ${longDayFormat.format(entry.start)} ${formatSpan(entry.start, entry.end)}`}
+                  aria-label={`Session, ${longDayFormat.format(entry.start)} ${formatSpan(entry.start, entry.end)}`}
                   className={`absolute z-10 flex flex-col justify-start overflow-hidden rounded-[4px] border-l-[3px] px-1.5 text-left text-[11px] leading-[14px] text-foreground transition-[background-color] focus-visible:outline-2 focus-visible:outline-ring ${height < 20 ? "py-0" : "py-0.5"}`}>
-                  <span className="flex items-center gap-1">{entry.ongoing ? <RunningDot /> : null}<span className="truncate font-medium">{entry.title}</span></span>
+                  <span className="flex items-center gap-1">{entry.ongoing ? <RunningDot /> : null}<span data-bb-demo-sensitive className="truncate font-medium">{entry.title}</span></span>
                   {height >= 30 ? <span className="block truncate tabular-nums text-muted-foreground">{formatSpan(entry.start, entry.end)}</span> : null}
-                  {height >= 44 ? <span className="block truncate text-muted-foreground">{entry.detail}</span> : null}
+                  {height >= 44 ? <span data-bb-demo-sensitive={grouping === "thread" ? "" : undefined} className="block truncate text-muted-foreground">{entry.detail}</span> : null}
                 </button>;
               })}
               </div>

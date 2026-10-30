@@ -414,8 +414,8 @@ function ChildThreads({ items, onOpenThread }: { items: ActivityEntry["children"
   if (items.length === 0) return null;
   return <div className="mt-2 pl-4"><button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
     <Icon name="ChevronDown" className={`size-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />{items.length} child {items.length === 1 ? "thread" : "threads"}</button>
-    {open ? items.map((child) => <button data-bb-demo-sensitive key={child.threadId} className="mt-1.5 block max-w-full truncate pl-4 text-left text-xs text-muted-foreground hover:underline" onClick={() => onOpenThread(child.threadId)}>
-      ↳ {child.title}{child.outcome ? ` · ${child.outcome}` : ""}
+    {open ? items.map((child) => <button key={child.threadId} className="mt-1.5 block max-w-full truncate pl-4 text-left text-xs text-muted-foreground hover:underline" onClick={() => onOpenThread(child.threadId)}>
+      ↳ <span data-bb-demo-sensitive>{child.title}{child.outcome ? ` · ${child.outcome}` : ""}</span>
     </button>) : null}</div>;
 }
 

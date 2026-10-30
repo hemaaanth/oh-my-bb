@@ -142,4 +142,4 @@ The turn index, block merging, time sheet, and calendar layout are ported from [
 
 ### Demo Mode
 
-Journal supports Demo Mode through optional `data-bb-demo-ready` and `data-bb-demo-sensitive` markers. Calendar, time sheet, and activity stay visible; project and thread names, work summaries, call details, chat titles, catch-up text, and sidebar Summary content are masked. Typed searches are hidden while Demo Mode is on. No integration setup or dependency is required. This is presentation masking; stored data and CSV exports retain their original values.
+Journal supports Demo Mode through optional `data-bb-demo-ready` and `data-bb-demo-sensitive` markers. Calendar, time sheet, and activity stay visible; project and thread names, work summaries, call details, chat titles, catch-up text, and sidebar Summary content are masked. Typed searches are hidden while Demo Mode is on. No integration setup or dependency is required. Session status, time ranges, agent-turn duration, work types, and child-agent arrows remain readable. This is presentation masking; stored data and CSV exports retain their original values.

@@ -53,7 +53,7 @@ const TEXT = [
   '[data-sidebar="content"] .bb-thread-title',
   '[data-bb-plugin="status-sidebar"] li > div > a + span > span[title]',
   '[data-bb-plugin="status-sidebar"] section[data-reorder-project-id] > div > button > span:nth-child(2)',
-  '[data-bb-plugin="status-sidebar"] [role="tabpanel"] > section > div > button > span:nth-child(2)',
+  '[data-bb-plugin="status-sidebar"] section[data-bb-demo-identifier] > div > button > span:nth-child(2)',
   '[data-sidebar="content"] [data-sidebar-sticky-project-item] [data-sidebar-sticky-tier="label"] > span > span:first-child',
   '[data-sidebar="content"] [data-project-metadata] > span',
   '[data-sidebar="inset"] header .bb-thread-title',
@@ -136,7 +136,7 @@ export function createLabelMask() {
         let attributes = original.get(element);
         if (!attributes) { attributes = new Map(); original.set(element, attributes); }
         attributes.set(name, value);
-        if (element.closest("[data-promptbox-shell]")) element.setAttribute("data-bb-demo-identifier", "");
+        if (element.closest("[data-promptbox-shell]") || element.matches('[data-bb-plugin="status-sidebar"] section')) element.setAttribute("data-bb-demo-identifier", "");
         element.setAttribute(name, "Demo item");
       }
     }

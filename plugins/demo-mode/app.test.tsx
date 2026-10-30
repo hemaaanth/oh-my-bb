@@ -148,3 +148,18 @@ test("toggle still works in the current window when storage is blocked", () => {
   expect(enabled(MODE_KEY)).toBe(true);
   setEnabled(MODE_KEY, false);
 });
+
+test("focus and status headings remain readable while project and workspace names mask", async () => {
+  const heading = (label: string, attrs = "") => `<section aria-label="${label}" ${attrs}><div><button><span>◉</span><span>${label}</span><span>3</span></button></div></section>`;
+  document.body.innerHTML = `<div data-sidebar="content" data-bb-plugin="status-sidebar"><div role="tabpanel">${["Attention", "Current work", "Libraries", "News", "Archived"].map((label) => heading(label)).join("")}${heading("Private project", 'data-reorder-project-id="p"')}${heading("Private workspace section")}</div></div>`;
+  const app = await loadPluginApp(() => import("./app"));
+  const scripts = await mountPluginContentScripts(app, { pluginId: "demo-mode", generation: 1 });
+  setEnabled(MODE_KEY, true);
+  expect(words()).toEqual(["Private", "project", "Private", "workspace", "section"]);
+  expect(document.querySelector('section[aria-label="Attention"]')).not.toBeNull();
+  setEnabled(MODE_KEY, false);
+  expect(document.querySelector('section[aria-label="Private workspace section"]')).not.toBeNull();
+  expect(document.querySelector('[data-bb-demo-identifier]')).toBeNull();
+  await scripts.lifecycle.dispose();
+  document.body.innerHTML = "";
+});
