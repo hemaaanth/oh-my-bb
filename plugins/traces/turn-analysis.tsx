@@ -16,7 +16,7 @@ export function CallGroups({ turn, onOpen }: { turn: TraceSpan; onOpen: (span: T
       {groups.slice(0, visible).map((group) => {
         const runs = runLimits[group.key] ?? 20;
         return <details key={group.key} className="traces-call-group"><summary>
-          <span className="traces-call-name">{group.label}</span>
+          <span className="traces-call-name"><span data-bb-demo-sensitive>{group.label}</span></span>
           <span>{group.count} runs</span><span>{displayMs(group.totalMs)} measured · {group.unknown} unknown{group.failures ? ` · ${group.failures} failed` : ""}</span>
         </summary><div className="traces-call-runs">{group.runs.slice(0, runs).map((span, index) => <button type="button" key={span.id} onClick={() => onOpen(span)}>
           <span>Run {index + 1}{span.children.length ? ` · ${span.children.length} child spans` : ""}</span>

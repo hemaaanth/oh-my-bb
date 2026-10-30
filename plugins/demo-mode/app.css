@@ -23,8 +23,9 @@ body[data-bb-demo-mode] [role="tooltip"] { visibility: hidden !important; }
 /* Images keep their box; the picture moves out of it and a fill shows instead. */
 body[data-bb-demo-mode] :is([data-message-column], [data-timeline-row-id], [data-promptbox], [role="dialog"], [data-bb-demo-sensitive]) img,
 body[data-bb-demo-mode] img[data-bb-demo-sensitive] {
-  object-position: -200vw 0;
-  background: var(--muted);
+  object-position: -200vw 0 !important;
+  color: transparent !important;
+  background: var(--muted) var(--bb-demo-pixel-image, none) center / 100% 100% no-repeat !important;
 }
 
 /* Plugin pages keep their BB frame but replace the page body, unless the page marks its own sensitive parts. */
@@ -41,4 +42,16 @@ body[data-bb-demo-plugin-page] main:not([data-sidebar]):not(:has([data-bb-demo-r
   color: var(--muted-foreground);
   background: repeating-linear-gradient(135deg, var(--background), var(--background) 24px, var(--muted) 24px, var(--muted) 25px);
   font-size: 14px;
+}
+
+/* CSS Highlights do not paint over native field values. Labels remain readable. */
+body[data-bb-demo-mode] :is(input, textarea, select)[data-bb-demo-sensitive] {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  caret-color: transparent !important;
+  text-shadow: none !important;
+}
+body[data-bb-demo-mode] :is(input, textarea)[data-bb-demo-sensitive]::placeholder {
+  -webkit-text-fill-color: var(--muted-foreground);
+  color: var(--muted-foreground);
 }

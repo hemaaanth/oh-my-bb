@@ -17,12 +17,12 @@ function time(value: number | null) { return value === null ? "—" : new Date(v
 function SectionCard({ section, reveal }: { section: PromptSection; reveal: boolean }) {
   return <details className="traces-context-section">
     <summary><span className={`traces-context-dot traces-context-dot-${section.kind}`} aria-hidden="true" />
-      <span className="traces-context-section-name">{section.label}</span>
+      <span data-bb-demo-sensitive={section.kind === "system" ? undefined : ""} className="traces-context-section-name">{section.label}</span>
       <span className="traces-context-estimate">{section.estimatedTokens === null ? "not stored" : `~${short(section.estimatedTokens)} tokens`}</span>
       <span className="traces-context-count">{section.chars === null ? "—" : `${short(section.chars)} chars`}</span>
     </summary>
     <div className="traces-context-section-body">
-      {reveal && section.text !== null ? <pre>{section.text}{section.truncated && "\n… [bounded excerpt]"}</pre> : <p>{section.chars === null ? "Content not stored." : "Content hidden. Use Reveal sensitive data to inspect it."}</p>}
+      {reveal && section.text !== null ? <pre data-bb-demo-sensitive>{section.text}{section.truncated && "\n… [bounded excerpt]"}</pre> : <p>{section.chars === null ? "Content not stored." : "Content hidden. Use Reveal sensitive data to inspect it."}</p>}
     </div>
   </details>;
 }
@@ -30,7 +30,7 @@ function ToolCard({ tool, reveal }: { tool: PromptTool; reveal: boolean }) {
   return <details className="traces-context-tool">
     <summary><span className="traces-context-tool-name">{tool.name}</span><span className="traces-context-estimate">{tool.estimatedTokens === null ? "—" : `~${short(tool.estimatedTokens)} tokens`}</span></summary>
     <div className="traces-context-section-body">
-      {reveal ? <>{tool.description && <pre>{tool.description}</pre>}{tool.schema && <pre>{tool.schema}</pre>}{tool.truncated && <p>Definition cut at the response limit.</p>}</>
+      {reveal ? <>{tool.description && <pre data-bb-demo-sensitive>{tool.description}</pre>}{tool.schema && <pre data-bb-demo-sensitive>{tool.schema}</pre>}{tool.truncated && <p>Definition cut at the response limit.</p>}</>
         : <p>Definition hidden. Use Reveal sensitive data to inspect it.</p>}
     </div>
   </details>;
@@ -55,7 +55,7 @@ function ContextBar({ result }: { result: PromptResult }) {
   return <div className="traces-context-capacity">
     <div className="traces-context-capacity-title"><strong>Context window</strong><span>{used === null ? "usage not stored" : `${short(used)} input tokens`}{window === null ? " · capacity not stored" : ` / ${short(window)} capacity`}</span></div>
     <div className="traces-context-capacity-track" role="img" aria-label="Estimated prompt sections; exact input token usage when stored">
-      {segments.map((part) => part.value > 0 && <span key={part.label} className={`traces-context-capacity-${part.className}`} style={{ width: `${part.value / scale * 100}%` }} title={`${part.label}: ${part.className === "free" || part.className === "other" ? "derived" : "estimated"} ${short(part.value)} tokens`} />)}
+      {segments.map((part) => part.value > 0 && <span data-bb-demo-label key={part.label} className={`traces-context-capacity-${part.className}`} style={{ width: `${part.value / scale * 100}%` }} title={`${part.label}: ${part.className === "free" || part.className === "other" ? "derived" : "estimated"} ${short(part.value)} tokens`} />)}
     </div>
     <p>Section sizes are character-based estimates. Input and cache usage comes from the provider. Unattributed input may include messages and tool results.</p>
   </div>;
@@ -69,10 +69,10 @@ function DiffCard({ result }: { result: PromptResult }) {
       <div className="traces-context-diff-stats"><span>System {diff.systemChanged === null ? "not stored" : diff.systemChanged ? "changed" : "unchanged"}</span><span>Model {diff.modelChanged === null ? "not stored" : diff.modelChanged ? "changed" : "unchanged"}</span><span>Tools +{diff.toolsAdded.length} / −{diff.toolsRemoved.length}</span><span>Context +{diff.injectedAdded.length} / −{diff.injectedRemoved.length}</span></div>
       {(diff.toolsAdded.length > 0 || diff.toolsRemoved.length > 0 || diff.injectedAdded.length > 0 || diff.injectedRemoved.length > 0) &&
         <div className="traces-context-diff-list">
-          {diff.toolsAdded.map((value, index) => <span key={`ta-${index}`} className="added">+ {value}</span>)}
-          {diff.toolsRemoved.map((value, index) => <span key={`tr-${index}`} className="removed">− {value}</span>)}
-          {diff.injectedAdded.map((value, index) => <span key={`ia-${index}`} className="added">+ {value}</span>)}
-          {diff.injectedRemoved.map((value, index) => <span key={`ir-${index}`} className="removed">− {value}</span>)}
+          {diff.toolsAdded.map((value, index) => <span key={`ta-${index}`} className="added">+ <span data-bb-demo-sensitive>{value}</span></span>)}
+          {diff.toolsRemoved.map((value, index) => <span key={`tr-${index}`} className="removed">− <span data-bb-demo-sensitive>{value}</span></span>)}
+          {diff.injectedAdded.map((value, index) => <span key={`ia-${index}`} className="added">+ <span data-bb-demo-sensitive>{value}</span></span>)}
+          {diff.injectedRemoved.map((value, index) => <span key={`ir-${index}`} className="removed">− <span data-bb-demo-sensitive>{value}</span></span>)}
         </div>}
     </>}
   </section>;
@@ -127,9 +127,9 @@ export function ContextInspector({ threadId, compact = false }: { threadId: stri
   const usage = selected?.usage ?? null;
   const hit = useMemo(() => cacheShare(usage, current?.provider ?? ""), [usage, current?.provider]);
   const changeCall = (index: number) => { if (current && index >= 1 && index <= current.callCount) { setResult(null); setCallIndex(index); } };
-  return <section className={`traces-context ${compact ? "traces-context-compact" : ""}`} aria-label="Context Inspector">
+  return <section data-bb-demo-ready className={`traces-context ${compact ? "traces-context-compact" : ""}`} aria-label="Context Inspector">
     <header className="traces-context-header">
-      <div><h2>Context Inspector</h2><p>{threadId} {current?.provider && <span>· {current.provider}</span>}</p></div>
+      <div><h2>Context Inspector</h2><p><span data-bb-demo-sensitive>{threadId}</span> {current?.provider && <span>· {current.provider}</span>}</p></div>
       <div className="traces-context-actions">
         <button type="button" disabled={!selected || selected.index <= 1} onClick={() => selected && changeCall(selected.index - 1)} aria-label="Previous API call">←</button>
         <form onSubmit={(event) => { event.preventDefault(); const value = Number(draft); if (Number.isSafeInteger(value)) changeCall(value); }}>
@@ -144,11 +144,11 @@ export function ContextInspector({ threadId, compact = false }: { threadId: stri
         <button type="button" onClick={load}>Refresh</button>
       </div>
     </header>
-    {error && <p role="alert" className="traces-context-alert">{error}</p>}
+    {error && <p role="alert" className="traces-context-alert"><span data-bb-demo-sensitive>{error}</span></p>}
     {!current && !error && <p className="traces-context-empty">Reading the provider transcript…</p>}
-    {current && !selected && <div className="traces-context-empty"><h3>{current.status === "unsupported" ? "Provider not supported" : "Transcript unavailable"}</h3><p>{current.reason}</p><p>No prompt or token usage was inferred.</p></div>}
+    {current && !selected && <div className="traces-context-empty"><h3>{current.status === "unsupported" ? "Provider not supported" : "Transcript unavailable"}</h3><p><span data-bb-demo-sensitive>{current.reason}</span></p><p>No prompt or token usage was inferred.</p></div>}
     {selected && current && <>
-      {current.reason && <p className="traces-context-alert">Partial transcript: {current.reason}</p>}
+      {current.reason && <p className="traces-context-alert">Partial transcript: <span data-bb-demo-sensitive>{current.reason}</span></p>}
       <div className="traces-context-summary">
         <div><span>Model</span><strong>{selected.model ?? "not stored"}</strong></div>
         <div><span>Input</span><strong>{short(usage?.inputTokens)}</strong></div>
@@ -168,7 +168,7 @@ export function ContextInspector({ threadId, compact = false }: { threadId: stri
           {selected.injected.length ? selected.injected.map((section) => <SectionCard key={section.id} section={section} reveal={reveal} />) : <p className="traces-context-muted">No injected blocks found in the stored transcript.</p>}
         </div>
         <div className="traces-context-right">
-          <div className="traces-context-call-meta"><span>Response {selected.requestId ?? "not stored"}</span><span>{time(selected.at)} · {selected.durationMs === null ? "API duration not stored" : `${(selected.durationMs / 1_000).toFixed(1)}s`}</span></div>
+          <div className="traces-context-call-meta"><span>Response <span data-bb-demo-sensitive>{selected.requestId ?? "not stored"}</span></span><span>{time(selected.at)} · {selected.durationMs === null ? "API duration not stored" : `${(selected.durationMs / 1_000).toFixed(1)}s`}</span></div>
           <div className="traces-context-request"><span>Max output {display(selected.params.maxTokens)}</span><span>Thinking {selected.params.thinking ?? "not stored"}</span><span>Effort {selected.params.effort ?? "not stored"}</span></div>
           <Ledger result={current} onSelect={changeCall} />
           <DiffCard result={current} />

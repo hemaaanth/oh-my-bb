@@ -14,8 +14,8 @@ const HEADER_BUTTON_CLASS = "size-7 text-muted-foreground hover:text-foreground"
 
 function TaskSummary({ task }: { task: ThreadTask }) {
   return <DropdownMenuLabel className="max-w-72 space-y-0.5">
-    <div className="truncate text-sm font-medium text-foreground" title={task.title}>{task.title}</div>
-    <div className="truncate font-normal">{task.identifier} · {statusLabels[task.status]}</div>
+    <div data-bb-demo-label className="truncate text-sm font-medium text-foreground" title={task.title}><span data-bb-demo-sensitive>{task.title}</span></div>
+    <div className="truncate font-normal"><span data-bb-demo-sensitive>{task.identifier}</span> · {statusLabels[task.status]}</div>
   </DropdownMenuLabel>;
 }
 
@@ -34,8 +34,8 @@ export function ThreadTaskChip({ threadId }: PluginThreadHeaderActionProps) {
   if (attached.length) {
     const identifiers = attached.map((task) => task.identifier).join(", ");
     return <DropdownMenu>
-      <span title={identifiers}><DropdownMenuTrigger asChild>
-        <Button aria-label={`Attached tasks: ${identifiers}`} className={HEADER_BUTTON_CLASS} size="icon" variant="ghost">
+      <span data-bb-demo-label title={identifiers}><DropdownMenuTrigger asChild>
+        <Button data-bb-demo-label aria-label={`Attached tasks: ${identifiers}`} className={HEADER_BUTTON_CLASS} size="icon" variant="ghost">
           <PluginIcon className="size-3.5" name="task-workspaces/tasks" aria-hidden />
         </Button>
       </DropdownMenuTrigger></span>
@@ -63,8 +63,8 @@ export function ThreadTaskChip({ threadId }: PluginThreadHeaderActionProps) {
   const suggestion = state?.suggested;
   if (!suggestion) return null;
   return <DropdownMenu>
-    <span title={`Suggested: ${suggestion.title}`}><DropdownMenuTrigger asChild>
-      <Button aria-label={`Suggested task: ${suggestion.identifier}`} className={HEADER_BUTTON_CLASS} size="icon" variant="ghost">
+    <span data-bb-demo-label title={`Suggested: ${suggestion.title}`}><DropdownMenuTrigger asChild>
+      <Button data-bb-demo-label aria-label={`Suggested task: ${suggestion.identifier}`} className={HEADER_BUTTON_CLASS} size="icon" variant="ghost">
         <Icon className="size-3.5" name="TaskAdd" aria-hidden />
       </Button>
     </DropdownMenuTrigger></span>

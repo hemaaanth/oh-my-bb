@@ -1,5 +1,7 @@
 # Unreleased
 
+- Move remote sandbox status, CPU, RAM, and disk into a native Info section. Remove the combined machine/model header icon and its duplicate model-route polling. Keep local threads quiet and preserve existing sandbox controls under Manage sandbox. Require BB 0.47.1 and SDK 0.6.79.
+
 - Compress large stdin payloads in the common shell transport so native resume installers fit provider command limits. Install the required preview supervisor when it is absent from a plain vendor image.
 
 - Align every provider executor and harness installation with the Node directory used by BB agents. Share create/resume connection setup and project-based machine naming; remove duplicated connector naming and event-based rename heuristics. Confirm empty Boat accounts can retire old uncheckpointed allocations.

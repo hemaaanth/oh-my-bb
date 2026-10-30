@@ -85,18 +85,14 @@ pause/stop support: 5, 15, or
 30 minutes, 1 hour, or Never. It updates live when saved. Daytona, Boat, and
 Freestyle stop while preserving provider-supported disk state; E2B
 pauses and can resume. Modal does not use this setting because its idle timeout
-terminates the sandbox rather than pausing it. The machine popover in a thread
+terminates the sandbox rather than pausing it. The **Sandbox** section in a thread’s **Info** panel
 provides an **Always on** switch for a single suspendable sandbox machine.
 It skips BB idle suspension while any threads remain on that machine. Provider
 usage charges continue. Archiving the last thread still retires the machine.
 
-The machine popover also shows the thread's model route when the Model Gateway
-plugin routes the thread: the model, the upstream and account, the chain with
-the current step, and the fallback cause. It reads Gateway's `thread.route`
-RPC through `threadModelRoute` and hides the section when Gateway is missing or
-has no route. A fallback puts an amber dot on the header icon. On a local
-thread, the laptop icon opens this popover only when there is a route;
-otherwise it stays a muted, inert icon.
+The **Sandbox** section uses BB’s native Info rows for lifecycle status, provider, CPU, RAM, and disk. It is hidden for local threads. Sleeping, unavailable, or stale machines do not show old usage as current. Resource details refresh while the Info section is mounted; local threads perform one lookup and do not poll. **Manage sandbox** keeps Always on, legacy context, and supported resizing out of the main status rows. Resizing retains its restart confirmation and disk-growth checks.
+
+The combined machine/model header icon is removed. Model and fallback information stays in Model Gateway’s composer indicator; Sandboxes no longer polls the model route for a duplicate header view.
 
 Environment fallbacks are supported for existing installs:
 `DAYTONA_API_KEY`, `BB_SANDBOX_DAYTONA_SNAPSHOT`, `MODAL_TOKEN_ID`,

@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["server.ts", "app.tsx", "state.ts", "*.test.ts", "*.test.tsx"]
+  "include": ["server.ts", "app.tsx", "state.ts", "images.ts", "native-info.ts", "*.test.ts", "*.test.tsx"]
 }

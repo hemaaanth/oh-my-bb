@@ -174,7 +174,7 @@ function queueMutation(rpc: TasksRpc, call: () => Promise<unknown>, settle: () =
   mutations = mutations
     .then(call)
     .then(() => refreshBoard(rpc))
-    .catch((error) => { toast.error(error instanceof Error ? error.message : String(error)); })
+    .catch((error) => { toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>); })
     .finally(settle);
 }
 
@@ -206,7 +206,7 @@ function createBoardTask(rpc: TasksRpc, projectId: string, destinationId: string
     setBoardTasks([...(board.tasks ?? []).filter((task) => task.id !== created.id), created]);
   }, (error) => {
     setBoard({ drafts: withoutDraft() });
-    toast.error(error instanceof Error ? error.message : String(error));
+    toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
   });
 }
 
@@ -222,7 +222,7 @@ function useTasks(reportErrors = false) {
     if (!reportErrors) { refreshSoon(rpc); return; }
     void refreshBoard(rpc).catch((error) => {
       boardFailed();
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
     });
   }, [connection, rpc, reportErrors]);
   useRealtime("tasks-changed", useCallback(() => {
@@ -263,8 +263,8 @@ function SettingsPanel() {
     setProviderSettings(nextProviderSettings);
     setAkiflow(nextAkiflow);
   }, [rpc]);
-  useEffect(() => { void load().catch((error) => toast.error(String(error))); }, [load]);
-  useRealtime("tasks-changed", () => { void load().catch((error) => toast.error(String(error))); });
+  useEffect(() => { void load().catch((error) => toast.error(<span data-bb-demo-sensitive>{String(error)}</span>)); }, [load]);
+  useRealtime("tasks-changed", () => { void load().catch((error) => toast.error(<span data-bb-demo-sensitive>{String(error)}</span>)); });
 
   async function map(sourceKey: string, projectId: string) {
     if (!mappings.projects.some((project) => project.id === projectId)) return;
@@ -272,7 +272,7 @@ function SettingsPanel() {
     try {
       setMappings(await rpc.call("setProjectMapping", { sourceKey, projectId: projectId || null }));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
     } finally {
       setBusy(null);
     }
@@ -284,7 +284,7 @@ function SettingsPanel() {
       setGithub(await rpc.call("refreshGithubRepositories"));
       setMappings(await rpc.call("projectMappings"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
     } finally {
       setRefreshingGithub(false);
     }
@@ -295,7 +295,7 @@ function SettingsPanel() {
     try {
       setGithub(await rpc.call("setGithubRepositoryEnabled", { fullName, enabled }));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
     } finally {
       setBusy(null);
     }
@@ -307,7 +307,7 @@ function SettingsPanel() {
       setLinear(await rpc.call("refreshLinearSources"));
       setMappings(await rpc.call("projectMappings"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
     } finally {
       setRefreshingLinear(false);
     }
@@ -319,7 +319,7 @@ function SettingsPanel() {
       setLinear(await rpc.call("setLinearSourceEnabled", { key, enabled }));
       setMappings(await rpc.call("projectMappings"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
     } finally {
       setBusy(null);
     }
@@ -331,7 +331,7 @@ function SettingsPanel() {
       setLinear(await rpc.call("setAllLinearSourcesEnabled", { enabled }));
       setMappings(await rpc.call("projectMappings"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
     } finally {
       setBusy(null);
     }
@@ -343,7 +343,7 @@ function SettingsPanel() {
       setAkiflow(await rpc.call("refreshAkiflowSources"));
       setMappings(await rpc.call("projectMappings"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
     } finally {
       setRefreshingAkiflow(false);
     }
@@ -355,7 +355,7 @@ function SettingsPanel() {
       setAkiflow(await rpc.call("setAkiflowSourceEnabled", { key, enabled }));
       setMappings(await rpc.call("projectMappings"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
     } finally {
       setBusy(null);
     }
@@ -367,7 +367,7 @@ function SettingsPanel() {
       setAkiflow(await rpc.call("setAllAkiflowSourcesEnabled", { enabled }));
       setMappings(await rpc.call("projectMappings"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
     } finally {
       setBusy(null);
     }
@@ -389,7 +389,7 @@ function SettingsPanel() {
       setAkiflow(nextAkiflow);
       toast.success(`${providerLabels[provider]} ${enabled ? "enabled" : "disabled"}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
     } finally {
       setBusy(null);
     }
@@ -445,13 +445,13 @@ function SettingsPanel() {
         onValueChange={(value) => void map(source.key, value)}
         disabled={busy === source.key}
       >
-        <SelectTrigger aria-label={`bb project for ${source.label}`} className="h-7 px-2 text-xs">
+        <SelectTrigger data-bb-demo-label aria-label={`bb project for ${source.label}`} className="h-7 px-2 text-xs">
           <SelectValue placeholder="Map to a bb project…" />
         </SelectTrigger>
         <SelectContent>
           {mappings.projects.map((project) => (
             <SelectItem key={project.id} value={project.id}>
-              {project.kind === "personal" ? "Projectless" : project.name}
+              <span data-bb-demo-sensitive>{project.kind === "personal" ? "Projectless" : project.name}</span>
             </SelectItem>
           ))}
         </SelectContent>
@@ -484,9 +484,9 @@ function SettingsPanel() {
                 const mapping = mappingByKey.get(source.key);
                 return <div key={source.key} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 px-2.5 py-2 text-sm md:grid-cols-[minmax(0,1fr)_minmax(12rem,1fr)] md:items-center">
                   <label className="flex min-w-0 items-center gap-2">
-                    <Checkbox aria-label={`Synchronize Akiflow ${source.name}`} className="size-3.5 shrink-0" checked disabled={busy !== null}
+                    <Checkbox data-bb-demo-label aria-label={`Synchronize Akiflow ${source.name}`} className="size-3.5 shrink-0" checked disabled={busy !== null}
                       onCheckedChange={(checked) => void toggleAkiflowSource(source.key, checked === true)} />
-                    <span className="truncate">{source.name}</span>
+                    <span className="truncate"><span data-bb-demo-sensitive>{source.name}</span></span>
                   </label>
                   {source.key === "akiflow:inbox"
                     ? <span className="text-xs text-muted-foreground">Projectless</span>
@@ -499,12 +499,12 @@ function SettingsPanel() {
                 Unsynchronized Akiflow sources ({akiflow.sources.length - synchronizedAkiflow.length})
               </summary>
               <div className="border-t border-border-hairline p-2">
-                <Input aria-label="Filter Akiflow projects" className="mb-2 h-8" placeholder="Filter projects…" value={akiflowQuery} onChange={(event) => setAkiflowQuery(event.target.value)} />
+                <Input data-bb-demo-sensitive aria-label="Filter Akiflow projects" className="mb-2 h-8" placeholder="Filter projects…" value={akiflowQuery} onChange={(event) => setAkiflowQuery(event.target.value)} />
                 <div className="max-h-72 divide-y divide-border-hairline overflow-auto">
                   {unsynchronizedAkiflow.map((source) => <label key={source.key} className="flex min-w-0 items-center gap-2 px-1 py-2 text-sm hover:bg-state-hover">
-                    <Checkbox aria-label={`Synchronize Akiflow ${source.name}`} className="size-3.5 shrink-0" checked={false} disabled={busy !== null}
+                    <Checkbox data-bb-demo-label aria-label={`Synchronize Akiflow ${source.name}`} className="size-3.5 shrink-0" checked={false} disabled={busy !== null}
                       onCheckedChange={(checked) => void toggleAkiflowSource(source.key, checked === true)} />
-                    <span className="min-w-0 flex-1 truncate">{source.name}</span>
+                    <span className="min-w-0 flex-1 truncate"><span data-bb-demo-sensitive>{source.name}</span></span>
                   </label>)}
                   {!unsynchronizedAkiflow.length ? <p className="px-2 py-6 text-center text-sm text-muted-foreground">No matching unsynchronized sources.</p> : null}
                 </div>
@@ -536,14 +536,14 @@ function SettingsPanel() {
                 {synchronizedGithub.map(({ repository, source }) => (
                   <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 px-2.5 py-2 text-sm hover:bg-state-hover md:grid-cols-[minmax(0,1fr)_minmax(12rem,1fr)] md:items-center" key={repository.fullName}>
                     <div className="flex min-w-0 items-center gap-2">
-                      <Checkbox
+                      <Checkbox data-bb-demo-label
                         aria-label={`Synchronize ${repository.fullName}`}
                         className="size-3.5 shrink-0"
                         checked
                         disabled={busy === `github:${repository.fullName}`}
                         onCheckedChange={(checked) => void toggleGithubRepository(repository.fullName, checked === true)}
                       />
-                      <UrlLink className="truncate hover:underline" href={repository.url}>{repository.fullName}</UrlLink>
+                      <UrlLink className="truncate hover:underline" href={repository.url}><span data-bb-demo-sensitive>{repository.fullName}</span></UrlLink>
                       {source?.automatic ? <span className="text-xs text-muted-foreground">automatic</span> : null}
                     </div>
                     {source ? projectSelect(source) : <span className="text-xs text-muted-foreground">Sync to discover its project mapping.</span>}
@@ -559,14 +559,14 @@ function SettingsPanel() {
                 <div className="max-h-64 divide-y divide-border-hairline overflow-auto border-t border-border-hairline">
                   {unsynchronizedGithub.map(({ repository }) => (
                     <div className="flex items-center gap-2 px-2.5 py-2 text-sm hover:bg-state-hover" key={repository.fullName}>
-                      <Checkbox
+                      <Checkbox data-bb-demo-label
                         aria-label={`Synchronize ${repository.fullName}`}
                         className="size-3.5 shrink-0"
                         checked={false}
                         disabled={busy === `github:${repository.fullName}`}
                         onCheckedChange={(checked) => void toggleGithubRepository(repository.fullName, checked === true)}
                       />
-                      <UrlLink className="truncate hover:underline" href={repository.url}>{repository.fullName}</UrlLink>
+                      <UrlLink className="truncate hover:underline" href={repository.url}><span data-bb-demo-sensitive>{repository.fullName}</span></UrlLink>
                     </div>
                   ))}
                 </div>
@@ -607,16 +607,16 @@ function SettingsPanel() {
                   return (
                     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 px-2.5 py-2 text-sm hover:bg-state-hover md:grid-cols-[minmax(0,1fr)_minmax(12rem,1fr)] md:items-center" key={linearSource.key}>
                       <div className="flex min-w-0 items-center gap-2">
-                        <Checkbox
+                        <Checkbox data-bb-demo-label
                           aria-label={`Synchronize Linear ${linearSource.kind} ${linearSource.name}`}
                           className="size-3.5 shrink-0"
                           checked
                           disabled={busy !== null}
                           onCheckedChange={(checked) => void toggleLinearSource(linearSource.key, checked === true)}
                         />
-                        <span className="truncate">{linearSource.name}</span>
+                        <span className="truncate"><span data-bb-demo-sensitive>{linearSource.name}</span></span>
                         <span className="shrink-0 rounded border border-border-hairline px-1 text-[10px] uppercase text-muted-foreground">{linearSource.kind}</span>
-                        {linearSource.detail ? <span className="truncate text-xs text-muted-foreground">{linearSource.detail}</span> : null}
+                        {linearSource.detail ? <span className="truncate text-xs text-muted-foreground"><span data-bb-demo-sensitive>{linearSource.detail}</span></span> : null}
                       </div>
                       {mapping ? projectSelect(mapping) : <span className="text-xs text-muted-foreground">Mapping will appear after this source is saved.</span>}
                     </div>
@@ -629,7 +629,7 @@ function SettingsPanel() {
                 Unsynchronized Linear sources ({linear.sources.length - synchronizedLinear.length})
               </summary>
               <div className="border-t border-border-hairline p-2">
-                <Input
+                <Input data-bb-demo-sensitive
                   aria-label="Filter Linear teams and projects"
                   className="mb-2 h-8"
                   placeholder="Filter teams and projects…"
@@ -639,15 +639,15 @@ function SettingsPanel() {
                 <div className="max-h-72 divide-y divide-border-hairline overflow-auto">
                   {unsynchronizedLinear.map((linearSource) => (
                     <label className="flex items-center gap-2 px-1 py-2 text-sm hover:bg-state-hover" key={linearSource.key}>
-                      <Checkbox
+                      <Checkbox data-bb-demo-label
                         aria-label={`Synchronize Linear ${linearSource.kind} ${linearSource.name}`}
                         className="size-3.5 shrink-0"
                         checked={false}
                         disabled={busy !== null}
                         onCheckedChange={(checked) => void toggleLinearSource(linearSource.key, checked === true)}
                       />
-                      <span className="min-w-0 flex-1 truncate">{linearSource.name}</span>
-                      {linearSource.detail ? <span className="max-w-48 truncate text-xs text-muted-foreground">{linearSource.detail}</span> : null}
+                      <span className="min-w-0 flex-1 truncate"><span data-bb-demo-sensitive>{linearSource.name}</span></span>
+                      {linearSource.detail ? <span className="max-w-48 truncate text-xs text-muted-foreground"><span data-bb-demo-sensitive>{linearSource.detail}</span></span> : null}
                       <span className="shrink-0 rounded border border-border-hairline px-1 text-[10px] uppercase text-muted-foreground">{linearSource.kind}</span>
                     </label>
                   ))}
@@ -673,7 +673,7 @@ function FinishTaskInteraction({ interaction, submit, cancel }: PluginPendingInt
   return (
     <div className="space-y-3 rounded-md border border-border bg-surface-recessed/70 p-3">
       <div>
-        <p className="font-medium">{String(payload.title ?? "Task")}</p>
+        <p className="font-medium"><span data-bb-demo-sensitive>{String(payload.title ?? "Task")}</span></p>
         <p className="text-sm text-muted-foreground">The pull request merged. Mark this task done and archive its environment?</p>
       </div>
       <div className="flex gap-2">
@@ -709,7 +709,7 @@ function ArchivedTaskPrompt() {
       await load();
       if (decision === "done") toast.success(`${task.title || task.identifier} marked done`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
     } finally {
       setBusy(false);
     }
@@ -722,7 +722,7 @@ function ArchivedTaskPrompt() {
         <DialogHeader>
           <DialogTitle>Complete attached task?</DialogTitle>
           <DialogDescription>
-            <span className="font-medium text-foreground">{task.title || task.identifier}</span> is in <span className="font-medium text-foreground">{task.status}</span>. Should the task be marked complete?
+            <span className="font-medium text-foreground"><span data-bb-demo-sensitive>{task.title || task.identifier}</span></span> is in <span className="font-medium text-foreground">{task.status}</span>. Should the task be marked complete?
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -754,7 +754,7 @@ function RowAction({ label, icon, task, onClick, disabled }: {
   label: string; icon: "ArrowUp" | "Clock"; task: Task; onClick: () => void; disabled?: boolean;
 }) {
   return <span title={label} className="flex">
-    <Button aria-label={`${label}: ${task.title}`} variant="ghost" size="icon" disabled={disabled} className="size-7 text-muted-foreground" onClick={onClick}><Icon name={icon} className="size-4" aria-hidden /></Button>
+    <Button data-bb-demo-label aria-label={`${label}: ${task.title}`} variant="ghost" size="icon" disabled={disabled} className="size-7 text-muted-foreground" onClick={onClick}><Icon name={icon} className="size-4" aria-hidden /></Button>
   </span>;
 }
 
@@ -788,10 +788,10 @@ type MenuProps = { task: Task; projects: ReadonlyArray<{ id: string; name: strin
 function TaskMenuContent({ task, projects, moves, align }: MenuProps & { align: "start" | "end" }) {
   const priority = taskPriority(task);
   const projectId = task.effectiveProjectId ?? task.projectId;
-  return <DropdownMenuContent align={align} mobileTitle={task.title} className="min-w-36">
+  return <DropdownMenuContent data-bb-demo-label align={align} mobileTitle={task.title} className="min-w-36">
     <MenuGroup label="Priority">{menuPriorities.map((value) => <MenuChoice key={value} current={value === priority} onSelect={() => moves.priority(task, value)}>{priorityLabels[value]}</MenuChoice>)}</MenuGroup>
     <MenuGroup label="Stage">{menuStages.map((value) => <MenuChoice key={value} current={value === task.status} onSelect={() => moves.stage(task, value)}><span aria-hidden className="flex"><StatusGlyph status={value} /></span>{statusLabels[value]}</MenuChoice>)}</MenuGroup>
-    <MenuGroup label="Project">{projects.map((project) => <MenuChoice key={project.id} current={project.id === projectId} onSelect={() => moves.project(task, project.id)}><span className="truncate">{project.name}</span></MenuChoice>)}</MenuGroup>
+    <MenuGroup label="Project">{projects.map((project) => <MenuChoice key={project.id} current={project.id === projectId} onSelect={() => moves.project(task, project.id)}><span className="truncate"><span data-bb-demo-sensitive>{project.name}</span></span></MenuChoice>)}</MenuGroup>
     <DropdownMenuSeparator />
     <DropdownMenuItem variant="destructive" onSelect={() => moves.stage(task, "cancelled")}><Icon name="Trash2" className="size-3.5" aria-hidden />Delete</DropdownMenuItem>
   </DropdownMenuContent>;
@@ -800,7 +800,7 @@ function TaskMenuContent({ task, projects, moves, align }: MenuProps & { align: 
 function TaskMenu(props: MenuProps) {
   return <DropdownMenu>
     <span title="More actions" className="flex"><DropdownMenuTrigger asChild>
-      <Button aria-label={`More actions: ${props.task.title}`} variant="ghost" size="icon" className="size-7 text-muted-foreground"><Icon name="MoreHorizontal" className="size-4" aria-hidden /></Button>
+      <Button data-bb-demo-label aria-label={`More actions: ${props.task.title}`} variant="ghost" size="icon" className="size-7 text-muted-foreground"><Icon name="MoreHorizontal" className="size-4" aria-hidden /></Button>
     </DropdownMenuTrigger></span>
     <TaskMenuContent {...props} align="end" />
   </DropdownMenu>;
@@ -849,7 +849,7 @@ function TaskTitle({ title, onRename, onOpen, className, clamp }: {
     setEditing(false);
     if (save && next && next !== title) onRename(next);
   };
-  if (editing) return <textarea ref={field} data-no-drag="" aria-label="Task title" defaultValue={title} rows={1} maxLength={500}
+  if (editing) return <textarea data-bb-demo-sensitive ref={field} data-no-drag="" aria-label="Task title" defaultValue={title} rows={1} maxLength={500}
     className={`${className} field-sizing-content resize-none select-text bg-transparent caret-primary underline decoration-primary underline-offset-4 outline-none selection:bg-primary/30 selection:text-foreground`}
     onKeyDown={(event) => {
       if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); finish(true); }
@@ -857,14 +857,14 @@ function TaskTitle({ title, onRename, onOpen, className, clamp }: {
     }}
     onBlur={() => finish(true)} />;
   // Enter opens the chats, or edits a task without any. F2 always edits.
-  return <button type="button" title={title} className={`${className} cursor-default rounded-sm text-left outline-none focus-visible:ring-1 focus-visible:ring-ring`} onClick={(event) => {
+  return <button data-bb-demo-label type="button" title={title} className={`${className} cursor-default rounded-sm text-left outline-none focus-visible:ring-1 focus-visible:ring-ring`} onClick={(event) => {
     if (event.detail === 0) return onOpen ? onOpen() : setEditing(true);
     if (pending.current || event.detail >= 2) {
       if (pending.current) clearTimeout(pending.current);
       pending.current = null;
       setEditing(true);
     } else pending.current = setTimeout(() => { pending.current = null; onOpen?.(); }, doubleClickMs);
-  }} onKeyDown={(event) => { if (event.key === "F2") { event.preventDefault(); setEditing(true); } }}><span className={clamp}>{title}</span></button>;
+  }} onKeyDown={(event) => { if (event.key === "F2") { event.preventDefault(); setEditing(true); } }}><span className={clamp}><span data-bb-demo-sensitive>{title}</span></span></button>;
 }
 
 function TaskRow({ task, project, chat, onOpen, onRename, handle, active, children }: {
@@ -872,12 +872,12 @@ function TaskRow({ task, project, chat, onOpen, onRename, handle, active, childr
 }) {
   if (isDraft(task)) return <li aria-busy className="flex min-w-0 items-center gap-3 py-1.5 pe-2 ps-3 opacity-50">
     <StatusGlyph status={task.status} />
-    <span className="min-w-0 flex-1 truncate py-1 text-sm leading-5">{task.title}</span>
+    <span className="min-w-0 flex-1 truncate py-1 text-sm leading-5"><span data-bb-demo-sensitive>{task.title}</span></span>
   </li>;
   return <li {...handle} data-flip={task.id} style={chatTint(chat)} className={`group flex min-w-0 items-center gap-3 py-1.5 pe-2 ps-3 hover:bg-state-hover ${active ? "bg-state-hover" : ""} ${draggable}`}>
     <StatusGlyph status={task.status} />
-    <TaskTitle title={task.title} onRename={onRename} onOpen={onOpen} className="min-w-0 flex-1 py-1 text-sm leading-5" clamp="block truncate" />
-    {project ? <span className="hidden max-w-40 shrink-0 truncate text-xs text-subtle-foreground sm:block">{project}</span> : null}
+    <TaskTitle data-bb-demo-label title={task.title} onRename={onRename} onOpen={onOpen} className="min-w-0 flex-1 py-1 text-sm leading-5" clamp="block truncate" />
+    {project ? <span className="hidden max-w-40 shrink-0 truncate text-xs text-subtle-foreground sm:block"><span data-bb-demo-sensitive>{project}</span></span> : null}
     <div data-no-drag="" className="flex shrink-0 items-center">{children}</div>
   </li>;
 }
@@ -976,19 +976,19 @@ function NewTaskForm({ projects, initialProjectId, initialTitle = "", thread, pr
     <DialogHeader>
       <DialogTitle>{priority === "urgent" ? "New task in Now" : "New task"}</DialogTitle>
       {thread
-        ? <DialogDescription className="flex min-w-0 items-center gap-1.5"><Icon name="MessageSquare" className="size-3.5 shrink-0" aria-hidden /><span className="sr-only">Links the chat</span><span className="truncate">{thread.title}</span></DialogDescription>
+        ? <DialogDescription className="flex min-w-0 items-center gap-1.5"><Icon name="MessageSquare" className="size-3.5 shrink-0" aria-hidden /><span className="sr-only">Links the chat</span><span className="truncate"><span data-bb-demo-sensitive>{thread.title}</span></span></DialogDescription>
         : <DialogDescription className="sr-only">Name the task, then choose its project and where it is created.</DialogDescription>}
     </DialogHeader>
-    <Input autoFocus aria-label="Task title" placeholder="Task title" value={title} onChange={(event) => setTitle(event.target.value)} />
+    <Input data-bb-demo-sensitive autoFocus aria-label="Task title" placeholder="Task title" value={title} onChange={(event) => setTitle(event.target.value)} />
     <div className="grid gap-2 sm:grid-cols-2">
       <Select value={projectId} onValueChange={(next) => { if (projects.some((project) => project.id === next)) { setProjectId(next); setChosen(null); } }}>
-        <SelectTrigger aria-label="Project"><SelectValue placeholder="Project" /></SelectTrigger>
-        <SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
+        <SelectTrigger data-bb-demo-sensitive aria-label="Project"><SelectValue placeholder="Project" /></SelectTrigger>
+        <SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}><span data-bb-demo-sensitive>{project.name}</span></SelectItem>)}</SelectContent>
       </Select>
       <Select value={destination?.id ?? ""} onValueChange={(next) => { if (options.some((option) => option.id === next)) setChosen(next); }} disabled={!options.length}>
-        <SelectTrigger aria-label="Create in"><SelectValue placeholder={failure ?? (all ? "No task source for this project" : "Loading sources…")} /></SelectTrigger>
+        <SelectTrigger data-bb-demo-sensitive aria-label="Create in"><SelectValue placeholder={failure ?? (all ? "No task source for this project" : "Loading sources…")} /></SelectTrigger>
         <SelectContent>{options.map((option) => <SelectItem key={option.id} value={option.id}>
-          <span className="flex min-w-0 items-center gap-2"><ProviderIcon provider={option.provider} /><span className="truncate">{option.id === "akiflow:inbox" ? "Akiflow Inbox" : option.label}</span></span>
+          <span className="flex min-w-0 items-center gap-2"><ProviderIcon provider={option.provider} /><span className="truncate"><span data-bb-demo-sensitive>{option.id === "akiflow:inbox" ? "Akiflow Inbox" : option.label}</span></span></span>
         </SelectItem>)}</SelectContent>
       </Select>
     </div>
@@ -1053,13 +1053,13 @@ function ProjectCard({ column, expanded, onExpand, folded, onFold, onRename, onC
   const labelled = isLabelled(column);
   const empty = !column.tasks.length;
   const open = !empty && !folded;
-  const name = <span className="min-w-0 flex-1 truncate">{column.name}</span>;
-  return <section ref={dropRef} aria-label={column.name} className={`overflow-hidden rounded-md border border-border bg-surface-recessed/70 ${over ? "ring-1 ring-ring" : ""}`}>
+  const name = <span className="min-w-0 flex-1 truncate"><span data-bb-demo-sensitive={column.id ? "" : undefined}>{column.name}</span></span>;
+  return <section data-bb-demo-label ref={dropRef} aria-label={column.name} className={`overflow-hidden rounded-md border border-border bg-surface-recessed/70 ${over ? "ring-1 ring-ring" : ""}`}>
     <h3 onContextMenu={onMenu} className={`flex min-h-10 items-center text-sm font-medium ${draggable} ${open ? "border-b border-border" : "text-muted-foreground"} ${onCreate ? "pe-1.5" : ""} ${menuOpen || over ? "bg-state-hover" : empty ? "" : "hover:bg-state-hover"}`}>
       {empty
-        ? <span className={`flex min-w-0 flex-1 ps-3 ${onCreate ? "pe-2" : "pe-3"}`}>{name}</span>
+        ? <span className={`flex min-w-0 flex-1 ps-3 ${onCreate ? "pe-2" : "pe-3"}`}><span data-bb-demo-sensitive>{name}</span></span>
         : <button type="button" aria-expanded={open} className={`flex min-h-10 min-w-0 flex-1 items-center gap-2 self-stretch ps-3 text-left outline-none focus-visible:bg-state-hover ${onCreate ? "pe-2" : "pe-3"}`} onClick={onFold}>
-          {name}<span className="text-xs font-normal tabular-nums text-muted-foreground">{column.tasks.length}</span>
+          <span data-bb-demo-sensitive>{name}</span><span className="text-xs font-normal tabular-nums text-muted-foreground">{column.tasks.length}</span>
         </button>}
       {onCreate ? <NewTaskButton label={`New task in ${column.name}`} onClick={onCreate} /> : null}
     </h3>
@@ -1072,11 +1072,11 @@ function ProjectCard({ column, expanded, onExpand, folded, onFold, onRename, onC
           <ul>{shown.map((task) => isDraft(task)
             ? <li key={task.id} aria-busy className="flex items-start gap-2 px-2 py-1.5 opacity-50">
               <span className="mt-0.5"><StatusGlyph status={task.status} /></span>
-              <span className="line-clamp-2 min-w-0 flex-1 text-sm leading-5">{task.title}</span>
+              <span className="line-clamp-2 min-w-0 flex-1 text-sm leading-5"><span data-bb-demo-sensitive>{task.title}</span></span>
             </li>
             : <li key={task.id} {...handle(task)} data-task={task.id} className={`group flex items-start gap-2 rounded-md px-2 py-1.5 transition-opacity hover:bg-state-hover ${draggable} ${task.id === draggingId ? landing ? "opacity-0" : "opacity-40" : ""} ${task.id === menuId ? "bg-state-hover" : ""}`}>
               <span className="mt-0.5"><StatusGlyph status={task.status} /></span>
-              <TaskTitle title={task.title} onRename={(title) => onRename(task, title)} className="min-w-0 flex-1 text-sm leading-5" clamp="line-clamp-2" />
+              <TaskTitle data-bb-demo-label title={task.title} onRename={(title) => onRename(task, title)} className="min-w-0 flex-1 text-sm leading-5" clamp="line-clamp-2" />
               <span data-no-drag="" className="-my-1 flex">{actions(task)}</span>
             </li>)}</ul>
         </div> : null;
@@ -1100,10 +1100,10 @@ function UnassignedThreads({ threads, projectNames, chats, open, onToggle, onAss
     {open ? <ul className={`mt-2 ${listCard}`}>
       {(all ? threads : threads.slice(0, threadPreview)).map((thread) => <li key={thread.id} style={chatTint(chats.stateOf(thread.id))} className="flex min-w-0 items-center gap-3 py-1.5 pe-2 ps-3 hover:bg-state-hover">
         <span className="flex size-4 shrink-0 items-center justify-center text-subtle-foreground"><Icon name="MessageSquare" className="size-3.5" aria-hidden /></span>
-        <button type="button" className="min-w-0 flex-1 truncate py-1 text-left text-sm leading-5 outline-none focus-visible:underline" onClick={() => chats.peek(thread.id, threadTitle(thread), () => onAssign(thread))}>{threadTitle(thread)}</button>
-        {projectNames.get(thread.projectId) ? <span className="hidden max-w-40 shrink-0 truncate text-xs text-subtle-foreground sm:block">{projectNames.get(thread.projectId)}</span> : null}
+        <button type="button" className="min-w-0 flex-1 truncate py-1 text-left text-sm leading-5 outline-none focus-visible:underline" onClick={() => chats.peek(thread.id, threadTitle(thread), () => onAssign(thread))}><span data-bb-demo-sensitive>{threadTitle(thread)}</span></button>
+        {projectNames.get(thread.projectId) ? <span className="hidden max-w-40 shrink-0 truncate text-xs text-subtle-foreground sm:block"><span data-bb-demo-sensitive>{projectNames.get(thread.projectId)}</span></span> : null}
         <span title="Add to task" className="flex">
-          <Button aria-label={`Add to task: ${threadTitle(thread)}`} variant="ghost" size="icon" className="size-7 text-muted-foreground" onClick={() => onAssign(thread)}><Icon name="TaskAdd" className="size-4" aria-hidden /></Button>
+          <Button data-bb-demo-label aria-label={`Add to task: ${threadTitle(thread)}`} variant="ghost" size="icon" className="size-7 text-muted-foreground" onClick={() => onAssign(thread)}><Icon name="TaskAdd" className="size-4" aria-hidden /></Button>
         </span>
       </li>)}
       {threads.length > threadPreview ? <li><button type="button" aria-expanded={all} className="w-full px-4 py-2 text-left text-xs text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:bg-state-hover" onClick={() => setAll(!all)}>{all ? "Show less" : `Show all ${threads.length}`}</button></li> : null}
@@ -1140,19 +1140,19 @@ function TaskPicker({ thread, tasks, projectNames, onPick, onCreate }: {
   return <>
     <label className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border px-4">
       <Icon name="Search" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-      <input aria-label="Search tasks" placeholder="Search tasks" autoFocus={!compact} value={query} onChange={(event) => setQuery(event.target.value)}
+      <input data-bb-demo-sensitive aria-label="Search tasks" placeholder="Search tasks" autoFocus={!compact} value={query} onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => step(event, null)}
         className={`min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground ${COARSE_POINTER_TEXT_BASE_CLASS}`} />
     </label>
     <ul ref={list} aria-label="Tasks" className="min-h-0 flex-1 overflow-y-auto p-1.5" onKeyDown={(event) => step(event, document.activeElement)}>
       <li><button type="button" className={row} onClick={() => onCreate(query.trim() || threadTitle(thread))}>
         <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground"><Icon name="Plus" className="size-3.5" aria-hidden /></span>
-        <span className="min-w-0 flex-1 truncate">{words ? <>New task <span className="text-muted-foreground">“{query.trim()}”</span></> : "New task"}</span>
+        <span className="min-w-0 flex-1 truncate">{words ? <>New task <span className="text-muted-foreground">“<span data-bb-demo-sensitive>{query.trim()}</span>”</span></> : "New task"}</span>
       </button></li>
       {shown.slice(0, 100).map((task) => <li key={task.id}><button type="button" className={row} onClick={() => onPick(task)}>
         <StatusGlyph status={task.status} />
-        <span className="min-w-0 flex-1 truncate">{task.title}</span>
-        <span className="max-w-[40%] shrink-0 truncate text-xs text-muted-foreground">{projectNames.get(projectOf(task))}</span>
+        <span className="min-w-0 flex-1 truncate"><span data-bb-demo-sensitive>{task.title}</span></span>
+        <span className="max-w-[40%] shrink-0 truncate text-xs text-muted-foreground"><span data-bb-demo-sensitive>{projectNames.get(projectOf(task))}</span></span>
       </button></li>)}
       {words && !shown.length ? <li className="px-2.5 py-2 text-sm text-muted-foreground">No matching tasks.</li> : null}
     </ul>
@@ -1247,7 +1247,7 @@ function TasksScreen() {
     closeAssigning();
     mutate({ [task.id]: { threadIds: [thread.id, ...task.threadIds], ...(task.threadIds.length ? {} : { projectId: thread.projectId, effectiveProjectId: thread.projectId }) } },
       () => rpc.call("attachExistingChat", { taskId: task.id, threadId: thread.id }));
-    toast("Chat added to task", { description: task.title });
+    toast("Chat added to task", { description: <span data-bb-demo-sensitive>{task.title}</span> });
   };
   // Hidden projects leave All tasks and wait in the Hidden section below it.
   const shownColumns = columns.filter((column) => !hiddenProjects.has(column.id));
@@ -1299,7 +1299,7 @@ function TasksScreen() {
       }
       moveStage(task, status);
       if (status === "done") toast("Task marked done", {
-        description: task.title,
+        description: <span data-bb-demo-sensitive>{task.title}</span>,
         action: { label: "Undo", onClick: () => moveStage(task, task.status) },
       });
     },
@@ -1326,7 +1326,7 @@ function TasksScreen() {
   const printNow = async () => {
     setBusy("print");
     try { const result = await rpc.call("printNow"); toast.success(`Print job accepted for ${result.accepted} tasks`); }
-    catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+    catch (error) { toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>); }
     finally { setBusy(null); }
   };
   const promote = (task: Task) => <RowAction label="Move to Now" icon="ArrowUp" task={task} onClick={() => moves.priority(task, "urgent")} />;
@@ -1345,14 +1345,14 @@ function TasksScreen() {
       <Dialog open={deleting !== null} onOpenChange={(open) => { if (!open) setDeleting(null); }}>
         <DialogContent onOpenAutoFocus={(event) => { event.preventDefault(); cancelDelete.current?.focus(); }}
           onCloseAutoFocus={(event) => { event.preventDefault(); deleteReturnFocus.current?.focus(); }}>
-          <DialogHeader><DialogTitle>Delete task?</DialogTitle><DialogDescription>Delete “{deleting?.title}”? This marks the task cancelled in its linked providers and archives attached work.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Delete task?</DialogTitle><DialogDescription>Delete “<span data-bb-demo-sensitive>{deleting?.title}</span>”? This marks the task cancelled in its linked providers and archives attached work.</DialogDescription></DialogHeader>
           <DialogFooter>
             <Button ref={cancelDelete} variant="outline" onClick={() => setDeleting(null)}>Cancel</Button>
             <Button variant="destructive" onClick={() => {
               if (deleting) {
                 const task = deleting;
                 moveStage(task, "cancelled");
-                toast("Task deleted", { description: task.title, action: { label: "Undo", onClick: () => moveStage(task, task.status) } });
+                toast("Task deleted", { description: <span data-bb-demo-sensitive>{task.title}</span>, action: { label: "Undo", onClick: () => moveStage(task, task.status) } });
               }
               setDeleting(null);
             }}>Delete task</Button>
@@ -1408,7 +1408,7 @@ function TasksScreen() {
       <TaskMenuContent task={contextTask} projects={projects} moves={moves} align="start" />
     </PointMenu> : null}
     {contextMenu && contextProject ? <PointMenu key={`${contextMenu.x},${contextMenu.y}`} at={contextMenu} onClose={() => setContextMenu(null)}>
-      <DropdownMenuContent align="start" mobileTitle={contextProject.name} className="min-w-36">
+      <DropdownMenuContent data-bb-demo-label align="start" mobileTitle={contextProject.name} className="min-w-36">
         {hiddenProjects.has(contextProject.id)
           ? <DropdownMenuItem onSelect={() => hideProject(contextProject.id, false)}><Icon name="Eye" className="size-3.5" aria-hidden />Show project</DropdownMenuItem>
           : <DropdownMenuItem onSelect={() => hideProject(contextProject.id, true)}><Icon name="EyeOff" className="size-3.5" aria-hidden />Hide project</DropdownMenuItem>}
@@ -1428,7 +1428,7 @@ function TasksScreen() {
         : assigning.thread ? <DialogContent style={{ width: "min(96vw, 30rem)" }} className="flex h-[min(70vh,34rem)] max-w-none flex-col gap-0 overflow-hidden p-0">
           <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border pe-12 ps-4">
             <DialogTitle className="shrink-0 text-sm font-medium leading-normal">Add to task</DialogTitle>
-            <DialogDescription className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{threadTitle(assigning.thread)}</DialogDescription>
+            <DialogDescription className="min-w-0 flex-1 truncate text-sm text-muted-foreground"><span data-bb-demo-sensitive>{threadTitle(assigning.thread)}</span></DialogDescription>
             <Button variant="ghost" size="sm" className="shrink-0 md:hidden" onClick={closeAssigning}>Done</Button>
           </div>
           <TaskPicker key={assigning.key} thread={assigning.thread} tasks={personal.filter((task) => !isDraft(task))} projectNames={projectNames}
@@ -1447,7 +1447,7 @@ function NowHomeCard({ projectId }: { projectId: string | null }) {
   return <section aria-label="Now tasks" className="text-foreground">
     <div className="-mt-9 mb-2 flex justify-end"><span title="Open tasks"><Button aria-label="Open tasks" variant="ghost" size="icon" className="size-7" onClick={() => navigate.toPluginPanel("tasks")}><PluginIcon name={tasksIcon} className="size-3.5" /></Button></span></div>
     {loading || chats.loading ? null : now.length ? <ul className="space-y-0.5">{now.map((task) => <li key={task.id} style={chatTint(chats.taskState(task))} className="flex items-center gap-1 rounded-md pe-0.5 hover:bg-state-hover">
-      <TaskTitle title={task.title} onRename={(title) => rename(task, title)} onOpen={chats.opener(task)} className="min-w-0 flex-1 px-2 py-1.5 text-sm leading-5" clamp="block truncate" />
+      <TaskTitle data-bb-demo-label title={task.title} onRename={(title) => rename(task, title)} onOpen={chats.opener(task)} className="min-w-0 flex-1 px-2 py-1.5 text-sm leading-5" clamp="block truncate" />
       <ChatMenu task={task} chats={chats} />
     </li>)}</ul> : <p className="px-2 text-xs text-muted-foreground">Nothing in Now.</p>}
     {chats.popup}
@@ -1464,7 +1464,7 @@ function OpenTaskCount() {
 export default definePluginApp((app) => {
   for (const action of taskCommandPaletteActions()) app.slots.commandPaletteAction(action);
   app.slots.homepageSection({ id: "now", title: "Now", component: NowHomeCard });
-  app.slots.navPanel({ id: "tasks", title: "Tasks", icon: tasksIcon, path: "tasks", component: TasksScreen, experimental_sidebarAccessory: OpenTaskCount });
+  app.slots.navPanel({ id: "tasks", title: "Tasks", icon: tasksIcon, path: "tasks", component: () => <div data-bb-demo-ready className="contents"><TasksScreen /></div>, experimental_sidebarAccessory: OpenTaskCount });
   app.slots.settingsSection({ id: "preferences", component: SettingsPanel });
   app.slots.settingsSection({ id: "more", component: MoreSettings });
   app.slots.experimental_threadHeaderAction({ id: "task", title: "Attached task", component: ThreadTaskChip });

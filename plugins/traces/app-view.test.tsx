@@ -44,7 +44,9 @@ describe("Traces thread UI", () => {
       traces_thread: (input) => { const { threadId, reveal } = rpcContract.traces_thread.input.parse(input); return trace(threadId, reveal); },
     } });
     expect(screen.getByRole("heading", { name: "Thread Waterfall" })).toBeTruthy();
-    expect(await screen.findByText("sensitive-waterfall")).toBeTruthy();
+    expect((await screen.findByText("sensitive-waterfall")).closest("[data-bb-demo-sensitive]")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Thread Waterfall" }).closest("[data-bb-demo-sensitive]")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Thread Waterfall" }).closest("[data-bb-demo-ready]")).not.toBeNull();
     const detail = screen.getByRole("complementary", { name: "Span detail" });
     expect(within(detail).getByRole("heading", { name: "Usage · latest stored snapshot" })).toBeTruthy();
     expect(within(detail).getByRole("heading", { name: "Context · latest stored snapshot" })).toBeTruthy();

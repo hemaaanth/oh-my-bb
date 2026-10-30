@@ -3,7 +3,6 @@ import { imageTools, defaultImageTools, type ImageRecipe } from "./src/image-too
 import { ImagePackageTags } from "./components/image-package-tags.js";
 import type { AttachmentsView } from "./src/attachment-contract.js";
 import {
-  Fragment,
   useCallback,
   useEffect,
   useRef,
@@ -13,7 +12,10 @@ import {
   definePluginApp,
   useRealtime,
   useRpc,
-  type PluginThreadHeaderActionProps,
+  experimental_InfoSection as InfoSection,
+  experimental_DetailRow as DetailRow,
+  experimental_THREAD_INFO_SECTION_GROUPS,
+  type ExperimentalThreadInfoProps,
   type PluginMachineProviderInputsProps,
 } from "@get-bb/plugin-sdk/app";
 import { SettingsDialog } from "./components/settings-dialog.js";
@@ -22,12 +24,7 @@ import { SandboxPreferencesSettings, SandboxIntegrationSettings, SandboxPreparat
 import { Input } from "./components/ui/input";
 import { Switch } from "./components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
-import { Icon, type IconName } from "./components/ui/icon";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "./components/ui/popover";
+import { Icon } from "./components/ui/icon";
 import { sandboxProviderValues, type SandboxProvider } from "./src/backend.js";
 import {
   sandboxSizeTierValues,
@@ -41,7 +38,6 @@ import type {
   SandboxThreadResourcesView,
 } from "./src/manager.js";
 import type { SandboxImageRecord } from "./src/store.js";
-import type { ModelRoute } from "./src/model-route.js";
 
 function providerLabel(provider: SandboxProvider): string {
   return ({
@@ -919,115 +915,11 @@ function MoreSettings() {
 
 const GIB = 1024 ** 3;
 
-function resourcePercent(used: number | null, total: number | null): number | null {
-  return used === null || total === null || total <= 0
-    ? null
-    : (used / total) * 100;
-}
-
-function resourceSeverity(percentages: Array<number | null>): "normal" | "warning" | "critical" {
-  const highest = Math.max(0, ...percentages.filter((value): value is number => value !== null));
-  if (highest >= 90) return "critical";
-  if (highest >= 75) return "warning";
-  return "normal";
-}
-
 function formatGib(bytes: number | null): string {
   if (bytes === null) return "—";
   const value = bytes / GIB;
   return value >= 10 ? value.toFixed(0) : value.toFixed(1);
 }
-
-function runtimeResourceLabel(view: SandboxThreadResourcesView): string | null {
-  if (view.state === "sleeping") return "Sleeping";
-  if (view.state === "sleeping_pending") return "Sleeping…";
-  if (view.state === "waking") return "Waking…";
-  if (view.state === "resizing") return "Resizing…";
-  if (view.state === "unavailable" || view.sampleError !== null) return "Unavailable";
-  if (view.stale) return "Stale";
-  return null;
-}
-
-function resourceTone(percent: number | null): {
-  bar: string;
-  text: string;
-} {
-  if (percent !== null && percent >= 90) {
-    return { bar: "bg-destructive", text: "text-destructive" };
-  }
-  if (percent !== null && percent >= 75) {
-    return { bar: "bg-warning", text: "text-warning" };
-  }
-  return { bar: "bg-foreground/60", text: "text-foreground" };
-}
-
-function ResourceMetric({
-  icon,
-  label,
-  value,
-  percent,
-}: {
-  icon: IconName;
-  label: string;
-  value: string;
-  percent: number | null;
-}) {
-  const tone = resourceTone(percent);
-  const bounded = Math.min(100, Math.max(0, percent ?? 0));
-  return (
-    <div className="min-w-0 rounded-lg bg-muted/35 p-2.5">
-      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        <Icon name={icon} className="size-3.5 shrink-0" />
-        <span className="whitespace-nowrap">{label}</span>
-      </div>
-      <div className={`mt-1 truncate text-sm font-medium tabular-nums ${tone.text}`}>
-        {value}
-      </div>
-      <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-        <div
-          className={`h-full rounded-full ${tone.bar}`}
-          style={{ width: `${bounded}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-type SandboxHealth = "healthy" | "degraded" | "dead";
-
-function sandboxHealth(
-  view: SandboxThreadResourcesView,
-  severity: ReturnType<typeof resourceSeverity>,
-): SandboxHealth {
-  if (view.state === "unavailable" || view.state === "destroyed") return "dead";
-  if (
-    runtimeResourceLabel(view) !== null ||
-    view.sampleError !== null ||
-    view.assessment?.state === "underprovisioned" ||
-    severity !== "normal"
-  ) {
-    return "degraded";
-  }
-  return "healthy";
-}
-
-function SandboxHealthIcon({ health }: { health: SandboxHealth }) {
-  const badge = {
-    healthy: "CircleCheck",
-    degraded: "AlertTriangle",
-    dead: "CircleX",
-  } satisfies Record<SandboxHealth, IconName>;
-  return (
-    <span className="relative inline-flex size-4 items-center justify-center" aria-hidden="true">
-      <Icon name="Laptop" className="size-4" />
-      <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-background">
-        <Icon name={badge[health]} className="size-2.5" />
-      </span>
-    </span>
-  );
-}
-
-
 
 function SandboxAttachments({ threadId, live }: { threadId: string; live: boolean }) {
   const rpc = useRpc<typeof sandboxRpcContract>();
@@ -1044,10 +936,10 @@ function SandboxAttachments({ threadId, live }: { threadId: string; live: boolea
   return <section className="min-w-0 space-y-2 border-t border-border pt-3">
     <h3 className="text-xs font-medium">Existing machine context</h3>
     {view ? <dl className="space-y-2 text-xs">
-      <div><dt className="text-muted-foreground">Credential set</dt><dd className="break-words">{view.credentialProfileId === null ? "None" : view.credentials.find(item => item.id === view.credentialProfileId)?.name ?? view.credentialProfileId}</dd></div>
-      <div><dt className="text-muted-foreground">Project tools</dt><dd className="break-words">{labels(view.toolIds, view.tools)}</dd></div>
-      <div><dt className="text-muted-foreground">Skills</dt><dd className="break-words">{labels(view.skillIds, view.skills)}</dd></div>
-      <div><dt className="text-muted-foreground">Agents</dt><dd className="break-words">{labels(view.agentIds, view.agents)}</dd></div>
+      <div><dt className="text-muted-foreground">Credential set</dt><dd data-bb-demo-sensitive className="break-words">{view.credentialProfileId === null ? "None" : view.credentials.find(item => item.id === view.credentialProfileId)?.name ?? view.credentialProfileId}</dd></div>
+      <div><dt className="text-muted-foreground">Project tools</dt><dd data-bb-demo-sensitive className="break-words">{labels(view.toolIds, view.tools)}</dd></div>
+      <div><dt className="text-muted-foreground">Skills</dt><dd data-bb-demo-sensitive className="break-words">{labels(view.skillIds, view.skills)}</dd></div>
+      <div><dt className="text-muted-foreground">Agents</dt><dd data-bb-demo-sensitive className="break-words">{labels(view.agentIds, view.agents)}</dd></div>
     </dl> : <p role={error ? "alert" : "status"} className="break-words text-xs text-muted-foreground">{error || "Loading existing context…"}</p>}
     <p className="text-xs text-muted-foreground">Legacy machine selections are read-only during migration. Existing scope is retained. Use the source plugin’s project settings for new runs; do not recreate a machine to change a legacy selection.</p>
   </section>;
@@ -1099,140 +991,34 @@ function SandboxAlwaysOn({ threadId, separated }: { threadId: string; separated:
   );
 }
 
-/**
- * The thread's Model Gateway route, or null without one. Polled, because
- * Gateway's realtime events reach only Gateway's own UI.
- */
-function useModelRoute(threadId: string) {
-  const rpc = useRpc<typeof sandboxRpcContract>();
-  const [state, setState] = useState<{ threadId: string; route: ModelRoute | null } | null>(null);
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    let current = true;
-    const load = () => {
-      void rpc.call("threadModelRoute", { threadId }).then(
-        (route) => { if (current) setState({ threadId, route }); },
-        () => { if (current) setState({ threadId, route: null }); },
-      );
-    };
-    load();
-    const timer = window.setInterval(load, 30_000);
-    return () => {
-      current = false;
-      window.clearInterval(timer);
-    };
-  }, [rpc, threadId, tick]);
-  const reload = useCallback(() => setTick((value) => value + 1), []);
-  return { route: state?.threadId === threadId ? state.route : null, reload };
-}
-
-/** Match the model picker labels; preserve unknown custom IDs. */
-function modelName(model: string): string {
-  const bare = model.replace(/^(?:model-gateway|openai-codex|openai|anthropic)\//u, "").replace(/^gw-/u, "");
-  const gpt = /^gpt-(\d+(?:\.\d+)*)(?:-(astra|sol|luna|terra|codex-spark))?$/u.exec(bare);
-  if (gpt) return `${gpt[1]}${gpt[2] ? `-${gpt[2] === "codex-spark" ? "Spark" : gpt[2][0]!.toUpperCase() + gpt[2].slice(1)}` : ""}`;
-  const claude = /^claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/u.exec(bare);
-  if (claude === null) return model;
-  const [, family = "", major = "", minor] = claude;
-  return `${family.charAt(0).toUpperCase()}${family.slice(1)} ${major}${minor === undefined ? "" : `.${minor}`}`;
-}
-
-function routeStep(route: ModelRoute): string {
-  return route.chain[route.chainIndex] ?? route.accountLabel ?? "Gateway";
-}
-
-function routeSummary(route: ModelRoute): string {
-  const model = route.autoModel ?? route.model;
-  return `${model === null ? "Unknown model" : modelName(model)} on ${routeStep(route)}${route.chainIndex > 0 ? " (fallback)" : ""}`;
-}
-
-const FALLBACK_REASONS: Record<string, string> = {
-  "rate-limit": "hit its limit",
-  authentication: "rejected the login",
-  transport: "could not be reached",
-  availability: "was unavailable",
-};
-
-function clockTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-/** Amber dot on the header icon while the thread runs on a fallback step. */
-function FallbackDot({ route }: { route: ModelRoute | null }) {
-  if (route === null || route.chainIndex === 0) return null;
-  return <span aria-hidden="true" className="absolute right-1 top-1 size-1.5 rounded-full bg-warning" />;
-}
-
-function ModelRouteSection({ route, separated }: { route: ModelRoute; separated: boolean }) {
-  const step = routeStep(route);
-  const model = route.autoModel ?? route.model;
-  const fallback = route.chainIndex > 0;
-  const cause = route.fallbackCause;
-  return (
-    <div className={separated ? "space-y-1 border-t border-border pt-3" : "space-y-1"}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-medium">Model</div>
-        {fallback ? (
-          <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[10px] text-warning">Fallback</span>
-        ) : route.autoModel !== null ? (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">Jev pick</span>
-        ) : null}
-      </div>
-      <div className="text-sm" title={model ?? undefined}>{model === null ? "Unknown model" : modelName(model)}</div>
-      <div className="text-[11px] text-muted-foreground">
-        {step}{route.accountLabel !== null && route.accountLabel !== step ? ` · ${route.accountLabel}` : ""}
-      </div>
-      {route.chain.length > 1 ? (
-        <div className="text-[11px] text-muted-foreground">
-          Route:{" "}
-          {route.chain.map((entry, index) => (
-            <Fragment key={index}>
-              {index > 0 ? " → " : ""}
-              <span className={index === route.chainIndex ? "font-medium text-foreground" : undefined}>{entry}</span>
-            </Fragment>
-          ))}
-        </div>
-      ) : null}
-      {fallback && cause !== null ? (
-        <p className="text-[11px] text-warning" title={cause.message}>
-          {cause.upstreamLabel} {FALLBACK_REASONS[cause.category] ?? "failed"} (HTTP {cause.status}) at {clockTime(cause.at)}
-        </p>
-      ) : null}
-      {fallback && route.stickyUntil !== null ? (
-        <p className="text-[11px] text-muted-foreground">Stays on {step} until {clockTime(route.stickyUntil)}</p>
-      ) : null}
-      {route.auto !== null ? <p className="text-[11px] text-muted-foreground">Jev: {route.auto}</p> : null}
-    </div>
-  );
-}
-
-const HEADER_BUTTON_CLASS =
-  "relative inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
-
-
-function SandboxResourceIndicator({
-  threadId,
-  isCompactViewport,
-}: PluginThreadHeaderActionProps) {
+function SandboxInfo({ threadId }: { threadId: string }) {
   const rpc = useRpc<typeof sandboxRpcContract>();
   const [view, setView] = useState<SandboxThreadResourcesView | null>(null);
-  const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resizing, setResizing] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
   const [cpu, setCpu] = useState("");
   const [memory, setMemory] = useState("");
   const [disk, setDisk] = useState("");
-  const { route, reload: reloadRoute } = useModelRoute(threadId);
 
+  const latestRequest = useRef(0);
   const load = useCallback(async (refresh: boolean) => {
-    const next = await rpc.call("threadResources", { threadId, refresh });
-    setView(next);
-    setError(null);
+    const request = ++latestRequest.current;
+    try {
+      const next = await rpc.call("threadResources", { threadId, refresh });
+      if (request !== latestRequest.current) return;
+      setView(next);
+      setError(null);
+    } catch (failure) {
+      if (request !== latestRequest.current) return;
+      setError(errorText(failure));
+      throw failure;
+    }
   }, [rpc, threadId]);
 
   useEffect(() => {
-    void load(true).catch((failure) => setError(errorText(failure)));
+    void load(true).catch(() => undefined);
+    return () => { latestRequest.current++; };
   }, [load]);
 
   // Only sandbox threads have meters worth refreshing, by poll or realtime;
@@ -1241,7 +1027,7 @@ function SandboxResourceIndicator({
   useEffect(() => {
     if (!managed) return;
     const timer = window.setInterval(() => {
-      void load(true).catch((failure) => setError(errorText(failure)));
+      void load(true).catch(() => undefined);
     }, 30_000);
     return () => window.clearInterval(timer);
   }, [load, managed]);
@@ -1263,45 +1049,15 @@ function SandboxResourceIndicator({
   }, [view?.managed, view?.provisioned?.cpuCores, view?.provisioned?.memoryBytes, view?.provisioned?.diskBytes]);
 
   if (view?.managed !== true) {
-    const summary = route === null ? null : routeSummary(route);
-    const machineLabel = view?.managed === false ? "Local machine" : error ? "Machine status unavailable" : "Loading machine status";
-    return <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) reloadRoute(); }}>
-      <PopoverTrigger asChild>
-        <button type="button" className={HEADER_BUTTON_CLASS}
-          aria-label={view?.managed === false && summary ? `Local machine. ${summary}. Open model and machine details` : machineLabel}
-          title={summary ? `${machineLabel} · ${summary}` : machineLabel}>
-          <Icon name="Laptop" className="size-4" />
-          {route === null ? null : <FallbackDot route={route} />}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={8} className="w-full space-y-3 md:w-[20rem]" mobileTitle="Machine">
-        {route === null ? null : <ModelRouteSection route={route} separated={false} />}
-        <div className={`flex items-center gap-1.5 text-[11px] text-muted-foreground${route === null ? "" : " border-t border-border pt-3"}`}>
-          <Icon name="Laptop" className="size-3.5" />{machineLabel}
-        </div>
-        {error ? <p role="alert" className="break-words text-xs text-destructive">{error}</p> : null}
-      </PopoverContent>
-    </Popover>;
+    return error && view === null ? <InfoSection label="Sandbox"><DetailRow label="Status" icon="AlertTriangle">Unavailable</DetailRow><p data-bb-demo-sensitive role="alert" className="mt-2 text-xs text-destructive">{error}</p></InfoSection> : null;
   }
 
-  const sample = view.latest;
-  const memoryTotal = sample?.memoryBytes ?? view.provisioned?.memoryBytes ?? null;
-  const diskTotal = sample?.diskBytes ?? view.provisioned?.diskBytes ?? null;
-  const memoryPercent = resourcePercent(sample?.memoryUsageBytes ?? null, memoryTotal);
-  const diskPercent = resourcePercent(sample?.diskUsageBytes ?? null, diskTotal);
-  const severity = resourceSeverity([
-    sample?.cpuUsagePercent ?? null,
-    memoryPercent,
-    diskPercent,
-  ]);
-  const stateLabel = runtimeResourceLabel(view);
-  const health = sandboxHealth(view, severity);
-  const healthLabel = `Sandbox ${health}`;
-  const fullLabel = stateLabel ?? (
-    sample === null
-      ? "Resources unavailable"
-      : `CPU ${sample.cpuUsagePercent === null ? "—" : `${sample.cpuUsagePercent.toFixed(0)}%`} · RAM ${formatGib(sample.memoryUsageBytes)}/${formatGib(memoryTotal)} GiB · Disk ${formatGib(sample.diskUsageBytes)}/${formatGib(diskTotal)} GiB`
-  );
+  const stateLabel = ({ live: "Running", resizing: "Resizing…", sleeping_pending: "Going to sleep…", sleeping: "Sleeping", waking: "Waking…", unavailable: "Unavailable", destroyed: "Destroyed" } as const)[view.state ?? "unavailable"];
+  const sample = view.state === "live" && !view.stale && view.sampleError === null ? view.latest : null;
+  const memoryTotal = view.provisioned?.memoryBytes ?? sample?.memoryBytes ?? null;
+  const diskTotal = view.provisioned?.diskBytes ?? sample?.diskBytes ?? null;
+  const cores = view.provisioned?.cpuCores ?? sample?.cpuCores ?? null;
+  const cpuText = [sample?.cpuUsagePercent == null ? null : `${sample.cpuUsagePercent.toFixed(0)}%`, cores === null ? null : `${cores} ${cores === 1 ? "core" : "cores"}`].filter(Boolean).join(" · ") || "—";
   const currentCpu = view.provisioned?.cpuCores;
   const currentMemory = view.provisioned?.memoryBytes;
   const currentDisk = view.provisioned?.diskBytes;
@@ -1343,45 +1099,25 @@ function SandboxResourceIndicator({
     }
   };
 
-  return (
-    <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) reloadRoute(); }}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={`${healthLabel}. ${fullLabel}.${route === null ? "" : ` ${routeSummary(route)}.`} Open sandbox resource details`}
-          title={`${healthLabel} · ${fullLabel}${route === null ? "" : `\n${routeSummary(route)}`}`}
-          className={HEADER_BUTTON_CLASS}
-        >
-          <SandboxHealthIcon health={health} />
-          <FallbackDot route={route} />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={8} className="w-full space-y-3 md:w-[24rem] md:max-h-[var(--radix-popover-content-available-height)] overflow-y-auto" mobileTitle="Machine">
-        {view.state === "live" ? <div className="grid grid-cols-3 gap-2">
-          <ResourceMetric
-            icon="Cpu"
-            label="CPU"
-            value={sample?.cpuUsagePercent === null || sample?.cpuUsagePercent === undefined ? "—" : `${sample.cpuUsagePercent.toFixed(0)}%`}
-            percent={sample?.cpuUsagePercent ?? null}
-          />
-          <ResourceMetric
-            icon="Memory"
-            label="RAM"
-            value={`${formatGib(sample?.memoryUsageBytes ?? null)} / ${formatGib(memoryTotal)} GiB`}
-            percent={memoryPercent}
-          />
-          <ResourceMetric
-            icon="HardDrive"
-            label="Disk"
-            value={`${formatGib(sample?.diskUsageBytes ?? null)} / ${formatGib(diskTotal)} GiB`}
-            percent={diskPercent}
-          />
-        </div> : null}
 
-        {view.provider !== "modal" ? <SandboxAlwaysOn threadId={threadId} separated={view.state === "live"} /> : null}
-        <SandboxPreparationStatus threadId={threadId} />
+  return <InfoSection label="Sandbox" trailing={<Button size="icon" variant="ghost" className="size-6" aria-label="Refresh sandbox status" onClick={() => { void load(true).catch(() => undefined); }}><Icon name="RotateCcw" className="size-3.5" /></Button>}>
+    <div className="space-y-3 text-sm">
+      <DetailRow label="Status" icon={view.state === "unavailable" || view.state === "destroyed" ? "AlertTriangle" : "Laptop"}>{stateLabel}</DetailRow>
+      {view.provider ? <DetailRow label="Provider" icon="Cloud">{providerLabel(view.provider)}</DetailRow> : null}
+      <DetailRow label="CPU" icon="Cpu"><span className="tabular-nums">{cpuText}</span></DetailRow>
+      <DetailRow label="RAM" icon="Memory"><span className="tabular-nums">{formatGib(sample?.memoryUsageBytes ?? null)} / {formatGib(memoryTotal)} GiB</span></DetailRow>
+      <DetailRow label="Disk" icon="HardDrive"><span className="tabular-nums">{formatGib(sample?.diskUsageBytes ?? null)} / {formatGib(diskTotal)} GiB</span></DetailRow>
+    </div>
+    {view.stale && view.state === "live" ? <p role="status" className="mt-2 text-xs text-muted-foreground">Resource measurements are stale.</p> : null}
+    {view.sampleError ? <p data-bb-demo-sensitive role="status" className="mt-2 text-xs text-muted-foreground">Resource measurements unavailable: {view.sampleError}</p> : null}
+    {view.assessment?.state === "underprovisioned" ? <p role="status" className="mt-2 text-xs text-warning">This sandbox is under resource pressure.</p> : null}
+    {error ? <p data-bb-demo-sensitive role="alert" className="mt-2 text-xs text-destructive">{error}</p> : null}
+    <SandboxPreparationStatus threadId={threadId} />
+    <details className="mt-3 text-xs">
+      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Manage sandbox</summary>
+      <div className="space-y-3 pt-3">
+        {view.provider !== "modal" ? <SandboxAlwaysOn threadId={threadId} separated={false} /> : null}
         {view.state === "live" ? <SandboxAttachments threadId={threadId} live /> : null}
-
         {view.capability === "supported" ? (
           <div className="space-y-2.5 border-t border-border pt-3">
             <div className="flex items-center justify-between gap-2">
@@ -1405,10 +1141,14 @@ function SandboxResourceIndicator({
             </Button>
           </div>
         ) : null}
-        {route !== null ? <ModelRouteSection route={route} separated /> : null}
-      </PopoverContent>
-    </Popover>
-  );
+
+      </div>
+    </details>
+  </InfoSection>;
+}
+
+function SandboxInfoSection({ threadId }: ExperimentalThreadInfoProps) {
+  return <SandboxInfo key={threadId} threadId={threadId} />;
 }
 
 /** Machine size (S/M/L/XL) picker shown in the native New Thread composer. */
@@ -1449,10 +1189,11 @@ export default definePluginApp((app) => {
     ["preferences", SandboxPreferencesSettings], ["providers", ProviderSettings],
     ["runtime-images", RuntimeSettings], ["oh-my-bb", SandboxIntegrationSettings], ["more", MoreSettings],
   ] as const) app.slots.settingsSection({ id, component });
-  app.slots.experimental_threadHeaderAction({
-    id: "sandbox-resources",
-    title: "Machine and model",
-    component: SandboxResourceIndicator,
+  app.slots.experimental_threadInfoSection({
+    id: "sandbox",
+    group: experimental_THREAD_INFO_SECTION_GROUPS.related,
+    order: -10,
+    component: SandboxInfoSection,
   });
   // Manual size override in the composer for every sandbox provider. Leaving it
   // on "Project default" applies the project's pinned size (resolved server-side).

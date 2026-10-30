@@ -7,3 +7,5 @@ Configure static credentials in native Configuration. Preferences controls defau
 The image pipeline requires an explicit supported builder and registry. Browser runtime archives carry reviewed source, input and archive hashes. Manual selection of older images and project-specific image pins are retired. Existing machines and provider defaults remain intact. Build provenance and existing-install imports are documented in CONTRACTS.md.
 
 No provider account, private builder or application configuration is bundled. Offline tests do not certify cloud lifecycle. The unused broken standalone Freestyle snapshot publisher is not shipped; native snapshot selection remains.
+
+Remote thread CPU, RAM, disk, and lifecycle status appear in the native Info panel’s **Sandbox** section. Local threads have no extra section or header icon. **Manage sandbox** contains the existing controls. Model/fallback information remains in the composer.

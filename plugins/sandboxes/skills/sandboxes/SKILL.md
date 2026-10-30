@@ -118,7 +118,7 @@ Native sandbox providers are ephemeral. BB retires the machine after its last
 live thread archives, and the provider adapter deletes the vendor allocation.
 Durable providers suspend after the configured idle interval and resume through
 BB core on the next turn. The plugin reconciles idle deadlines at startup, so a
-plugin reload cannot silently leave an idle machine running forever. The machine popover in a sandbox thread has an **Always on** switch for that
+plugin reload cannot silently leave an idle machine running forever. The **Sandbox** section in a sandbox thread’s **Info** panel has an **Always on** switch under **Manage sandbox** for that
 machine. It prevents BB idle suspension, persists across reloads, and does not
 prevent retirement after the last thread archives. Provider charges continue.
 Modal has a fixed provider lifetime and does not support suspend/resume.

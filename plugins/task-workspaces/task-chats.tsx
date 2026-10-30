@@ -59,7 +59,7 @@ export function ChatDot({ state, className = "size-1.5" }: { state: ChatState; c
 }
 
 function ChatName({ threadId, thread }: { threadId: string; thread: SidebarThread | undefined }) {
-  return thread ? <ThreadTitle threadId={threadId} /> : <>Chat</>;
+  return thread ? <span data-bb-demo-sensitive><ThreadTitle threadId={threadId} /></span> : <>Chat</>;
 }
 
 function IconButton({ label, icon, onClick, disabled }: { label: string; icon: "ChevronLeft" | "ExternalLink" | "MessageSquarePlus" | "Paperclip" | "TaskAdd"; onClick: () => void; disabled?: boolean }) {
@@ -157,7 +157,7 @@ export function useChatPopup(tasks: readonly Task[], mutate: AttachPatch) {
   // it from joining the task again by itself. Undo attaches it again.
   const detach = useCallback((task: ChatTask, threadId: string) => {
     mutate({ [task.id]: { threadIds: task.threadIds.filter((id) => id !== threadId) } }, () => rpc.call("detachTaskThread", { threadId, taskId: task.id }));
-    toast("Thread detached", { description: task.title, action: { label: "Undo", onClick: () =>
+    toast("Thread detached", { description: <span data-bb-demo-sensitive>{task.title}</span>, action: { label: "Undo", onClick: () =>
       mutate({ [task.id]: { threadIds: task.threadIds } }, () => rpc.call("attachExistingChat", { taskId: task.id, threadId })) } });
   }, [mutate, rpc]);
   const task = view && tasks.find((item) => item.id === view.taskId);
@@ -180,7 +180,7 @@ export function useChatPopup(tasks: readonly Task[], mutate: AttachPatch) {
         ? { ...current, pane: undefined, seed: undefined, chatIds: [threadId, ...(current.chatIds ?? [])].slice(0, maxColumns) }
         : current);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
       throw error;
     }
   };
@@ -238,7 +238,7 @@ function ChatPopup({ view, available, byId, stateOf, pane, onShow, onPane, onUna
         {back ?? <span className="w-2" />}
         {single ? <ChatDot state={stateOf(single)} className="ms-1 me-1.5 size-1.5" /> : null}
         <DialogTitle className="min-w-0 flex-1 truncate text-sm font-medium leading-normal">
-          {view.title}{singleName && singleName !== view.title ? <span className="font-normal text-muted-foreground"> · {singleName}</span> : null}
+          <span data-bb-demo-sensitive>{view.title}</span>{singleName && singleName !== view.title ? <span className="font-normal text-muted-foreground"> · <span data-bb-demo-sensitive>{singleName}</span></span> : null}
         </DialogTitle>
         <DialogDescription className="sr-only">{bare ? "A chat that no task links." : view.pane === "attach" ? "Attach an open thread to this task." : view.pane === "new" ? "Start a chat on this task." : "Chats attached to this task."}</DialogDescription>
         {single ? machineOf(byId.get(single)) : null}
@@ -268,7 +268,7 @@ function ChatPopup({ view, available, byId, stateOf, pane, onShow, onPane, onUna
               className={`flex max-w-48 shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs outline-none ${id === shown ? "bg-state-active text-foreground" : "text-muted-foreground"}`}
               onClick={() => setTab(id)}><ChatDot state={stateOf(id)} /><span className="truncate"><ChatName threadId={id} thread={byId.get(id)} /></span></button>)}
           </div>
-          {machineOf(byId.get(shown))}
+          <span data-bb-demo-sensitive>{machineOf(byId.get(shown))}</span>
         </div></ChatHeaderMenu> : null}
         {shown ? <ChatColumn key={shown} threadId={shown} thread={byId.get(shown)} state={stateOf(shown)} /> : null}
       </> : <div className="grid min-h-0 flex-1 auto-cols-[minmax(22rem,1fr)] grid-flow-col divide-x divide-border overflow-x-auto">
@@ -280,11 +280,11 @@ function ChatPopup({ view, available, byId, stateOf, pane, onShow, onPane, onUna
 
 // Without onOpenFull, the column has no header, because the popup's bar or tabs name the chat.
 function ChatColumn({ threadId, thread, state, onOpenFull, onUnattach }: { threadId: string; thread: SidebarThread | undefined; state: ChatState; onOpenFull?: () => void; onUnattach?: () => void }) {
-  return <section aria-label={thread?.displayTitle ?? "Chat"} className="flex min-h-0 min-w-0 flex-1 flex-col">
+  return <section data-bb-demo-label aria-label={thread?.displayTitle ?? "Chat"} className="flex min-h-0 min-w-0 flex-1 flex-col">
     {onOpenFull ? <ChatHeaderMenu threadId={threadId} thread={thread} onOpen={onOpenFull} onUnattach={onUnattach}><div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pe-3.5 ps-3.5">
       <ChatDot state={state} />
       <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground"><ChatName threadId={threadId} thread={thread} /></span>
-      {machineOf(thread)}
+      <span data-bb-demo-sensitive>{machineOf(thread)}</span>
     </div></ChatHeaderMenu> : null}
     <div className="min-h-0 flex-1">
       <ChatErrorBoundary><ThreadChat threadId={threadId} variant="compact" layout="contained" /></ChatErrorBoundary>
@@ -332,7 +332,7 @@ function MachineStatus({ hostId, runtime }: { hostId: string; runtime: SidebarTh
       setHost(await sdk.hosts.experimental_resume({ hostId }));
     } catch (error) {
       setFailed(true);
-      toast.error(error instanceof Error ? error.message : "Could not resume the machine.");
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : "Could not resume the machine."}</span>);
       void load();
     }
   };
@@ -370,14 +370,14 @@ function ThreadPicker({ status, threads, projects, attached, stateOf, onPick }: 
   return <>
     <label className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border px-4">
       <Icon name="Search" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-      <input aria-label="Search open threads" placeholder="Search open threads" autoFocus={!compact} value={query} onChange={(event) => setQuery(event.target.value)}
+      <input data-bb-demo-sensitive aria-label="Search open threads" placeholder="Search open threads" autoFocus={!compact} value={query} onChange={(event) => setQuery(event.target.value)}
         className={`min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground ${COARSE_POINTER_TEXT_BASE_CLASS}`} />
     </label>
     {shown.length ? <ul aria-label="Open threads" className="min-h-0 flex-1 overflow-y-auto p-1.5">{shown.map((thread) => <li key={thread.id}>
       <button type="button" className="flex w-full min-w-0 select-none items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm outline-none hover:bg-state-hover focus-visible:bg-state-hover" onClick={() => onPick(thread.id)}>
         <ChatDot state={stateOf(thread.id)} />
-        <span className="min-w-0 flex-1 truncate">{thread.displayTitle || "Untitled thread"}</span>
-        <span className="max-w-[40%] shrink-0 truncate text-xs text-muted-foreground">{names.get(thread.projectId)}</span>
+        <span className="min-w-0 flex-1 truncate"><span data-bb-demo-sensitive>{thread.displayTitle || "Untitled thread"}</span></span>
+        <span className="max-w-[40%] shrink-0 truncate text-xs text-muted-foreground"><span data-bb-demo-sensitive>{names.get(thread.projectId)}</span></span>
       </button>
     </li>)}</ul> : <p className="flex-1 px-4 py-3 text-sm text-muted-foreground">{status !== "ready" ? "Loading threads…" : words ? "No matching threads." : "No open threads."}</p>}
   </>;
@@ -427,7 +427,7 @@ export function ChatMenu({ task, chats }: { task: ChatTask; chats: ChatPopupCont
   </DropdownMenuItem>;
   return <span title={label} className="flex"><DropdownMenu open={open} onOpenChange={toggle} modal={false}>
     <DropdownMenuTrigger asChild>
-      <Button aria-label={`${label}: ${task.title}`} variant="ghost" size="icon" className="size-7 text-muted-foreground"
+      <Button data-bb-demo-label aria-label={`${label}: ${task.title}`} variant="ghost" size="icon" className="size-7 text-muted-foreground"
         onPointerEnter={hover(true, 120)} onPointerLeave={hover(false, 160)}
         // With a mouse, the hover opens the menu, so a press must not toggle it shut.
         onPointerDown={(event) => { pointer.current = event.pointerType; if (event.pointerType === "mouse") event.preventDefault(); }}
@@ -439,7 +439,7 @@ export function ChatMenu({ task, chats }: { task: ChatTask; chats: ChatPopupCont
         <ChatGlyph count={ids.length} />
       </Button>
     </DropdownMenuTrigger>
-    {picked ? null : <DropdownMenuContent align="end" mobileTitle={task.title} className="w-64" onPointerEnter={hover(true, 0)} onPointerLeave={hover(false, 160)}>
+    {picked ? null : <DropdownMenuContent data-bb-demo-label align="end" mobileTitle={task.title} className="w-64" onPointerEnter={hover(true, 0)} onPointerLeave={hover(false, 160)}>
       {ids.map((id) => chatItem(id, choose(() => chats.show(task, [id]))))}
       {ids.length ? <DropdownMenuSeparator /> : null}
       {ids.length > 1 ? <DropdownMenuItem onSelect={choose(() => chats.show(task))}><Icon name="Layers" className="size-3.5" aria-hidden />{ids.length > maxColumns ? "Choose chats" : compact ? "Open all" : "Open side by side"}</DropdownMenuItem> : null}

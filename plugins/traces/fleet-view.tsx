@@ -121,7 +121,7 @@ function ScanProgress({ snapshot, error, onCancel, onRefresh, connection, quiet 
     {sourceReasons.length > 0 && <ul className="traces-fleet-source-limits" aria-label="Source scan limits">{sourceReasons.map((reason) =>
       <li key={reason.code}><strong>Source limited:</strong> {reason.count.toLocaleString()} {reason.detail}</li>)}</ul>}
     {!quiet && <div className="traces-fleet-freshness">{freshness}{snapshot?.retries ? ` · ${snapshot.retries} SQLite busy retries` : ""}{connection !== "connected" ? " · Live connection unavailable; reconnect triggers a new scan" : ""}</div>}
-    {(snapshot?.error || error) && <p className="traces-fleet-error" role="alert">{snapshot?.error ?? error}</p>}
+    {(snapshot?.error || error) && <p className="traces-fleet-error" role="alert"><span data-bb-demo-sensitive>{snapshot?.error ?? error}</span></p>}
   </div>;
 }
 
@@ -131,7 +131,7 @@ function FleetControls({ view, draft, setDraft, onSubmit, since, setSince, mode,
   return <div className="traces-fleet-controls">
     <form onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
       <label htmlFor={`traces-fleet-query-${view}`}>Filter</label>
-      <input id={`traces-fleet-query-${view}`} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="provider:codex kind:toolCall status:failed" maxLength={512} />
+      <input data-bb-demo-sensitive id={`traces-fleet-query-${view}`} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="provider:codex kind:toolCall status:failed" maxLength={512} />
       <button type="submit">Run scan</button>
     </form>
     {view === "explorer" && <div className="traces-fleet-switch" aria-label="Result mode"><button type="button" aria-pressed={mode === "events"} onClick={() => setMode("events")}>Events</button><button type="button" aria-pressed={mode === "spans"} onClick={() => setMode("spans")}>Spans</button></div>}
@@ -154,7 +154,7 @@ function Histogram({ bins, since }: { bins: FleetHistogramBin[]; since: string }
   return <figure className="traces-fleet-histogram">
     <figcaption><strong>{maxBin.count ? `Peak activity near ${clock(maxBin.from)}` : "No events in this window"}</strong><span>Matching events per interval · {since} window · errors in red</span></figcaption>
     <div className="traces-fleet-histogram-bars" role="img" aria-label="Matching event count by time interval">
-      {bins.map((bin, index) => <div key={index} className="traces-fleet-histogram-column" title={`${index === 24 ? "Live" : `${clock(bin.from)}–${clock(bin.to)}`}: ${bin.count} events, ${bin.errors} errors`}>
+      {bins.map((bin, index) => <div data-bb-demo-label key={index} className="traces-fleet-histogram-column" title={`${index === 24 ? "Live" : `${clock(bin.from)}–${clock(bin.to)}`}: ${bin.count} events, ${bin.errors} errors`}>
         <span style={{ height: `${Math.max(bin.count ? 2 : 0, bin.count / peak * 100)}%` }}><i style={{ height: `${bin.count ? bin.errors / bin.count * 100 : 0}%` }} /></span>
       </div>)}
     </div>
@@ -170,7 +170,7 @@ function Facets({ snapshot, onFacet }: { snapshot: FleetSnapshot; onFacet: (fiel
     if (!values.length) return null;
     return <section key={field}><h3>{field}</h3>{values.slice(0, 8).map(({ value, count }: FleetFacet) => value === "other"
       ? <div className="traces-fleet-facet-other" key={value} title="Aggregated values beyond the facet cap; this bucket cannot be filtered"><span>Other values (grouped)</span><span>{compact(count)}</span></div>
-      : <button type="button" key={value} aria-pressed={active[field] === value} aria-label={`Filter ${field} to ${value} (${count} matches)`} onClick={() => onFacet(field, value)} title={`Filter ${field} to ${value}`}><span>{value}</span><span>{compact(count)}</span></button>)}</section>;
+      : <button type="button" key={value} aria-pressed={active[field] === value} data-bb-demo-label aria-label={`Filter ${field} to ${value} (${count} matches)`} onClick={() => onFacet(field, value)} title={`Filter ${field} to ${value}`}><span data-bb-demo-sensitive={["project", "environment", "worktree"].includes(field) ? "" : undefined}>{value}</span><span>{compact(count)}</span></button>)}</section>;
   })}</aside>;
 }
 
@@ -193,17 +193,17 @@ function RowDetail({ row, onClose, onWaterfall, onContext, onOpenThread, keyboar
     return () => { request.current++; if (timer !== null) window.clearTimeout(timer); };
   }, [rpc, row.id, row.seq, row.threadId, reveal, keyboardSelection]);
   return <aside ref={pane} className="traces-fleet-detail" aria-label="Selected event detail">
-    <div className="traces-fleet-detail-heading"><h3>{row.name}</h3><button type="button" onClick={onClose} aria-label="Close event detail">×</button></div>
+    <div className="traces-fleet-detail-heading"><h3><span data-bb-demo-sensitive>{row.name}</span></h3><button type="button" onClick={onClose} aria-label="Close event detail">×</button></div>
     <p className={row.status === "failed" ? "traces-fleet-error" : ""}>{row.status} · {row.type}</p>
     <dl>{[["Thread", row.threadId], ["Turn", row.turnId ?? "—"], ["Item", row.itemId ?? "—"], ["Provider", row.provider], ["Model", row.model ?? "not stored"],
         ["Project", row.projectId], ["Environment", row.environmentId ?? "none"], ["Worktree", String(row.worktree)], ["At", new Date(row.at).toLocaleString()],
-        ["Duration", duration(row.durationMs)], ["Category", row.category ?? "—"]].map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
+        ["Duration", duration(row.durationMs)], ["Category", row.category ?? "—"]].map(([key, value]) => <div key={key}><dt>{key}</dt><dd data-bb-demo-sensitive={["Thread", "Turn", "Item", "Project", "Environment"].includes(key!) ? "" : undefined}>{value}</dd></div>)}</dl>
     <div className="traces-fleet-detail-links"><button type="button" onClick={() => onOpenThread(row.threadId)}>Open BB thread</button><button type="button" onClick={() => onWaterfall(row.threadId)}>Waterfall</button><button type="button" onClick={() => onContext(row.threadId)}>Context Inspector</button></div>
       {row.seq > 0 ? <>
         <label className="traces-fleet-reveal"><input type="checkbox" checked={reveal} onChange={(event) => { if (!event.target.checked) { request.current++; setDetail(null); } setReveal(event.target.checked); }} /> Reveal sensitive data</label>
-        {error && <p className="traces-fleet-error">{error}</p>}
-        {detail?.input && <section><h4>Input · {number(detail.inputSize)} bytes</h4><pre>{detail.input}</pre></section>}
-        {detail?.output && <section><h4>Output · {number(detail.outputSize)} bytes</h4><pre>{detail.output}</pre></section>}
+        {error && <p className="traces-fleet-error"><span data-bb-demo-sensitive>{error}</span></p>}
+        {detail?.input && <section><h4>Input · {number(detail.inputSize)} bytes</h4><pre data-bb-demo-sensitive>{detail.input}</pre></section>}
+        {detail?.output && <section><h4>Output · {number(detail.outputSize)} bytes</h4><pre data-bb-demo-sensitive>{detail.output}</pre></section>}
       </> : <p className="traces-fleet-muted">Derived span. Open Waterfall for its nested detail.</p>}
   </aside>;
 }
@@ -242,8 +242,8 @@ function ExplorerRows({ snapshot, selectedId, selectedRef, onSelect, onWaterfall
     onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)} onKeyDown={onKeyDown}><table><thead><tr><th>Time</th><th>Thread</th><th>Turn</th><th>Kind</th><th>Tool</th><th>Duration</th><th>Status</th></tr></thead><tbody>
     {first > 0 && <tr className="traces-fleet-row-spacer" aria-hidden="true"><td colSpan={7} style={{ height: first * ROW_HEIGHT }} /></tr>}
     {visible.map((row, offset) => <tr key={row.id} data-row-index={first + offset} className={row.id === selectedId ? "selected" : ""} aria-selected={row.id === selectedId} tabIndex={row.id === selectedId ? 0 : -1} onClick={(event) => { event.currentTarget.focus(); onSelect(row); }}>
-      <td><button type="button" ref={row.id === selectedId ? selectedRef : undefined} aria-current={row.id === selectedId ? "true" : undefined} aria-label={`Inspect ${row.kind} in ${row.threadId} at ${clock(row.at)}`}>{new Date(row.at).toLocaleTimeString()}</button></td>
-      <td><button type="button" onClick={(event) => { event.stopPropagation(); onWaterfall(row.threadId); }} aria-label={`Open Waterfall for ${row.threadId}`}>{row.threadId}</button></td><td>{row.turnId?.split("-t").at(-1) ?? "—"}</td><td>{row.kind}</td><td>{row.tool ?? "—"}</td><td>{duration(row.durationMs)}</td><td className={row.status === "failed" ? "failed" : ""}>{row.status}</td>
+      <td><button data-bb-demo-label type="button" ref={row.id === selectedId ? selectedRef : undefined} aria-current={row.id === selectedId ? "true" : undefined} aria-label={`Inspect ${row.kind} in ${row.threadId} at ${clock(row.at)}`}>{new Date(row.at).toLocaleTimeString()}</button></td>
+      <td><button data-bb-demo-label type="button" onClick={(event) => { event.stopPropagation(); onWaterfall(row.threadId); }} aria-label={`Open Waterfall for ${row.threadId}`}><span data-bb-demo-sensitive>{row.threadId}</span></button></td><td>{row.turnId?.split("-t").at(-1) ?? "—"}</td><td>{row.kind}</td><td>{row.tool ?? "—"}</td><td>{duration(row.durationMs)}</td><td className={row.status === "failed" ? "failed" : ""}>{row.status}</td>
     </tr>)}
     {first + visible.length < snapshot.rows.length && <tr className="traces-fleet-row-spacer" aria-hidden="true"><td colSpan={7} style={{ height: (snapshot.rows.length - first - visible.length) * ROW_HEIGHT }} /></tr>}</tbody></table>
     {!snapshot.rows.length && <p className="traces-fleet-muted">{snapshot.status === "running" ? "Rows will appear as threads are scanned." : "No matching events in this window."}</p>}
@@ -319,7 +319,7 @@ function SpawnTree({ snapshot, onOpen }: { snapshot: FleetSnapshot; onOpen: (thr
     return depth; };
   return <section className="traces-fleet-card"><div className="traces-fleet-card-heading"><h3>Largest visible spawn trees</h3><p>Scanned thread IDs only · no titles</p></div>
     <div className="traces-fleet-spawn">{nodes.length ? nodes.map((node) => <button key={node.threadId} type="button" onClick={() => onOpen(node.threadId)} style={{ paddingLeft: `${10 + depthOf(node.threadId) * 16}px` }}>
-      <span>{depthOf(node.threadId) ? "↳" : "●"} {node.threadId}</span><small>{node.provider} · {node.children} children</small>
+      <span>{depthOf(node.threadId) ? "↳" : "●"} <span data-bb-demo-sensitive>{node.threadId}</span></span><small>{node.provider} · {node.children} children</small>
     </button>) : <p className="traces-fleet-muted">No parent/child relations were found in the scanned threads.</p>}</div>
   </section>;
 }

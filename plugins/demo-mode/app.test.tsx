@@ -163,3 +163,54 @@ test("focus and status headings remain readable while project and workspace name
   await scripts.lifecycle.dispose();
   document.body.innerHTML = "";
 });
+
+test("label-only markers hide private hover text without masking status, counts, or icons", async () => {
+  document.body.innerHTML = `<button data-bb-demo-label title="Private contact" aria-label="Open Ada"><svg aria-hidden="true"><path d="M0 0h1" /></svg><span>In progress</span><b>3</b></button><textarea data-bb-demo-sensitive aria-label="Draft">Private draft</textarea>`;
+  const app = await loadPluginApp(() => import("./app"));
+  const scripts = await mountPluginContentScripts(app, { pluginId: "demo-mode", generation: 1 });
+  setEnabled(MODE_KEY, true);
+  expect(document.querySelector("button")!.getAttribute("title")).toBe("Demo item");
+  expect(document.querySelector("button")!.getAttribute("aria-label")).toBe("Demo item");
+  expect(words()).not.toContain("In");
+  expect(words()).not.toContain("progress");
+  expect(words()).not.toContain("3");
+  expect(document.querySelector("svg path")).not.toBeNull();
+  setEnabled(MODE_KEY, false);
+  expect(document.querySelector("button")!.getAttribute("title")).toBe("Private contact");
+  await scripts.lifecycle.dispose();
+  document.body.innerHTML = "";
+});
+
+test("native Info values and row names mask while structure, status, times and counts stay visible", async () => {
+  const row = (label: string, value: string) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
+  const section = (label: string, name: string, extra: string) => `<section data-info-section><h3><button>${label}<span>5</span></button></h3><ul><li><span role="img" aria-label="Completed"><svg></svg></span><span class="flex-1"><button title="${name}">${name}</button><span dir="rtl">${name}/</span><button aria-label="Open file in tab"><svg></svg></button></span><span>${extra}</span></li></ul></section>`;
+  document.body.innerHTML = `<aside><div data-bb-plugin="core"><dl><div><div>${row("Parent", "None")}${row("Project", '<span title="Secret project">Secret project</span>')}${row("Environment", "Project checkout")}${row("Machine", "Private machine")}${row("Directory", '<button aria-label="Copy directory" title="/private/path">~/private/path</button>')}${row("Branch", "secret-branch")}${row("Git status", "Even with main")}</div></div><div data-bb-plugin="automations">${section("Automations", "Private reminder", "Completed")}</div>${section("Child threads", "Private child", "5m ago")}${section("Uncommitted files", "secret.ts", "+3 -2")}${section("Thread storage", "private-plan.md", "12 KB")}<section data-info-section><h3>Thread storage</h3><li><span class="flex-1"><button aria-expanded="false">Attachments</button></span></li></section><div data-bb-plugin="journal"><section data-info-section><h3>Summary</h3><li><span class="flex-1">Original goal</span><span data-bb-demo-sensitive>Private content</span></li></section></div></dl></div></aside>`;
+  const app = await loadPluginApp(() => import("./app"));
+  const scripts = await mountPluginContentScripts(app, { pluginId: "demo-mode", generation: 1 });
+  setEnabled(MODE_KEY, true);
+  for (const word of ["Secret", "project", "Private", "machine", "~/private/path", "secret-branch", "reminder", "child", "secret.ts", "private-plan.md"]) expect(words()).toContain(word);
+  for (const word of ["Parent", "None", "Project", "Environment", "checkout", "Machine", "Directory", "Branch", "Git", "status", "Even", "with", "main", "Automations", "Child", "threads", "Uncommitted", "files", "Thread", "storage", "Completed", "5m", "ago", "+3", "-2", "12", "KB", "Attachments", "Original", "goal"]) expect(words()).not.toContain(word);
+  expect(screenTitle("/private/path")).toBeNull();
+  expect(document.querySelector('[aria-label="Copy directory"]')).not.toBeNull();
+  expect(document.querySelector('[aria-label="Completed"] svg')).not.toBeNull();
+  const project = [...document.querySelectorAll("dt")].find(e => e.textContent === "Project")!.nextElementSibling!;
+  project.innerHTML = '<span title="New private project">New private project</span>';
+  const detail = (label: string) => [...document.querySelectorAll("dt")].find(e => e.textContent === label)!.nextElementSibling!;
+  detail("Parent").textContent = "Private parent";
+  detail("Environment").textContent = "Client staging";
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(words()).toContain("New");
+  expect(words()).toContain("parent");
+  expect(words()).toContain("Client");
+  detail("Parent").textContent = "None";
+  detail("Environment").textContent = "Project checkout";
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(detail("Parent").hasAttribute("data-bb-demo-native")).toBe(false);
+  expect(detail("Environment").hasAttribute("data-bb-demo-native")).toBe(false);
+  setEnabled(MODE_KEY, false);
+  expect(document.querySelector("[data-bb-demo-native]")).toBeNull();
+  expect(screenTitle("New private project")).not.toBeNull();
+  await scripts.lifecycle.dispose();
+  document.body.innerHTML = "";
+});
+function screenTitle(title: string) { return [...document.querySelectorAll("[title]")].find(e => e.getAttribute("title") === title) ?? null; }

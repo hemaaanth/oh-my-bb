@@ -88,3 +88,7 @@ The former Agents integration is removed. Historical profile metadata stays stor
 Akiflow project selection adds one migration after the shipped schema. Existing synced projects, Inbox tasks, and saved project mappings seed enabled selections. Existing task rows, stable AKI numbers, linked references, owners, and attached chats stay unchanged. New discoveries start unchecked. A folder is not a sync selection; choose its projects individually.
 
 Akiflow's client identifier is installation-local KV state under `akiflow-client-id`, not a public fixed UUID. New installations generate it once. Before migrating an existing private installation, preserve its current `Akiflow-Client-Id` header value in that KV key before the first public load. Do this only in the approved live cutover slot. Do not copy that installation identifier into public source or fixtures. Provider credentials and refresh-token storage do not change.
+
+### Demo Mode
+
+Supports optional Demo Mode markers. Private names, descriptions, messages, drafts, record values, payloads, and typed searches are masked. Icons, standard headings, actions, statuses, times, and counts stay readable. Hover labels containing private text are masked separately. Native inputs and editors are concealed by Demo Mode too. This is presentation masking; saved data, links, exports, and clipboard contents are unchanged. No dependency or startup integration probe is added.

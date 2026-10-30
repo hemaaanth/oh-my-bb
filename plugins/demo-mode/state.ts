@@ -20,6 +20,8 @@ export function applyMode(root: HTMLElement = document.body): void {
 }
 
 const LABELS = [
+  '[data-bb-demo-label]',
+  ':is([data-bb-demo-native], [data-bb-demo-native] *)[title]',
   '[data-bb-plugin="status-sidebar"] li > div > a[aria-label]',
   '[data-bb-plugin="status-sidebar"] li > div > a + span > span[title]',
   '[data-bb-plugin="status-sidebar"] li > div > a + span button[aria-label]',
@@ -76,6 +78,7 @@ const TEXT = [
   '[data-promptbox-shell] section[aria-label="Thread context before sending"]',
   // Any plugin can mark its own sensitive elements; see README "For plugin authors".
   '[data-bb-demo-sensitive]',
+  '[data-bb-demo-native]',
 ].join(", ");
 export const HIGHLIGHT = "bb-demo";
 
@@ -131,6 +134,7 @@ export function createLabelMask() {
     if (!enabled(MODE_KEY)) { restore(); return; }
     for (const element of document.querySelectorAll(LABELS)) {
       for (const name of ["title", "aria-label"]) {
+        if (name === "aria-label" && element.closest("[data-bb-demo-native]") && !element.matches("[data-bb-demo-sensitive], [data-bb-demo-label]")) continue;
         const value = element.getAttribute(name);
         if (value === null || value === "Demo item") continue;
         let attributes = original.get(element);

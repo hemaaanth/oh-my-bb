@@ -82,3 +82,7 @@ npm run build
 `npm run prompt-fixtures` regenerates small Claude Code and Codex JSONL fixtures from real local transcripts. It replaces every prompt, tool description/schema and path with structural markers; it retains only record types, IDs, timestamps and numeric usage. These fixtures do not require provider files to run the test suite.
 
 The synthetic SQLite fixture tests read-only schema gating, thread-first query selection, progress, cancellation, live replacement, latency, pruned usage, and redaction. Phase 3/4 adds no on-disk projection. A durable mirror would require a transactional BB-core change feed; rowid-only synchronization can miss deletes and rewrites. No suite-wide plugin source switch is needed. Install or reload this plugin alone from its worktree after checking `bb plugin source traces --json`.
+
+### Demo Mode
+
+Supports optional Demo Mode markers. Private names, descriptions, messages, drafts, record values, payloads, and typed searches are masked. Icons, standard headings, actions, statuses, times, and counts stay readable. Hover labels containing private text are masked separately. Native inputs and editors are concealed by Demo Mode too. This is presentation masking; saved data, links, exports, and clipboard contents are unchanged. No dependency or startup integration probe is added.

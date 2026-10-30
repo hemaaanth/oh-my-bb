@@ -36,13 +36,13 @@ function SpanRow({ span, depth, selected, collapsed, turnNumber, onSelect, onTog
   const barClass = span.kind === WAIT ? "traces-bar traces-bar-wait" : span.status === "failed" ? "traces-bar traces-bar-failed" : "traces-bar";
   const elapsed = span.end === null ? `${duration(effectiveEnd - span.start)} open` : duration(span.durationMs);
   return <div className="traces-row-wrap">
-    {span.children.length > 0 && <button type="button" className="traces-fold" style={{ left: `${Math.min(depth, 6) * 16 + 2}px` }}
+    {span.children.length > 0 && <button data-bb-demo-label type="button" className="traces-fold" style={{ left: `${Math.min(depth, 6) * 16 + 2}px` }}
       aria-label={`${collapsed ? "Expand" : "Collapse"} ${span.kind} ${span.name}`} aria-expanded={!collapsed} onClick={() => onToggle(span)}>{collapsed ? "▸" : "▾"}</button>}
-    <button type="button" className={`traces-row ${selected ? "traces-row-selected" : ""}`} data-span-id={span.id}
+    <button data-bb-demo-label type="button" className={`traces-row ${selected ? "traces-row-selected" : ""}`} data-span-id={span.id}
       aria-current={selected ? "true" : undefined} onClick={() => onSelect(span)} title={`${span.kind} · ${span.name} · ${elapsed}`}>
       <span className="traces-row-label" style={{ paddingLeft: `${Math.min(depth, 6) * 16 + (span.children.length ? 28 : 12)}px` }}>
         <span className="traces-kind" aria-hidden="true" style={{ color: palette[span.kind] ?? "var(--muted-foreground)" }}>●</span>
-        <span className="traces-row-text">{span.kind === "turn" ? `Turn ${turnNumber ?? span.name}` : span.name}</span>
+        <span className="traces-row-text"><span data-bb-demo-sensitive={span.kind === "turn" ? undefined : ""}>{span.kind === "turn" ? `Turn ${turnNumber ?? span.name}` : span.name}</span></span>
         {span.status === "failed" && <span className="traces-failed">failed</span>}
       </span>
       <span className="traces-track">{bar && <span className={barClass} style={{ left: `${bar.left}%`, width: `${bar.width}%`, background: span.kind === WAIT || span.status === "failed" ? undefined : palette[span.kind] ?? "var(--muted-foreground)" }} />}</span>
@@ -60,14 +60,14 @@ function Detail({ span, revealed }: { span: TraceSpan; revealed: boolean }) {
     ["Turn", span.turnId ?? "—"], ["Item", span.itemId ?? "—"],
   ];
   return <aside className="traces-detail" aria-label="Span detail" tabIndex={0}>
-    <h3>{span.name}</h3>
-    <dl>{fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-    {span.error && <p className="traces-error">Error: {span.error}</p>}
+    <h3><span data-bb-demo-sensitive>{span.name}</span></h3>
+    <dl>{fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd data-bb-demo-sensitive={["Environment", "Turn", "Item"].includes(label!) ? "" : undefined}>{value}</dd></div>)}</dl>
+    {span.error && <p className="traces-error">Error: <span data-bb-demo-sensitive>{span.error}</span></p>}
     {span.kind === "turn" && (!span.usage || !span.contextUsage) && <p className="traces-hint">{!span.usage && "Token usage not stored. "}{!span.contextUsage && "Context usage not stored."}</p>}
     {span.usage != null && <section><h4>Usage · latest stored snapshot</h4><pre>{JSON.stringify(span.usage, null, 2)}</pre></section>}
     {span.contextUsage != null && <section><h4>Context · latest stored snapshot</h4><pre>{JSON.stringify(span.contextUsage, null, 2)}</pre></section>}
-    {span.input && <section><h4>Input · {span.inputSize?.toLocaleString()} bytes</h4><pre>{span.input}</pre></section>}
-    {span.output && <section><h4>Output · {span.outputSize?.toLocaleString()} bytes</h4><pre>{span.output}</pre></section>}
+    {span.input && <section><h4>Input · {span.inputSize?.toLocaleString()} bytes</h4><pre data-bb-demo-sensitive>{span.input}</pre></section>}
+    {span.output && <section><h4>Output · {span.outputSize?.toLocaleString()} bytes</h4><pre data-bb-demo-sensitive>{span.output}</pre></section>}
     {!revealed && <p className="traces-hint">Inputs and outputs are hidden. Turn on Reveal sensitive data to inspect them.</p>}
   </aside>;
 }
@@ -210,9 +210,9 @@ function Waterfall({ threadId, compact = false, initialTurnId = null, onTurnChan
     }
     setZoom(fitWindow(span.start - origin, (span.end ?? observedEnd) - origin, fullDuration));
   };
-  return <div className={`traces-panel ${compact ? "traces-panel-compact" : ""}`}>
+  return <div data-bb-demo-ready className={`traces-panel ${compact ? "traces-panel-compact" : ""}`}>
     <div className="traces-toolbar">
-      <div className="traces-heading"><h2>Thread Waterfall</h2><span>{threadId}</span></div>
+      <div className="traces-heading"><h2>Thread Waterfall</h2><span><span data-bb-demo-sensitive>{threadId}</span></span></div>
       <div className="traces-controls">
         <div className="traces-turn-control"><span>Turn</span><Select.Root value={turn} onValueChange={selectTurn}>
           <Select.Trigger className="traces-turn-trigger" aria-label="Turn"><Select.Value /><Select.Icon><Icon name="ChevronDown" aria-hidden="true" /></Select.Icon></Select.Trigger>
@@ -228,7 +228,7 @@ function Waterfall({ threadId, compact = false, initialTurnId = null, onTurnChan
         <button type="button" aria-label="Refresh thread" title="Refresh thread" onClick={load}>↻</button>
       </div>
     </div>
-    {error && <p role="alert" className="traces-error">{error}</p>}
+    {error && <p role="alert" className="traces-error"><span data-bb-demo-sensitive>{error}</span></p>}
     {!trace && !error && <p className="traces-empty">Loading thread events…</p>}
     {root && <>
       <section className="traces-turn-summary" aria-label="Turn summary">
@@ -319,7 +319,7 @@ function NavPanel({ subPath }: { subPath: string }) {
   const open = (path: string) => navigate.toPluginPanel("waterfall", { subPath: path });
   const openThreadView = (target: "waterfall" | "context", id: string) => open(target === "context" ? id ? `context/${id}` : "context" : id || "waterfall");
   const openFleetView = (target: "explorer" | "metrics", query = "", since = "24h") => open(`${target}/${encodeFleetFilter(query)}/${since}`);
-  return <div className="traces-page"><div className="traces-container">
+  return <div data-bb-demo-ready className="traces-page"><div className="traces-container">
     {view === "explorer" ? <ExplorerView key={subPath} initialQuery={fleetQuery} initialSince={fleetSince} onDrilldown={openThreadView}
         onFilter={(query, since) => openFleetView("explorer", query, since)} />
       : view === "metrics" ? <MetricsView key={subPath} initialQuery={fleetQuery} initialSince={fleetSince} onExplorer={(query, since) => openFleetView("explorer", query, since)}

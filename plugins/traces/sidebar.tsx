@@ -38,7 +38,7 @@ export function TracesSidebar({ subPath }: { subPath: string }) {
     ? "Selected thread does not match this search." : "Selected thread is outside this sidebar list.";
   return <aside className="traces-sidebar" aria-label="Traces threads">
     <div className="traces-sidebar-search">
-      <input type="search" value={search} onChange={(event) => setSearch(event.target.value)}
+      <input data-bb-demo-sensitive type="search" value={search} onChange={(event) => setSearch(event.target.value)}
         onKeyDown={(event) => { if (event.key === "Escape" && search) { event.preventDefault(); setSearch(""); } }}
         placeholder="Search threads" aria-label="Search Traces threads" />
       <nav className="traces-sidebar-views" aria-label="Traces views">
@@ -60,13 +60,13 @@ export function TracesSidebar({ subPath }: { subPath: string }) {
       {[...groups].map(([projectId, threads]) => {
         const shown = threads.filter((thread, index) => index < (expanded.get(projectId) ?? (query ? 50 : PER_PROJECT)) || thread.id === selectedId);
         const omitted = threads.length - shown.length;
-        return <section key={projectId} aria-label={projects.get(projectId) ?? projectId}>
-          <h3>{projects.get(projectId) ?? projectId}<span>{threads.length}</span></h3>
-          <ul>{shown.map((thread) => <li key={thread.id}><button type="button" aria-current={thread.id === selectedId ? "page" : undefined}
+        return <section data-bb-demo-label key={projectId} aria-label={projects.get(projectId) ?? projectId}>
+          <h3><span data-bb-demo-sensitive>{projects.get(projectId) ?? projectId}</span><span>{threads.length}</span></h3>
+          <ul>{shown.map((thread) => <li key={thread.id}><button data-bb-demo-label type="button" aria-current={thread.id === selectedId ? "page" : undefined}
             aria-label={`${thread.displayTitle}, ${thread.id}`}
             title={thread.displayTitle} onClick={() => navigate.toPluginPanel("waterfall", { subPath: thread.id })}>
-            <span className="traces-sidebar-title">{thread.parentThreadId && <span aria-hidden="true">↳ </span>}{thread.displayTitle}</span>
-            <small>{thread.id}{Object.hasOwn(BUSY_STATUSES, thread.status) ? " · running" : ""}</small>
+            <span className="traces-sidebar-title">{thread.parentThreadId && <span aria-hidden="true">↳ </span>}<span data-bb-demo-sensitive>{thread.displayTitle}</span></span>
+            <small><span data-bb-demo-sensitive>{thread.id}</span>{Object.hasOwn(BUSY_STATUSES, thread.status) ? " · running" : ""}</small>
           </button></li>)}</ul>
           {omitted > 0 && <button type="button" className="traces-sidebar-more" onClick={() => setExpanded(new Map(expanded).set(projectId, shown.length + 50))}>Show {Math.min(50, omitted)} more</button>}
         </section>;
