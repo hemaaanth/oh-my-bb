@@ -10,6 +10,7 @@ import { literal } from "./evaluate.js";
 import examples from "./examples.json";
 import { sourcedQuery } from "../../app/spec/source-metadata.js";
 import { exportMarkdown } from "./export.js";
+import { specBlocks } from "../../render/spec-baked.js";
 
 type Language = "openui-lang" | "app";
 export type AuthorCheck = ({ language: "openui-lang" } & SpecCheck) | { language: "app"; ok: boolean; report: string };
@@ -19,14 +20,28 @@ const languageSchema = z.enum(["openui-lang", "app"]);
 
 /** Checks never execute app scripts, publish a page, or send a reply. */
 export async function checkSource(bb: BbPluginApi, threadId: string | undefined, code: string, language: Language): Promise<AuthorCheck> {
-  if (language === "app") return { language, ...checkApp(code) };
-  if (code.length > MAX_SPEC_CHARS) return { language, ...checkOpenUi(code) };
+  const budget = { loaded: 0 };
+  if (language === "openui-lang") return { language, ...await checkProgram(bb, threadId, code, budget) };
+  const app = checkApp(code);
+  if (code.length > MAX_APP_CHARS) return { language, ...app };
+  const blocks = specBlocks(code.replace(/<!--[\s\S]*?(?:-->|$)/gu, ""));
+  const reports = [app.report];
+  let ok = app.ok;
+  for (const [index, block] of blocks.entries()) {
+    const result = await checkProgram(bb, threadId, block.code, budget);
+    ok = ok && result.ok;
+    reports.push(`OpenUI block ${index + 1}:\n${textReport({ language: "openui-lang", ...result })}`);
+  }
+  return { language, ok, report: reports.join("\n\n") };
+}
+
+async function checkProgram(bb: BbPluginApi, threadId: string | undefined, code: string, budget: { loaded: number }): Promise<SpecCheck> {
+  if (code.length > MAX_SPEC_CHARS) return checkOpenUi(code);
   let parsed;
   try { parsed = parseCheckedSpec(code); }
-  catch (error) { return { language, ok: false, checks: 0, issues: [{ severity: "error", kind: "parse", message: error instanceof Error ? error.message : String(error) }] }; }
+  catch (error) { return { ok: false, checks: 0, issues: [{ severity: "error", kind: "parse", message: error instanceof Error ? error.message : String(error) }] }; }
   const queries = new Map<string, unknown>();
   const issues: SpecIssue[] = [];
-  let loaded = 0;
   for (const query of parsed.queryStatements) {
     const tool = literal(query.toolAST);
     const args = query.argsAST ? literal(query.argsAST) : {};
@@ -38,16 +53,16 @@ export async function checkSource(bb: BbPluginApi, threadId: string | undefined,
       issues.push({ severity: "error", kind: "runtime", component: "Query", message: `Unknown Query tool ${JSON.stringify(tool)}.` });
       continue;
     }
-    if (loaded >= MAX_QUERIES) {
+    if (budget.loaded >= MAX_QUERIES) {
       issues.push({ severity: "warning", kind: "probe", component: "Query", message: `Fetched the first ${MAX_QUERIES} queries. Remaining queries use their defaults.` });
       break;
     }
-    loaded++;
+    budget.loaded++;
     try { queries.set(query.statementId, sourcedQuery(tool, args as Record<string, unknown>, await runTool(bb, { threadId, tool, args: args as Record<string, unknown> }))); }
     catch (error) { issues.push({ severity: "error", kind: "runtime", component: "Query", message: `Query(${JSON.stringify(tool)}): ${error instanceof Error ? error.message : String(error)}` }); }
   }
   const checked = checkOpenUi(code, queries, parsed);
-  return { language, ...checked, ok: checked.ok && !issues.some(({ severity }) => severity === "error"), issues: [...issues, ...checked.issues] };
+  return { ...checked, ok: checked.ok && !issues.some(({ severity }) => severity === "error"), issues: [...issues, ...checked.issues] };
 }
 
 export function findExamples(names: readonly string[] = []) {
@@ -63,7 +78,7 @@ function textReport(result: AuthorCheck): string {
 export function registerAuthoring(bb: BbPluginApi): PagesCliCommands {
   bb.agents.registerTool({
     name: "page_check",
-    description: "Check an openui-lang program or app HTML before replying. Checks OpenUI parse/evaluation, independent input boundaries, scenes, GLSL, or app script syntax and sandbox mistakes. Reads literal Query sources in the calling thread, at most 16. Does not execute app JavaScript, render a browser, publish, or send answers. Not a security proof or exhaustive interaction test.",
+    description: "Check an openui-lang program or HTML before replying, including every embedded text/openui-lang block. Checks OpenUI parse/evaluation, independent input boundaries, scenes, GLSL, and app script syntax and sandbox mistakes. Reads at most 16 literal Query sources across all blocks in the calling thread. Does not execute app JavaScript, render a browser, publish, or send answers. Not a security proof or exhaustive interaction test.",
     presentation: { label: { pending: "Checking UI", completed: "Checked UI" }, icon: { glyph: "FileText" } },
     parameters: z.object({ code: z.string().max(Math.max(MAX_APP_CHARS, MAX_SPEC_CHARS)), language: languageSchema.default("openui-lang") }).strict(),
     async execute({ code, language }, { threadId }) { return JSON.stringify(await checkSource(bb, threadId, code, language)); },

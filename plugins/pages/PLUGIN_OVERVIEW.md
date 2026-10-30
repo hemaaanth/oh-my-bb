@@ -1,7 +1,9 @@
-Turn an HTML or Markdown file into a durable artifact that reads naturally
-inside BB. Pages keeps changed versions together, renders the result inline in
-chat, and gives prior work a searchable home instead of leaving it buried in a
-thread.
+Draw small visuals directly in a reply, or publish longer HTML and Markdown
+documents as durable artifacts. Agents choose library components for metrics,
+timelines, diffs, comparisons, and charts before writing custom HTML. Reply UI
+needs no file or publish. Saved documents show as cards by default; compact
+visuals can be borderless and inline. Pages keeps versions and prior work in a
+searchable library.
 
 ## What you get
 

@@ -1,39 +1,69 @@
 ---
 name: pages
-description: "Make a page: write an HTML or Markdown file, or a folder with index.html and its images, CSS, and other pages (a report, summary, plan, notes, comparison, dashboard, or chart), publish it with page_publish or `bb pages publish`, and show it inline with the ::page directive. Use whenever the user should see a document, a chart, or data that reads better as a page than as chat text, when they ask for a report, a chart, a preview, or a link, when you need the user to answer a short form, or when you update a page you published before. Also use it to put small live UI in a reply as an openui-lang fence: stats, a short table or chart, tabs, code, or a question. Replaces inline-vis and flint-chart."
+description: "Use when a visual would make an answer easier to understand: metrics, timelines, diffs, comparisons, plans, diagrams, charts, tables, or choices. Use for inline UI in a reply and for longer documents to keep or share. Also use when the user asks for a page, report, preview, or an update to a prior page."
 ---
 
 # Pages
 
-A page is one HTML or Markdown file, or a folder with `index.html`, that BB
-shows inline in chat, keeps as versions, and can share as a link. You write the
-files. Pages adds the theme, the font, and the chart runtime. Every publish of
-changed bytes is a new version.
+Choose the surface and components before writing. Do this proactively; the user
+should not need to ask for Pages, OpenUI, or a particular component.
 
-## When a page is the right surface
+## Choose the surface
 
-- Use a page when the output has a reader: a report, a comparison, a plan, a
-  review, a daily summary, or any chart.
-- Use a page when a table or chart would be cramped in chat.
-- Do not use a page for a short answer. Write it in chat.
-- Do not use a page for files that belong in the repo, such as source, docs,
-  and config. Commit those instead.
-- PR review pages come from the PR Review plugin. Do not write them by hand.
-- For a small UI that belongs to one reply, such as a few numbers, a short
-  table, or a quick choice for the user, write an `openui-lang` fence in the
-  reply instead. BB renders it in place as it streams. It needs no file and no
-  publish. Read `references/openui.md` in this skill before you write one.
-  Pages can hold the same components; see [Live UI on a page](#live-ui-on-a-page).
+- **Small visual for this reply:** write an `openui-lang` fence directly in the
+  reply. No file or publish. Use it for a few stats, a small chart or table,
+  a timeline, a diff, a comparison, or a quick choice. Keep surrounding prose short.
+- **Long document to keep or share:** publish an HTML or Markdown page. Use
+  OpenUI components inside the document for its visuals. The default is a card
+  that opens the full document; it is not a borderless inline view.
+- **Compact published visual:** pass `display: "inline"` to `page_publish`.
+  This is separate from a direct reply fence and still creates a saved page.
+- **Simple prose answer:** write it in chat. Do not add UI without a useful reason.
+- Files that belong in the repo, such as source, docs, and config, stay in the repo.
+  PR review pages come from the PR Review plugin.
 
-### Offer before you are asked
+## Choose components
 
-The user may not know pages exist. Look for output that would read better as one.
+Use the library for content it already covers. Use semantic HTML for the document
+structure and custom content that has no suitable component.
 
-- If your answer is a report, a comparison of three or more options, or a table
-  of more than about ten rows, make the page and put a short summary in chat.
-- If it is borderline, answer in chat and offer the page in one closing line,
-  for example "Want this as a page with the chart?"
-- Offer at most once per topic. Do not offer for short answers.
+| Output | Components |
+| --- | --- |
+| Headline numbers | `Stats`, `Stat` |
+| History or events | `Timeline` |
+| Proposed code or text edits | `Diff` |
+| Alternatives and tradeoffs | `Compare`, `Decision` |
+| System or flow | `Diagram` |
+| Work steps | `Plan`, `Steps` |
+| Verification and evidence | `Acceptance`, `Provenance` |
+| Chart | `Chart`, `Series`, `SegmentedBar` |
+| Data | `Table` |
+| Choices or answers | `Form`, `Choice`, `OptionCards` |
+
+1. Call `page_examples` with the component names to get exact signatures and
+   examples. The CLI equivalent is `bb pages examples <component>`.
+2. Read `references/openui.md` for syntax and actions. Read a group reference
+   only when you need more detail than the examples provide.
+3. Check the program with `page_check` before sending it. For HTML pages, the
+   `app` check also checks embedded `text/openui-lang` blocks. Static checks
+   do not prove browser rendering.
+
+For example, a small metrics reply needs only this fence:
+
+```openui-lang
+root = Stats([Stat("Open bugs", 12), Stat("Due", "Fri")])
+```
+
+To put the same UI in an HTML page, use
+`<script type="text/openui-lang">root = Stats([Stat("Open bugs", 12)])</script>`.
+Markdown pages accept the fence directly. See [Live UI on a page](#live-ui-on-a-page).
+Published OpenUI answer controls are read-only; use an HTML form when a saved
+page must send answers. Direct reply fences support interactive Forms.
+
+A page is one HTML or Markdown file, or a folder with `index.html`. Pages adds
+the theme, font, and chart runtime. Publishing changed bytes creates a version.
+For a long report, comparison, or large table, create the page without asking
+whether the user wants one. Do not offer a page as a closing question.
 
 ## Write the file
 

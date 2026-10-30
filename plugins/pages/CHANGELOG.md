@@ -2,6 +2,11 @@
 
 ## 0.6.1
 
+- Agents choose inline UI and library components before writing custom HTML, with
+  task examples in both dynamic and tool-level instructions.
+- HTML author checks validate embedded OpenUI blocks and share one bounded data-read
+  budget. Generated references no longer recommend unavailable mutation tools.
+
 - Prebuilt packages retain runtime and loader files but exclude debug sourcemaps.
 
 - Gallery examples keep wide content inside their cards. Boards retain their own

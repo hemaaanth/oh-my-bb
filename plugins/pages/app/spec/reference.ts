@@ -16,7 +16,7 @@ Use it for UI that belongs to this reply: numbers, a table or chart, tabs, code 
 
 - Each fence is a whole program. To change a UI, write a new full fence. Fences do not merge.
 - Start with the content. Do not open with a Heading that repeats the reply.
-- Find components in the index at the end. Before you use a group, read its file in \`references/openui/\` for the exact arguments.
+- Choose a component from the task: Stats for metrics, Timeline for history, Diff for edits, Compare/Decision for options, Diagram for systems, Plan for steps, Acceptance for verification. Call \`page_examples\` with those names for exact arguments. Group files in \`references/openui/\` have more detail.
 - A Button with no action sends its label to the thread, plus its Form's answers as \`- name: value\` lines. Wrap fields in a Form when you need the answers. A sent Form locks, so the reader sends it once.
 - Only http(s) links open.
 ${specTools.length ? "- Query reads data with the tools listed below. Mutation is not available. Otherwise put the data in the program." : "- There are no tools, Query, or Mutation. Put the data in the program."}
@@ -40,7 +40,27 @@ export function specReference(): Record<string, string> {
   const prompt = specLibrary.prompt({ inlineMode: true, bindings: true, toolCalls, builtinFunctions: true, ...(toolCalls ? { tools: specTools } : {}) });
   const sections = prompt.split(/\n(?=## )/u);
   // OpenUI's intro, inline mode, and generic rules assume the whole reply is UI. Mutation and filter sections need write tools.
-  const kept = sections.filter((section) => /^## (Syntax Rules|Built-in Functions|Query|Action|Available Tools|Hoisting|Final Verification)/u.test(section));
+  const kept = sections.filter((section) => /^## (Syntax Rules|Built-in Functions|Query|Action|Available Tools|Hoisting|Final Verification)/u.test(section)).map((section) => {
+    if (section.startsWith("## Action")) return `## Action — Button behavior
+
+Buttons without an action send their label and Form answers to the thread.
+Use one step directly, or Action([...]) for several steps in order:
+
+- @ToAssistant(message: string, context?: any) — send a message to the assistant.
+- @OpenUrl(url: string) — open an HTTP(S) link.
+- @Run(queryRef) — refresh a declared read-only Query.
+- @Set($variable, value) — update local UI state.
+- @Reset($variable) — restore local UI state to its declared default.
+
+Example: Button("Refresh", @Run(data)) where data is a declared Query.
+Mutation and write tools are unavailable. Local state changes do not write to files or services.
+`;
+    return section
+      .replace("Use these with Query() for read operations or Mutation() for write operations. The LLM decides which is appropriate based on the tool's purpose.", "Use these read-only tools with Query(). No write tools are available.")
+      .replace("Query() and Mutation() calls", "Query() calls")
+      .replace("If the user asks for functionality that doesn't match any available tool, use realistic mock data instead of fabricating a tool call.", "If no tool supplies the requested data, explain the missing source. Use illustrative data only when explicitly labelled as an example.")
+      .replace(/5\. Every visible filter \$binding appears in at least one Query args object\.\n?/u, "");
+  });
   // The lines before the first group explain `?`, ActionExpression, and $binding for every signature.
   const signatureNotes = (sections.find((section) => section.startsWith("## Component Signatures")) ?? "").split(/\n(?=### )/u)[0]!.split("\n").slice(1).join("\n").trim();
   const groups = GROUPS.filter((group) => group.entries.length > 0);

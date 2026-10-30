@@ -1,8 +1,11 @@
 # Pages
 
-Pages turns an HTML or Markdown file into a durable BB artifact. It renders the
-page inline in chat, keeps its version history, groups it into project folders,
-and provides a searchable library for finding earlier work.
+Pages draws small visuals directly in a reply and publishes longer HTML or
+Markdown documents as durable BB artifacts. Agents choose library components
+for metrics, timelines, diffs, comparisons, and charts before writing custom HTML.
+A reply fence needs no file or publish. Published documents show as cards by
+default; `display: "inline"` makes a compact saved visual borderless in chat.
+Pages keeps version history, project folders, and a searchable library.
 
 ## Features
 
@@ -59,7 +62,9 @@ language and preserve existing form behavior:
   remains a supplied-text copy control.
 - `page_examples` and `page_check`, also available as `bb pages examples`
   and `bb pages check <file>`. Checks include input boundaries, scenes, GLSL,
-  and app script syntax. They do not execute app JavaScript or prove security.
+  and app script syntax. HTML checks also validate embedded OpenUI blocks, with
+  at most 16 data reads shared across the document. They do not execute app
+  JavaScript or prove security.
 - One image and diagram viewer with fit, zoom, pan, pinch, gallery navigation,
   and focus return to the opener. The viewer stays inside its BB pane.
   OptionCards can show visual choices; expanding an image does not change the choice.

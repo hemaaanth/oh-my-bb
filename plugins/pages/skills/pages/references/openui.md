@@ -8,7 +8,7 @@ Use it for UI that belongs to this reply: numbers, a table or chart, tabs, code 
 
 - Each fence is a whole program. To change a UI, write a new full fence. Fences do not merge.
 - Start with the content. Do not open with a Heading that repeats the reply.
-- Find components in the index at the end. Before you use a group, read its file in `references/openui/` for the exact arguments.
+- Choose a component from the task: Stats for metrics, Timeline for history, Diff for edits, Compare/Decision for options, Diagram for systems, Plan for steps, Acceptance for verification. Call `page_examples` with those names for exact arguments. Group files in `references/openui/` have more detail.
 - A Button with no action sends its label to the thread, plus its Form's answers as `- name: value` lines. Wrap fields in a Form when you need the answers. A sent Form locks, so the reader sends it once.
 - Only http(s) links open.
 - Query reads data with the tools listed below. Mutation is not available. Otherwise put the data in the program.
@@ -108,38 +108,23 @@ metrics = Query("tool_name", {arg1: value, arg2: $binding}, {defaultField: 0, de
 - Manual refresh: `Button("Refresh", Action([@Run(query1), @Run(query2)]), "secondary")` — re-fetches the listed queries
 - Refresh all queries: create Action with @Run for each query
 
-## Action — Button Behavior
+## Action — Button behavior
 
-An action wires a button click to operations. Pass one @-prefixed step bare, e.g. Button("Ask", @ToAssistant("Tell me more")). Put several steps in Action([...]), e.g. Button("Read", Action([@OpenUrl("https://example.com"), @ToAssistant("Summarize this page")])). Steps execute in order.
-Buttons without an action automatically send their label to the assistant (equivalent to @ToAssistant(label)).
+Buttons without an action send their label and Form answers to the thread.
+Use one step directly, or Action([...]) for several steps in order:
 
-Available steps:
-- @Run(ref: Query | Mutation) — Execute a Mutation or re-fetch a Query (ref must be a declared Query/Mutation)
-- @ToAssistant(message: string, context?: any) — Send a message to the assistant (for conversational buttons like "Tell me more", "Explain this"). The optional context is any value (object, array, string, number) passed to the assistant as hidden data, e.g. @ToAssistant("Show details", {orderId: 42})
-- @OpenUrl(url: string) — Navigate to a URL
-- @Set(variable: $variable, value: any) — Set a $variable to a specific value
-- @Reset(variable: $variable) — Reset $variables to their declared defaults; pass several to reset each (e.g. @Reset($title, $priority) restores $title="" and $priority="medium")
+- @ToAssistant(message: string, context?: any) — send a message to the assistant.
+- @OpenUrl(url: string) — open an HTTP(S) link.
+- @Run(queryRef) — refresh a declared read-only Query.
+- @Set($variable, value) — update local UI state.
+- @Reset($variable) — restore local UI state to its declared default.
 
-Example — mutation + refresh + reset (PREFERRED pattern):
-```
-$binding = "default"
-result = Mutation("tool_name", {field: $binding})
-data = Query("tool_name", {}, {rows: []})
-onSubmit = Action([@Run(result), @Run(data), @Reset($binding)])
-```
-
-Example — simple nav:
-```
-viewBtn = Button("View", @OpenUrl("https://example.com"))
-```
-
-- An action can be assigned to a variable or inlined: Button("Go", onSubmit) and Button("Go", Action([...])) both work
-- If a @Run(mutation) step fails, remaining steps are skipped (halt on failure)
-- @Run(queryRef) re-fetches the query (fire-and-forget, cannot fail)
+Example: Button("Refresh", @Run(data)) where data is a declared Query.
+Mutation and write tools are unavailable. Local state changes do not write to files or services.
 
 ## Available Tools
 
-Use these with Query() for read operations or Mutation() for write operations. The LLM decides which is appropriate based on the tool's purpose.
+Use these read-only tools with Query(). No write tools are available.
 
 - file(path: string) → {path: string, kind: string, rows: object[], data: any, text: string}
   Reads a file from this thread's workspace, its thread storage, or /tmp. A relative path is in the workspace. .json gives data (and rows if it is a list); .csv, .tsv, .jsonl give rows of objects; anything else gives text. At most 2 MB and 5000 rows.
@@ -164,7 +149,7 @@ Use these shapes as minimal Query defaults:
 - threads: `{"threads":[]}`
 - environments: `{"environments":[]}`
 
-CRITICAL: Use ONLY the tools listed above in Query() and Mutation() calls. Do NOT invent or guess tool names. If the user asks for functionality that doesn't match any available tool, use realistic mock data instead of fabricating a tool call.
+CRITICAL: Use ONLY the tools listed above in Query() calls. Do NOT invent or guess tool names. If no tool supplies the requested data, explain the missing source. Use illustrative data only when explicitly labelled as an example.
 
 ## Hoisting & Streaming (CRITICAL)
 
@@ -187,7 +172,6 @@ Before finishing, walk your output and verify:
 2. Every referenced name is defined. Every defined name (other than root) is reachable from root.
 3. Every Query result is referenced by at least one component.
 4. Every $binding appears in at least one component or expression.
-5. Every visible filter $binding appears in at least one Query args object.
 
 ## Math functions
 
