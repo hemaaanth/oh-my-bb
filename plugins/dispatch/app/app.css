@@ -17,7 +17,8 @@
   height: 100%;
 }
 .dispatch-pet-footer {
-  margin: -2px;
+  width: 16px;
+  height: 16px;
 }
 /* The Appearance preview: the same pet, large, on the page background. */
 .dispatch-pet-preview {
