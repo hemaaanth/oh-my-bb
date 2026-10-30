@@ -2621,6 +2621,23 @@ function renderFrames(args) {
     }
     return { time: frame.time, path: resolve(dirname(specPath), frame.path), selector: frame.selector };
   });
+  let trace;
+  if (spec.trace !== undefined) {
+    if (!spec.trace || typeof spec.trace !== "object" || Array.isArray(spec.trace) ||
+        typeof spec.trace.path !== "string" || !spec.trace.path || !Array.isArray(spec.trace.probes) ||
+        spec.trace.probes.length < 1 || spec.trace.probes.length > 100) {
+      fail("render trace needs a path and 1 through 100 probes");
+    }
+    const probes = spec.trace.probes.map((probe, index) => {
+      if (!probe || typeof probe !== "object" || Array.isArray(probe) ||
+          typeof probe.selector !== "string" || !probe.selector || probe.selector.length > 2_000 ||
+          typeof probe.property !== "string" || !probe.property || probe.property.length > 200) {
+        fail(`render trace probe ${index} needs a selector and property`);
+      }
+      return { selector: probe.selector, property: probe.property };
+    });
+    trace = { path: resolve(dirname(specPath), spec.trace.path), probes };
+  }
   const base = verifiedIdentity();
   if (base.backend === "existing") fail("render jobs never attach to a regular Brave profile");
   const session = `render-${randomBytes(8).toString("hex")}`;
@@ -2628,6 +2645,19 @@ function renderFrames(args) {
   const call = (operation) => {
     const result = agentBrowser(identity, ["--session", session, ...operation], { includeState: false, timeoutMs: 90_000 });
     if (result.status !== 0) fail(`render ${operation[0]} failed`);
+    return result;
+  };
+  const show = (time) => call(["eval", `(() => { const video = window.__video; if (!video || typeof video.show !== 'function') throw new Error('window.__video.show is required'); return video.show(${JSON.stringify(time)}); })()`]);
+  const measure = (selector, property) => {
+    const result = call(["eval", `(() => { const video = window.__video; if (!video || typeof video.get !== 'function') throw new Error('window.__video.get is required for trace capture'); return video.get(${JSON.stringify(selector)}, ${JSON.stringify(property)}); })()`]);
+    try {
+      const output = JSON.parse(result.stdout);
+      if (Object.hasOwn(output?.data ?? {}, "result")) return output.data.result;
+      if (Object.hasOwn(output ?? {}, "result")) return output.result;
+      throw new Error();
+    } catch {
+      fail("render trace returned an invalid measurement");
+    }
   };
   const crop = (path) => {
     if (!clip) return;
@@ -2642,15 +2672,20 @@ function renderFrames(args) {
   try {
     call(["open", url.href]);
     call(["set", "viewport", String(viewport.width), String(viewport.height), String(viewport.scale)]);
+    const measurements = [];
     for (const frame of frames) {
-      call(["eval", `(() => { const video = window.__video; if (!video || typeof video.show !== 'function') throw new Error('window.__video.show is required'); return video.show(${frame.time}); })()`]);
+      show(frame.time);
       call(frame.selector ? ["screenshot", frame.selector, frame.path] : ["screenshot", frame.path]);
       crop(frame.path);
+      if (trace) for (const probe of trace.probes) {
+        measurements.push({ time: frame.time, ...probe, value: measure(probe.selector, probe.property) });
+      }
     }
+    if (trace) writeFileSync(trace.path, `${JSON.stringify({ viewport, frames: measurements }, null, 2)}\n`, { mode: 0o600 });
   } finally {
     agentBrowser(identity, ["--session", session, "close"], { includeState: false, timeoutMs: 30_000 });
   }
-  console.log(JSON.stringify({ rendered: frames.length, viewport, ...(clip ? { clip } : {}), paths: frames.map(frame => frame.path) }));
+  console.log(JSON.stringify({ rendered: frames.length, viewport, ...(clip ? { clip } : {}), ...(trace ? { trace: trace.path } : {}), paths: frames.map(frame => frame.path) }));
   return 0;
 }
 

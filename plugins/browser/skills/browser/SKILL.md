@@ -51,7 +51,11 @@ in order; the temporary session always closes.
   "frames": [
     { "time": 0, "path": "out/000000.png" },
     { "time": 0.033333333, "path": "out/000001.png", "selector": "#stage" }
-  ]
+  ],
+  "trace": {
+    "path": "out/trace.json",
+    "probes": [{ "selector": ".rows", "property": "y" }]
+  }
 }
 ```
 
@@ -59,6 +63,13 @@ in order; the temporary session always closes.
 crop after capture. A frame can instead name one selector. Keep frames pure
 and use a local preview URL. This is frame-exact capture, not real-time video
 recording; do not use it for an authenticated product workspace.
+
+`trace` is optional. It writes a JSON sidecar with one value for every
+frame/probe pair, by calling the film's typed `window.__video.get(selector,
+property)` after `show(time)`. Use it to check animated position, opacity, or
+scale curves. It cannot execute arbitrary page JavaScript; every probe has a
+selector and property only. A render fails if the preview does not expose that
+video API.
 
 ## Compact observation and guarded actions
 
