@@ -37,6 +37,7 @@
 // It never takes the configured user agent or --state; the default state is
 // loaded into its profile over CDP instead, once per revision.
 
+import { settlePage } from '../browser-extension/page-operations.js';
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomInt, randomBytes } from "node:crypto";
 import {
@@ -168,7 +169,7 @@ const ALLOWED_COMMANDS = new Set([
   "click", "dblclick", "type", "fill", "press", "key", "keydown", "keyup", "keyboard",
   "hover", "focus", "check", "uncheck", "select", "drag", "upload", "download",
   "scroll", "scrollintoview", "scrollinto", "wait", "mouse",
-  "snapshot", "observe", "act", "dialog", "screenshot", "pdf", "eval", "get", "is", "find",
+  "snapshot", "observe", "settle", "act", "dialog", "screenshot", "pdf", "eval", "get", "is", "find",
   "set", "network", "cookies", "storage", "tab", "diff",
   "trace", "profiler", "record", "console", "errors", "highlight", "clipboard",
   "webmcp", "react", "vitals", "a11y", "addinitscript", "removeinitscript",
@@ -2019,6 +2020,7 @@ function checkCommand(command, args, flags) {
   if (!ALLOWED_COMMANDS.has(command)) {
     fail(`agent-browser ${command} is not available through bb-browser; it could bypass the trusted Brave`);
   }
+  if (command === "settle" && (flags.some(flag => /^-(?:\d|\.|Infinity)/.test(flag)) || args.length > 1 || args.length === 1 && (!Number.isInteger(Number(args[0])) || Number(args[0]) < 0 || Number(args[0]) > 10000))) fail("Use settle [timeout-ms], between 0 and 10000");
   if (command === "read" && (args.length > 0 || flags.some((flag) => READ_FETCH_FLAGS.has(flag)))) {
     fail(
       "bb-browser read only reads the open tab: with a URL, --llms, --require-md, or --raw agent-browser fetches " +
@@ -2553,7 +2555,7 @@ function passthrough(argv) {
       if (existsSync(threadHoldPath())) fail("this thread's browser is paused for manual input");
       if(command === 'dialog')return nativeDialog(identity,args);
       ensureThreadTab(identity, browser, requestedSession(rest));
-      if (["observe", "act", "dialog", "screenshot"].includes(command)) {
+      if (["observe", "act", "dialog", "screenshot", "settle"].includes(command)) {
         const record = readThreadRecord(identity);
         const output = threadCdp(identity, browser, "page", {targetId:record.sessions[requestedSession(rest)], argv:pageOperationArgv(parsed), operations:new URL("../browser-extension/page-operations.js", import.meta.url).href});
         if (command === "screenshot" && args[0] && !args[0].startsWith("--")) { writeFileSync(args[0], Buffer.from(output.data, "base64"), {mode:0o600}); console.log(JSON.stringify({path:args[0]})); }
@@ -2581,6 +2583,12 @@ function passthrough(argv) {
     checkNativeCommand(command, args, flags);
     if (requestedSession(rest) === NATIVE_STATE_SESSION) fail(`--session ${NATIVE_STATE_SESSION} is reserved for bb-browser`);
     if (CLOSE_COMMANDS.has(command)) return closeNative(identity, rest, command, true);
+  }
+  if (command === "settle") {
+    const index = rest.indexOf("settle");
+    const timeoutIndex = args.length ? rest.indexOf(args[0], index + 1) : -1;
+    rest = rest.filter((_, i) => i !== timeoutIndex);
+    rest.splice(index, 1, "eval", `(${settlePage})(${Number(args[0] ?? 3000)})`);
   }
   const result = agentBrowser(identity, rest, { browserArgs, inherit: true, includeState: !CLOSE_COMMANDS.has(command) });
   return result.status ?? 1;
@@ -2692,6 +2700,7 @@ function renderFrames(args) {
 const USAGE = `bb-browser — Brave through agent-browser with a pinned identity
 
   bb-browser <agent-browser command> [args]   e.g. open, snapshot, click, screenshot
+  bb-browser settle [timeout-ms]             wait for document completion and 200ms DOM quiet (default 3000ms)
   bb-browser layout tile                    tile existing managed Hyprland windows
   bb-browser thread label [chat title]        refresh or override this thread's label
   bb-browser workspace <number|name:NAME|special:NAME>  set the native workspace (default 8)

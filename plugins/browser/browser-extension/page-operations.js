@@ -38,6 +38,7 @@ export function guardPage(action) {
   if (!top || !(node === top || node.contains(top))) throw Error('Observed target is covered; inspect before acting');
   if (!['click', 'fill', 'select', 'check'].includes(action.operation)) throw Error('Unsupported guarded operation');
   if (action.operation === 'fill' && !node.matches('input:not([type=password]):not([type=checkbox]):not([type=radio]),textarea,[contenteditable=true]')) throw Error('Not an observed text control; password entry needs manual handoff');
+  if (action.operation === 'fill' && (node.readOnly || node.matches('input[type=file],input[type=hidden],input[type=submit],input[type=button],input[type=reset],input[type=image]'))) throw Error('Observed control cannot be filled');
   if (action.operation === 'select' && (node.tagName !== 'SELECT' || !o.rows[Number(index)].options.some(option => option.value === action.value))) throw Error('Option was not observed');
   if (action.operation === 'check' && !node.matches('input[type=checkbox],input[type=radio]')) throw Error('Not a checkable control');
   o.consumed = true; // Consume before any input; uncertain transport results must never replay it.
@@ -50,6 +51,54 @@ export function guardPage(action) {
   else if (action.operation === 'check') { if (node.checked !== !!action.value) node.click(); }
   else node.click();
   return { performed: action.operation, target: action.target, consumed: true, verify: 'Take a fresh observation and check the requested outcome' };
+}
+
+// A bounded readiness signal, not proof that a site's background requests finished.
+export function settlePage(timeout = 3000) {
+  return new Promise(resolve => {
+    const start = performance.now();
+    let lastMutation = start;
+    const observer = new MutationObserver(() => { lastMutation = performance.now(); });
+    observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+    const poll = () => {
+      const now = performance.now();
+      const ready = document.readyState === 'complete' && now - lastMutation >= 200;
+      if (ready || now - start >= timeout) {
+        observer.disconnect();
+        resolve({ ready, readyState: document.readyState, ms: Math.round(now - start), url: location.href });
+      } else setTimeout(poll, Math.min(50, timeout - (now - start)));
+    };
+    poll();
+  });
+}
+
+export function fillPage(selector, value) {
+  const node = document.querySelector(selector);
+  if (!node) throw Error('No matching control');
+  if (node.matches(':disabled') || node.getAttribute('aria-disabled') === 'true') throw Error('Control is disabled');
+  if (node.readOnly) throw Error('Control is readonly');
+  const input = node.tagName === 'INPUT', textarea = node.tagName === 'TEXTAREA';
+  if (input && ['checkbox', 'radio', 'file', 'submit', 'button', 'reset', 'image', 'hidden'].includes(node.type)) throw Error('Control has no text value; use its dedicated action');
+  if (!input && !textarea && !node.isContentEditable) throw Error('Expected an input, textarea or contenteditable');
+  node.scrollIntoView({ block: 'nearest' });
+  const rect = node.getBoundingClientRect();
+  const top = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  if (!rect.width || !rect.height || !(top === node || node.contains(top))) throw Error('Control is hidden or covered');
+  if (input || textarea) {
+    const probe = node.cloneNode();
+    probe.value = value;
+    if (probe.value !== value) throw Error('Control rejected the supplied value');
+  }
+  node.focus({ preventScroll: true });
+  if (node.isContentEditable) node.textContent = value;
+  else {
+    const proto = textarea ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(node, value);
+    if (node.value !== value) throw Error('Control rejected the supplied value');
+  }
+  node.dispatchEvent(new Event('input', { bubbles: true }));
+  node.dispatchEvent(new Event('change', { bubbles: true }));
+  return { filled: true };
 }
 
 export async function pageOperation(call, argv, { owned = true, dialog = null } = {}) {
@@ -70,6 +119,12 @@ export async function pageOperation(call, argv, { owned = true, dialog = null } 
     if (action.type !== 'pointer' || !['up','down','move'].includes(action.event) || !Number.isFinite(action.x) || !Number.isFinite(action.y) || action.x < 0 || action.x > 16384 || action.y < 0 || action.y > 16384) throw Error('Invalid viewer input');
     return call('Input.dispatchMouseEvent', {type:action.event === 'move' ? 'mouseMoved' : action.event === 'up' ? 'mouseReleased' : 'mousePressed',x:action.x,y:action.y,button:'left',clickCount:1});
   }
+  if (command === 'settle') {
+    const timeout = args.length ? Number(args[0]) : 3000;
+    if (args.length > 1 || !Number.isInteger(timeout) || timeout < 0 || timeout > 10000) throw Error('Use settle [timeout-ms], between 0 and 10000');
+    return evaluate('(' + settlePage + ')(' + timeout + ')');
+  }
+  if (command === 'fill') return evaluate('(' + fillPage + ')(' + JSON.stringify(args[0]) + ',' + JSON.stringify(args[1] || '') + ')');
   if (command === 'observe') return evaluate('(' + observePage + ')(' + JSON.stringify(args.includes('--delta')) + ')');
   if (command === 'act') return evaluate('(' + guardPage + ')(' + JSON.stringify(JSON.parse(args.join(' '))) + ')');
   if (command === 'eval') return evaluate(args.join(' '));
@@ -111,11 +166,11 @@ export async function pageOperation(call, argv, { owned = true, dialog = null } 
   }
   if (command === 'press' || command === 'key') { await call('Input.dispatchKeyEvent', { type: 'keyDown', key: args[0] }); await call('Input.dispatchKeyEvent', { type: 'keyUp', key: args[0] }); return { key: args[0] }; }
   if (command === 'scroll') return call('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 100, y: 100, deltaX: 0, deltaY: (args[0] === 'up' ? -1 : 1) * Math.min(Number(args[1]) || 500, 10000) });
-  if (['click', 'fill', 'type', 'hover', 'check', 'uncheck', 'select', 'focus'].includes(command)) {
+  if (['click', 'type', 'hover', 'check', 'uncheck', 'select', 'focus'].includes(command)) {
     const selector = args[0];
     const point = await evaluate(`(() => { const e=document.querySelector(${JSON.stringify(selector)}); if(!e) throw Error('No matching control'); e.scrollIntoView({block:'nearest'}); const r=e.getBoundingClientRect(); const top=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); if(!r.width||!r.height||!(top===e||e.contains(top))) throw Error('Control is hidden or covered'); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
     if (command === 'hover') return call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
-    if (command === 'fill' || command === 'type') { await evaluate(`document.querySelector(${JSON.stringify(selector)}).focus({preventScroll:true})`); if (command === 'fill') await evaluate(`document.querySelector(${JSON.stringify(selector)}).value=''`); return call('Input.insertText', { text: args[1] || '' }); }
+    if (command === 'type') { await evaluate(`document.querySelector(${JSON.stringify(selector)}).focus({preventScroll:true})`); return call('Input.insertText', { text: args[1] || '' }); }
     if (command === 'focus') return evaluate(`document.querySelector(${JSON.stringify(selector)}).focus({preventScroll:true})`);
     if (command === 'select') return evaluate(`(() => {const e=document.querySelector(${JSON.stringify(selector)});e.value=${JSON.stringify(args[1])};e.dispatchEvent(new Event('change',{bubbles:true}));return e.value;})()`);
     if (command === 'check' || command === 'uncheck') { const checked = await evaluate(`document.querySelector(${JSON.stringify(selector)}).checked`); if (checked === (command === 'check')) return { checked }; }

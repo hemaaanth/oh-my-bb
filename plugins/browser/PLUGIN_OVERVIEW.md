@@ -48,3 +48,9 @@ to the configured provider only after explicit task authorization.
 
 Use `bb-browser`, `browser_handoff` and `browser_live` from a BB thread.
 See the package README for setup, commands and verification limits.
+
+
+After navigation, agents can use `bb-browser settle` to wait briefly for a
+complete document and quiet DOM, then inspect the result. Relay form filling
+supports controlled inputs, textareas, contenteditable fields and date controls,
+with checks for readonly, disabled and unsupported fields.

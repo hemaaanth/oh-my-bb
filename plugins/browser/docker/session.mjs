@@ -272,7 +272,7 @@ try {
         await privateWrite(join(directory,'seed-applied'),{at:Date.now()});await rm(join(directory,'seed-error'),{force:true});result={verified:true};
       } else throw Error('Use identity seed <name> <domains> while paused, or state save <name>');
     }
-    else if (['observe', 'act', 'dialog', 'screenshot'].includes(command)) result = await pageOperation(page, [command,...args], { dialog });
+    else if (['observe', 'act', 'dialog', 'screenshot', 'settle'].includes(command)) result = await pageOperation(page, [command,...args], { dialog });
     else {
       const engineEnv={...Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('AGENT_BROWSER_'))),AGENT_BROWSER_SOCKET_DIR:runtime};
       const connected=spawnSync('agent-browser',['--config',input.agentConfig,'--namespace',namespace,'--session','default','connect',String(record.port)],{encoding:'utf8',timeout:30000,env:engineEnv});

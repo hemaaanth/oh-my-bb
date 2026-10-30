@@ -163,3 +163,25 @@ The retired continuous-cookie-sync toggle, scheduled fan-out, host sync handler 
 ### Browser handoff replies
 
 Handoff cards use icon actions for Done, Reply and Cancel. Details is a separate disclosure note. Reply sends bounded user context back to the waiting agent without asserting that the browser action succeeded. The browser resumes for the agent to follow that direction; its viewer grant is still revoked first. Failed viewer cleanup still prevents resumption. Done retains its explicit completion-and-verify behavior. Cancel still discards the waiting session.
+
+### Page readiness and form filling
+
+Use `bb-browser settle [timeout-ms]` after navigation or an action, then inspect
+with `bb-browser observe`. It waits for `document.readyState === "complete"` and
+200 ms without DOM mutations. The default deadline is 3,000 ms; accepted values
+are 0–10,000 ms. It returns `{ready, readyState, ms, url}`. A deadline returns
+`ready: false`, so callers can inspect partial state without repeating input.
+Navigation that destroys the execution context can fail the command; inspect
+the new page before continuing. This checks DOM readiness, not network idle or
+business success. Background requests and delayed updates can continue.
+It works through the existing isolated, native, attached and relay paths.
+
+Relay `fill` uses native input setters and input/change events for controlled
+inputs. It replaces textarea and contenteditable contents and supports value
+controls such as dates. Disabled, readonly and non-text controls are rejected;
+invalid values are checked before clearing the existing field. Guarded `act`
+filling also rejects readonly and non-text controls before consuming a decision.
+
+These improvements were informed by [dev-browser](https://github.com/SawyerHood/dev-browser)'s
+explicit look → act → verify workflow, bounded load helper and form handling.
+They use Browser's existing transports and add no runtime dependency.

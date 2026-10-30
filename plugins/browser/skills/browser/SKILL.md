@@ -19,6 +19,7 @@ Shared relay origins use bounded leases. For accounts spanning OAuth domains, ac
 
 ```sh
 bb-browser open https://example.com
+bb-browser settle                         # bounded document/DOM readiness
 bb-browser snapshot -i
 bb-browser click @e1
 bb-browser screenshot /tmp/page.png
@@ -131,3 +132,14 @@ existing authenticated sessions. Close owned sessions before disabling an
 integration. Release and viewer revocation remain available for cleanup.
 
 A handoff Reply is user context or direction, not confirmation that the requested action was completed. Follow that direction before deciding whether to inspect the page or perform another action. Do not automatically treat a reply as Done or Cancel.
+
+
+### Bounded readiness
+
+After navigation or an action, `bb-browser settle [timeout-ms]` waits for a
+complete document and 200 ms of quiet DOM. Default: 3000 ms; range: 0–10000.
+The result includes `ready`, `readyState`, `ms` and `url`. On `ready: false`,
+inspect partial state. Never repeat an uncertain action merely because settling
+timed out. Navigation can destroy the execution context; observe the new page
+before continuing. This is not network idle or proof that the task succeeded.
+Take a fresh observation and verify the requested result after settling.

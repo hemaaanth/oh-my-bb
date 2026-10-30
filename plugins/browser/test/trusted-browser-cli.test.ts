@@ -1881,3 +1881,22 @@ describe("native group helper readiness", () => {
     expect(result.stderr).toContain(outcome === "group-timeout" ? "deadline" : "Native grouping failed");
   });
 });
+
+
+describe("bounded page settling", () => {
+  it("uses the pinned general engine and preserves output flags with a zero deadline", async () => {
+    const result = run(["settle", "0", "--json"], { env: { BB_BROWSER_BACKEND: "agent" } });
+    expect(result.status, result.stderr).toBe(0);
+    const evaluation = (await calls("agent-browser")).find(call => call.argv.includes("eval") && call.argv.some(arg => arg.includes("function settlePage")));
+    expect(evaluation).toBeDefined();
+    expect(evaluation!.argv).toContain("--json");
+    expect(flag(evaluation!.argv, "eval")).toMatch(/\)\(0\)$/);
+    expect(evaluation!.argv).not.toContain("settle");
+  });
+  it.each(["-1", "10001", "oops"])("rejects invalid deadline %s before contacting Brave", async timeout => {
+    const result = run(["settle", timeout], { env: { BB_BROWSER_BACKEND: "agent" } });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("between 0 and 10000");
+    expect(await calls("agent-browser")).toEqual([]);
+  });
+});
