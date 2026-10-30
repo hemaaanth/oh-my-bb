@@ -194,7 +194,7 @@ function useAvatarFace(ref: RefObject<AgentRobotAvatar | null>, face: PetFace) {
 const LOOK_CSS: Record<PetStyle, string> = {
   outline: `
   #head, #leftTop, #leftBottom, #rightTop, #rightBottom { fill: var(--sidebar, Canvas); }
-  #dispatchRing { fill: none; stroke: currentColor; stroke-width: 14px; pointer-events: none; }
+  #dispatchRing { fill: none; stroke: currentColor; stroke-width: var(--dispatch-outline-width, 14px); pointer-events: none; }
   #leftBase, #rightBase, #leftInputBase, #rightInputBase, #antennaDot { fill: currentColor; }
 `,
   solid: `

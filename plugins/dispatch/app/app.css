@@ -17,6 +17,7 @@
   height: 100%;
 }
 .dispatch-pet-footer {
+  --dispatch-outline-width: 20px;
   width: 16px;
   height: 16px;
 }
