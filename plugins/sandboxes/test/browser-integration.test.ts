@@ -1,10 +1,11 @@
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFakePluginHost, makeHostResponse } from "@get-bb/plugin-sdk/testing";
 import { afterEach, expect, it } from "vitest";
 import { registerBrowserIntegration } from "../src/browser-integration.js";
 import { provisionTrustedBrowser } from "../src/trusted-browser.js";
+import { supportsTrustedBrowserProvisioning } from "../src/server.js";
 const dispose:Array<()=>Promise<void>>=[];afterEach(async()=>{for(const fn of dispose.splice(0))await fn();});
 it('allows every sandbox project regardless of old per-project grants',async()=>{
  const environments=[{projectId:'allowed'}];
@@ -18,11 +19,74 @@ it('allows every sandbox project regardless of old per-project grants',async()=>
  expect(await fake.harness.behavior.callRpc('browserAccessV1',{hostId:'host_fixture'},caller)).toEqual({allowed:true});
  await expect(fake.harness.behavior.callRpc('browserLegacyV1',null)).rejects.toThrow('Browser plugin required');
 });
-it('withholds credentials and keeps machine preparation working when Browser is absent',async()=>{
+it('does not bootstrap Browser runtime when Browser is absent',async()=>{
  const fake=createFakePluginHost({pluginId:'sandboxes'});dispose.push(()=>fake.harness.lifecycle.dispose());
- let received:unknown;const logs:string[]=[];
- await provisionTrustedBrowser({bb:fake.bb,hostId:'host_fixture',enabled:true,signal:new AbortController().signal,executor:{exec:async (request:{stdin?:string})=>{received=JSON.parse(request.stdin||'{}');return {exitCode:0};}} as never,report:{log:(line:string)=>logs.push(line)} as never});
- expect(received).toBeUndefined();expect(logs.join(' ')).toContain('no browser identity was provisioned');
+ const commands:string[][]=[];const logs:string[]=[];
+ await provisionTrustedBrowser({bb:fake.bb,hostId:'host_fixture',enabled:true,signal:new AbortController().signal,executor:{exec:async (request:{command:string[]})=>{commands.push(request.command);return {exitCode:0};}} as never,report:{log:(line:string)=>logs.push(line)} as never});
+ expect(commands).toEqual([]);expect(logs.join(' ')).toContain('no browser identity was provisioned');
+ expect(JSON.stringify(fake.harness.logEntries)).toContain('Sandbox Browser opt-in unavailable');
+});
+it("does not send a Browser payload through Boat's command transport", async () => {
+ const fake=createFakePluginHost({pluginId:"sandboxes",sdk:{plugins:{callRpc:async()=>{throw Error("Browser RPC must not run");}}}});dispose.push(()=>fake.harness.lifecycle.dispose());
+ const commands:string[][]=[];
+ await provisionTrustedBrowser({bb:fake.bb,hostId:"host_fixture",enabled:supportsTrustedBrowserProvisioning("box"),signal:new AbortController().signal,executor:{exec:async(request:{command:string[]})=>{commands.push(request.command);return {exitCode:0};}} as never,report:{log:()=>{}} as never});
+ expect(supportsTrustedBrowserProvisioning("box")).toBe(false);
+ expect(commands).toEqual([]);
+});
+
+it("installs the verified browser runtime before provisioning a generic sandbox image", async () => {
+ const fake=createFakePluginHost({pluginId:"sandboxes",sdk:{plugins:{callRpc:async()=>({exitNode:"",networkService:""})}}});dispose.push(()=>fake.harness.lifecycle.dispose());
+ const commands:string[][]=[];const logs:string[]=[];
+ const executor={exec:async(request:{command:string[]})=>{commands.push(request.command);return {exitCode:commands.length===1?1:0};}} as never;
+ await provisionTrustedBrowser({bb:fake.bb,hostId:"host_fixture",enabled:true,signal:new AbortController().signal,executor,report:{log:(line:string)=>logs.push(line)} as never});
+ expect(commands[0][2]).toContain("sha256sum --check --status");
+ expect(commands.some(command=>command.join(" ").includes("base64 -d >>"))).toBe(true);
+ expect(commands.some(command=>command.join(" ").includes("sha256sum -c -"))).toBe(true);
+ expect(commands.some(command=>command.join(" ").includes("tar -xf"))).toBe(true);
+ expect(commands.at(-1)).toEqual(["bb-browser","provision"]);
+ expect(logs.join(" ")).toContain("Installing the verified bb-browser runtime");
+ expect(JSON.stringify(fake.harness.logEntries)).toContain("Sandbox Browser opt-in succeeded");
+ expect(JSON.stringify(fake.harness.logEntries)).toContain("Sandbox Browser runtime archive verified");
+ expect(JSON.stringify(fake.harness.logEntries)).toContain("Sandbox Browser runtime installer exited 0");
+ expect(JSON.stringify(fake.harness.logEntries)).toContain("Sandbox Browser provisioner exited 0");
+});
+it("transfers the verified runtime in bounded chunks", async () => {
+ const fake=createFakePluginHost({pluginId:"sandboxes",sdk:{plugins:{callRpc:async()=>({exitNode:"",networkService:""})}}});dispose.push(()=>fake.harness.lifecycle.dispose());
+ const chunks:string[]=[];
+ const executor={exec:async(request:{command:string[];stdin:string})=>{
+   if(request.command.join(" ").includes("base64 -d >>")) chunks.push(request.stdin);
+   return {exitCode:request.command[0]==="sh"&&request.command[2].includes("command -v")?1:0};
+ }} as never;
+ await provisionTrustedBrowser({bb:fake.bb,hostId:"host_fixture",enabled:true,signal:new AbortController().signal,executor,report:{log:()=>{}} as never});
+ const archive=await readFile(new URL("../docker/browser-runtime.tar", import.meta.url));
+ const restored=Buffer.concat(chunks.map(chunk=>Buffer.from(chunk,"base64")));
+ expect(chunks).toHaveLength(Math.ceil(archive.length/(12*1024)));
+ expect(chunks.every(chunk=>Buffer.from(chunk,"base64").length<=12*1024)).toBe(true);
+ expect(restored.equals(archive)).toBe(true);
+});
+it("cleans up after a failed runtime chunk without provisioning", async () => {
+ const fake=createFakePluginHost({pluginId:"sandboxes",sdk:{plugins:{callRpc:async()=>({exitNode:"",networkService:""})}}});dispose.push(()=>fake.harness.lifecycle.dispose());
+ const commands:string[][]=[];let chunks=0;
+ const executor={exec:async(request:{command:string[]})=>{
+   commands.push(request.command);
+   if(request.command[2].includes("command -v")) return {exitCode:1};
+   if(request.command[2].includes("base64 -d >>")&&++chunks===2) return {exitCode:7};
+   return {exitCode:0};
+ }} as never;
+ await provisionTrustedBrowser({bb:fake.bb,hostId:"host_fixture",enabled:true,signal:new AbortController().signal,executor,report:{log:()=>{}} as never});
+ expect(commands.some(command=>command.join(" ").includes("rm -rf /tmp/bb-browser-runtime-"))).toBe(true);
+ expect(commands).not.toContainEqual(["bb-browser","provision"]);
+ expect(JSON.stringify(fake.harness.logEntries)).toContain("Sandbox Browser runtime installer exited 7");
+});
+it("defers managed home-route validation until a thread-owned browser command", async () => {
+ const fake=createFakePluginHost({pluginId:"sandboxes",sdk:{plugins:{callRpc:async()=>({exitNode:"home",networkService:"sandboxes-v1"})}}});dispose.push(()=>fake.harness.lifecycle.dispose());
+ const commands:string[][]=[];const logs:string[]=[];
+ const executor={exec:async(request:{command:string[]})=>{commands.push(request.command);return {exitCode:0};}} as never;
+ await provisionTrustedBrowser({bb:fake.bb,hostId:"host_fixture",enabled:true,signal:new AbortController().signal,executor,report:{log:(line:string)=>logs.push(line)} as never});
+ expect(commands).toHaveLength(2);
+ expect(commands[0][2]).toContain("sha256sum --check --status");
+ expect(commands[1]).toEqual(["bb-browser","provision"]);
+ expect(logs.join(" ")).toContain("deferred to the first thread-owned bb-browser command");
 });
 it('shares the Sandboxes enrollment key unless Browser explicitly overrides it',async()=>{
  const enrollments:Array<{authKey:string;generation?:string}>=[];

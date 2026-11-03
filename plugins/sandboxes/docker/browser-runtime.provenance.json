@@ -3,19 +3,39 @@
   "packageName": "bb-plugin-browser",
   "version": "0.3.0",
   "sourceRepository": "https://github.com/hemaaanth/oh-my-bb",
-  "sourceCommit": "29ef6aa242b8d669b7f149a5da76610cacec4883",
-  "sourcePackageTree": "e30a3130e1b50b047086bf318b643aa35e6be3f2",
+  "sourceCommit": "e5a226f32f27db5d223b7c93661ffb64b3921a81",
+  "sourcePackageTree": "9de8b4c321c018a4807a1f7558b40c51a09c9827",
   "buildRecipe": "gnu-tar-sort-name-mtime-0-owner-0-v1",
-  "inputsSha256": "3179a7e80deb99c04ec34ca0a427579a7f9933c2b9d6243f9fc00209e93fd2d9",
-  "archiveSha256": "8a60cec1886c96af34bc9b3c4323dc9ab609420b0e64146798bfba62f567b7be",
+  "inputsSha256": "164cb50237c1137d65742e8f37456cf520b3fa9adcc324978ddb0f079d20f009",
+  "archiveSha256": "c97bca51edd791fd57106fe001e41916000b3667db396206f90d7f494361df27",
   "inputs": {
-    "LICENSE": {
+    "package.json": {
       "mode": 420,
-      "sha256": "cf04cb0b1db86fceeb42d12ccbe4fca32ebc896006b7b9cb8ecf2decf9094d06"
+      "sha256": "774e7ad0ee146c275b876e2546bd7c0b326c78dfd0dac33fb8d84bb1286f2183"
     },
-    "THIRD-PARTY-NOTICES": {
+    "docker/auth-state.mjs": {
       "mode": 420,
-      "sha256": "80775b87f26e7ec204856f0ed844b10373bc6ff56f62698b8d6e873720a78b40"
+      "sha256": "2d3104f10470918ffcbc00ead942c57282f4bab0285be16c9eadea6b00be4c21"
+    },
+    "docker/desktop.mjs": {
+      "mode": 420,
+      "sha256": "742778590595c7c0d78725f06d580d5afd7b277aa6a618a77c60bc3fa664140c"
+    },
+    "docker/node-runtime.mjs": {
+      "mode": 420,
+      "sha256": "fb0e808fcd8b1ca218d5fdfeed917d295aa2f6731c30046892d794fc078e3e14"
+    },
+    "docker/session-events.mjs": {
+      "mode": 420,
+      "sha256": "1b5f496f7c1e0ca0de8551b494445e3dd4a8830d2c1c8632b692bdb3664df43c"
+    },
+    "docker/session.mjs": {
+      "mode": 420,
+      "sha256": "49f85ede3fa4d51f3d1282064a9330c52800866a6ba81fc7f7b7be4c0a2577b7"
+    },
+    "docker/trusted-browser.mjs": {
+      "mode": 493,
+      "sha256": "f7dc5341bc57622af8743ba4cd98a7c270e17d2a4c51a90f67b729b1803d22b1"
     },
     "browser-extension/Inter-OFL.txt": {
       "mode": 420,
@@ -59,7 +79,7 @@
     },
     "browser-extension/options.html": {
       "mode": 420,
-      "sha256": "ddf1247b6afd91f77f77d8f929e6e0470fcde7005fe19a8da43f54eb95565fc6"
+      "sha256": "63b532d1f4f6c3bb20d65901a61083571be81ed8a78a7d56a42f6eb9fccb9981"
     },
     "browser-extension/options.js": {
       "mode": 420,
@@ -67,7 +87,7 @@
     },
     "browser-extension/page-operations.js": {
       "mode": 420,
-      "sha256": "feb0a62cc65c5eaf4b26a5686a4dae2f4d18758e404d2eb5aa5890f8e0cf1e9a"
+      "sha256": "3d10d8b508a326314e8e770155a989b5113c8a80fd402952720018da8d5fcc29"
     },
     "browser-extension/popup.html": {
       "mode": 420,
@@ -81,33 +101,13 @@
       "mode": 420,
       "sha256": "1a42831ce9f42538e2132f260dc053508174ceaafe8f86c9510da4b0fb632d00"
     },
-    "docker/auth-state.mjs": {
+    "THIRD-PARTY-NOTICES": {
       "mode": 420,
-      "sha256": "2d3104f10470918ffcbc00ead942c57282f4bab0285be16c9eadea6b00be4c21"
+      "sha256": "80775b87f26e7ec204856f0ed844b10373bc6ff56f62698b8d6e873720a78b40"
     },
-    "docker/desktop.mjs": {
+    "LICENSE": {
       "mode": 420,
-      "sha256": "742778590595c7c0d78725f06d580d5afd7b277aa6a618a77c60bc3fa664140c"
-    },
-    "docker/node-runtime.mjs": {
-      "mode": 420,
-      "sha256": "fb0e808fcd8b1ca218d5fdfeed917d295aa2f6731c30046892d794fc078e3e14"
-    },
-    "docker/session-events.mjs": {
-      "mode": 420,
-      "sha256": "1b5f496f7c1e0ca0de8551b494445e3dd4a8830d2c1c8632b692bdb3664df43c"
-    },
-    "docker/session.mjs": {
-      "mode": 420,
-      "sha256": "23f8aa51f3a0742dea937113b20b791bd5aa32dd88e68b145d0426ed2f55a5bc"
-    },
-    "docker/trusted-browser.mjs": {
-      "mode": 493,
-      "sha256": "7db85bb9c2abba8ee27b8b7cb1eb31f33a49add05b77aa93e3bed1f727261a7b"
-    },
-    "package.json": {
-      "mode": 420,
-      "sha256": "774e7ad0ee146c275b876e2546bd7c0b326c78dfd0dac33fb8d84bb1286f2183"
+      "sha256": "cf04cb0b1db86fceeb42d12ccbe4fca32ebc896006b7b9cb8ecf2decf9094d06"
     }
   }
 }

@@ -185,3 +185,18 @@ filling also rejects readonly and non-text controls before consuming a decision.
 These improvements were informed by [dev-browser](https://github.com/SawyerHood/dev-browser)'s
 explicit look → act → verify workflow, bounded load helper and form handling.
 They use Browser's existing transports and add no runtime dependency.
+
+### One local source
+
+For local development, install Browser from this checkout's `plugins/browser`
+and keep `bb-browser` linked to `docker/trusted-browser.mjs` in that package.
+Load the unpacked extension from `browser-extension` in the same package.
+A legacy download directory may be a symlink to that directory; avoid maintaining
+another copied extension tree. After changing extension JavaScript, reload BB
+Browser in the regular browser's extensions page. Browser profiles, cookies,
+pairing and plugin settings remain outside Git.
+
+Sandboxes accepts committed Browser runtime artifacts explicitly using its
+package-local updater. Git push publishes source; plugin and extension reloads
+activate code already on the local machine. Neither operation synchronizes
+private browser data.

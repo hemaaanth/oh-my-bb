@@ -17,7 +17,7 @@ export const browserArtifactLabels = {
   archiveSha256: "bb.browser.archive-sha256",
 } as const;
 
-export function verifiedBrowserArtifact(directory = fileURLToPath(new URL("../docker/", import.meta.url))): BrowserArtifact {
+export function verifiedBrowserArtifact(directory = fileURLToPath(new URL("../docker/", import.meta.url))) {
   return verifyBrowserRuntime(directory);
 }
 

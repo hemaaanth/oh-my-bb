@@ -86,6 +86,10 @@ import {
   readImageVersions,
 } from "./upgrade-sources.js";
 
+export function supportsTrustedBrowserProvisioning(provider: SandboxProvider): boolean {
+  return provider !== "box";
+}
+
 const projectContextSchema = z.object({
   projectId: z.string(),
   credentialId: z.string().uuid().nullable(),
@@ -512,6 +516,11 @@ export default async function plugin(bb: BbPluginApi) {
         } catch (error) {
           input.signal.throwIfAborted();
           throw new Error(`Managed model setup failed after native connection on ${input.hostId}. Machine and data are retained; reconcile its native lifecycle state before retrying setup/resume. ${error instanceof Error ? error.message : String(error)}`);
+        }
+        if (!supportsTrustedBrowserProvisioning(provider)) {
+          bb.log.warn("Sandbox Browser provisioning unavailable on Boat: secure input transport required");
+          input.report.log("Browser provisioning is unavailable on Boat until secure identity delivery is supported; no Browser identity was sent.\n");
+          return;
         }
         await provisionTrustedBrowser({ ...input, bb, enabled: true });
       },

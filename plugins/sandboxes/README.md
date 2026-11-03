@@ -733,3 +733,30 @@ All five connectors use one registration layer for bootstrap, runtime preparatio
 Runtime commands use the directory of the real Node executable first, matching BB’s agent launcher. Standard harness repair installs into that same Node prefix. This prevents a vendor’s old Node-local Claude or Codex from shadowing the updated CLI. Tests cover the launcher environment, not just a vendor API shell.
 
 The shared shell transport compresses large stdin payloads before encoding them, keeping BB’s resume installer below provider command limits. Startup also installs the packaged preview supervisor when a vendor base does not include it.
+
+### Browser runtime updates
+
+Browser and Sandboxes can both be installed from this repository's main checkout.
+Each package still builds and tests independently. Keep unfinished worktrees as
+workspaces, not installed plugin sources.
+
+To explicitly accept Browser runtime code from a committed repository revision,
+run from this package directory:
+
+```sh
+node scripts/update-browser-runtime.mjs ../.. HEAD
+npm run typecheck
+npm test
+npm run build
+```
+
+The updater ignores uncommitted Browser files. It creates an independent runtime
+archive, records the source commit and every input hash, and retains compatible
+historical receipts. It runs only when a maintainer invokes it. Startup never
+builds, imports or probes the sibling Browser package.
+
+Provisioning checks all installed runtime input hashes against the accepted
+artifact. A stale runtime is installed under a digest-specific directory and
+new CLI calls switch atomically. Existing workers retain their old runtime files.
+Existing machines update on their next Browser provisioning; this does not
+restart all live browsers or replace website login data.
