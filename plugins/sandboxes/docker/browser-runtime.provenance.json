@@ -3,11 +3,11 @@
   "packageName": "bb-plugin-browser",
   "version": "0.3.0",
   "sourceRepository": "https://github.com/hemaaanth/oh-my-bb",
-  "sourceCommit": "e5a226f32f27db5d223b7c93661ffb64b3921a81",
-  "sourcePackageTree": "9de8b4c321c018a4807a1f7558b40c51a09c9827",
+  "sourceCommit": "cdbb32476daeef130bfbf7f01547ef2124a3bbe1",
+  "sourcePackageTree": "098a1e4fb89c8f8e2edc87c4ceaeeba6e6cd4ab1",
   "buildRecipe": "gnu-tar-sort-name-mtime-0-owner-0-v1",
-  "inputsSha256": "164cb50237c1137d65742e8f37456cf520b3fa9adcc324978ddb0f079d20f009",
-  "archiveSha256": "c97bca51edd791fd57106fe001e41916000b3667db396206f90d7f494361df27",
+  "inputsSha256": "2797d4586c41195841853ca8556a00d97062821f5741f79e849373794e544f96",
+  "archiveSha256": "2a01f7cc4df833dc7b92e373693be65f77fb5282c30cd8c7cb06c75d646d1cbf",
   "inputs": {
     "package.json": {
       "mode": 420,
@@ -35,7 +35,7 @@
     },
     "docker/trusted-browser.mjs": {
       "mode": 493,
-      "sha256": "f7dc5341bc57622af8743ba4cd98a7c270e17d2a4c51a90f67b729b1803d22b1"
+      "sha256": "83a500ae19ffc2f8ec5c151ed69a16ed5b53d442b1cf7749a4c801d018b52b73"
     },
     "browser-extension/Inter-OFL.txt": {
       "mode": 420,
@@ -99,7 +99,7 @@
     },
     "browser-extension/relay.js": {
       "mode": 420,
-      "sha256": "1a42831ce9f42538e2132f260dc053508174ceaafe8f86c9510da4b0fb632d00"
+      "sha256": "ac31d7a169fde69a7aa4bcee5eb001368bd03db62b6f1a51e7e310f909022935"
     },
     "THIRD-PARTY-NOTICES": {
       "mode": 420,
