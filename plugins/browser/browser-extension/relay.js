@@ -65,6 +65,12 @@ async function execute(request) {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(request.threadId) || !Array.isArray(request.argv)) throw Error('Invalid thread command');
   const [command, ...args] = request.argv;
   if (Date.now() > request.deadline) throw Error('Command expired before input');
+  if (command === 'extension') {
+    if (args.length !== 1 || args[0] !== 'reload') throw Error('Use extension reload');
+    if ([...sessions.values()].some(state => state.paused)) throw Error('Finish pending browser handoffs before reloading the extension');
+    setTimeout(() => chrome.runtime.reload(), 200);
+    return { reloading: true };
+  }
   let state = sessions.get(request.threadId);
   if (!state) { state = { owned: [], borrowed: [], grouped: [], paused: false, label: request.label || request.threadId }; sessions.set(request.threadId, state); }
   const viewerAction=command==='thread'&&args[0]==='viewer'?JSON.parse(args.slice(1).join(' ')||'{}'):null;
@@ -153,9 +159,14 @@ async function connect() {
   const url = new URL('/api/v1/plugins/browser/http/relay', serverUrl); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   const connection = new WebSocket(url);
   socket = connection;
-  connection.onopen = () => connection.send(JSON.stringify({ token, installation, run, protocol: 1 }));
+  let heartbeat;
+  connection.onopen = () => {
+    connection.send(JSON.stringify({ token, installation, run, protocol: 1 }));
+    // MV3 workers can suspend after 30s without WebSocket traffic.
+    heartbeat = setInterval(() => { if (connection.readyState === WebSocket.OPEN) connection.send(JSON.stringify({ type: 'ping' })); }, 20_000);
+  };
   connection.onmessage = event => { const request = JSON.parse(event.data); serial = serial.then(async () => { try { const result = await execute(request); if (connection.readyState === WebSocket.OPEN) connection.send(JSON.stringify({ id: request.id, result })); } catch (error) { if (connection.readyState === WebSocket.OPEN) connection.send(JSON.stringify({ id: request.id, error: error.message })); } }); };
-  connection.onclose = () => { if (socket !== connection) return; for (const id of attached) void chrome.debugger.detach({ tabId: id }).catch(() => {}); attached.clear(); };
+  connection.onclose = () => { clearInterval(heartbeat); if (socket !== connection) return; for (const id of attached) void chrome.debugger.detach({ tabId: id }).catch(() => {}); attached.clear(); };
 }
 chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === 'cookie-sync') void connect(); });
 chrome.runtime.onMessage.addListener(message => { if (message?.type === 'sync') void connect(); });

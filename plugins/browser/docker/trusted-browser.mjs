@@ -169,7 +169,7 @@ const ALLOWED_COMMANDS = new Set([
   "click", "dblclick", "type", "fill", "press", "key", "keydown", "keyup", "keyboard",
   "hover", "focus", "check", "uncheck", "select", "drag", "upload", "download",
   "scroll", "scrollintoview", "scrollinto", "wait", "mouse",
-  "snapshot", "observe", "settle", "act", "dialog", "screenshot", "pdf", "eval", "get", "is", "find",
+  "extension", "snapshot", "observe", "settle", "act", "dialog", "screenshot", "pdf", "eval", "get", "is", "find",
   "set", "network", "cookies", "storage", "tab", "diff",
   "trace", "profiler", "record", "console", "errors", "highlight", "clipboard",
   "webmcp", "react", "vitals", "a11y", "addinitscript", "removeinitscript",

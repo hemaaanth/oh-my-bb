@@ -200,3 +200,7 @@ Sandboxes accepts committed Browser runtime artifacts explicitly using its
 package-local updater. Git push publishes source; plugin and extension reloads
 activate code already on the local machine. Neither operation synchronizes
 private browser data.
+
+A paired relay can reload its own extension with
+`BB_BROWSER_BACKEND=relay bb-browser extension reload`. This refuses to reload
+while a handoff is paused. Its idle heartbeat keeps the MV3 worker connected.
