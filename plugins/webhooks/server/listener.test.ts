@@ -89,26 +89,51 @@ describe("webhook listener", () => {
     }
   });
 
-  it("retries while the port is busy, as when a reload overlaps the old copy", async () => {
+  it("recovers after a port collision outlasts the former 40-attempt limit", async () => {
     const old = await startListener({ port: 0, onError: () => undefined, handle: async () => new Response("old") });
     const events: string[] = [];
     const next = keepListening({
       port: old.port,
-      retryMs: 20,
+      retryMs: 1,
       onError: () => undefined,
       handle: async () => new Response("{}", { status: 202 }),
       onListening: () => events.push("listening"),
       onGiveUp: (reason) => events.push(`gave up: ${reason}`),
     });
     try {
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 150));
       expect(events).toEqual([]);
       await old.close();
       await waitForPort(old.port);
       expect(events).toEqual(["listening"]);
       expect(await post(`http://127.0.0.1:${old.port}/webhook/${ID}`, {}, "{}")).toBe(202);
     } finally {
+      await old.close();
       await next.close();
+    }
+  });
+
+  it("stops retrying a busy port when disposed", async () => {
+    const old = await startListener({ port: 0, onError: () => undefined, handle: async () => new Response("old") });
+    const events: string[] = [];
+    const next = keepListening({
+      port: old.port,
+      retryMs: 1,
+      onError: () => undefined,
+      handle: async () => new Response("new"),
+      onListening: () => events.push("listening"),
+      onGiveUp: (reason) => events.push(reason),
+    });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await next.close();
+      await old.close();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(events).toEqual([]);
+      await expect(post(`http://127.0.0.1:${old.port}/webhook/${ID}`, {}, "{}")).rejects.toThrow();
+    } finally {
+      await next.close();
+      await old.close();
     }
   });
 

@@ -54,7 +54,8 @@ export async function startListener(options: {
 
 /**
  * Starts the listener without blocking the caller, and retries while the port is
- * busy. On a plugin reload the new copy can start before the old copy closes it.
+ * busy until disposal. A reload can take longer than a fixed retry budget to
+ * release the old copy; giving up leaves public delivery offline until restart.
  */
 export function keepListening(options: {
   port: number;
@@ -63,14 +64,12 @@ export function keepListening(options: {
   onListening: (port: number) => void;
   onGiveUp: (reason: string) => void;
   retryMs?: number;
-  attempts?: number;
 }): { close: () => Promise<void> } {
   const retryMs = options.retryMs ?? 500;
-  const attempts = options.attempts ?? 40;
   let closed = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let listener: Listener | undefined;
-  const attempt = (left: number) => {
+  const attempt = () => {
     startListener(options).then(
       (started) => {
         if (closed) return void started.close();
@@ -80,12 +79,12 @@ export function keepListening(options: {
       (error) => {
         if (closed) return;
         const busy = (error as NodeJS.ErrnoException)?.code === "EADDRINUSE";
-        if (busy && left > 1) timer = setTimeout(() => attempt(left - 1), retryMs);
+        if (busy) timer = setTimeout(attempt, retryMs);
         else options.onGiveUp(error instanceof Error ? error.message : String(error));
       },
     );
   };
-  attempt(attempts);
+  attempt();
   return {
     close: async () => {
       closed = true;
