@@ -98,7 +98,9 @@ export class AccountStore {
   async add(
     input: Omit<Account, "id" | "createdAt" | "lastUsedAt" | "lastUsedHostId">,
     secret: AccountSecret,
+    reconnectAccountId?: string,
   ): Promise<Account> {
+    if (reconnectAccountId !== undefined) return this.reconnect(reconnectAccountId, input, secret);
     return this.serialized(async () => {
       const account = accountSchema.parse({
         ...input,
@@ -117,6 +119,38 @@ export class AccountStore {
         throw error;
       }
       return account;
+    });
+  }
+
+  private async reconnect(
+    id: string,
+    authenticated: Pick<Account, "provider" | "email" | "accountUuid" | "codexAccountId" | "subscriptionType" | "rateLimitTier">,
+    secret: AccountSecret,
+  ): Promise<Account> {
+    return this.serialized(async () => {
+      const accounts = await this.list();
+      const index = accounts.findIndex((account) => account.id === id);
+      const current = accounts[index];
+      if (current === undefined || current.kind !== "oauth" || current.provider !== authenticated.provider)
+        throw new Error("Reconnect account was not found or is not an OAuth account.");
+      const identity = current.provider === "claude" ? current.accountUuid : current.codexAccountId;
+      const nextIdentity = current.provider === "claude" ? authenticated.accountUuid : authenticated.codexAccountId;
+      const matches = identity != null
+        ? identity === nextIdentity
+        : current.email != null && authenticated.email != null && current.email.toLowerCase() === authenticated.email.toLowerCase();
+      if (!matches) throw new Error("Reconnect must use the same account. Sign in with the original account and try again.");
+      const updated = accountSchema.parse({
+        ...current,
+        email: authenticated.email,
+        accountUuid: authenticated.accountUuid,
+        ...(authenticated.codexAccountId === undefined ? {} : { codexAccountId: authenticated.codexAccountId }),
+        subscriptionType: authenticated.subscriptionType,
+        rateLimitTier: authenticated.rateLimitTier,
+      });
+      await this.writeSecret(id, secret);
+      accounts[index] = updated;
+      await this.kv.set(ACCOUNTS_KEY, accounts);
+      return updated;
     });
   }
 

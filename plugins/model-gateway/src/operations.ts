@@ -201,7 +201,7 @@ export class PoolOperations {
     return account;
   }
 
-  async addOAuth(authenticated: ClaudeOAuthAccount): Promise<Account> {
+  async addOAuth(authenticated: ClaudeOAuthAccount, reconnectAccountId?: string): Promise<Account> {
     const account = await this.accounts.add(
       {
         provider: "claude",
@@ -220,7 +220,9 @@ export class PoolOperations {
         refreshToken: authenticated.refreshToken,
         expiresAt: authenticated.expiresAt,
       },
+      reconnectAccountId,
     );
+    if (reconnectAccountId !== undefined) this.quotas.remove(account.id);
     this.onAccountsChanged();
     await this.onAccountEnabled(account.id);
     return account;
@@ -228,6 +230,7 @@ export class PoolOperations {
 
   async addCodexOAuth(
     authenticated: CodexDeviceAccount,
+    reconnectAccountId?: string,
   ): Promise<AccountSummary> {
     const account = await this.accounts.add(
       {
@@ -249,7 +252,9 @@ export class PoolOperations {
         idToken: authenticated.idToken,
         expiresAt: authenticated.expiresAt,
       },
+      reconnectAccountId,
     );
+    if (reconnectAccountId !== undefined) this.quotas.remove(account.id);
     this.onAccountsChanged();
     await this.onAccountEnabled(account.id);
     const summary = (await this.list()).find((item) => item.id === account.id);

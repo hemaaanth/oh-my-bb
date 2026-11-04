@@ -1358,6 +1358,53 @@ describe("Account Pool plugin", () => {
     ).toEqual([]);
   });
 
+  it.each(["claude", "codex"] as const)("reconnects %s in place and rejects a different account without replacing credentials", async (provider) => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-reconnect-"));
+    const host = createFakePluginHost({ pluginId: "model-gateway", dataDir, sdk: sdkStubs() });
+    let identity = "22222222-2222-4222-8222-222222222222";
+    let token = "original-access";
+    let now = Date.now();
+    await createAccountPoolPlugin({
+      now: () => now,
+      fetch: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/usercode")) return Response.json({ device_auth_id: "device", user_code: "CODE", interval: 1 });
+        if (url.endsWith("/deviceauth/token")) return Response.json({ authorization_code: "code", code_challenge: "challenge", code_verifier: "verifier" });
+        if (url.endsWith("/oauth/token")) return Response.json({ access_token: token, refresh_token: "refresh", expires_in: 3600, id_token: testJwt({ email: "login@example.com", chatgpt_account_id: identity }) });
+        if (url.endsWith("/profile")) return Response.json({ account: { uuid: identity, email: "login@example.com", has_claude_pro: true } });
+        return Response.json(provider === "claude" ? { five_hour: { utilization: 12, resets_at: new Date(now + 3600000).toISOString() } } : {});
+      },
+    })(host.bb);
+    cleanups.push(async () => { await host.harness.lifecycle.dispose(); await fs.rm(dataDir, { recursive: true, force: true }); });
+    async function signIn(reconnectAccountId?: string) {
+      const started = await host.harness.behavior.callRpc(reconnectAccountId === undefined ? (provider === "claude" ? "login.start" : "codexLogin.start") : "account.reconnect", reconnectAccountId === undefined ? null : { accountId: reconnectAccountId }) as { sessionId: string };
+      if (provider === "claude") return accountSchema.parse(await host.harness.behavior.callRpc("login.complete", { sessionId: started.sessionId, pasted: "code" }));
+      now += 1000;
+      const result = codexLoginPollSchema.parse(await host.harness.behavior.callRpc("codexLogin.poll", { sessionId: started.sessionId }));
+      if (result.status !== "complete") throw new Error(result.status === "error" ? result.message : "Still pending");
+      return result.account;
+    }
+    const original = await signIn();
+    await host.harness.behavior.callRpc("account.setPriority", { accountId: original.id, priority: 7 });
+    const quotas = new QuotaStore(host.bb.storage.database());
+    quotas.put({ ...quotas.get(original.id), error: "OAuth refresh failed with HTTP 400.", heldUntil: now + 86400000 });
+    token = "reconnected-access";
+    const reconnected = await signIn(original.id);
+    expect(reconnected).toMatchObject({ id: original.id, priority: 7, label: original.label, createdAt: original.createdAt });
+    const list = z.array(accountSummarySchema).parse(await host.harness.behavior.callRpc("account.list", null));
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ error: null, heldUntil: null, enabled: true });
+    const secretPath = path.join(dataDir, "plugins/model-gateway/secrets/accounts", `account-${original.id}.json`);
+    expect(JSON.parse(await fs.readFile(secretPath, "utf8"))).toMatchObject({ accessToken: "reconnected-access" });
+    identity = "33333333-3333-4333-8333-333333333333";
+    token = "wrong-account-access";
+    await expect(signIn(original.id)).rejects.toThrow("same account");
+    expect(JSON.parse(await fs.readFile(secretPath, "utf8"))).toMatchObject({ accessToken: "reconnected-access" });
+    expect(await host.harness.behavior.callRpc("account.list", null)).toHaveLength(1);
+    await host.harness.behavior.callRpc("account.remove", { id: original.id });
+    await expect(host.harness.behavior.callRpc("account.reconnect", { accountId: original.id })).rejects.toThrow("not found");
+  });
+
   it("exposes manual Claude login over RPC and the two-step CLI", async () => {
     const tokenBodies: object[] = [];
     const oauth = await startUpstream(async (request, response) => {

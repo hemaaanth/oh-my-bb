@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add Reconnect to subscription account menus, details, and footer errors. Reauthorize the same account in place, preserving its ID, priority, enabled state, and routes. Show account errors in the usage popup instead of stale bars, and recheck account status on each open.
+
 - Handle BB 0.47 model discovery with null thread and project IDs. Threadless provider environment resolution returns no thread credentials instead of failing validation; routed inference is unchanged.
 - Treat HTML 401/403 pages as temporary upstream failures with a minimum 60-second account hold and `Retry-After`, rather than permanent authentication errors. Retry automatically after the hold. On startup, release HTML pages saved as account errors by older versions; real JSON authentication failures still require credential recovery.
 - Apply Claude model mappings to API keys configured with the official `https://api.anthropic.com` base URL. Explicit compatible-key mappings still win; other vendor endpoints keep their own model names. A key's pre-stream 404 now tries the next configured account instead of terminating the chain.

@@ -509,7 +509,32 @@ describe("Model usage footer", () => {
     expect(slot.container.querySelector(".overflow-y-auto")).toBeNull();
   });
 
-  it("opens instantly from cached usage and refreshes only on demand", async () => {
+  it("surfaces cached authentication errors and reconnects the same account from the footer", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    const failed = account({ error: "OAuth refresh failed with HTTP 400.", status: "error", observedAt: Date.now() - 6 * 86400000 });
+    let target: unknown;
+    let completion: unknown;
+    const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: {
+      "account.list": () => [failed],
+      "account.reconnect": (input: unknown) => { target = input; return { provider: "claude", sessionId: "reconnect-session", authorizeUrl: "https://claude.ai/oauth/authorize" }; },
+      "login.complete": (input: unknown) => { completion = input; return failed; },
+    } as never });
+    expect((await slot.findByRole("alert")).textContent).toContain(failed.error);
+    expect(slot.queryByRole("progressbar")).toBeNull();
+    expect(slot.getByText(/Last successful update/)).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Reconnect" }));
+    await slot.findByRole("textbox", { name: "Claude authorization code" });
+    expect(target).toEqual({ accountId: failed.id });
+    expect(slot.getByRole("dialog").textContent).toContain("person@example.com");
+    fireEvent.change(slot.getByRole("textbox", { name: "Claude authorization code" }), { target: { value: "new-code" } });
+    fireEvent.click(slot.getByRole("button", { name: "Complete" }));
+    await slot.findByText("Connected max");
+    expect(completion).toEqual({ sessionId: "reconnect-session", pasted: "new-code" });
+    expect(slot.queryByRole("button", { name: "Add another" })).toBeNull();
+  });
+
+  it("opens instantly from cached usage and rechecks account errors on every open", async () => {
     const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
     if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
     let lists = 0;
@@ -524,10 +549,10 @@ describe("Model usage footer", () => {
     first.unmount();
     const second = renderSlot(footer, { dismiss: () => {} }, { rpc });
     expect(second.getByRole("progressbar")).toBeTruthy();
-    expect(lists).toBe(1);
+    await waitFor(() => expect(lists).toBe(2));
     fireEvent.click(second.getByRole("button", { name: "Refresh Gateway usage" }));
     await waitFor(() => expect(refreshes).toBe(1));
-    await waitFor(() => expect(lists).toBe(2));
+    await waitFor(() => expect(lists).toBe(3));
   });
 });
 
@@ -540,4 +565,16 @@ it("opens the setup guide in settings without registering a rail page", async ()
   expect(await slot.findByRole("dialog", { name: "Set up Model Gateway" })).toBeTruthy();
   expect(await slot.findByText("bb gateway setup omp")).toBeTruthy();
   expect(slot.inspection.navigateCalls).toEqual([]);
+});
+
+it("offers Reconnect on OAuth account menus and keeps failed sign-in retryable", async () => {
+  let target: unknown;
+  const slot = render({
+    "account.reconnect": (input: unknown) => { target = input; throw new Error("Cannot start sign-in"); },
+  });
+  fireEvent.keyDown(await slot.findByRole("button", { name: "max actions" }), { key: "Enter" });
+  fireEvent.click(await slot.findByRole("menuitem", { name: "Reconnect" }));
+  await slot.findByText("Cannot start sign-in");
+  expect(target).toEqual({ accountId: account().id });
+  expect(slot.getByRole("button", { name: "Try again" })).toBeTruthy();
 });

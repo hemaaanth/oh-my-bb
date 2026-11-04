@@ -490,7 +490,7 @@ function resetCreditsLabel({ available }: ResetCredits): string {
   return `${available} ${available === 1 ? "reset" : "resets"} available`;
 }
 
-function GatewayAccountPanel({ account }: { account: AccountSummary }) {
+function GatewayAccountPanel({ account, reconnect }: { account: AccountSummary; reconnect: () => void }) {
   const windows = footerWindows(account);
   // Snapshots cached before reset credits existed have no such field.
   const resetCredits = account.resetCredits ?? null;
@@ -501,7 +501,12 @@ function GatewayAccountPanel({ account }: { account: AccountSummary }) {
             <GatewayChatGPTIcon className="size-4 shrink-0" />}
         <span className="min-w-0 truncate text-xs font-medium text-foreground" title={account.email ?? account.label}>{account.email ?? account.label}</span>
       </div>
-      {windows.length === 0 ? <p className="mt-2 text-xs text-muted-foreground">
+      {account.error !== null ? <div className="mt-2 space-y-2">
+        <p role="alert" className="break-words text-xs text-destructive-text">
+          Account needs attention. Usage is unavailable. {account.error}
+        </p>
+        <Button size="sm" variant="outline" onClick={reconnect}>Reconnect</Button>
+      </div> : windows.length === 0 ? <p className="mt-2 text-xs text-muted-foreground">
         Usage unavailable
       </p> : <div className="mt-1.5 space-y-1">
         {windows.map((window) => <FooterUsageBar key={window.label} {...window} account={account.label} />)}
@@ -510,14 +515,13 @@ function GatewayAccountPanel({ account }: { account: AccountSummary }) {
         <span title={resetCredits === null ? undefined : "One-off resets that set a usage limit back to zero"}>
           {resetCredits === null ? null : resetCreditsLabel(resetCredits)}
         </span>
-        {account.observedAt === null ? null : <span>Updated {relative(account.observedAt)}</span>}
+        {account.observedAt === null ? null : <span>{account.error === null ? "Updated" : "Last successful update"} {relative(account.observedAt)}</span>}
       </div>}
     </div>
   );
 }
 
 const FOOTER_USAGE_CACHE_KEY = "model-gateway.footer-usage.v3";
-const FOOTER_USAGE_CACHE_MS = 5 * 60_000;
 type FooterUsageSnapshot = { accounts: AccountSummary[]; fetchedAt: number };
 function cachedFooterUsage(): FooterUsageSnapshot | null {
   try {
@@ -539,6 +543,7 @@ function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
   const accounts = snapshot?.accounts.filter((account) => account.kind === "oauth") ?? null;
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [reconnectAccount, setReconnectAccount] = useState<AccountSummary | null>(null);
   const load = useCallback(async () => {
     try {
       const next = await rpc.call("account.list", null);
@@ -549,7 +554,7 @@ function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
     } catch (cause) { setError(errorText(cause)); }
   }, [rpc]);
   useEffect(() => {
-    if (Date.now() - (cachedFooterUsage()?.fetchedAt ?? 0) >= FOOTER_USAGE_CACHE_MS) void load();
+    void load();
   }, [load]);
   useRealtime(MODEL_GATEWAY_ACCOUNTS_CHANGED, () => { void load(); });
   async function refresh() {
@@ -581,8 +586,9 @@ function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
       {accounts === null ? <p className="px-4 py-5 text-xs text-muted-foreground">Loading accounts…</p> :
         accounts.length === 0 ? <p className="px-4 py-5 text-xs text-muted-foreground">No subscription accounts connected.</p> :
         <div className="divide-y divide-border">
-          {distinctAccounts(accounts).map((account) => <GatewayAccountPanel key={accountIdentity(account)} account={account} />)}
+          {distinctAccounts(accounts).map((account) => <GatewayAccountPanel key={accountIdentity(account)} account={account} reconnect={() => setReconnectAccount(account)} />)}
         </div>}
+      {reconnectAccount === null ? null : <ReconnectAccountDialog account={reconnectAccount} close={() => { setReconnectAccount(null); void load(); }} />}
     </section>
   );
 }
@@ -722,7 +728,7 @@ function DragHandle({
   );
 }
 
-type AccountAction = "toggle" | "priority" | "refresh" | "remove";
+type AccountAction = "toggle" | "priority" | "refresh" | "remove" | "reconnect";
 
 /** One Upstreams row: an OAuth account or an API key. */
 function UpstreamRow({
@@ -815,6 +821,9 @@ function UpstreamRow({
               Refresh usage
             </DropdownMenuItem>
           ) : null}
+          {account.kind === "oauth" ? <DropdownMenuItem disabled={pending} onSelect={() => onAction("reconnect", actionsTrigger.current)}>
+            <Icon name="UserRound" />Reconnect
+          </DropdownMenuItem> : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
@@ -1171,6 +1180,7 @@ function ModelGatewaySettings() {
   const rpc = useRpc<typeof accountPoolRpcContract>();
   const navigate = useBbNavigate();
   const [setupOpen, setSetupOpen] = useState(false);
+  const [reconnectAccount, setReconnectAccount] = useState<AccountSummary | null>(null);
   const [status, setStatus] = useState<PoolStatus | null>(null);
   const [config, setConfig] = useState<AccountPoolConfig | null>(null);
   const [routing, setRouting] = useState<RoutingState | null>(null);
@@ -1479,6 +1489,11 @@ function ModelGatewaySettings() {
     account: AccountSummary,
     action: AccountAction,
   ): Promise<void> {
+    if (action === "reconnect") {
+      setDrawer(null);
+      setReconnectAccount(account);
+      return;
+    }
     if (action === "priority") {
       setPriority(String(account.priority));
       setDrawer({ kind: "priority", accountId: account.id });
@@ -2006,6 +2021,7 @@ function ModelGatewaySettings() {
           <Button size="sm" variant="outline" onClick={() => setSetupOpen(true)}>Open setup guide</Button>
         </div>
       </SettingsSection>
+      {reconnectAccount === null ? null : <ReconnectAccountDialog account={reconnectAccount} close={() => { setReconnectAccount(null); void refresh(); }} />}
       <GatewayDialog open={setupOpen} onOpenChange={setSetupOpen}>
         <DrawerFrame title="Set up Model Gateway" onClose={() => setSetupOpen(false)}>
           <GatewaySetup />
@@ -2514,7 +2530,7 @@ function AccountDrawer({
   account: AccountSummary;
   threshold: number;
   close: () => void;
-  act: (action: "toggle" | "refresh" | "remove") => void;
+  act: (action: "toggle" | "refresh" | "remove" | "reconnect") => void;
 }) {
   const shared = (
     utilization: number | null,
@@ -2541,6 +2557,7 @@ function AccountDrawer({
             {account.enabled ? "Disable" : "Enable"}
           </Button>
           {account.kind === "oauth" ? <Button size="sm" variant="outline" onClick={() => act("refresh")}>Refresh usage</Button> : null}
+          {account.kind === "oauth" ? <Button size="sm" variant="outline" onClick={() => act("reconnect")}>Reconnect</Button> : null}
           <span className="flex-1" />
           <Button
             size="sm"
@@ -2664,7 +2681,80 @@ function AccountDrawer({
   );
 }
 
+function ReconnectAccountDialog({ account, close }: { account: AccountSummary; close: () => void }) {
+  const rpc = useRpc<typeof accountPoolRpcContract>();
+  const navigate = useBbNavigate();
+  const [attempt, setAttempt] = useState(0);
+  const [loginStep, setLoginStep] = useState<LoginStep | null>(null);
+  const [codexStep, setCodexStep] = useState<CodexLoginStep | null>(null);
+  const [pastedCode, setPastedCode] = useState("");
+  const [done, setDone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const trigger = useRef(document.activeElement as HTMLElement | null);
+  useEffect(() => {
+    let cancelled = false;
+    let deviceSessionId: string | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    setLoginStep(null); setCodexStep(null); setError(null); setPastedCode("");
+    async function start() {
+      try {
+        const session = await rpc.call("account.reconnect", { accountId: account.id });
+        if (session.provider === "codex") deviceSessionId = session.sessionId;
+        if (cancelled) {
+          if (deviceSessionId !== null) void rpc.call("codexLogin.cancel", { sessionId: deviceSessionId }).catch(() => {});
+          return;
+        }
+        if (session.provider === "claude") { setLoginStep(session); return; }
+        setCodexStep(session);
+        const intervalMs = session.intervalMs;
+        async function poll() {
+          try {
+            const result = await rpc.call("codexLogin.poll", { sessionId: session.sessionId });
+            if (cancelled) return;
+            if (result.status === "complete") { setDone(result.account.label); setCodexStep(null); }
+            else if (result.status === "error") { setError(result.message); setCodexStep(null); }
+            else timer = setTimeout(poll, intervalMs);
+          } catch (cause) { if (!cancelled) { setError(errorText(cause)); setCodexStep(null); } }
+        }
+        timer = setTimeout(poll, intervalMs);
+      } catch (cause) { if (!cancelled) setError(errorText(cause)); }
+    }
+    void start();
+    return () => {
+      cancelled = true;
+      if (timer !== null) clearTimeout(timer);
+      if (deviceSessionId !== null) void rpc.call("codexLogin.cancel", { sessionId: deviceSessionId }).catch(() => {});
+    };
+  }, [rpc, account.id, attempt]);
+  useEffect(() => {
+    if (codexStep === null) return;
+    const update = () => setCountdown(Math.max(0, Math.ceil((codexStep.expiresAt - Date.now()) / 1000)));
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [codexStep]);
+  async function complete() {
+    if (loginStep === null || pending) return;
+    setPending(true); setError(null);
+    try {
+      const result = await rpc.call("login.complete", { sessionId: loginStep.sessionId, pasted: pastedCode });
+      setDone(result.label); setLoginStep(null);
+    } catch (cause) { setError(errorText(cause)); setLoginStep(null); }
+    finally { setPending(false); }
+  }
+  return <GatewayDialog open onOpenChange={(open) => { if (!open) close(); }} onAfterCloseAutoFocus={() => trigger.current?.focus()}>
+    <LoginDrawer provider={account.provider} reconnectEmail={account.email ?? account.label}
+      loginStep={loginStep} codexStep={codexStep} loginDone={done} pending={pending}
+      pastedCode={pastedCode} countdown={countdown} error={error} close={close}
+      openUrl={navigate.openUrl} setPastedCode={setPastedCode} complete={() => void complete()}
+      addAnother={() => {}} retry={() => setAttempt((value) => value + 1)} />
+  </GatewayDialog>;
+}
+
 function LoginDrawer({
+  reconnectEmail,
   provider,
   loginStep,
   codexStep,
@@ -2680,6 +2770,7 @@ function LoginDrawer({
   addAnother,
   retry,
 }: {
+  reconnectEmail?: string;
   provider: PoolProvider;
   loginStep: LoginStep | null;
   codexStep: CodexLoginStep | null;
@@ -2702,7 +2793,7 @@ function LoginDrawer({
       : codexStep?.verificationUri;
   return (
     <DrawerFrame
-      title={`Sign in to ${name}`}
+      title={reconnectEmail === undefined ? `Sign in to ${name}` : `Reconnect ${name}`}
       onClose={close}
       footer={
         <>
@@ -2727,15 +2818,15 @@ function LoginDrawer({
             </>
           ) : (
             <>
-              <Button variant="outline" onClick={addAnother}>
-                Add another
-              </Button>
+              {reconnectEmail === undefined ? <Button variant="outline" onClick={addAnother}>Add another</Button> : null}
               <Button onClick={close}>Done</Button>
             </>
           )}
         </>
       }
     >
+      {error === null ? null : <div><p role="alert" className="text-sm text-destructive-text">{error}</p>{url === undefined ? null : <Button variant="outline" onClick={retry}>Try again</Button>}</div>}
+      {reconnectEmail === undefined || loginDone !== null ? null : <p className="text-sm text-muted-foreground">Sign in as {reconnectEmail}. Your account settings and routes will be kept.</p>}
       <StepIndicator step={loginDone === null ? 2 : 3} />
       {loginDone !== null ? (
         <div>
@@ -2746,9 +2837,8 @@ function LoginDrawer({
           </p>
         </div>
       ) : url === undefined ? (
-        provider === "codex" && error !== null ? (
+        error !== null ? (
           <div className="space-y-3">
-            <p className="text-sm text-destructive-text">{error}</p>
             <Button variant="outline" onClick={retry}>
               Try again
             </Button>

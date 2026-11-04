@@ -72,6 +72,7 @@ const idTokenPayloadSchema = z
 
 interface DeviceLoginSession {
   sessionId: string;
+  reconnectAccountId?: string;
   deviceAuthId: string;
   userCode: string;
   intervalMs: number;
@@ -94,7 +95,7 @@ export interface CodexDeviceLoginOptions {
   fetch?: typeof fetch;
   now?: () => number;
   authBaseUrl?: string;
-  addAccount: (authenticated: CodexDeviceAccount) => Promise<AccountSummary>;
+  addAccount: (authenticated: CodexDeviceAccount, reconnectAccountId?: string) => Promise<AccountSummary>;
 }
 
 export interface CodexDeviceLoginStart {
@@ -173,7 +174,7 @@ export class CodexDeviceLogin {
     );
   }
 
-  async start(): Promise<CodexDeviceLoginStart> {
+  async start(reconnectAccountId?: string): Promise<CodexDeviceLoginStart> {
     const pruneBefore = this.now();
     for (const [sessionId, session] of this.sessions) {
       if (pruneBefore >= session.expiresAt) this.deleteSession(sessionId);
@@ -204,6 +205,7 @@ export class CodexDeviceLogin {
     const intervalMs = parsed.data.interval * 1_000;
     const session: DeviceLoginSession = {
       sessionId: randomUUID(),
+      reconnectAccountId,
       deviceAuthId: parsed.data.device_auth_id,
       userCode: parsed.data.user_code,
       intervalMs,
@@ -312,7 +314,7 @@ export class CodexDeviceLogin {
         };
       }
       this.deleteSession(session.sessionId);
-      return await this.exchange(parsed.data);
+      return await this.exchange(parsed.data, session.reconnectAccountId);
     } catch {
       if (this.now() < session.expiresAt) return { status: "pending" };
       this.deleteSession(session.sessionId);
@@ -356,6 +358,7 @@ export class CodexDeviceLogin {
 
   private async exchange(
     authorized: z.infer<typeof deviceTokenResponseSchema>,
+    reconnectAccountId?: string,
   ): Promise<CodexDeviceLoginPoll> {
     const response = await this.fetch(`${this.authBaseUrl}/oauth/token`, {
       method: "POST",
@@ -397,13 +400,13 @@ export class CodexDeviceLogin {
         refreshToken: parsed.data.refresh_token,
         idToken: parsed.data.id_token,
         expiresAt: codexAccessTokenExpiresAt(parsed.data.access_token),
-      });
+      }, reconnectAccountId);
       return { status: "complete", account };
     } catch (error) {
       return {
         status: "error",
         message:
-          error instanceof Error && error.message.startsWith("Codex ")
+          error instanceof Error && /^(Codex |Reconnect )/u.test(error.message)
             ? `${error.message} Start again.`
             : "Codex account could not be saved. Start again.",
       };

@@ -119,6 +119,13 @@ export const accountPoolRpcContract = defineRpcContract({
     input: accountReorderInputSchema,
     output: z.null(),
   },
+  "account.reconnect": {
+    input: z.object({ accountId: z.string().uuid() }).strict(),
+    output: z.discriminatedUnion("provider", [
+      loginStartSchema.extend({ provider: z.literal("claude") }),
+      codexLoginStartSchema.extend({ provider: z.literal("codex") }),
+    ]),
+  },
   "account.refreshUsage": {
     input: z.object({ accountId: z.string().uuid() }).strict(),
     output: z.object({ account: accountSummarySchema.nullable() }).strict(),
@@ -428,6 +435,14 @@ export function createRpcHandlers(
     "config.get": () => config.get(),
     "config.set": (input: Parameters<AccountPoolConfigController["set"]>[0]) =>
       config.set(input),
+    "account.reconnect": async ({ accountId }: { accountId: string }) => {
+      const account = (await operations.list()).find((item) => item.id === accountId);
+      if (account === undefined || account.kind !== "oauth")
+        throw new Error("Reconnect account was not found or is not an OAuth account.");
+      return account.provider === "claude"
+        ? { provider: "claude" as const, ...login.start(accountId) }
+        : { provider: "codex" as const, ...await codexLogin.start(accountId) };
+    },
     "login.start": () => login.start(),
     "login.complete": (input: { sessionId: string; pasted: string }) =>
       login.complete(input),

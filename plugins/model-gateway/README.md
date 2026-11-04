@@ -449,3 +449,14 @@ See `THIRD_PARTY.md`. The upstream ports (`src/upstreams/`, `src/hub.ts`,
 `components/ui/` and `lib/portal-scope.ts` come from BB shared UI and the BB
 shadcn registry, as in the other plugins in this repo; `THIRD_PARTY.md` lists
 the files.
+
+### Reconnect a subscription account
+
+Use **Reconnect** in an account's menu or details to sign in to the same Claude
+or ChatGPT account again. The existing account ID, priority, enabled state, and
+route entries stay in place. Signing in to a different provider account is
+rejected before saved credentials change.
+
+The corner usage popup shows account errors with a **Reconnect** button instead
+of stale usage bars. Its timestamp identifies the last successful update. The
+popup displays cached data immediately and checks account status on each open.

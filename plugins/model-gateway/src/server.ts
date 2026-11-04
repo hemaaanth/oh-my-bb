@@ -195,13 +195,13 @@ export function createAccountPoolPlugin(
       authorizeUrl: options.oauthAuthorizeUrl,
       tokenUrl: options.oauthTokenUrl,
       profileUrl: options.oauthProfileUrl,
-      addAccount: (authenticated) => operations.addOAuth(authenticated),
+      addAccount: (authenticated, reconnectAccountId) => operations.addOAuth(authenticated, reconnectAccountId),
     });
     const codexLogin = new CodexDeviceLogin({
       fetch: upstreamFetch,
       now,
       authBaseUrl: options.codexAuthBaseUrl,
-      addAccount: (authenticated) => operations.addCodexOAuth(authenticated),
+      addAccount: (authenticated, reconnectAccountId) => operations.addCodexOAuth(authenticated, reconnectAccountId),
     });
     // An enabled account must be legal for this harness and its request protocol.
     const chainUsable = async (harness: Harness) => {
