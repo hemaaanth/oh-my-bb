@@ -90,9 +90,10 @@ it.skipIf(process.platform!=='linux')('proxies an owned display through voxl wit
  const first=await upgrade(port,`/ws?token=${token}&v=2`,origin);
  expect(first.seen).toMatchObject({url:'/ws?v=2',origin:null});
  const echo=await new Promise<string>(resolve=>{first.socket!.once('data',data=>resolve(String(data)));first.socket!.write('frame');});expect(echo).toBe('frame');
- const replaced=new Promise(resolve=>first.socket!.once('close',resolve));
- const second=await upgrade(port,`/ws?token=${token}`,origin);expect(second.status).toBe(101);await replaced;
- const voxlGone=new Promise(resolve=>second.socket!.once('close',resolve));
+ // A second viewer, such as the side panel beside the inline view, joins without dropping the first.
+ const second=await upgrade(port,`/ws?token=${token}`,origin);expect(second.status).toBe(101);
+ const stillThere=await new Promise<string>(resolve=>{first.socket!.once('data',data=>resolve(String(data)));first.socket!.write('again');});expect(stillThere).toBe('again');
+ const voxlGone=Promise.all([first,second].map(view=>new Promise(resolve=>view.socket!.once('close',resolve))));
  await host.close('desk');await voxlGone;
  await expect(fetch(base+'/')).rejects.toThrow();
 });

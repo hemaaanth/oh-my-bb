@@ -85,7 +85,7 @@ export class SandboxDesktopHost{
   const binary=await findVoxl();if(!binary)throw Error('This sandbox image has no voxl desktop viewer; rebuild the sandbox image');
   const password=randomBytes(24).toString('base64url'),reservation=tcpServer(),voxlPort=await listen(reservation);await new Promise<void>(resolve=>reservation.close(()=>resolve()));
   let child:ChildProcess|undefined,server:ReturnType<typeof httpServer>|undefined,timer:ReturnType<typeof setInterval>|undefined,closed=false,closing:Promise<void>|undefined;
-  const sockets=new Set<Duplex>(),viewers=new Set<Duplex>();
+  const sockets=new Set<Duplex>();
   const close=()=>closing??=(async()=>{
    closed=true;if(timer)clearInterval(timer);for(const socket of sockets)socket.destroy();server?.closeAllConnections();if(server)await new Promise<void>(resolve=>server!.close(()=>resolve()));await stop(child);
   })();
@@ -122,10 +122,10 @@ export class SandboxDesktopHost{
    server.on('upgrade',(req,socket,head)=>{
     const url=new URL(req.url||'/','http://desktop');
     if(url.pathname!=='/ws'||!valid(url.searchParams.get('token'))||!sameSite(req.headers.origin)){socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');return;}
-    // A new viewer replaces the old connection; uncertain input is never replayed.
-    if(!input.viewOnly)for(const viewer of viewers)viewer.destroy();
-    url.searchParams.delete('token');sockets.add(socket);viewers.add(socket);
-    const end=(...ends:Duplex[])=>()=>{for(const value of ends){value.destroy();sockets.delete(value);viewers.delete(value);}};
+    // voxl serves many viewers at once. The inline view and the side panel share one session,
+    // and voxl reconnects a dropped viewer, so dropping the older one would make them fight.
+    url.searchParams.delete('token');sockets.add(socket);
+    const end=(...ends:Duplex[])=>()=>{for(const value of ends){value.destroy();sockets.delete(value);}};
     socket.once('error',end(socket));socket.once('close',end(socket));
     const forward=httpRequest({host:'127.0.0.1',port:voxlPort,path:url.pathname+url.search,headers:upstream(req.headers)});
     forward.once('upgrade',(reply,remote,remoteHead)=>{

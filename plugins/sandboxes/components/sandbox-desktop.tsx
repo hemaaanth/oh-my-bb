@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useRef,useState,type ReactNode} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {experimental_Icon as Icon,useRealtime,useRpc,type ExperimentalThreadActionTabProps,type PluginMessageDirectiveProps} from '@get-bb/plugin-sdk/app';
 import type {sandboxDesktopRpcContract,SandboxDesktopView} from '../src/desktop-contract.js';
 
@@ -9,9 +9,6 @@ function IconButton({label,icon,onClick,disabled}:{label:string;icon:string;onCl
   return <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick} className={`inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50 ${focusRing}`}>
     <Icon name={icon} aria-hidden className="size-3.5"/>
   </button>;
-}
-function TextButton({children,onClick,disabled}:{children:ReactNode;onClick:()=>void;disabled?:boolean}){
-  return <button type="button" disabled={disabled} onClick={onClick} className={`h-6 shrink-0 cursor-pointer rounded-md px-2 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50 ${focusRing}`}>{children}</button>;
 }
 
 const validUrl=(url:string)=>{try{return new URL(url).protocol==='https:';}catch{return false;}};
@@ -38,11 +35,11 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
     <IconButton label="Open in new tab" icon="ExternalLink" onClick={()=>window.open(open.url,'_blank','noopener,noreferrer')}/>
     <IconButton label="Close view" icon="X" disabled={busy} onClick={()=>void change(false)}/>
   </>:view===null?null:<>
-    <TextButton disabled={busy} onClick={()=>void change(true,true)}>View only</TextButton>
-    <TextButton disabled={busy} onClick={()=>void change(true)}>Show desktop</TextButton>
+    <IconButton label="Watch (view only)" icon="Eye" disabled={busy} onClick={()=>void change(true,true)}/>
+    <IconButton label="Show desktop" icon="Play" disabled={busy} onClick={()=>void change(true)}/>
   </>;
   const header=<div className={`flex h-8 shrink-0 items-center gap-1.5 pl-3 pr-1 text-xs ${open?'border-b border-border':''}`}>
-    <Icon name="Monitor" aria-hidden className="size-3.5 shrink-0 text-muted-foreground"/>
+    <Icon name="ComputerCloud" aria-hidden className="size-3.5 shrink-0 text-muted-foreground"/>
     <span className="shrink-0 font-medium text-foreground">Sandbox desktop</span>
     <span className="flex min-w-0 flex-1 items-center">{status}</span>
     <span className="ml-1 flex shrink-0 items-center gap-0.5">{actions}</span>

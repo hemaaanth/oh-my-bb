@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useRef,useState,type ReactNode,type Ref} from 'react';
+import {useCallback,useEffect,useRef,useState,type Ref} from 'react';
 import {experimental_Icon as Icon,useRealtime,useRpc,type PluginMessageDirectiveProps} from '@get-bb/plugin-sdk/app';
 import type {browserHandoffRpcContract, BrowserLiveState} from '../src/browser-handoff-contract';
 
@@ -15,9 +15,6 @@ function IconButton({label,icon,onClick,disabled}:{label:string;icon:string;onCl
   return <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick} className={`inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50 ${focusRing}`}>
     <Icon name={icon} aria-hidden className="size-3.5"/>
   </button>;
-}
-function TextButton({children,onClick,disabled}:{children:ReactNode;onClick:()=>void;disabled?:boolean}){
-  return <button type="button" disabled={disabled} onClick={onClick} className={`h-6 shrink-0 cursor-pointer rounded-md px-2 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50 ${focusRing}`}>{children}</button>;
 }
 
 export function BrowserLive({message}:PluginMessageDirectiveProps){
@@ -44,7 +41,7 @@ export function BrowserLive({message}:PluginMessageDirectiveProps){
     <IconButton label="Fullscreen" icon="Maximize2" onClick={()=>void frame.current?.requestFullscreen?.().catch(()=>{})}/>
     <IconButton label="Open in new tab" icon="ExternalLink" onClick={()=>window.open(watching,'_blank','noopener,noreferrer')}/>
     <IconButton label="Close view" icon="X" disabled={busy} onClick={()=>void change(false)}/>
-  </>:view?.kind==='closed'&&!closedHere?<TextButton disabled={busy} onClick={()=>void change(true)}>Show live browser</TextButton>:null;
+  </>:view?.kind==='closed'&&!closedHere?<IconButton label="Show live browser" icon="Eye" disabled={busy} onClick={()=>void change(true)}/>:null;
   return <div className="my-2 overflow-hidden rounded-lg border border-border bg-background text-sm">
     <div className={`flex h-8 items-center gap-1.5 pl-3 pr-1 text-xs ${watching?'border-b border-border':''}`}>
       <Icon name="Globe" aria-hidden className="size-3.5 shrink-0 text-muted-foreground"/>
