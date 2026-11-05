@@ -34,4 +34,6 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: ${{ matrix.package }}/package-lock.json
+      # Package builds run `bb plugin build`, which needs no running bb server.
+      - run: npm install --global --no-audit --no-fund bb-app@0.48.1
       - run: scripts/check-package.sh ${{ matrix.package }}

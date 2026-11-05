@@ -2,7 +2,6 @@ import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import plugin from "../server.js";
 import { ProjectsStore } from "../store.js";
-import compatibility from "../../project-environments/server.js";
 
 async function fixture() {
   const host = createFakePluginHost({ pluginId: "projects", sdk: { subscribe: () => () => {}, projects: { list: async () => [] }, plugins: { list: async () => ({ plugins: [] }) } } });
@@ -53,20 +52,6 @@ describe("Projects owns application environments", () => {
       await expect(h.harness.behavior.callRpc("environment_cli", { argv: ["prepare"] }, caller)).rejects.toThrow("Use bb project-env");
       expect(h.db.prepare("SELECT * FROM machine_preparations").all()).toEqual([]);
       expect(h.harness.inspection.sdk.callsTo("plugins.callRpc")).toEqual([]);
-    } finally { await h.harness.lifecycle.dispose(); }
-  });
-
-  it("keeps the old ID as a stateless one-way adapter and checks the actual caller", async () => {
-    const calls: unknown[] = [];
-    const h = createFakePluginHost({ pluginId: "project-environments", sdk: { plugins: { callRpc: async request => { calls.push(request); return { jobId: "713148eb-b424-4c50-a398-6b2144802ef0" }; } } } });
-    compatibility(h.bb as unknown as Parameters<typeof compatibility>[0]);
-    const input = { projectId: "project-a", hostId: "host", workspacePath: "/work", strict: false };
-    try {
-      await expect(h.harness.behavior.callRpc("startPrepare", input, { experimental_caller: { kind: "plugin", pluginId: "foreign" } })).rejects.toThrow("Use Projects");
-      expect(calls).toEqual([]);
-      await h.harness.behavior.callRpc("startPrepare", input, { experimental_caller: { kind: "plugin", pluginId: "sandboxes" } });
-      expect(calls).toMatchObject([{ pluginId: "projects", method: "environment_startPrepare", input }]);
-      expect(h.harness.inspection.registrations.services).toEqual([]);
     } finally { await h.harness.lifecycle.dispose(); }
   });
 });

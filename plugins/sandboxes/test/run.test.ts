@@ -42,6 +42,8 @@ function localExecutor(home: string): MachineExecutor {
         child.stdout.on("data", (chunk: Buffer) => request.onOutput(chunk.toString("utf8")));
         child.stderr.on("data", (chunk: Buffer) => request.onOutput(chunk.toString("utf8")));
         child.on("close", (code) => resolve({ exitCode: code ?? 1 }));
+        // A command that exits before reading stdin closes the pipe; that is not a test failure.
+        child.stdin.on("error", () => {});
         child.stdin.end(request.stdin);
       }),
   };

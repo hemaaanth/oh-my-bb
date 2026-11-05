@@ -124,7 +124,7 @@ function run(args: string[], options: { env?: Record<string, string>; input?: st
     encoding: "utf8",
     input: options.input ?? "",
     env: {
-      PATH: `${bin}:/usr/bin:/bin`,
+      PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`,
       HOME: root,
       BB_BROWSER_HOME: home,
       FAKE_LOG: log,
@@ -890,7 +890,7 @@ console.log(argv[1].includes("hl.window_rule") ? "bb-browser-rule:true" : argv[1
   function runNativeAsync(args: string[], env: Record<string, string> = {}) {
     const child = spawn(process.execPath, [script, ...args], {
       env: {
-        PATH: `${bin}:/usr/bin:/bin`,
+        PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`,
         HOME: root,
         BB_BROWSER_HOME: home,
         FAKE_LOG: log,
