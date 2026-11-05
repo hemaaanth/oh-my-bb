@@ -18,13 +18,15 @@ describe("sandbox runtime environment", () => {
     };
     return { bb: bb as unknown as BbPluginApi, callbacks, call, start: (signal: AbortSignal) => start(signal) };
   }
-  it("supplies the execution host's HOME for each catalog provider", async () => {
+  it("supplies HOME and the sandbox markers for each catalog provider", async () => {
     const { bb, callbacks, call } = setup();
     await registerRuntimeEnvironment(bb);
     expect([...callbacks.keys()]).toEqual(expect.arrayContaining(["agents", "codex", "acp-omp"]));
     for (const callback of callbacks.values()) {
       expect(await callback({ hostId: "host_remote" })).toEqual([
         { name: "HOME", value: "/home/execution-user", reason: "Sandbox execution user's home directory" },
+        { name: "IS_SANDBOX", value: "1", reason: "This thread runs on a bb sandbox" },
+        { name: "BB_SANDBOX_PROVIDER", value: "daytona", reason: "The provider hosting this sandbox" },
       ]);
     }
     expect(call).toHaveBeenCalledWith("runtimeEnvironment", null, { hostId: "host_remote" });
