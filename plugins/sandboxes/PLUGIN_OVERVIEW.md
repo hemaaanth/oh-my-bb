@@ -9,3 +9,5 @@ The image pipeline requires an explicit supported builder and registry. Browser 
 No provider account, private builder or application configuration is bundled. Offline tests do not certify cloud lifecycle. The unused broken standalone Freestyle snapshot publisher is not shipped; native snapshot selection remains.
 
 Remote thread CPU, RAM, disk, and lifecycle status appear in the native Info panel’s **Sandbox** section. Local threads have no extra section or header icon. **Manage sandbox** contains the existing controls. Model/fallback information remains in the composer.
+
+Each sandbox thread can show its own desktop inline in chat, in a **Desktop** side panel, or as a link from `bb sandbox desktop`. The view streams through voxl and lasts fifteen minutes.

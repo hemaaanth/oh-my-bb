@@ -1,10 +1,11 @@
 import {spawn,type ChildProcess} from 'node:child_process';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {constants} from 'node:fs';
-import {access,readFile,stat} from 'node:fs/promises';
+import {access,readdir,readFile,stat} from 'node:fs/promises';
 import {createServer as httpServer,request as httpRequest,type IncomingHttpHeaders,type ServerResponse} from 'node:http';
 import type {Duplex} from 'node:stream';
 import {createServer as tcpServer,type Server as TcpServer} from 'node:net';
+import {homedir} from 'node:os';
 import {join} from 'node:path';
 import type {DesktopTarget} from './desktop-contract.js';
 
@@ -19,6 +20,34 @@ export async function validateDesktop(target:DesktopTarget){
  if(tiger){const socket=await stat(target.vncSocket!);if(!socket.isSocket()||socket.uid!==owner.uid||(socket.mode&0o077)!==0||words[words.indexOf('-rfbunixpath')+1]!==target.vncSocket||words[words.indexOf('-rfbport')+1]!=='-1')throw Error('Only an owned private VNC socket can be shared');}
  if((!tiger&&(binary!=='Xvfb'||!!target.vncSocket))||!words.includes(target.display)||words[words.indexOf('-auth')+1]!==target.authority||owner.uid!==process.getuid?.()||app.uid!==owner.uid||file.uid!==owner.uid||words[words.indexOf('-nolisten')+1]!=='tcp'||!file.isFile()||(file.mode&0o077)!==0)throw Error('Only an owned private X display can be shared');
 }
+type Screen={display:string;authority?:string;owners:{pid:number;start:string}[]};
+// The sandbox's own Xvfb has no cookie: every process of the sandbox user draws on it.
+// Displays with -auth are private and are shared only through validateDesktop.
+async function sharedXvfb(){
+ const uid=process.getuid?.(),found:{display:string;pid:number;start:string}[]=[];
+ for(const pid of await readdir('/proc')){
+  if(!/^\d+$/.test(pid))continue;
+  try{
+   const [args,text,info]=await Promise.all([readFile('/proc/'+pid+'/cmdline','utf8'),readFile('/proc/'+pid+'/stat','utf8'),stat('/proc/'+pid)]);
+   const words=args.split('\0'),display=words.slice(1).find(word=>/^:\d+$/.test(word));
+   if(words[0]?.split('/').at(-1)!=='Xvfb'||!display||info.uid!==uid||words.includes('-auth')||words[words.indexOf('-nolisten')+1]!=='tcp')continue;
+   found.push({display,pid:Number(pid),start:text.slice(text.lastIndexOf(')')+2).split(' ')[19]!});
+  }catch{}
+ }
+ // bb-sandbox-display records the display it started.
+ const recorded=await readFile(join(process.env.BB_DATA_DIR||join(homedir(),'.bb'),'display'),'utf8').then(value=>value.trim(),()=>':99');
+ return found.find(value=>value.display===recorded)??found.find(value=>value.display===':99')??found[0];
+}
+export async function sharedDisplay(signal:AbortSignal):Promise<Screen>{
+ if(process.platform!=='linux')throw Error('Sandbox desktops need Linux');
+ let xvfb=await sharedXvfb();
+ if(!xvfb){
+  await new Promise<void>(resolve=>{const child=spawn('bb-sandbox-display',['start'],{stdio:'ignore',signal,timeout:30000});child.once('error',()=>resolve());child.once('exit',()=>resolve());});
+  signal.throwIfAborted();xvfb=await sharedXvfb();
+ }
+ if(!xvfb)throw Error('This sandbox has no desktop; start one with bb-sandbox-display start');
+ return {display:xvfb.display,owners:[{pid:xvfb.pid,start:xvfb.start}]};
+}
 const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 async function listen(server:TcpServer){await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});const address=server.address();if(!address||typeof address==='string')throw Error('Cannot allocate a private desktop port');return address.port;}
 
@@ -29,7 +58,8 @@ const voxlPublic=new Set(['/client.js','/worker.js','/audio.js','/mic.js','/favi
 // voxl's page and worker pass ?token= on to every request; this moves the hash token there.
 const startPage=`<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Remote desktop</title><link rel="license" href="/licenses"><style>body{margin:0;height:100dvh;display:grid;place-items:center;background:#09090b;color:#9b9b9b;font:400 .875rem/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}</style><p id="status" role="status">Connecting…</p><script src="/bb-desktop-start.js"></script></html>`;
 const startScript=`const token=location.hash.slice(1);if(/^[A-Za-z0-9_-]{43}$/.test(token))location.replace('/?token='+token);else document.getElementById('status').textContent='Session ended';`;
-type DesktopOpen={id:string;target:DesktopTarget;viewOnly?:boolean;appOrigin?:string;threadTitle:string;token:string;notices:string;tunnel:{label:string;baseDomain:string}};
+type SharedDesktopOpen={id:string;viewOnly?:boolean;appOrigin?:string;threadTitle:string;token:string;notices:string;tunnel:{label:string;baseDomain:string}};
+type DesktopOpen=SharedDesktopOpen&{target:DesktopTarget};
 const frameAncestors=(appOrigin?:string)=>"frame-ancestors 'self' https://*.getbb.app"+(appOrigin?" "+appOrigin:"");
 function secure(res:ServerResponse,policy:string){res.setHeader('Cache-Control','no-store');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Security-Policy',policy);}
 async function stop(child:ChildProcess|undefined){
@@ -43,6 +73,13 @@ export class SandboxDesktopHost{
  async dispose(){await Promise.all([...this.sessions.keys()].map(id=>this.close(id)));}
  async open(input:DesktopOpen,signal:AbortSignal){
   await this.close(input.id);await validateDesktop(input.target);signal.throwIfAborted();
+  return this.stream(input,{display:input.target.display,authority:input.target.authority,owners:[input.target.owner,input.target.displayOwner]},signal);
+ }
+ async openShared(input:SharedDesktopOpen,signal:AbortSignal){
+  await this.close(input.id);const screen=await sharedDisplay(signal);signal.throwIfAborted();
+  return this.stream(input,screen,signal);
+ }
+ private async stream(input:SharedDesktopOpen,screen:Screen,signal:AbortSignal){
   const binary=await findVoxl();if(!binary)throw Error('This sandbox image has no voxl desktop viewer; rebuild the sandbox image');
   const password=randomBytes(24).toString('base64url'),reservation=tcpServer(),voxlPort=await listen(reservation);await new Promise<void>(resolve=>reservation.close(()=>resolve()));
   let child:ChildProcess|undefined,server:ReturnType<typeof httpServer>|undefined,timer:ReturnType<typeof setInterval>|undefined,closed=false,closing:Promise<void>|undefined;
@@ -52,7 +89,7 @@ export class SandboxDesktopHost{
   })();
   try{
    // The password stays out of argv, which other users can read in /proc.
-   child=spawn(binary,['--addr=127.0.0.1','--port='+voxlPort,'--title='+input.threadTitle,'--audio-enabled=false','--microphone-enabled=false','--file-transfers=none','--enable-clipboard=in',input.viewOnly?'--read-only=true':'--enable-resize=true'],{stdio:'ignore',env:{PATH:process.env.PATH,HOME:process.env.HOME,DISPLAY:input.target.display,XAUTHORITY:input.target.authority,VOXL_PASSWORD:password}});
+   child=spawn(binary,['--addr=127.0.0.1','--port='+voxlPort,'--title='+input.threadTitle,'--audio-enabled=false','--microphone-enabled=false','--file-transfers=none','--enable-clipboard=in',input.viewOnly?'--read-only=true':'--enable-resize=true'],{stdio:'ignore',env:{PATH:process.env.PATH,HOME:process.env.HOME,DISPLAY:screen.display,...(screen.authority?{XAUTHORITY:screen.authority}:{}),VOXL_PASSWORD:password}});
    await new Promise<void>((resolve,reject)=>{child!.once('spawn',resolve);child!.once('error',reject);});
    const healthy=()=>new Promise<boolean>(resolve=>{const req=httpRequest({host:'127.0.0.1',port:voxlPort,path:'/healthz',timeout:200},res=>{res.resume();resolve(res.statusCode===200);});req.once('error',()=>resolve(false));req.once('timeout',()=>{req.destroy();resolve(false);});req.end();});
    let ready=false;
@@ -101,7 +138,7 @@ export class SandboxDesktopHost{
     forward.end();
    });
    port=await listen(server);this.sessions.set(input.id,{port,expires,close});
-   timer=setInterval(()=>{if(Date.now()>=expires||child!.exitCode!==null||child!.signalCode!==null)void this.close(input.id);else void Promise.all([processMatches(input.target.owner),processMatches(input.target.displayOwner)]).then(alive=>{if(alive.some(v=>!v))void this.close(input.id);});},1000);timer.unref();
+   timer=setInterval(()=>{if(Date.now()>=expires||child!.exitCode!==null||child!.signalCode!==null)void this.close(input.id);else void Promise.all(screen.owners.map(processMatches)).then(alive=>{if(alive.some(v=>!v))void this.close(input.id);});},1000);timer.unref();
    return {port,expires};
   }catch(error){await close();throw error;}
  }

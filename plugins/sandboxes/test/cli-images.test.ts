@@ -280,3 +280,23 @@ it("accepts Boat and old Box CLI identifiers without changing stored provider ID
     expect(changes).toEqual([["box", true], ["box", false]]);
   } finally { await fake.harness.dispose(); }
 });
+
+describe("bb sandbox desktop", () => {
+  it("opens and closes the calling thread's desktop", async () => {
+    const calls: string[] = [];
+    const view = { kind: "open" as const, url: "https://sbx--4000.getbb.app/#t", expires: Date.now() + 900000, viewOnly: true };
+    const { fake } = await cli(settled("build", build([])), {
+      desktops: {
+        open: async (threadId, viewOnly) => { calls.push(`open ${threadId} ${viewOnly}`); return view; },
+        view: () => view,
+        close: async (threadId) => { calls.push(`close ${threadId}`); },
+      },
+    });
+    expect((await fake.harness.runCli(["desktop"])).stderr).toContain("from a sandbox thread");
+    const opened = await fake.harness.runCli(["desktop", "--view-only"], { threadId: "thr_a" });
+    expect(opened.stdout).toContain(view.url);
+    expect(opened.stdout).toContain("to watch the desktop");
+    expect(JSON.parse((await fake.harness.runCli(["desktop", "--close", "--json"], { threadId: "thr_a" })).stdout!)).toEqual({ kind: "closed" });
+    expect(calls).toEqual(["open thr_a true", "close thr_a"]);
+  });
+});

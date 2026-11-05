@@ -29,6 +29,7 @@ import type { VersionAudit } from "./version-audit.js";
 import { harnessNames } from "./upgrade.js";
 import { shQuote } from "./provider/backends/shell-exec.js";
 import type { SandboxSshRecord } from "./ssh.js";
+import type { SandboxDesktops } from "./desktop.js";
 import type {
   SandboxUpgradeJobStatus,
   SandboxUpgradeOptions,
@@ -39,6 +40,7 @@ const providerUsage = sandboxProviderValues.map((provider) => provider === "box"
 const imageProviderUsage = sandboxImageProviders.join("|");
 
 export interface SandboxCliDeps {
+  desktops?: SandboxDesktops;
   sshStatus?: () => Promise<SandboxSshRecord[]>;
   setupSsh?: (hostId: string) => Promise<SandboxSshRecord>;
   listLegacySandboxes?: () => SandboxRecord[];
@@ -496,6 +498,11 @@ export function registerSandboxCli(
         usage: "bb sandbox run-status <run-id> [--wait <seconds>|--no-wait] [--json]",
       },
       {
+        name: "desktop",
+        summary: "Open a 15-minute link to this sandbox thread's desktop, or close it",
+        usage: "bb sandbox desktop [--view-only|--close] [--json]",
+      },
+      {
         name: "doctor",
         summary:
           "Audit sandboxes: bb versions behind the server, stale image pins, and doomed automation targets",
@@ -505,6 +512,21 @@ export function registerSandboxCli(
     async run(argv, context) {
       const [command, ...args] = argv;
       const wantsJson = args.includes("--json");
+      if (command === "desktop") {
+        if (!deps.desktops) throw new Error("Sandbox desktops are unavailable");
+        if (context.threadId === undefined) throw new Error("Run bb sandbox desktop from a sandbox thread");
+        if (args.includes("--close")) {
+          await deps.desktops.close(context.threadId);
+          return wantsJson ? json({ kind: "closed" }) : { exitCode: 0, stdout: "Sandbox desktop closed.\n" };
+        }
+        const view = await deps.desktops.open(context.threadId, args.includes("--view-only"));
+        if (wantsJson) return json(view);
+        if (view.kind !== "open") throw new Error("The sandbox desktop closed while opening");
+        return {
+          exitCode: 0,
+          stdout: `${view.url}\nOpen this link to ${view.viewOnly ? "watch" : "use"} the desktop. It works until ${new Date(view.expires).toLocaleTimeString()}.\n`,
+        };
+      }
       if (command === "ssh-status") {
         if (!deps.sshStatus) throw new Error("Sandbox SSH is unavailable");
         const targets = await deps.sshStatus();
@@ -969,7 +991,7 @@ export function registerSandboxCli(
       return {
         exitCode: 2,
         stderr:
-          "Usage: bb sandbox <list|show|delete|providers|provider|capacity|tiers|images|register-image|image-status|build-image|size|set-size|clear-size|resize|upgrade|run|run-status|doctor|ssh-status|ssh-setup> [options]\n",
+          "Usage: bb sandbox <list|show|delete|providers|provider|capacity|tiers|images|register-image|image-status|build-image|size|set-size|clear-size|resize|upgrade|run|run-status|desktop|doctor|ssh-status|ssh-setup> [options]\n",
       };
     },
   });

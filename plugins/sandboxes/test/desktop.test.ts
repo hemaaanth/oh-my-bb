@@ -22,6 +22,21 @@ it('binds a desktop grant to the requesting thread host and withdraws only its p
  await fake.harness.behavior.callRpc('desktopCloseV1',{threadId:'thr_fixture'},{experimental_caller:{kind:'plugin',pluginId:'other-plugin'}});expect(calls).toHaveLength(1);
  await fake.harness.behavior.callRpc('desktopCloseV1',{threadId:'thr_fixture'},caller);expect(calls.at(-1)?.method).toBe('closeDesktop');expect(fake.harness.inspection.sharedPortDeclarations.at(-1)).toMatchObject({hostId:'host_fixture',ports:[]});
 });
+it('opens one shared desktop per thread for the panel, the directive and the agent tool',async()=>{
+ const calls:Array<{method:string;input:unknown}>=[];
+ const fake=createFakePluginHost({pluginId:'sandboxes',experimental_hostEntry:true,sharedPortTunnelIdentities:{host_fixture:{label:'sandbox-fixture',baseDomain:'getbb.app'}},experimental_callHostRpc:async call=>{calls.push(call);return call.method==='openSharedDesktop'?{port:42000,expires:Date.now()+900000}:null;},sdk:{threads:{get:async()=>makeThreadResponse({id:'thr_fixture',title:'Desk',environmentId:'env_fixture'})},environments:{get:async()=>({hostId:'host_fixture'}) as never},hosts:{get:async()=>makeHostResponse({id:'host_fixture',machineProviderId:'sandbox-daytona'})}}});dispose.push(()=>fake.harness.lifecycle.dispose());registerDesktops(fake.bb);
+ expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toEqual({kind:'closed'});
+ const view=await fake.harness.behavior.callRpc('openSandboxDesktop',{threadId:'thr_fixture',viewOnly:true});
+ expect(view).toMatchObject({kind:'open',viewOnly:true,url:expect.stringMatching(/^https:\/\/sandbox-fixture--42000.getbb.app\/#[-\w]{43}$/)});
+ expect(calls[0]).toMatchObject({method:'openSharedDesktop',input:{viewOnly:true,threadTitle:'Desk'}});expect(calls[0]?.input).not.toHaveProperty('target');
+ expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toEqual(view);
+ expect(fake.harness.inspection.realtimeSignals.filter(signal=>signal.channel==='sandbox-desktop:thr_fixture')).toHaveLength(1);
+ expect(await fake.harness.behavior.callAgentTool('sandbox_desktop',{action:'open'},{threadId:'thr_fixture'})).toContain('::sandbox-desktop{}');
+ expect(calls.map(call=>call.method)).toEqual(['openSharedDesktop','closeDesktop','openSharedDesktop']);
+ await fake.harness.behavior.callAgentTool('sandbox_desktop',{action:'close'},{threadId:'thr_fixture'});
+ expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toEqual({kind:'closed'});
+ expect(fake.harness.inspection.sharedPortDeclarations.at(-1)).toMatchObject({hostId:'host_fixture',ports:[]});
+});
 it('rejects stale or non-owned displays before launching voxl',async()=>{
  await expect(validateDesktop(target)).rejects.toThrow('no longer running');
 });
@@ -80,4 +95,21 @@ it.skipIf(process.platform!=='linux')('proxies an owned display through voxl wit
  const voxlGone=new Promise(resolve=>second.socket!.once('close',resolve));
  await host.close('desk');await voxlGone;
  await expect(fetch(base+'/')).rejects.toThrow();
+});
+it.skipIf(process.platform!=='linux')('starts and streams the sandbox display without an authority file',async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'bb-desktop-'));dispose.push(()=>rm(directory,{recursive:true,force:true}));
+ await writeFile(join(directory,'voxl'),fakeVoxl);await chmod(join(directory,'voxl'),0o755);
+ await copyFile('/bin/sh',join(directory,'Xvfb'));await chmod(join(directory,'Xvfb'),0o755);
+ // Stands in for bb-sandbox-display: it starts the shared Xvfb and records its display.
+ await writeFile(join(directory,'bb-sandbox-display'),`#!/bin/sh\n"${directory}/Xvfb" -c 'sleep 60; :' :88 -nolisten tcp >/dev/null 2>&1 &\necho $! > "${directory}/pid"\n`);await chmod(join(directory,'bb-sandbox-display'),0o755);
+ await writeFile(join(directory,'display'),':88');
+ const env={PATH:process.env.PATH,BB_DATA_DIR:process.env.BB_DATA_DIR};dispose.push(async()=>{process.env.PATH=env.PATH;if(env.BB_DATA_DIR===undefined)delete process.env.BB_DATA_DIR;else process.env.BB_DATA_DIR=env.BB_DATA_DIR;});
+ dispose.push(async()=>{const pid=await readFile(join(directory,'pid'),'utf8').catch(()=>'');if(pid.trim())try{process.kill(Number(pid));}catch{}});
+ process.env.PATH=directory+':'+env.PATH;process.env.BB_DATA_DIR=directory;
+ const host=new SandboxDesktopHost();dispose.push(()=>host.dispose());
+ const token=randomBytes(32).toString('base64url');
+ const {port}=await host.openShared({id:'shared',threadTitle:'Thread',token,notices:'',tunnel:{label:'sbx',baseDomain:'getbb.app'}},AbortSignal.timeout(10000));
+ const seen=JSON.parse(await (await fetch(`http://127.0.0.1:${port}/?token=${token}`)).text());
+ expect(seen).toMatchObject({display:':88',auth:'Bearer '+seen.password});
+ await host.close('shared');
 });

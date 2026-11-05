@@ -196,7 +196,7 @@ export default async function plugin(bb: BbPluginApi) {
       if (!await integrations.enabled(name)) throw new Error(`Enable ${name} under Sandboxes → Oh My BB first`);
     };
     const db = bb.storage.database();
-    registerDesktops(bb,()=>idleSuspendHolds??undefined);
+    const desktops = registerDesktops(bb,()=>idleSuspendHolds??undefined);
     registerBrowserIntegration(bb, () => settings.get(), join(dirname(db.name), "browser-cookies"), () => idleSuspendHolds ?? undefined);
     const ssh = new SandboxSsh(bb, () => settings.get(), new SandboxSshDesktop(
       dirname(db.name), join(os.homedir(), ".ssh", "config"), () => bb.server.loopbackBaseUrl,
@@ -1476,6 +1476,7 @@ export default async function plugin(bb: BbPluginApi) {
     void runner.cleanupLeftovers();
 
     registerSandboxCli(bb, manager, {
+      desktops,
       sshStatus: () => ssh.list(),
       setupSsh: prepareSsh,
       listLegacySandboxes: () => legacyCleanup.list(),

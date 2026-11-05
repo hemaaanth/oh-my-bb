@@ -676,9 +676,19 @@ while any unarchived thread still uses the host. Once safe, it checkpoints and
 retries project-source, provider, BB host, and Connect cleanup. Provider
 disappearance alone never authorizes deletion of a sandbox with a live thread.
 
+### Sandbox desktop
+
+Every sandbox thread can show its own display, the shared Xvfb that GUI apps, `bb-sandbox-capture` and computer use draw on. Open it in three ways:
+
+- Run `bb sandbox desktop` from the thread. It prints a fifteen-minute link. Add `--view-only` to watch only, or `--close` to end it.
+- Ask the agent. Its `sandbox_desktop` tool opens the view and shows it inline in the reply with `::sandbox-desktop{}`.
+- Open the thread's **Desktop** side panel and choose **Show desktop** or **View only**.
+
+All three share one grant per thread, so the inline view and the panel show the same session. Opening again replaces the grant. The host finds the display itself; callers cannot name another one. It picks this user's Xvfb that has TCP disabled and no authority file, preferring the display that `bb-sandbox-display` recorded. If none runs, it starts one with `bb-sandbox-display start`. The stream, gateway, token, expiry and idle hold work the same as for private desktops below. For a thread's Browser window, use Browser's live view instead.
+
 ### Private remote desktops
 
-Sandboxes provides a provider-independent desktop viewer through `desktopOpenV1` and `desktopCloseV1`. It streams the display with [voxl](https://github.com/tembo/voxl) as H.264 over a WebSocket. An installed plugin requests a viewer for its existing private X display and thread. Browser uses this service for headed sandbox handoffs; other GUI consumers can use the same RPC. The thread's environment selects the machine explicitly. No provider-specific dashboard or shared default display is used.
+Sandboxes provides a provider-independent desktop viewer through `desktopOpenV1` and `desktopCloseV1`. It streams the display with [voxl](https://github.com/tembo/voxl) as H.264 over a WebSocket. An installed plugin requests a viewer for its existing private X display and thread. Browser uses this service for headed sandbox handoffs; other GUI consumers can use the same RPC. The thread's environment selects the machine explicitly. These grants never fall back to the sandbox's shared display.
 
 The host verifies application/display process identities and the private Xauthority file. It accepts Xvfb displays and Browser's TigerVNC displays (owner-only Unix socket, TCP disabled). voxl reads the X display directly; Xvfb started with `-shmem` lets it read the framebuffer without copying. Each grant starts its own voxl on a random loopback port with a random password, passed in the environment, not argv. Only the authenticated HTTP/WebSocket gateway is shared through BB Connect. Each grant lasts fifteen minutes. The capability starts in the URL fragment. A start page moves it into the `token` query parameter, because voxl's page passes its query on to its worker and WebSocket. No cookie is needed, so embedded viewers work without third-party cookies. The gateway checks the capability, strips it, and sends voxl its own password instead. The WebSocket and every write request must come from the tunnel origin. Frame ancestors include the configured BB app origin. Audio, microphone and file transfer are off, and the gateway blocks voxl's `/files` routes. The clipboard flows into the desktop only. Reconnect creates a new connection without replaying keyboard or mouse input. Consumers can request a view-only grant; voxl's `--read-only` mode enforces it on the server, including for clients that change their own JavaScript. Multiple watchers may share a view-only grant. A new interactive viewer replaces the previous one. Interactive grants let voxl resize the display to the viewer.
 

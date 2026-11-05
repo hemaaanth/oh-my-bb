@@ -194,6 +194,10 @@ Do not work around a failed browser identity or route by using plain
 agent-browser, changing required state, or selecting direct egress.
 
 
+## Sandbox desktop
+
+To let the user see or use the sandbox's own display, call the `sandbox_desktop` tool and emit `::sandbox-desktop{}` once on its own line in the reply. From a shell in the thread, `bb sandbox desktop [--view-only]` prints a link instead; `--close` ends it. The user can also open the thread's **Desktop** side panel. Links last fifteen minutes. Use view-only when the user only needs to watch. For a Browser window, use `browser_live`.
+
 ## Shared remote desktop service
 
 The dedicated Browser plugin consumes Sandboxes' `desktopOpenV1` / `desktopCloseV1` RPC for streaming desktop handoff through voxl. Other installed GUI plugins may request the same service for an existing owned private X display and thread. A grant binds to that thread's sandbox host, expires after fifteen minutes, and closes when its consumer releases it or its owner dies. Never attach the host's personal desktop or share raw VNC. Keep the app alive while a person works; release the viewer before resuming automation.

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Show the sandbox's own desktop inline in chat, in a thread **Desktop** side panel, or as a link from `bb sandbox desktop [--view-only|--close]`. The agent opens it with the `sandbox_desktop` tool. All three share one fifteen-minute voxl grant per thread. The host finds or starts the shared display itself.
+
 - Stream sandbox desktops with voxl (H.264 over WebSocket) instead of x11vnc and noVNC. The image builds voxl 0.3.3 from source and no longer installs x11vnc; `bb-sandbox-display` starts Xvfb with `-shmem` and drops `--vnc`. There is no fallback: rebuild older images to view their desktops. The `desktopOpenV1` RPC and its URL are unchanged.
 
 - Add `bb sandbox run -- <command>` and `run-status`. They run one command on a fresh sandbox with a copy of the checkout, stream its output, exit with its exit code, and always remove the machine. Leftover machines are removed at the next plugin start.

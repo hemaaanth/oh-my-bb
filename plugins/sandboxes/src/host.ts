@@ -14,6 +14,7 @@ let lease:ExperimentalHostWorkerLease|undefined;
 let desktops:SandboxDesktopHost|undefined,desktopLease:ExperimentalHostWorkerLease|undefined;
 function serial<T>(action:()=>Promise<T>){const next=pending.then(action,action);pending=next.catch(()=>undefined);return next;}
 function serialDesktop<T>(action:()=>Promise<T>){const next=desktopPending.then(action,action);desktopPending=next.catch(()=>undefined);return next;}
+function desktopHost(){return desktops??=new SandboxDesktopHost(()=>{void desktopLease?.dispose();desktopLease=undefined;});}
 function network(directory:string,kind:'ssh'|'browser'){
  ssh??=new SandboxNetworkHost(join(directory,'ssh'));
  browser??=new SandboxNetworkHost(join(directory,'browser-network'),'browser');
@@ -25,8 +26,10 @@ export default experimental_defineHostEntry({
  handlers:{
   runtimeEnvironment:()=>({home:homedir()}),
   openDesktop:(input,context)=>serialDesktop(async()=>{
-   desktops??=new SandboxDesktopHost(()=>{void desktopLease?.dispose();desktopLease=undefined;});
-   const result=await desktops.open(input,context.signal);desktopLease??=context.experimental_retainWorker();return result;
+   const result=await desktopHost().open(input,context.signal);desktopLease??=context.experimental_retainWorker();return result;
+  }),
+  openSharedDesktop:(input,context)=>serialDesktop(async()=>{
+   const result=await desktopHost().openShared(input,context.signal);desktopLease??=context.experimental_retainWorker();return result;
   }),
   closeDesktop:(input)=>serialDesktop(async()=>{await desktops?.close(input.id);return null;}),
   configureSsh:(input,context)=>serial(async()=>{
