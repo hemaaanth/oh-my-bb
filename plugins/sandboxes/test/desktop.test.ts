@@ -26,13 +26,15 @@ it('opens one shared desktop per thread for the panel, the directive and the age
  const calls:Array<{method:string;input:unknown}>=[];
  const fake=createFakePluginHost({pluginId:'sandboxes',experimental_hostEntry:true,sharedPortTunnelIdentities:{host_fixture:{label:'sandbox-fixture',baseDomain:'getbb.app'}},experimental_callHostRpc:async call=>{calls.push(call);return call.method==='openSharedDesktop'?{port:42000,expires:Date.now()+900000}:null;},sdk:{threads:{get:async()=>makeThreadResponse({id:'thr_fixture',title:'Desk',environmentId:'env_fixture'})},environments:{get:async()=>({hostId:'host_fixture'}) as never},hosts:{get:async()=>makeHostResponse({id:'host_fixture',machineProviderId:'sandbox-daytona'})}}});dispose.push(()=>fake.harness.lifecycle.dispose());registerDesktops(fake.bb);
  expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toEqual({kind:'closed'});
- const view=await fake.harness.behavior.callRpc('openSandboxDesktop',{threadId:'thr_fixture',viewOnly:true});
- expect(view).toMatchObject({kind:'open',viewOnly:true,url:expect.stringMatching(/^https:\/\/sandbox-fixture--42000.getbb.app\/#[-\w]{43}$/)});
- expect(calls[0]).toMatchObject({method:'openSharedDesktop',input:{viewOnly:true,threadTitle:'Desk'}});expect(calls[0]?.input).not.toHaveProperty('target');
+ const view=await fake.harness.behavior.callRpc('openSandboxDesktop',{threadId:'thr_fixture',viewOnly:false});
+ expect(view).toMatchObject({kind:'open',viewOnly:false,url:expect.stringMatching(/^https:\/\/sandbox-fixture--42000.getbb.app\/#[-\w]{43}$/)});
+ expect(calls[0]).toMatchObject({method:'openSharedDesktop',input:{viewOnly:false,threadTitle:'Desk'}});expect(calls[0]?.input).not.toHaveProperty('target');
  expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toEqual(view);
  expect(fake.harness.inspection.realtimeSignals.filter(signal=>signal.channel==='sandbox-desktop:thr_fixture')).toHaveLength(1);
  expect(await fake.harness.behavior.callAgentTool('sandbox_desktop',{action:'open'},{threadId:'thr_fixture'})).toContain('::sandbox-desktop{}');
  expect(calls.map(call=>call.method)).toEqual(['openSharedDesktop','closeDesktop','openSharedDesktop']);
+ // The agent tool opens view only unless asked; switching mode restarts the session.
+ expect(calls[2]).toMatchObject({input:{viewOnly:true}});expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toMatchObject({kind:'open',viewOnly:true});
  await fake.harness.behavior.callAgentTool('sandbox_desktop',{action:'close'},{threadId:'thr_fixture'});
  expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toEqual({kind:'closed'});
  expect(fake.harness.inspection.sharedPortDeclarations.at(-1)).toMatchObject({hostId:'host_fixture',ports:[]});

@@ -57,8 +57,8 @@ export function registerDesktops(bb:BbPluginApi,idle:()=>NativeIdleSuspendHolds|
  });
  bb.agents.registerTool({
   name:'sandbox_desktop',description:'Show or close an inline live view of this sandbox’s own desktop, where GUI apps and computer use draw.',
-  instructions:`Use when the user asks to see or use the sandbox desktop. After opening, emit ::${SANDBOX_DESKTOP_DIRECTIVE}{} exactly once on its own line in the reply. The user can also open it from the thread side panel. For a thread’s Browser window use browser_live instead.`,
-  parameters:z.object({action:z.enum(['open','close']).default('open'),viewOnly:z.boolean().default(false)}).strict(),
+  instructions:`Use when the user asks to see or use the sandbox desktop. It opens view only; the user takes control from the card. Pass viewOnly:false only when the user asks to control it now. After opening, emit ::${SANDBOX_DESKTOP_DIRECTIVE}{} exactly once on its own line in the reply. The user can also open it from the thread side panel. For a thread’s Browser window use browser_live instead.`,
+  parameters:z.object({action:z.enum(['open','close']).default('open'),viewOnly:z.boolean().default(true)}).strict(),
   execute:async({action,viewOnly},context)=>{
    if(action==='close'){await desktops.close(context.threadId);return 'Sandbox desktop view closed.';}
    await desktops.open(context.threadId,viewOnly);
