@@ -114,6 +114,7 @@ if (action === "create") {
   // Connecting to a paused sandbox resumes it; do not relaunch the daemon —
   // BB core re-bootstraps over the executor.
   const sandbox = await Sandbox.connect(input.providerSandboxId, { apiKey });
+  await Sandbox.setTimeout(sandbox.sandboxId, input.timeoutMs, { apiKey });
   process.stdout.write(
     `${JSON.stringify({ action: "resume-native", sandboxId: sandbox.sandboxId })}\n`,
   );

@@ -246,6 +246,7 @@ export function createE2bMachineBackend(
       context.report.step("Resuming the E2B sandbox");
       const result = await callRuntime(config.apiKey, "resume-native", {
         providerSandboxId: context.resource.providerSandboxId,
+        timeoutMs: FALLBACK_TIMEOUT_MS,
       });
       if (result.action !== "resume-native") throw new Error("E2B resume failed");
       const resource: E2bResource = {

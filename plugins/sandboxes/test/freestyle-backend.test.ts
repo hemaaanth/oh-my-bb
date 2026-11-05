@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as FreestyleSdk from "freestyle";
@@ -227,12 +229,39 @@ describe("Freestyle backend transport", () => {
       { method: "DELETE", path: "/v5/vms/vm-fixture" },
       { method: "DELETE", path: "/v5/vms/vm-legacy" },
     ]);
-    expect(calls[2]?.body).toEqual({ linuxUser: "root", command: "printf %s 'aW5wdXQ=' | base64 -d | 'printf' 'hello world'", timeoutMs: 1234 });
+    expect(calls[2]?.body).toEqual({ linuxUser: "root", command: "'printf' 'hello world'", stdin: "aW5wdXQ=", timeoutMs: 1234 });
     expect(calls.map((call) => call.authorization)).toEqual([
       "Bearer synthetic-old", "Bearer synthetic-old", "Bearer synthetic-new", "Bearer synthetic-new", "Bearer synthetic-new",
     ]);
     expect(result).toEqual({ exitCode: 0 });
     expect(output).toEqual(["done\n"]);
+  });
+
+  it("uses Freestyle secure stdin for compressed Browser-sized input", async () => {
+    const backend = createFreestyleMachineBackend(config());
+    const resumed = await backend.resume!(context());
+    const secret = "private-browser-state\n".repeat(20_000);
+
+    await resumed.executor.exec({
+      command: ["bb-browser", "provision"], stdin: secret, timeoutMs: 1234,
+      signal: context().signal, onOutput: () => {},
+    });
+
+    const body = calls.at(-1)?.body as { command: string; stdin: string };
+    expect(body.command).toBe("gzip -dc | 'bb-browser' 'provision'");
+    expect(body.command).not.toContain("private-browser-state");
+    expect(gunzipSync(Buffer.from(body.stdin, "base64")).toString("utf8")).toBe(secret);
+  });
+
+  it("refuses secure stdin beyond Freestyle's documented limit", async () => {
+    const backend = createFreestyleMachineBackend(config());
+    const resumed = await backend.resume!(context());
+
+    await expect(resumed.executor.exec({
+      command: ["bb-browser", "provision"], stdin: randomBytes(2 * 1024 * 1024).toString("base64"), timeoutMs: 1234,
+      signal: context().signal, onOutput: () => {},
+    })).rejects.toThrow("Freestyle secure stdin exceeds 1 MiB");
+    expect(calls).toHaveLength(1);
   });
 
   it("reconciles matching display names across list pages before deleting", async () => {

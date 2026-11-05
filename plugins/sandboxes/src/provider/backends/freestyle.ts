@@ -7,6 +7,7 @@
  * executor runs commands over `vm.exec`, feeding stdin via a base64 pipe.
  */
 import { Freestyle, FreestyleApiError } from "freestyle";
+import { gzipSync } from "node:zlib";
 import { z } from "zod";
 import type {
   MachineExecutor,
@@ -25,6 +26,7 @@ import type { SandboxBackend } from "../sandbox-backend.js";
 import { toShellCommand } from "./shell-exec.js";
 
 const MIB = 1024 ** 2;
+const FREESTYLE_STDIN_LIMIT = MIB;
 
 type FreestyleConfig = NonNullable<SandboxRuntimeConfig["freestyle"]>;
 
@@ -77,9 +79,17 @@ export function createFreestyleMachineBackend(
   const executorFor = (vmId: string): MachineExecutor => ({
     async exec(request) {
       request.signal.throwIfAborted();
+      const input = Buffer.from(request.stdin, "utf8");
+      const compressed = input.length > 8192;
+      const stdin = compressed ? gzipSync(input) : input;
+      if (stdin.length > FREESTYLE_STDIN_LIMIT) {
+        throw new Error("Freestyle secure stdin exceeds 1 MiB");
+      }
+      const command = toShellCommand(request.command, "");
       const result = await currentClient().vms.ref(vmId).exec({
         linuxUser: "root",
-        command: toShellCommand(request.command, request.stdin),
+        command: compressed ? `gzip -dc | ${command}` : command,
+        ...(stdin.length === 0 ? {} : { stdin: stdin.toString("base64") }),
         timeoutMs: request.timeoutMs,
       });
       const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;

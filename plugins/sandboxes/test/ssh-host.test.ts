@@ -36,9 +36,10 @@ if (args.includes('status')) {
   if (!ready) process.exitCode = 1;
 } else if (args.includes('up')) {
   if (fs.existsSync(path.join(root, 'required-up-flag')) && !args.includes(fs.readFileSync(path.join(root, 'required-up-flag'),'utf8'))) { console.error('changing settings via tailscale up requires mentioning all non-default flags'); process.exit(1); }
+  if (fs.existsSync(path.join(root, 'reject-exit-node-on-up')) && args.some(arg => arg.startsWith('--exit-node='))) { console.error('cannot resolve exit node before authentication'); process.exit(1); }
   const file = args.find(arg => arg.startsWith('--auth-key=file:')).slice('--auth-key=file:'.length);
   fs.writeFileSync(path.join(root, 'enrollment'), JSON.stringify({key:fs.readFileSync(file,'utf8'),mode:fs.statSync(file).mode&0o777,file}));
-  if (fs.existsSync(path.join(root, 'fail-up'))) { console.error('secret ' + fs.readFileSync(file,'utf8')); process.exit(1); }
+  if (fs.existsSync(path.join(root, 'fail-up'))) { console.error(fs.readFileSync(path.join(root, 'fail-up'),'utf8') + ' secret ' + fs.readFileSync(file,'utf8')); process.exit(1); }
   fs.writeFileSync(path.join(root, 'ready'), '1');
 } else if (args.includes('set') && fs.existsSync(path.join(root, 'fail-set'))) process.exit(1);
 `;
@@ -57,14 +58,26 @@ if (args.includes('status')) {
 }
 
 describe("sandbox SSH host worker", () => {
-  it.each(["ssh", "browser"] as const)("repeats the existing %s preference during enrollment", async (kind) => {
+  it("keeps SSH enabled during enrollment", async () => {
     const { directory, storage, input, signal, calls } = await setup();
-    const flag = kind === "ssh" ? "--ssh=true" : "--exit-node=home-node";
-    await writeFile(join(directory, "required-up-flag"), flag);
-    const network = new SandboxNetworkHost(storage, kind);
+    await writeFile(join(directory, "required-up-flag"), "--ssh=true");
+    const network = new SandboxNetworkHost(storage, "ssh");
     running.push(network);
-    await network.acquire("owner", { ...input, ...(kind === "browser" ? { exitNode: "home-node" } : {}) }, signal);
-    expect((await calls()).find(args => args.includes("up"))).toContain(flag);
+    await network.acquire("owner", input, signal);
+    expect((await calls()).find(args => args.includes("up"))).toContain("--ssh=true");
+  });
+
+  it("authenticates Browser before resolving its exit node", async () => {
+    const { directory, storage, input, signal, calls } = await setup();
+    await writeFile(join(directory, "reject-exit-node-on-up"), "1");
+    const network = new SandboxNetworkHost(storage, "browser");
+    running.push(network);
+    await network.acquire("owner", { ...input, exitNode: "home-node" }, signal);
+    const commands = await calls();
+    const up = commands.findIndex(args => args.includes("up"));
+    const set = commands.findIndex(args => args.includes("set") && args.includes("--exit-node=home-node"));
+    expect(commands[up]).not.toContain("--exit-node=home-node");
+    expect(set).toBeGreaterThan(up);
   });
 
   it("starts a private userspace daemon and resumes with the existing node state", async () => {
@@ -138,6 +151,28 @@ describe("sandbox SSH host worker", () => {
     try { await host.configure(input, signal); }
     catch (error) { expect(String(error)).not.toContain(SECRET); }
     expect((await readdir(storage)).some((name) => name.startsWith("enroll-"))).toBe(false);
+  });
+
+  it.each([
+    ["invalid auth key", "authentication key rejected"],
+    ["lookup controlplane.tailscale.com: no such host", "control server unreachable"],
+    ["exit node unavailable", "exit node unavailable"],
+    ["changing settings via tailscale up requires mentioning all non-default flags", "conflicting Tailscale preferences"],
+    ["dial unix /private/socket: connect: connection refused", "local daemon unavailable"],
+    ["unknown flag: --broken", "command arguments rejected"],
+    ["exit node requires approval", "exit-node-related response"],
+    ["login failed", "authentication-related response"],
+    ["network changed", "connection-related response"],
+    ["unexpected failure", "unrecognized response"],
+  ])("classifies Browser enrollment without exposing output: %s", async (message, category) => {
+    const { directory, storage, input, signal } = await setup();
+    await writeFile(join(directory, "fail-up"), `${message} https://login.tailscale.com/secret`);
+    const browser = new SandboxNetworkHost(storage, "browser");
+    running.push(browser);
+    await expect(browser.configure({ ...input, exitNode: "home-node" }, signal))
+      .rejects.toThrow(`Sandbox Browser: Tailscale enrollment failed (${category})`);
+    try { await browser.configure({ ...input, exitNode: "home-node" }, signal); }
+    catch (error) { expect(String(error)).not.toMatch(/tskey|https:|secret/); }
   });
 
   it("returns the enrolled device for cleanup if enabling SSH fails", async () => {

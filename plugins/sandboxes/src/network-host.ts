@@ -51,9 +51,23 @@ export class SandboxNetworkHost {
   private async run(binary: string, args: string[], signal?: AbortSignal) {
     try {
       return await exec(binary, args, { timeout: 90_000, maxBuffer: 1024 * 1024, signal });
-    } catch {
-      // Tailscale diagnostics can contain login URLs. Do not forward raw output.
-      throw new Error(`Sandbox SSH: ${args.includes("up") ? "Tailscale enrollment failed" : "Tailscale command failed"}`);
+    } catch (error) {
+      // Only fixed categories may leave the host: Tailscale output can contain login URLs and keys.
+      const failure = error as { stderr?: unknown; stdout?: unknown; killed?: boolean; code?: unknown };
+      const output = [failure.stderr, failure.stdout].filter((value): value is string => typeof value === "string").join("\n")
+        .replace(/https?:\/\/\S+|--auth-key=\S+/gi, "");
+      const category = failure.killed || failure.code === "ETIMEDOUT" ? "timed out"
+        : /(?:auth(?:entication)?[ -]?key|authkey)[^\n]{0,100}(?:invalid|expired|revoked|rejected)|(?:invalid|expired|revoked|rejected)[^\n]{0,100}(?:auth(?:entication)?[ -]?key|authkey)/i.test(output) ? "authentication key rejected"
+        : /(?:controlplane\.tailscale\.com|login\.tailscale\.com|control server)[^\n]{0,100}(?:unreachable|timeout|refused|lookup|resolve|no such host)|(?:lookup|resolve)[^\n]{0,100}(?:controlplane\.tailscale\.com|login\.tailscale\.com)/i.test(output) ? "control server unreachable"
+        : /(?:exit node|exit-node)[^\n]{0,100}(?:not found|unavailable|invalid|unknown)/i.test(output) ? "exit node unavailable"
+        : /changing settings via tailscale up requires mentioning all non-default flags/i.test(output) ? "conflicting Tailscale preferences"
+        : /(?:dial unix|tailscaled|socket)[^\n]{0,120}(?:refused|not running|no such file|failed to connect)|(?:failed to connect|connection refused)[^\n]{0,120}(?:tailscaled|socket)/i.test(output) ? "local daemon unavailable"
+        : /(?:unknown flag|flag provided but not defined|invalid argument|unsupported flag)/i.test(output) ? "command arguments rejected"
+        : /(?:exit node|exit-node)/i.test(output) ? "exit-node-related response"
+        : /(?:auth(?:entication)?[ -]?key|authkey|login|unauthorized|forbidden)/i.test(output) ? "authentication-related response"
+        : /(?:connection|connect|network|dns|lookup|certificate|tls)/i.test(output) ? "connection-related response"
+        : output.trim() ? "unrecognized response" : "no diagnostic output";
+      throw new Error(`Sandbox ${this.kind === "browser" ? "Browser" : "SSH"}: ${args.includes("up") ? "Tailscale enrollment failed" : "Tailscale command failed"} (${category})`);
     }
   }
 
@@ -152,7 +166,7 @@ export class SandboxNetworkHost {
           `--hostname=bb-${input.hostId.replaceAll("_", "-")}`, "--timeout=60s",
           // `up` must repeat all preferences this owner previously set; otherwise
           // Tailscale refuses re-enrollment before attempting authentication.
-          ...(this.kind === "ssh" ? ["--ssh=true"] : [`--exit-node=${input.exitNode}`])], signal);
+          ...(this.kind === "ssh" ? ["--ssh=true"] : [])], signal);
       } finally { await rm(temporary, { recursive: true, force: true }); }
       current = await status();
     }
