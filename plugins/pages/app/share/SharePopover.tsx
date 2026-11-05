@@ -16,6 +16,7 @@ const DOMAIN = /^[a-z0-9.-]+\.[a-z]{2,}$/u;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const menuItem = "flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-state-hover data-[disabled]:opacity-50";
 const smallButton = `inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md border border-border bg-background px-2 text-xs font-medium hover:bg-state-hover disabled:cursor-default disabled:opacity-50 ${focusRing}`;
+const confirmButton = `inline-flex h-7 shrink-0 cursor-pointer items-center rounded-md border border-border bg-background px-3 text-xs font-medium hover:bg-state-hover disabled:cursor-default disabled:opacity-50 ${focusRing}`;
 const primaryButton = `inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:cursor-default disabled:opacity-50 ${focusRing}`;
 /**
  * Portaled content lands in document.body, outside the plugin mount. The plugin stylesheet is scoped to
@@ -312,7 +313,28 @@ export function SharePopover({ detail }: { detail: PageDetail }) {
 const isPayload = (value: unknown): value is ShareConfirmPayload =>
   Boolean(value && typeof value === "object" && !Array.isArray(value) && "title" in value && "access" in value && typeof value.access === "string" && value.access in ACCESS_LABEL);
 
-/** The page_share (and in-thread `bb pages share`) confirmation. Same sections as the popover, read-only. */
+function LockGlyph({ className = "size-3.5" }: { className?: string }) {
+  return <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </svg>;
+}
+function KeyGlyph({ className = "size-3.5" }: { className?: string }) {
+  return <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <circle cx="7.5" cy="15.5" r="4.5" /><path d="M10.7 12.3 21 2" /><path d="m16 7 3 3" /><path d="m19 4 2 2" />
+  </svg>;
+}
+
+/** "a", "a and b", or "a, b, and 3 more". */
+function listWho(who: string[]): string {
+  if (who.length <= 2) return who.join(" and ");
+  return `${who[0]}, ${who[1]}, and ${who.length - 2} more`;
+}
+
+/**
+ * The page_share (and in-thread `bb pages share`) confirmation. BB already draws the card, the
+ * `Share "title"` header, and "Requested by Pages", so this renders flat inside it: one sentence
+ * that says who can open the page, two quiet facts, and the actions.
+ */
 export function ShareConfirm({ interaction, submit, cancel }: PluginPendingInteractionProps) {
   const [busy, setBusy] = useState(false);
   const payload = isPayload(interaction.payload) ? interaction.payload : null;
@@ -322,23 +344,42 @@ export function ShareConfirm({ interaction, submit, cancel }: PluginPendingInter
     setBusy(true);
     try { if (confirmed) await submit({ confirmed: true }); else await cancel(); } finally { setBusy(false); }
   };
-  return <div className="w-full max-w-[360px] rounded-[10px] border border-border bg-background text-[13px]">
-    <Section title={`Share “${payload.title}”`} action={<span className="text-xs tabular-nums text-muted-foreground">v{payload.versionN}</span>}>
-      {payload.url ? <ValueRow label="Share link">{payload.url}</ValueRow> : <p className="mt-1 text-xs text-muted-foreground">{payload.adoptSlug ? `Adopts the existing site ${payload.adoptSlug}; its link stays the same.` : "Creates a new Here.now link."}</p>}
-    </Section>
-    <Section title="Access">
-      <p className="mt-1.5 flex items-center gap-1.5">{payload.access === "link" ? <GlobeGlyph /> : null}{ACCESS_LABEL[payload.access]}<span className="text-xs text-muted-foreground">· {ACCESS_HINT[payload.access]}</span></p>
-      {payload.access === "restricted" ? <div className="mt-2 flex flex-wrap gap-1">{who.map((value) => <span key={value} className="inline-flex h-5 items-center rounded bg-muted px-1.5 text-xs">{value}</span>)}</div> : null}
-      {payload.replaces && payload.replaces !== ACCESS_LABEL[payload.access].toLowerCase() ? <p className="mt-1.5 text-xs text-muted-foreground">Now: {payload.replaces}</p> : null}
-      {payload.access === "password" ? <p className="mt-1.5 text-xs text-muted-foreground">Copy the password from the Share popover.</p> : null}
-    </Section>
-    <Section title="Shared version">
-      <p className="mt-1.5 text-xs text-muted-foreground">{payload.follow === "latest" ? "Latest. The link follows new versions of this page." : `Pinned to v${payload.follow}. New versions stay private.`}</p>
-    </Section>
-    <div className="flex items-center gap-1.5 border-t border-border px-3.5 py-2.5 text-xs">
-      <span className={`min-w-0 flex-1 ${payload.goesPublic ? "font-medium text-foreground" : "text-muted-foreground"}`}>{payload.goesPublic ? "Anyone with the link can view this page." : payload.access === "link" ? "The link is already public." : payload.access === "password" ? "Only people with the password can view it." : "Only these people can view it, after signing in."}</span>
-      <button type="button" className={smallButton} disabled={busy} onClick={() => void answer(false)}>Cancel</button>
-      <button type="button" className={primaryButton} disabled={busy} onClick={() => void answer(true)}>{payload.goesPublic ? "Make public" : "Share"}</button>
+
+  const headline = payload.access === "restricted" ? `Only ${listWho(who)} can open this page`
+    : payload.access === "password" ? "Anyone with the password can open this page"
+      : "Anyone with the link can open this page";
+  const detail = payload.access === "restricted" ? "Viewers sign in with a verified email first."
+    : payload.access === "password" ? "Copy the password from the Share popover after you share."
+      : payload.goesPublic ? "This makes the page public. Anyone you send the link to can pass it on." : "The link is already public.";
+  const glyph = payload.access === "restricted" ? <LockGlyph className="size-4" /> : payload.access === "password" ? <KeyGlyph className="size-4" /> : <GlobeGlyph className="size-4" />;
+  // Worded like describeAccess on the server, so an unchanged share shows no "Was" row.
+  const nowWords = payload.access === "restricted" ? (who.length ? `restricted to ${who.join(", ")}` : "restricted to the owner")
+    : payload.access === "link" ? "anyone with the link" : "password";
+  const replaces = payload.replaces && payload.replaces !== nowWords ? payload.replaces : null;
+
+  const facts: Array<[string, ReactNode]> = [
+    ["Link", payload.url ? <span className="block truncate font-mono">{payload.url}</span> : payload.adoptSlug ? `Reuses ${payload.adoptSlug}. The link stays the same.` : "New here.now link"],
+    ["Version", payload.follow === "latest" ? `v${payload.versionN} now, then each new version` : `Pinned to v${payload.follow}. New versions stay private.`],
+    ...(replaces ? [["Was", `${replaces[0]!.toUpperCase()}${replaces.slice(1)}`] as [string, ReactNode]] : []),
+  ];
+
+  return <div className="flex w-full max-w-[520px] flex-col gap-3 text-[13px]">
+    <div className="flex items-start gap-3">
+      <span aria-hidden className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${payload.goesPublic ? "bg-warning/15 text-warning" : "bg-muted text-muted-foreground"}`}>{glyph}</span>
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-foreground">{headline}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>
+        {payload.access === "restricted" && who.length > 2 ? <ul aria-label="Who can open it" className="mt-2 flex flex-wrap gap-1">{who.map((value) => <li key={value} className="inline-flex h-5 items-center rounded bg-muted px-1.5 text-xs">{value}</li>)}</ul> : null}
+      </div>
+    </div>
+    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 pl-11 text-xs">
+      {facts.map(([label, value]) => <div key={label} className="contents">
+        <dt className="text-muted-foreground">{label}</dt><dd className="m-0 min-w-0 text-foreground">{value}</dd>
+      </div>)}
+    </dl>
+    <div className="flex gap-2 pl-11">
+      <button type="button" className={`${confirmButton} border-transparent bg-primary text-primary-foreground hover:bg-primary hover:opacity-90`} disabled={busy} onClick={() => void answer(true)}>{payload.goesPublic ? "Make public" : payload.url ? "Update" : "Share"}</button>
+      <button type="button" className={confirmButton} disabled={busy} onClick={() => void answer(false)}>Cancel</button>
     </div>
   </div>;
 }

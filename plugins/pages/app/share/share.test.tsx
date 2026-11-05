@@ -143,10 +143,9 @@ describe("page_share confirmation", () => {
     const cancel = vi.fn(async () => undefined);
     const payload = { pageId, title: "T1 hello", versionN: 2, access: "restricted", allowedDomains: ["example.com"], allowedEmails: ["ana@example.com"], follow: "latest", url: null, adoptSlug: null, firstShare: true, goesPublic: false, replaces: null };
     const slot = renderSlot({ component: ShareConfirm }, { interaction: { id: "i1", threadId: "thr_a", title: "Share", payload, createdAt: 0, expiresAt: null }, submit, cancel } as never);
-    expect(slot.getByText("Share “T1 hello”")).toBeTruthy();
-    expect(slot.getByText("v2")).toBeTruthy();
-    expect(slot.getByText("ana@example.com")).toBeTruthy();
-    expect(slot.getByText("Latest. The link follows new versions of this page.")).toBeTruthy();
+    expect(slot.getByText("Only example.com and ana@example.com can open this page")).toBeTruthy();
+    expect(slot.getByText("New here.now link")).toBeTruthy();
+    expect(slot.getByText("v2 now, then each new version")).toBeTruthy();
     fireEvent.click(slot.getByRole("button", { name: "Share" }));
     await waitFor(() => expect(submit).toHaveBeenCalledWith({ confirmed: true }));
     expect(cancel).not.toHaveBeenCalled();
@@ -155,9 +154,19 @@ describe("page_share confirmation", () => {
   it("says when the link becomes public", () => {
     const payload = { pageId, title: "T1 hello", versionN: 1, access: "link", allowedDomains: [], allowedEmails: [], follow: 1, url: "https://quiet-otter.here.now/", adoptSlug: null, firstShare: false, goesPublic: true, replaces: "password" };
     const slot = renderSlot({ component: ShareConfirm }, { interaction: { id: "i2", threadId: "thr_a", title: "Share", payload, createdAt: 0, expiresAt: null }, submit: vi.fn(), cancel: vi.fn() } as never);
-    expect(slot.getByText("Anyone with the link can view this page.")).toBeTruthy();
-    expect(slot.getByText("Now: password")).toBeTruthy();
+    expect(slot.getByText("Anyone with the link can open this page")).toBeTruthy();
+    expect(slot.getByText("This makes the page public. Anyone you send the link to can pass it on.")).toBeTruthy();
+    expect(slot.getByText("Password")).toBeTruthy();
     expect(slot.getByText("Pinned to v1. New versions stay private.")).toBeTruthy();
     expect(slot.getByRole("button", { name: "Make public" })).toBeTruthy();
+  });
+
+  it("lists everyone as chips when more than two can open it", () => {
+    const payload = { pageId, title: "T1 hello", versionN: 3, access: "restricted", allowedDomains: ["a.com", "b.com", "c.com"], allowedEmails: [], follow: "latest", url: "https://quiet-otter.here.now/", adoptSlug: null, firstShare: false, goesPublic: false, replaces: "restricted to a.com, b.com, c.com" };
+    const slot = renderSlot({ component: ShareConfirm }, { interaction: { id: "i3", threadId: "thr_a", title: "Share", payload, createdAt: 0, expiresAt: null }, submit: vi.fn(), cancel: vi.fn() } as never);
+    expect(slot.getByText("Only a.com, b.com, and 1 more can open this page")).toBeTruthy();
+    expect(slot.getByRole("list", { name: "Who can open it" }).textContent).toBe("a.comb.comc.com");
+    expect(slot.queryByText("Was")).toBeNull();
+    expect(slot.getByRole("button", { name: "Update" })).toBeTruthy();
   });
 });

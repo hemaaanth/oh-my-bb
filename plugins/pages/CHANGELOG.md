@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- The share confirmation in chat is rebuilt. It sits flat inside BB's request card
+  instead of a second card, and it no longer repeats the page title. One sentence says
+  who can open the page; Link, Version, and any earlier access follow as short facts.
+  Making a page public uses a warning tone. Re-sharing an existing link says Update.
+- The confirmation no longer lists unchanged access under "Was".
+
 ## 0.6.1
 
 - Agents choose inline UI and library components before writing custom HTML, with
