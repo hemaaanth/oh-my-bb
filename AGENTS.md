@@ -11,6 +11,22 @@
   checks pass.
 - Release plugins independently with `<plugin-id>/vX.Y.Z` tags.
 - Keep `bb.description`, marketplace copy, and `PLUGIN_OVERVIEW.md` aligned.
+- Match standard plugin pages to BB settings' rendered content box, not an
+  inner component's maximum width. The current outer frame is `max-w-[760px]`
+  with `px-4` inside it (728px content at full width). Overview, detail, create,
+  edit, and setup pages must align without scrollbar-driven shifts. Wider
+  layouts need an explicit, documented reason, such as Journal's calendar.
+- Keep setup guidance off the main content path. Link a dedicated setup page
+  from settings and configuration warnings; use the standard page width and header.
+- Keep plugin-wide settings and credentials in BB's native Configuration form.
+  Group key-entry fields together and clearly separate them from behavior controls
+  by section or field order. A Preferences section may follow a native key-only form.
+  Do not replace native secret storage or settings commands just to change headings.
+- Settings sections follow this order when populated: Configuration; Preferences
+  (when needed); Credentials (only for plugin-owned per-resource controls or links);
+  Advanced; More; Oh My BB. Per-resource credentials stay with their resource.
+- Standardize static branding with one canonical SVG. Preserve functional animated
+  avatars and their status feedback; do not replace them with branding glyphs.
 
 ## Concurrent plugin work
 
