@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { PluginSidebarProject, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import {
   bucketForThread,
+  focusGroup,
+  hasUnseenFailure,
+  sortFocusThreads,
+  isCleanupCandidate,
+  attentionWakeIds,
   followSelectedBucket,
-  groupByEnvironment,
   isThreadActive,
-  moveThreadGroup,
   moveThreadIds,
   needsInput,
   sortThreads,
@@ -136,29 +139,6 @@ describe("selected thread lane", () => {
   });
 });
 
-describe("environment grouping", () => {
-  it("groups threads from the same project and environment", () => {
-    const environment = {
-      id: "env_1",
-      name: "ignored",
-      branchName: "ignored",
-      providerId: null,
-      path: null,
-      isWorktree: true,
-      workspaceDisplayKind: "managed-worktree" as const,
-    };
-    const groups = groupByEnvironment([
-      thread({ id: "a", environment }),
-      thread({ id: "b", environment }),
-      thread({ id: "c", projectId: "proj_2", environment }),
-    ]);
-    expect(groups).toHaveLength(2);
-    expect(groups[0]?.threads.map((item) => item.id)).toEqual(["a", "b"]);
-    expect(groups[0]?.grouped).toBe(true);
-    expect(groups[1]?.grouped).toBe(false);
-  });
-});
-
 describe("manual ordering", () => {
   it("sorts project threads by live status without pinned placement", () => {
     const threads = [
@@ -219,17 +199,6 @@ describe("manual ordering", () => {
     ]);
   });
 
-  it("moves a grouped worktree as one contiguous block", () => {
-    expect(
-      moveThreadGroup(
-        ["a1", "a2", "b1", "c1"],
-        ["a1", "a2"],
-        ["c1"],
-        "after",
-      ),
-    ).toEqual(["b1", "c1", "a1", "a2"]);
-  });
-
   it("ranks pinned threads by attention status before manual order", () => {
     const threads = [
       thread({ id: "idle", isPinned: true }),
@@ -284,4 +253,61 @@ describe("focus buckets", () => {
     expect(statusForThread(thread({ updatedAt: now - 4 * 3_600_000 }), false, 3, now)).toBe("idle");
     expect(statusForThread(thread({ updatedAt: now - 4 * 3_600_000 }), false, 6, now)).toBe("recent");
   });
+});
+
+
+describe("focus working set", () => {
+  it("surfaces completions and requests, while quiet running work stays current", () => {
+    expect(focusGroup(thread(), "unread").key).toBe("attention");
+    expect(focusGroup(thread(), "needs-input").key).toBe("attention");
+    expect(focusGroup(thread(), "active").key).toBe("current");
+    expect(focusGroup(thread({ isPinned: true }), "idle").key).toBe("current");
+    expect(focusGroup(thread(), "idle").key).toBe("library");
+    expect(focusGroup(thread({ lifecycleOwnerThreadId: "owner" }), "recent").key).toBe("library");
+    expect(focusGroup(thread({ lifecycleOwnerThreadId: "owner" }), "unread").key).toBe("library");
+    expect(focusGroup(thread({ lifecycleOwnerThreadId: "owner" }), "needs-input").key).toBe("attention");
+    expect(focusGroup(thread({ queuedWork: "failed" }), "idle").key).toBe("attention");
+  });
+
+  it("only suggests old idle work without protected signals", () => {
+    const now = 30 * 86_400_000;
+    expect(isCleanupCandidate(thread(), "idle", now)).toBe(true);
+    for (const patch of [{ isPinned: true }, { isUnread: true }, { queuedWork: "waiting" as const }, { isArchived: true }, { hasPendingInteraction: true }, { updatedAt: now }]) {
+      expect(isCleanupCandidate(thread(patch), "idle", now)).toBe(false);
+    }
+    expect(isCleanupCandidate(thread(), "drafting", now)).toBe(false);
+    expect(isCleanupCandidate(thread(), "active", now)).toBe(false);
+    expect(isCleanupCandidate(thread({ activity: { ...thread().activity, backgroundCommands: 1 } }), "idle", now)).toBe(false);
+  });
+
+  it("wakes snoozed ancestors for child input but not routine background work", () => {
+    const root = thread({ id: "root" });
+    const child = thread({ id: "child", parentThreadId: "root", hasPendingInteraction: true });
+    expect([...attentionWakeIds([root, child])]).toEqual(["child", "root"]);
+    expect(attentionWakeIds([root, thread({ indicator: "runtime" }), thread({ isUnread: true })]).size).toBe(0);
+    expect(attentionWakeIds([thread({ status: "error", latestAttentionAt: 200 })]).has("thr_1")).toBe(true);
+  });
+});
+
+it("keeps Focus order stable through streaming updates and puts quiet agents last", () => {
+  const rows = [thread({ id: "busy", updatedAt: 9999999, latestAttentionAt: 9999 }), thread({ id: "kept", isPinned: true }), thread({ id: "review", latestAttentionAt: 500 })];
+  const statuses = new Map<string, import("./sidebar-model").ThreadStatusBucket>([["busy", "active"], ["kept", "idle"], ["review", "unread"]]);
+  expect(sortFocusThreads(rows, statuses).map((row) => row.id)).toEqual(["review", "kept", "busy"]);
+  expect(sortFocusThreads(rows.map((row) => ({ ...row, updatedAt: row.id === "kept" ? 999999999 : 0 })), statuses).map((row) => row.id)).toEqual(["review", "kept", "busy"]);
+});
+
+it("does not keep acknowledged child failures in Attention forever", () => {
+  const old = thread({ status: "error", parentThreadId: "parent", latestAttentionAt: 100, lastReadAt: 200 });
+  expect(hasUnseenFailure(old)).toBe(false);
+  expect(focusGroup(old, "idle").key).toBe("library");
+  expect(attentionWakeIds([old]).size).toBe(0);
+  expect(hasUnseenFailure({ ...old, latestAttentionAt: 300 })).toBe(true);
+  expect(hasUnseenFailure({ ...old, queuedWork: "failed" })).toBe(true);
+  expect(focusGroup({ ...old, hasPendingInteraction: true }, "needs-input").key).toBe("attention");
+});
+
+it("keeps Focus status bands together even for pinned running threads", () => {
+  const rows = [thread({ id: "running", isPinned: true }), thread({ id: "draft" }), thread({ id: "idle" }), thread({ id: "recent" })];
+  const statuses = new Map<string, import("./sidebar-model").ThreadStatusBucket>([["running", "active"], ["draft", "drafting"], ["idle", "idle"], ["recent", "recent"]]);
+  expect(sortFocusThreads(rows, statuses).map((row) => row.id)).toEqual(["draft", "idle", "recent", "running"]);
 });

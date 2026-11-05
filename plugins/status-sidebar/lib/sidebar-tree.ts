@@ -1,9 +1,7 @@
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import {
-  groupByEnvironment,
   ORGANIZATIONAL_STATUS_RANK,
   statusForThread,
-  type SidebarGroup,
   type ThreadStatusBucket,
 } from "./sidebar-model";
 import type {
@@ -25,8 +23,6 @@ export interface SidebarTreeNode {
   collapseKey: string;
   /** Every thread under this node, sorted. */
   threads: readonly PluginSidebarThread[];
-  /** Worktree groups of `threads`; rendered only when there are no children. */
-  groups: readonly SidebarGroup[];
   children: readonly SidebarTreeNode[] | null;
 }
 
@@ -129,7 +125,6 @@ export function buildSidebarTree({
           label: group.label,
           collapseKey,
           threads: sorted,
-          groups: subgroup ? [] : groupByEnvironment(sorted),
           children: subgroup
             ? level(subgroup, sorted, collapseKey, [], null)
             : null,

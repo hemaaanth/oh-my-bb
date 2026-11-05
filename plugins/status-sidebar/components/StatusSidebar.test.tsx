@@ -931,7 +931,7 @@ describe("Status Sidebar", () => {
     expect(pill.getAttribute("title")).toBe("5 sub-agents, working");
   });
 
-  it("groups sessions sharing one worktree with a quiet outline", async () => {
+  it("does not group sessions sharing one environment", async () => {
     const environment = {
       id: "env_shared",
       name: "feature-secret-name",
@@ -947,9 +947,8 @@ describe("Status Sidebar", () => {
         thread({ id: "b", title: "Second", environment }),
       ],
     });
-    const grouped = await screen.findByRole("group", {
-      name: "2 threads in the same worktree",
-    });
+    await screen.findByRole("link", { name: "First" });
+    expect(screen.queryByRole("group", { name: /same worktree/ })).toBeNull();
     expect(screen.queryByText("feature-secret-name")).toBeNull();
     expect(screen.queryByText("feature/secret-branch")).toBeNull();
   });
@@ -1052,4 +1051,82 @@ describe("Status Sidebar", () => {
     expect(screen.queryByRole("button", { name: "Actions for A thread" })).toBeNull();
   });
 
+});
+
+
+describe("focus view", () => {
+  it("keeps running agents quiet below retained work, with idle history collapsed", async () => {
+    setView({ group: "focus", subgroup: null });
+    renderSidebar({ threads: [
+      thread({ id: "busy", title: "Busy", indicator: "runtime", updatedAt: Date.now() }),
+      thread({ id: "pin", title: "Keep", isPinned: true }),
+      thread({ id: "done", title: "Done", isUnread: true }),
+      thread({ id: "old", title: "Old" }),
+    ] });
+    const attention = await screen.findByRole("region", { name: "Attention" });
+    expect(within(attention).getByRole("link", { name: /Done/ })).toBeDefined();
+    const current = screen.getByRole("region", { name: "Current work" });
+    const links = within(current).getAllByRole("link");
+    expect(links.map((link) => link.textContent)).toHaveLength(2);
+    expect(links[0]!.getAttribute("aria-label")).toMatch(/^Keep/);
+    expect(links[1]!.getAttribute("aria-label")).toMatch(/^Busy/);
+    const library = screen.getByRole("region", { name: "Library" });
+    expect(within(library).queryByRole("link")).toBeNull();
+    fireEvent.click(within(library).getByRole("button"));
+    expect(within(library).getByRole("link", { name: /Old.*Inactive/ })).toBeDefined();
+  });
+
+  it("surfaces a snoozed parent's child request without waking a quiet monitor", async () => {
+    setView({ group: "focus", subgroup: null });
+    const untilAt = Date.now() + 3_600_000;
+    renderSidebar({ threads: [
+      thread({ id: "parent", title: "Parent" }),
+      thread({ id: "child", parentThreadId: "parent", hasPendingInteraction: true }),
+      thread({ id: "monitor", title: "Monitor", indicator: "runtime" }),
+    ], snoozedRows: [{ threadId: "parent", untilAt }, { threadId: "monitor", untilAt }] });
+    const attention = await screen.findByRole("region", { name: "Attention" });
+    expect(within(attention).getByRole("link", { name: /Parent, waiting on you/ })).toBeDefined();
+    expect(screen.queryByRole("link", { name: /Monitor/ })).toBeNull();
+    const snoozed = screen.getByRole("region", { name: "Snoozed" });
+    fireEvent.click(within(snoozed).getByRole("button"));
+    expect(within(snoozed).getByRole("link", { name: /Monitor/ })).toBeDefined();
+  });
+});
+
+
+it("keeps an opened Library thread in Library at the same compact height", async () => {
+  setView({ group: "focus", subgroup: null });
+  renderSidebar({ threads: [thread({ id: "old", title: "Old" })], activeThreadId: "old" });
+  const library = await screen.findByRole("region", { name: "Library" });
+  const header = within(library).getByRole("button");
+  expect(header.textContent).toBe("Library1");
+  fireEvent.click(header);
+  const link = within(library).getByRole("link", { name: /Old/ });
+  expect(link.getAttribute("aria-current")).toBe("page");
+  expect(link.parentElement!.className).not.toContain("min-h-10");
+  expect(link.parentElement!.querySelector("[data-attention-detail]")).toBeNull();
+  expect(screen.queryByRole("region", { name: "Current work" })).toBeNull();
+});
+
+it("keeps project metadata in place and uses Attention detail for status and age", async () => {
+  setView({ group: "focus", subgroup: null });
+  renderSidebar({ threads: [thread({ title: "Check permission", hasPendingInteraction: true, indicatorLabel: "Approve command", latestAttentionAt: Date.now() })] });
+  const attention = await screen.findByRole("region", { name: "Attention" });
+  expect(within(attention).getByText(/Needs input · now/)).toBeDefined();
+  expect(within(attention).getByText("bb").closest("[data-project-metadata]")).not.toBeNull();
+  expect(within(attention).getByTitle("Approve command")).toBeDefined();
+  expect(within(attention).queryByTitle("waiting on you")).toBeNull();
+});
+
+it.each(["recent", "status"])("keeps Focus status order across shared worktrees with %s sort", async (sort) => {
+  setView({ group: "focus", subgroup: null, sort });
+  const environment = { id: "shared", name: null, branchName: "main", path: "/test", isWorktree: true, providerId: null, workspaceDisplayKind: "managed-worktree" } as PluginSidebarThread["environment"];
+  renderSidebar({ threads: [
+    thread({ id: "draft", title: "Draft", environment }),
+    thread({ id: "busy", title: "Busy", environment, isPinned: true, indicator: "runtime", latestAttentionAt: Date.now() }),
+    thread({ id: "idle", title: "Idle", isPinned: true }),
+  ], draftThreadIds: ["draft"] });
+  const current = await screen.findByRole("region", { name: "Current work" });
+  expect(within(current).getAllByRole("link").map((link) => link.getAttribute("aria-label")?.split(",")[0])).toEqual(["Draft", "Idle", "Busy"]);
+  expect(within(current).queryByRole("group", { name: /same worktree/ })).toBeNull();
 });

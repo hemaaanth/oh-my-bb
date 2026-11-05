@@ -2,6 +2,14 @@
 
 Group BB threads by working status with nested thread summaries and saved ordering.
 
+## Focus view
+
+Right-click or long-press a section heading and choose **Group by → Focus** to try Attention, Current work, and a collapsed Library. Existing view preferences stay saved until you change them. Questions, failures and unread completed turns lead; running agents stay compact at the bottom of Current work. Status uses small colored glyphs; attention rows show a second line with the reason and age. Project metadata stays in the same position across sections; worktree names are omitted. Selection only changes the highlight.
+
+Focus keeps status bands together: input, unread, drafting, quiet read work, then running. Pins sort first within each band. Attention events order peers; streaming updates do not. Manual ordering remains available. Threads are never grouped or reordered by worktree. Library shows one total; its tooltip gives the count of idle threads inactive for at least 14 days. Expand it to review the marked rows, open them to save work, or use Snooze. Pins, drafts, live/background work, queued messages and unresolved attention are excluded from suggestions. These are review cues only. Nothing is automatically archived. BB archive removes the workspace and worktree; the native archive controls and existing Archived section are unchanged.
+
+Snoozed threads and parents wake for requests or failures. Quiet running work and routine completions do not cancel snooze.
+
 ## What it adds
 
 Status Sidebar is an alternative thread list. Its distinctive features are attention-based status groups, a parent's neediest-child summary, and timed snoozing. BB already owns thread navigation, projects, native sections, split panes, thread actions, the navigation rail, and the footer. This plugin uses those host contracts instead of recreating their menus or changing BB core.

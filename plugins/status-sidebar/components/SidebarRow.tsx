@@ -14,6 +14,7 @@ export function SidebarRow({
   children,
   anchorProps,
   isSelected = false,
+  prominent = false,
   hasOpenPane = false,
   nested = false,
   reorderEnabled = false,
@@ -23,6 +24,7 @@ export function SidebarRow({
   children: ReactNode;
   anchorProps: SidebarRowAnchorProps;
   isSelected?: boolean;
+  prominent?: boolean;
   hasOpenPane?: boolean;
   nested?: boolean;
   reorderEnabled?: boolean;
@@ -34,6 +36,7 @@ export function SidebarRow({
     <div
       className={cn(
         "@container/thread-row group/row relative flex h-8 items-center gap-1.5 rounded-md pe-1.5",
+        prominent && "h-auto min-h-10 py-1.5",
         nested
           ? "cursor-pointer ps-7 active:cursor-pointer"
           : "cursor-grab ps-1.5 active:cursor-grabbing",

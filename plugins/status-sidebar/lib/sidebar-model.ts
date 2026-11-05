@@ -22,12 +22,6 @@ export const THREAD_STATUS_ORDER: readonly ThreadStatusBucket[] = [
   "archived",
 ];
 
-export interface SidebarGroup {
-  key: string;
-  grouped: boolean;
-  threads: readonly PluginSidebarThread[];
-}
-
 const ACTIVE_INDICATORS = new Set([
   "working-draft",
   "workflow",
@@ -257,50 +251,60 @@ export function moveThreadIds(
   return withoutDragged;
 }
 
-export function moveThreadGroup(
-  threadIds: readonly string[],
-  draggedGroupIds: readonly string[],
-  targetGroupIds: readonly string[],
-  placement: DropPlacement,
-): string[] {
-  const draggedSet = new Set(draggedGroupIds);
-  const targetSet = new Set(targetGroupIds);
-  if (
-    draggedGroupIds.length === 0 ||
-    targetGroupIds.length === 0 ||
-    draggedGroupIds.some((threadId) => targetSet.has(threadId))
-  ) {
-    return [...threadIds];
-  }
-  const withoutDragged = threadIds.filter((threadId) => !draggedSet.has(threadId));
-  const targetIndexes = withoutDragged.flatMap((threadId, index) =>
-    targetSet.has(threadId) ? [index] : [],
-  );
-  if (targetIndexes.length === 0) return [...threadIds];
-  const insertIndex =
-    placement === "before"
-      ? targetIndexes[0]!
-      : targetIndexes[targetIndexes.length - 1]! + 1;
-  withoutDragged.splice(insertIndex, 0, ...draggedGroupIds);
-  return withoutDragged;
+/** A persistent error status is not fresh attention after it has been read. */
+export function hasUnseenFailure(thread: PluginSidebarThread): boolean {
+  return thread.queuedWork === "failed" || thread.indicator === "unread-error" ||
+    (thread.status === "error" && (thread.lastReadAt === null || thread.latestAttentionAt > thread.lastReadAt));
 }
 
-export function groupByEnvironment(
-  threads: readonly PluginSidebarThread[],
-): SidebarGroup[] {
-  const groups = new Map<string, PluginSidebarThread[]>();
-  for (const thread of threads) {
-    const environmentId = thread.environment?.id;
-    const key = environmentId
-      ? `${thread.projectId}:${environmentId}`
-      : `thread:${thread.id}`;
-    const group = groups.get(key) ?? [];
-    group.push(thread);
-    groups.set(key, group);
+/** Focus is a working set; quiet execution is not an attention request. */
+export function focusGroup(thread: PluginSidebarThread, status: ThreadStatusBucket) {
+  if (status === "needs-input" || (status === "unread" && !thread.lifecycleOwnerThreadId && (!thread.parentThreadId || thread.originKind === "fork")) || hasUnseenFailure(thread)) {
+    return { key: "attention", label: "Attention", rank: 0 };
   }
-  return [...groups.entries()].map(([key, groupedThreads]) => ({
-    key,
-    grouped: groupedThreads.length > 1,
-    threads: groupedThreads,
-  }));
+  const delegated = thread.lifecycleOwnerThreadId !== null || (thread.parentThreadId !== null && thread.originKind !== "fork");
+  if (thread.isPinned || status === "active" || status === "drafting" || (status === "recent" && !delegated) || thread.queuedWork === "waiting") {
+    return { key: "current", label: "Current work", rank: 1 };
+  }
+  return { key: "library", label: "Library", rank: 2 };
+}
+
+/** A review suggestion only. BB archive can remove the workspace and worktree. */
+export function isCleanupCandidate(thread: PluginSidebarThread, status: ThreadStatusBucket, now: number): boolean {
+  return !thread.isArchived && !thread.isPinned && status === "idle" &&
+    thread.status === "idle" && thread.queuedWork === "none" && !thread.isUnread &&
+    !needsInput(thread) && !isThreadActive(thread) && thread.activity.backgroundCommands === 0 &&
+    Math.max(thread.updatedAt, thread.latestAttentionAt, thread.createdAt) < now - 14 * 86_400_000;
+}
+
+/** Wake an entire visible ancestry for a request or failure, including snoozed parents. */
+export function attentionWakeIds(threads: readonly PluginSidebarThread[]): Set<string> {
+  const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  const result = new Set<string>();
+  for (const thread of threads) {
+    if (thread.isArchived || !(needsInput(thread) || hasUnseenFailure(thread))) continue;
+    let current: PluginSidebarThread | undefined = thread;
+    const seen = new Set<string>();
+    while (current && !current.isArchived && !seen.has(current.id)) {
+      seen.add(current.id);
+      result.add(current.id);
+      current = current.parentThreadId ? byId.get(current.parentThreadId) : undefined;
+    }
+  }
+  return result;
+}
+
+/** Status bands stay together; attention timestamps only order peers. */
+export function sortFocusThreads(
+  threads: readonly PluginSidebarThread[],
+  statuses: ReadonlyMap<string, ThreadStatusBucket>,
+): PluginSidebarThread[] {
+  const rank: Record<ThreadStatusBucket, number> = {
+    "needs-input": 0, unread: 1, drafting: 2, recent: 3, idle: 3, active: 4, archived: 5,
+  };
+  return [...threads].sort((left, right) =>
+    rank[statuses.get(left.id) ?? "idle"] - rank[statuses.get(right.id) ?? "idle"] ||
+    Number(right.isPinned) - Number(left.isPinned) ||
+    right.latestAttentionAt - left.latestAttentionAt || right.createdAt - left.createdAt || left.id.localeCompare(right.id),
+  );
 }

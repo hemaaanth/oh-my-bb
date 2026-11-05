@@ -28,3 +28,7 @@ No startup installation, enabling, sibling probe, or source switch. Native BB ho
 ## Maintenance
 
 Install, typecheck, test, and build from this package directory. Check SDK pins with `bb plugin types --check .`. Inspect generated distributables and source maps for private paths, not just source files. A local build is not a live reload or publication approval.
+
+## Focus view
+
+Group by → Focus is an optional working-set view. Attention leads, quiet running agents are compact at the bottom of Current work, and Library starts collapsed. Preserve existing preferences during validation. Clock markers suggest reviewing idle work inactive for 14 days; no archival occurs. BB archive removes workspace/worktree resources, so review and save work first. Snoozed requests/failures and their parents wake; quiet monitors do not. Native Archived behavior is unchanged.

@@ -49,17 +49,20 @@ import {
 } from "../shared";
 import {
   followSelectedBucket,
+  focusGroup,
+  hasUnseenFailure,
+  sortFocusThreads,
+  isCleanupCandidate,
+  attentionWakeIds,
   bucketForThread,
   dropPlacementForEvent,
   matchesSearch,
   mostNeedyStatus,
-  moveThreadGroup,
   moveThreadIds,
   statusForThread,
   threadTitle,
   type DropPlacement,
   type SidebarBucket,
-  type SidebarGroup,
   type ThreadStatusBucket,
 } from "../lib/sidebar-model";
 import { cn } from "../lib/utils";
@@ -84,6 +87,8 @@ import {
   useStableCallback,
   type ThreadRowActions,
 } from "../lib/thread-row-actions";
+
+const defaultCollapsed = (key: string) => ["status:active", "status:snoozed", "status:archived", "focus:library"].includes(key);
 
 const COLLAPSE_STORAGE_KEY = "status-sidebar:hierarchy-collapse:v1";
 const AGENT_PROFILES_CHANNELS_ROUTE = "/plugins/agent-profiles/channels";
@@ -165,7 +170,7 @@ function useCollapsedHierarchy() {
   const toggle = (key: string) => {
     setCollapsed((current) => {
       const next = { ...current };
-      next[key] = !(current[key] ?? (key === "status:active" || key === "status:snoozed" || key === "status:archived"));
+      next[key] = !(current[key] ?? defaultCollapsed(key));
       try {
         window.localStorage.setItem(
           COLLAPSE_STORAGE_KEY,
@@ -430,7 +435,20 @@ export function StatusSidebar({
       .sort()
       .join("\0"),
   );
-  const snoozedUntilById = snoozed.untilByThreadId;
+  const wakeIds = useMemo(() => attentionWakeIds(threads), [threads]);
+  const snoozedUntilById = useMemo(() => new Map(
+    [...snoozed.untilByThreadId].filter(([id]) => !wakeIds.has(id)),
+  ), [snoozed.untilByThreadId, wakeIds]);
+  const wakeAttempts = useRef(new Map<string, number>());
+  // Persist the wake so resolving a question cannot hide the thread again.
+  useEffect(() => {
+    for (const id of wakeIds) {
+      if (snoozed.untilByThreadId.has(id) && wakeAttempts.current.get(id) !== snoozed.untilByThreadId.get(id)) {
+        wakeAttempts.current.set(id, snoozed.untilByThreadId.get(id)!);
+        void snoozed.setSnoozed(id, null);
+      }
+    }
+  }, [wakeIds, snoozed.untilByThreadId, snoozed.setSnoozed]);
 
   const childrenByParent = useMemo(() => {
     const present = new Set(threads.map((thread) => thread.id));
@@ -481,8 +499,8 @@ export function StatusSidebar({
     () =>
       new Map(
         threads.map((thread) => {
-          const naturalStatus = statusForThread(
-            thread,
+          const naturalStatus = view.group === "focus" && hasUnseenFailure(thread) ? "needs-input" : statusForThread(
+            view.group === "focus" ? { ...thread, updatedAt: thread.latestAttentionAt } : thread,
             draftThreadIds.has(thread.id),
             view.recentHours,
             now,
@@ -493,13 +511,13 @@ export function StatusSidebar({
             !snoozedUntilById.has(thread.id);
           return [
             thread.id,
-            retainSelected && selectedStatusRef.current?.threadId === thread.id
+            view.group !== "focus" && retainSelected && selectedStatusRef.current?.threadId === thread.id
               ? selectedStatusRef.current.status
               : naturalStatus,
           ] as const;
         }),
       ),
-    [activeThreadId, draftThreadIds, snoozedUntilById, searchQuery, threads, view.recentHours, now],
+    [activeThreadId, draftThreadIds, snoozedUntilById, searchQuery, threads, view.recentHours, view.group, now],
   );
   const effectiveStatusByThreadId = useMemo(() => {
     const gather = (
@@ -515,15 +533,16 @@ export function StatusSidebar({
       }
     };
     const result = new Map<string, ThreadStatusBucket>();
-    for (const thread of topThreads) {
+    for (const thread of threads) {
       const statuses: ThreadStatusBucket[] = [
         statusByThreadId.get(thread.id) ?? "idle",
       ];
       gather(thread.id, statuses, new Set());
-      result.set(thread.id, mostNeedyStatus(statuses));
+      const attention = view.group === "focus" ? statuses.find((status) => status === "needs-input") ?? statuses.find((status) => status === "unread") : undefined;
+      result.set(thread.id, attention ?? mostNeedyStatus(statuses));
     }
     return result;
-  }, [childrenByParent, statusByThreadId, topThreads]);
+  }, [childrenByParent, statusByThreadId, threads, view.group]);
 
   const threadMatches = (
     thread: PluginSidebarThread,
@@ -553,8 +572,10 @@ export function StatusSidebar({
     }
     return merged;
   }, [threadOrders.indexByWorkspace, workspaceIds]);
-  const sortForView = (candidates: readonly PluginSidebarThread[]) =>
-    sortThreadsBy(view.sort, candidates, effectiveStatusByThreadId, manualIndex);
+  const sortForView = (candidates: readonly PluginSidebarThread[]) => {
+    if (view.group !== "focus" || view.sort === "manual") return sortThreadsBy(view.sort, candidates, effectiveStatusByThreadId, manualIndex);
+    return sortFocusThreads(candidates, effectiveStatusByThreadId);
+  };
 
   const projectIdsByWorkspace = useMemo(() => {
     const unassigned = projects
@@ -605,6 +626,7 @@ export function StatusSidebar({
     dimension: GroupDimension,
     thread: PluginSidebarThread,
   ): SidebarGroupKey => {
+    if (dimension === "focus") return focusGroup(thread, effectiveStatusByThreadId.get(thread.id) ?? "idle");
     if (dimension === "status") {
       const bucket = bucketForThread(
         thread,
@@ -675,13 +697,13 @@ export function StatusSidebar({
     keepEmpty: [{ key: "archived", label: "Archived", rank: statusSections.length - 1 }],
   });
   const isCollapsed = (key: string) =>
-    !searching && (collapseState.collapsed[key] ?? (key === "status:active" || key === "status:snoozed" || key === "status:archived"));
+    !searching && (collapseState.collapsed[key] ?? defaultCollapsed(key));
   const visibleThreads: PluginSidebarThread[] = [];
   const collectVisible = (nodes: readonly SidebarTreeNode[]) => {
     for (const node of nodes) {
       if (isCollapsed(node.collapseKey)) continue;
       if (node.children) collectVisible(node.children);
-      else visibleThreads.push(...node.groups.flatMap((group) => group.threads));
+      else visibleThreads.push(...node.threads);
     }
   };
   collectVisible(tree);
@@ -771,7 +793,7 @@ export function StatusSidebar({
   };
 
   const targetForNode = (node: SidebarTreeNode): SectionTarget => {
-    if (node.dimension === "status") return { kind: "status" };
+    if (node.dimension === "status" || node.dimension === "focus") return { kind: "status" };
     if (node.dimension === "workspace") {
       const workspace = workspaceById.get(node.key)?.workspace;
       return workspace ? { kind: "workspace", workspace } : { kind: "general" };
@@ -830,7 +852,9 @@ export function StatusSidebar({
           node.children.map((child) => renderNode(child, 1))
         ) : (
           <ThreadGroups
-            groups={node.groups}
+            focusView={view.group === "focus"}
+            now={now}
+            threads={node.threads}
             activeThreadId={selectedThreadId}
             statusByThreadId={statusByThreadId}
             effectiveStatusByThreadId={effectiveStatusByThreadId}
@@ -943,6 +967,7 @@ interface HeaderDragApi {
 function iconForNode(node: SidebarTreeNode, target: SectionTarget): IconName {
   switch (target.kind) {
     case "status":
+      if (node.dimension === "focus") return node.key === "attention" ? "Mail" : node.key === "current" ? "Layers" : "Folder";
       return node.key === "snoozed" ? "Clock" : statusSectionIcon[node.key as SidebarBucket];
     case "workspace":
     case "general":
@@ -1023,6 +1048,8 @@ function GroupSection({
         "idle",
     ]),
   );
+  const cleanupCount = node.threads.filter((thread) => isCleanupCandidate(thread,
+    effectiveStatusByThreadId.get(thread.id) ?? statusByThreadId.get(thread.id) ?? "idle", Date.now())).length;
   const isParent = node.children !== null;
   const label = target.kind === "workspace" ? `${node.label} section` : node.label;
   return (
@@ -1042,8 +1069,10 @@ function GroupSection({
       >
         <SidebarSectionHeader
           label={node.label}
-          icon={<Icon name={icon} className="size-3.5" aria-hidden="true" />}
-          summary={node.key === "archived" && target.kind === "status" ? (
+          icon={<span title={node.dimension === "focus" && node.key === "attention" ? "Needs input, failures, and unread results" : undefined}><Icon name={icon} className="size-3.5" aria-hidden="true" /></span>}
+          summary={node.dimension === "focus" && node.key === "library" ? (
+            <span className="text-[10px] tabular-nums text-muted-foreground" title={`${node.threads.length} threads; ${cleanupCount} inactive for at least 14 days to review. Save work before BB archive removes the workspace and worktree.`}>{node.threads.length}</span>
+          ) : node.key === "archived" && target.kind === "status" ? (
             <span className="text-[10px] tabular-nums text-muted-foreground">{node.threads.length}{archiveHasMore ? "+" : ""}</span>
           ) : (
             <ThreadStatusSummary
@@ -1392,7 +1421,9 @@ function ChannelsSection({
 }
 
 interface ThreadGroupsProps {
-  groups: readonly SidebarGroup[];
+  focusView?: boolean;
+  now?: number;
+  threads: readonly PluginSidebarThread[];
   activeThreadId: string | null;
   statusByThreadId: ReadonlyMap<string, ThreadStatusBucket>;
   effectiveStatusByThreadId: ReadonlyMap<string, ThreadStatusBucket>;
@@ -1410,14 +1441,8 @@ interface ThreadGroupsProps {
 }
 
 function ThreadGroups(props: ThreadGroupsProps) {
-  const { groups, onReorder } = props;
-  const orderedThreads = groups.flatMap((group) => group.threads);
-  const orderedIds = orderedThreads.map((thread) => thread.id);
-  const groupByThreadId = new Map(
-    groups.flatMap((group) =>
-      group.threads.map((thread) => [thread.id, group] as const),
-    ),
-  );
+  const { threads, onReorder } = props;
+  const orderedIds = threads.map((thread) => thread.id);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{
     threadId: string;
@@ -1425,19 +1450,7 @@ function ThreadGroups(props: ThreadGroupsProps) {
   } | null>(null);
   const reorder = (targetId: string, placement: DropPlacement) => {
     if (!draggedId || draggedId === targetId) return;
-    const movingGroup = groupByThreadId.get(draggedId);
-    const targetGroup = groupByThreadId.get(targetId);
-    if (!movingGroup || !targetGroup) return;
-    onReorder(
-      movingGroup.key === targetGroup.key
-        ? moveThreadIds(orderedIds, draggedId, targetId, placement)
-        : moveThreadGroup(
-            orderedIds,
-            movingGroup.threads.map((thread) => thread.id),
-            targetGroup.threads.map((thread) => thread.id),
-            placement,
-          ),
-    );
+    onReorder(moveThreadIds(orderedIds, draggedId, targetId, placement));
   };
   // Stable, so memoized rows are not re-rendered by a new closure each time.
   const onDragStart = useStableCallback((threadId: string) => {
@@ -1470,30 +1483,16 @@ function ThreadGroups(props: ThreadGroupsProps) {
     setDraggedId(null);
     setDropTarget(null);
   });
-  return (
-    <div className="ms-2 mt-px ps-1">
-      {groups.map((group) => (
-        <EnvironmentGroup
-          key={group.key}
-          {...props}
-          group={group}
-          draggedId={draggedId}
-          draggedGroupKey={
-            draggedId ? groupByThreadId.get(draggedId)?.key ?? null : null
-          }
-          dropTarget={dropTarget}
-          onDragStart={onDragStart}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
-          onDragEnd={onDragEnd}
-        />
-      ))}
-    </div>
-  );
+  return <ThreadRows {...props} draggedId={draggedId} dropTarget={dropTarget}
+    onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd} />;
 }
 
-function EnvironmentGroup({
-  group,
+function ThreadRows({
+  threads,
+  focusView = false,
+  now = Date.now(),
+  statusByThreadId,
+  effectiveStatusByThreadId,
   activeThreadId,
   childrenByParent,
   isThreadChildrenCollapsed,
@@ -1505,56 +1504,29 @@ function EnvironmentGroup({
   reorderEnabled = true,
   workspaceMoveEnabled = true,
   draggedId,
-  draggedGroupKey,
   dropTarget,
   onDragStart,
   onDragOver,
   onDrop,
   onDragEnd,
-}: Omit<ThreadGroupsProps, "groups" | "onReorder"> & {
-  group: SidebarGroup;
+}: Omit<ThreadGroupsProps, "onReorder"> & {
   draggedId: string | null;
-  draggedGroupKey: string | null;
   dropTarget: { threadId: string; placement: DropPlacement } | null;
   onDragStart: (threadId: string) => void;
   onDragOver: (threadId: string, placement: DropPlacement) => void;
   onDrop: (threadId: string, placement: DropPlacement) => void;
   onDragEnd: () => void;
 }) {
-  const isDraggedGroup = group.grouped && draggedGroupKey === group.key;
-  const containsDropTarget = group.threads.some(
-    (thread) => thread.id === dropTarget?.threadId,
-  );
-  const groupDropPlacement =
-    containsDropTarget && draggedGroupKey && draggedGroupKey !== group.key
-      ? dropTarget?.placement ?? null
-      : null;
   return (
-    <div
-      data-sidebar-worktree-group={group.grouped ? "" : undefined}
-      data-sidebar-thread-group={group.key}
-      role={group.grouped ? "group" : undefined}
-      aria-label={
-        group.grouped
-          ? `${group.threads.length} threads in the same worktree`
-          : undefined
-      }
-      className={cn(
-        "relative",
-        group.grouped &&
-          "my-0.5 rounded-md bg-sidebar-accent/15 ring-1 ring-inset ring-sidebar-border/60 first:mt-0 last:mb-0",
-        isDraggedGroup && "opacity-45",
-        groupDropPlacement === "before" &&
-          "before:absolute before:inset-x-0 before:-top-0.5 before:h-0.5 before:bg-primary",
-        groupDropPlacement === "after" &&
-          "after:absolute after:inset-x-0 after:-bottom-0.5 after:h-0.5 after:bg-primary",
-      )}
-    >
+    <div className="ms-2 mt-px ps-1">
       <ul className="space-y-px">
-        {group.threads.map((thread) => (
+        {threads.map((thread) => (
           <Fragment key={thread.id}>
             <ThreadRow
               thread={thread}
+              effectiveStatus={effectiveStatusByThreadId.get(thread.id) ?? statusByThreadId.get(thread.id)}
+              focusView={focusView}
+              cleanupCandidate={isCleanupCandidate(thread, effectiveStatusByThreadId.get(thread.id) ?? statusByThreadId.get(thread.id) ?? "idle", now)}
               projectName={
                 projectNameById.get(thread.projectId) ?? "Unknown project"
               }
@@ -1571,11 +1543,9 @@ function EnvironmentGroup({
               isSelected={thread.id === activeThreadId}
               snoozedUntil={snoozedUntilById.get(thread.id) ?? null}
               sandboxStatus={sandboxStatuses.get(thread.id)}
-              isGrouped={group.grouped}
-              isDragging={draggedId === thread.id && !isDraggedGroup}
+              isDragging={draggedId === thread.id}
               dropPlacement={
-                dropTarget?.threadId === thread.id &&
-                draggedGroupKey === group.key
+                dropTarget?.threadId === thread.id
                   ? dropTarget.placement
                   : null
               }
@@ -1585,6 +1555,8 @@ function EnvironmentGroup({
               onDragEnd={onDragEnd}
             />
             <SidecarThreads
+              focusView={focusView}
+              effectiveStatusByThreadId={effectiveStatusByThreadId}
               parentId={thread.id}
               parentProjectId={thread.projectId}
               childrenByParent={childrenByParent}
@@ -1604,6 +1576,8 @@ function EnvironmentGroup({
 const noop = () => {};
 
 function SidecarThreads({
+  focusView,
+  effectiveStatusByThreadId,
   parentId,
   parentProjectId,
   childrenByParent,
@@ -1613,6 +1587,8 @@ function SidecarThreads({
   snoozedUntilById,
   sandboxStatuses,
 }: {
+  focusView?: boolean;
+  effectiveStatusByThreadId: ReadonlyMap<string, ThreadStatusBucket>;
   parentId: string;
   parentProjectId: string;
   childrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>;
@@ -1634,6 +1610,8 @@ function SidecarThreads({
         <Fragment key={child.id}>
           <ThreadRow
             thread={child}
+            focusView={focusView}
+            effectiveStatus={effectiveStatusByThreadId.get(child.id)}
             projectName={
               projectNameById.get(child.projectId) ?? "Unknown project"
             }
@@ -1646,7 +1624,6 @@ function SidecarThreads({
             childSandboxStatuses={
               childrenByParent.has(child.id) ? sandboxStatuses : undefined
             }
-            isGrouped={false}
             isDragging={false}
             dropPlacement={null}
             onDragStart={noop}
@@ -1656,6 +1633,8 @@ function SidecarThreads({
             nested
           />
           <SidecarThreads
+            focusView={focusView}
+            effectiveStatusByThreadId={effectiveStatusByThreadId}
             parentId={child.id}
             parentProjectId={child.projectId}
             childrenByParent={childrenByParent}

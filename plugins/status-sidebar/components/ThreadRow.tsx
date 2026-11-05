@@ -4,12 +4,12 @@ import {
   useRef,
   useState,
   type ComponentProps,
-  type DragEvent,
 } from "react";
 import {
   experimental_useSidebarThreadSplit as useSidebarThreadSplit,
   type PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
+import { Icon } from "./ui/icon";
 import { MachineMarker, machineStateClassName } from "./MachineMarker";
 import { SidebarRow } from "./SidebarRow";
 import { SubagentBadge } from "./SubagentBadge";
@@ -22,10 +22,12 @@ import type { SandboxThreadStatus } from "../shared";
 import { THREAD_WORKSPACE_DRAG_TYPE } from "../shared";
 import {
   dropPlacementForEvent,
+  hasUnseenFailure,
   sandboxProviderLabel,
   statusForThread,
   threadTitle,
   type DropPlacement,
+  type ThreadStatusBucket,
 } from "../lib/sidebar-model";
 
 const NO_CHILDREN: readonly PluginSidebarThread[] = [];
@@ -34,11 +36,13 @@ const NO_CHILDREN: readonly PluginSidebarThread[] = [];
 // sidebar re-renders for another row, a poll, or a selection change elsewhere.
 export const ThreadRow = memo(function ThreadRow({
   thread,
+  effectiveStatus,
+  focusView = false,
+  cleanupCandidate = false,
   projectName,
   isSelected,
   snoozedUntil,
   sandboxStatus,
-  isGrouped,
   isDragging,
   dropPlacement,
   onDragStart,
@@ -54,11 +58,13 @@ export const ThreadRow = memo(function ThreadRow({
   workspaceMovable = false,
 }: {
   thread: PluginSidebarThread;
+  effectiveStatus?: ThreadStatusBucket;
+  focusView?: boolean;
+  cleanupCandidate?: boolean;
   projectName: string;
   isSelected: boolean;
   snoozedUntil: number | null;
   sandboxStatus?: SandboxThreadStatus;
-  isGrouped: boolean;
   isDragging: boolean;
   dropPlacement: DropPlacement | null;
   onDragStart: (threadId: string) => void;
@@ -77,7 +83,6 @@ export const ThreadRow = memo(function ThreadRow({
   const [editing, setEditing] = useState(false);
   const [attachTaskOpen, setAttachTaskOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const dragPreviewRef = useRef<HTMLElement | null>(null);
   const title = threadTitle(thread);
 
   useEffect(() => {
@@ -88,13 +93,6 @@ export const ThreadRow = memo(function ThreadRow({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [editing]);
-
-  useEffect(
-    () => () => {
-      dragPreviewRef.current?.remove();
-    },
-    [],
-  );
 
   const finishRename = async () => {
     const next = inputRef.current?.value.trim() ?? "";
@@ -121,7 +119,7 @@ export const ThreadRow = memo(function ThreadRow({
         "flex max-w-24 shrink-0 items-center gap-1 text-[10px] text-muted-foreground",
         // A sub-agent only names its project when it left the parent's, so
         // that label stays even on a narrow sidebar.
-        !nested && "@max-[22rem]/thread-row:hidden",
+        !nested && !focusView && "@max-[22rem]/thread-row:hidden",
       )}
     >
       <span className="min-w-0 truncate">{projectName}</span>
@@ -144,11 +142,24 @@ export const ThreadRow = memo(function ThreadRow({
   const machineLabel =
     sandboxStatus?.label ??
     (sandboxProvider ? `${sandboxProvider} sandbox status unavailable` : "Local machine");
-  const workingStatus = statusForThread(thread);
+  const workingStatus = effectiveStatus ?? statusForThread(thread);
   const workingTone = STATUS_MARKER[workingStatus];
   const workingLabel =
     STATUS_DESIGN.find((entry) => entry.status === workingStatus)?.label ??
     workingStatus;
+  const prominent = focusView && !nested && (workingStatus === "needs-input" || workingStatus === "unread" || hasUnseenFailure(thread));
+  const failed = thread.status === "error" || thread.queuedWork === "failed" || thread.indicator === "unread-error";
+  const attentionReason = failed ? "Failed" : workingStatus === "needs-input" ? "Needs input" : "Unread";
+  const ageMinutes = Math.max(0, Math.floor((Date.now() - thread.latestAttentionAt) / 60_000));
+  const age = ageMinutes < 1 ? "now" : ageMinutes < 60 ? `${ageMinutes}m` : ageMinutes < 1440 ? `${Math.floor(ageMinutes / 60)}h` : `${Math.floor(ageMinutes / 1440)}d`;
+  const attentionDetail = `${attentionReason} · ${age}`;
+  const attentionTooltip = workingStatus === "needs-input" ? (thread.hasPendingInteraction ? thread.indicatorLabel || "This thread needs input" : "A child thread needs input") : attentionReason;
+  const staleLabel = "Inactive for at least 14 days. Review or snooze; save work before archiving. BB archive removes the workspace and worktree.";
+  const focusMarker = focusView && !(prominent && workingStatus === "needs-input" && !failed) ? (
+    <span title={cleanupCandidate ? staleLabel : failed ? "Failed" : workingLabel} className={cn("shrink-0", failed ? "text-destructive-text" : workingTone.className)} style={workingTone.style}>
+      <Icon name={failed ? "FileX2" : cleanupCandidate ? "Clock" : workingStatus === "needs-input" ? "CircleQuestion" : workingStatus === "unread" ? "CircleCheck" : workingStatus === "active" ? "CircleDashed" : workingStatus === "drafting" ? "Edit" : thread.isPinned ? "Pin" : "Circle"} className="size-3" aria-hidden="true" />
+    </span>
+  ) : null;
   const machineMetadata = (
     <span data-execution-metadata="" className="inline-flex shrink-0 items-center">
       {nested ? (
@@ -168,29 +179,6 @@ export const ThreadRow = memo(function ThreadRow({
     </span>
   );
 
-  const createGroupDragPreview = (event: DragEvent<HTMLElement>) => {
-    if (!isGrouped) return;
-    const group = event.currentTarget.closest<HTMLElement>(
-      "[data-sidebar-worktree-group]",
-    );
-    if (!group) return;
-    dragPreviewRef.current?.remove();
-    const preview = group.cloneNode(true) as HTMLElement;
-    preview.setAttribute("aria-hidden", "true");
-    preview.dataset.sidebarGroupDragPreview = "";
-    preview.style.position = "fixed";
-    preview.style.left = "0";
-    preview.style.top = "0";
-    preview.style.width = `${group.getBoundingClientRect().width}px`;
-    preview.style.pointerEvents = "none";
-    preview.style.opacity = "0.96";
-    preview.style.transform = "translate(-120%, -120%)";
-    preview.querySelectorAll("button").forEach((button) => button.remove());
-    document.body.append(preview);
-    dragPreviewRef.current = preview;
-    event.dataTransfer.setDragImage(preview, 24, 24);
-  };
-
   return (
     <>
       <ThreadContextMenu {...menuProps}>
@@ -207,7 +195,6 @@ export const ThreadRow = memo(function ThreadRow({
             if (workspaceMovable) {
               event.dataTransfer.setData(THREAD_WORKSPACE_DRAG_TYPE, thread.id);
             }
-            createGroupDragPreview(event);
             if (reorderEnabled) onDragStart(thread.id);
           }}
           onDragOver={(event) => {
@@ -222,8 +209,6 @@ export const ThreadRow = memo(function ThreadRow({
             onDrop(thread.id, dropPlacementForEvent(event));
           }}
           onDragEnd={() => {
-            dragPreviewRef.current?.remove();
-            dragPreviewRef.current = null;
             onDragEnd();
           }}
         >
@@ -233,7 +218,7 @@ export const ThreadRow = memo(function ThreadRow({
               "data-sidebar-thread-shortcut-target": nested ? undefined : "",
               "data-sidebar-thread-id": nested ? undefined : thread.id,
               href: thread.href,
-              "aria-label": title,
+              "aria-label": focusView ? `${title}, ${failed ? "failed" : workingLabel}${cleanupCandidate ? `. ${staleLabel}` : ""}` : title,
               "aria-current": isSelected ? "page" : undefined,
               onClick: (event) => {
                 if (event.button !== 0 || event.shiftKey || event.altKey) return;
@@ -247,6 +232,7 @@ export const ThreadRow = memo(function ThreadRow({
               },
             }}
             isSelected={isSelected}
+            prominent={prominent}
             nested={nested}
             reorderEnabled={reorderEnabled}
             isDragging={isDragging}
@@ -271,7 +257,8 @@ export const ThreadRow = memo(function ThreadRow({
               ) : (
                 <span
                   className={cn(
-                    "min-w-0 flex-1 truncate text-xs text-sidebar-foreground",
+                    "min-w-0 flex-1 text-xs text-sidebar-foreground",
+                  prominent ? "flex flex-col gap-1" : "truncate",
                     thread.isUnread && "font-semibold",
                   )}
                   title={title}
@@ -304,14 +291,17 @@ export const ThreadRow = memo(function ThreadRow({
             ) : (
               <span
                 className={cn(
-                  "min-w-0 flex-1 truncate text-xs text-sidebar-foreground",
+                  "min-w-0 flex-1 text-xs text-sidebar-foreground",
+                  prominent ? "flex flex-col gap-1" : "truncate",
                   thread.isUnread && "font-semibold",
                 )}
                 title={title}
               >
-                {title}
+                <span className="truncate">{title}</span>
+                {prominent ? <span data-attention-detail="" title={attentionTooltip} className="truncate text-[10px] font-normal text-muted-foreground">{attentionDetail}</span> : null}
               </span>
             )}
+            {focusMarker}
             {projectMetadata}
             {subagentBadge}
             <span className="flex shrink-0 items-center gap-1 text-muted-foreground">

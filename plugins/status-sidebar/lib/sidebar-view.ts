@@ -1,6 +1,6 @@
-export type GroupDimension = "status" | "workspace" | "project";
+export type GroupDimension = "focus" | "status" | "workspace" | "project";
 // Status is a property of one thread, not a container, so it never subgroups.
-export type SubgroupDimension = Exclude<GroupDimension, "status">;
+export type SubgroupDimension = Exclude<GroupDimension, "status" | "focus">;
 export type SortMode = "recent" | "status" | "manual";
 
 export interface SidebarViewOptions {
@@ -20,6 +20,7 @@ export const DEFAULT_VIEW_OPTIONS: SidebarViewOptions = {
 };
 
 export const GROUP_LABELS: Record<GroupDimension, string> = {
+  focus: "Focus",
   status: "Status",
   workspace: "Workspace",
   project: "Project",
@@ -56,7 +57,7 @@ export function withGroup(
   return {
     ...options,
     group,
-    subgroup: options.group === "status" ? null : options.group,
+    subgroup: options.group === "status" || options.group === "focus" ? null : options.group,
   };
 }
 
