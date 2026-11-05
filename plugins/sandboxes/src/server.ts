@@ -717,7 +717,10 @@ export default async function plugin(bb: BbPluginApi) {
       dockerfilePath,
       bbAppVersion: async () =>
         (await bb.sdk.system.version()).currentVersion,
-      buildAndPush: buildAndPushSandboxImage,
+      // A plain build pins the Dockerfile's versions and the adapter digests,
+      // so startup finds every toolchain label it checks.
+      buildAndPush: async (input) =>
+        buildAndPushSandboxImage({ ...input, harness: input.harness ?? await bundledHarnessVersions() }),
       register: (input) => registerSandboxImage({ ...input, e2bScriptPath }),
       resolveRegistryImage,
       readImageBbAppVersion: (input) =>
