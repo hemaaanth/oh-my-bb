@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakePluginHost, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
-import plugin, { ENRICH_STARTUP_DELAY_MS, ENRICH_POLL_MS, threadBriefSchema } from "./server";
+import plugin, { ENRICH_STARTUP_DELAY_MS, ENRICH_POLL_MS, threadBriefSchema, type ThreadBrief } from "./server";
 import { briefTranscript } from "./brief";
 
 const start = new Date(2026, 8, 22, 10).getTime();
 type Row = { kind: "conversation"; role: "user" | "assistant"; initiator?: "user"; text: string; sourceSeqEnd: number; createdAt: number };
 type CallRpcArgs = { pluginId: string; method: string; input: unknown; signal?: AbortSignal; outputSchema: { parse(value: unknown): unknown } };
 
-const BRIEF = { goal: "Build the thing", done: ["Built it"], remaining: ["Ship it"], current: "Waiting for review", decisions: ["Use SQLite"], openDecisions: ["Proposal: add caching"] };
+const BRIEF = { olderHistory: [], goal: "Build the thing", done: ["Built it"], remaining: ["Ship it"], current: "Waiting for review", decisions: ["Use SQLite"], openDecisions: ["Proposal: add caching"] };
 const ENTRY = { summary: "Built the thing", category: "feature", outcome: "Shipped", status: "completed", tags: [] };
 const CATCH_UP = { paragraphs: [{ text: "Product outreach continues.", links: [{ threadId: "thr_a", phrase: "Product outreach" }] }] };
 const STANDUP = { daily: "Daily work happened.", weekly: "Weekly work happened." };
@@ -60,6 +60,12 @@ describe("subscription backend and thread briefings", () => {
         projects: { list: async () => [{ id: "proj", name: "Project" }] as never },
         plugins: { callRpc: async (args: CallRpcArgs) => { gatewayCalls.push(args); return args.outputSchema.parse(await gatewayReply(args)); } } as never,
         threads: {
+          message: async ({ threadId }: { threadId: string }) => {
+            if (threadId != "thr_anchor") throw new Error("opening unavailable");
+            return ({
+            message: { kind: "conversation", role: "user", initiator: "user", text: "Stop growing-session writes that freeze the desktop", sourceSeqEnd: 1 },
+            after: [{ kind: "conversation", role: "user", initiator: "user", text: "Keep background resource use marginal", sourceSeqEnd: 3 }],
+          }) as never; },
           list: async () => [] as never,
           get: async ({ threadId }: { threadId: string }) => byId.get(threadId) as never,
           events: { list: async () => [] } as never,
@@ -116,6 +122,51 @@ describe("subscription backend and thread briefings", () => {
     expect({ gateway: gatewayCalls.length, timelines: timelineReads.length }).toEqual(before);
     expect(fetch).not.toHaveBeenCalled();
     await harness.lifecycle.dispose();
+  });
+
+  it("manually generates through RPC despite the automatic cap and keeps reads passive", async () => {
+    const { harness, db } = await load([thread("thr_a")]);
+    db.prepare("INSERT INTO journal_auto_ai_budget (day_start, work_timezone, attempts, spent_usd, reserved_usd) VALUES (?, ?, 500, 0, 0)")
+      .run(new Date(2026, 8, 22).getTime(), "America/New_York");
+    expect((await readBrief(harness, "thr_a")).automaticNotice).toContain("500-call");
+    expect(briefCalls()).toHaveLength(0);
+    const updated = await harness.behavior.callRpc("journal_refresh_thread_brief", { threadId: "thr_a" }) as ThreadBrief;
+    expect(updated.brief).toEqual(BRIEF);
+    expect(updated.generatedAt).toBe(start);
+    expect(briefCalls()).toHaveLength(1);
+    expect(db.prepare("SELECT attempts FROM journal_auto_ai_budget").get()).toMatchObject({ attempts: 500 });
+    await expect(harness.behavior.callRpc("journal_refresh_thread_brief", { threadId: "unknown" })).rejects.toThrow();
+    expect(briefCalls()).toHaveLength(1);
+    await harness.lifecycle.dispose();
+  });
+
+  it("allows automatic thread summaries after other work uses its 400-call share", async () => {
+    const threads = [thread("thr_a")];
+    const { harness, db } = await load(threads);
+    db.prepare("INSERT INTO journal_auto_ai_budget (day_start, work_timezone, attempts) VALUES (?, 'America/New_York', 400)")
+      .run(new Date(2026, 8, 22).getTime());
+    harness.behavior.runService("enrichment-queue");
+    await vi.advanceTimersByTimeAsync(ENRICH_STARTUP_DELAY_MS);
+    await idleAndSweep(harness, ["thr_a"], threads);
+    expect(briefCalls()).toHaveLength(1);
+    expect(db.prepare("SELECT attempts, brief_attempts FROM journal_auto_ai_budget").get()).toMatchObject({ attempts: 401, brief_attempts: 1 });
+    await harness.lifecycle.dispose();
+  });
+
+  it("anchors paginated opening intent privately and carries retired history across refreshes", async () => {
+    const { harness, db, timelines } = await load([thread("thr_anchor")], { aiBackend: "subscription" }, {
+      thr_anchor: { hasOlder: true, rows: [{ kind: "conversation", role: "assistant", text: "Release is queued", sourceSeqEnd: 900, createdAt: start }] },
+    });
+    await harness.behavior.runCli(["brief", "thr_anchor", "--refresh"]);
+    expect((briefCalls()[0]!.input as { input: string }).input).toContain("freeze the desktop");
+    const saved = await readBrief(harness, "thr_anchor");
+    expect(saved.coverage?.startRead).toBe(true);
+    expect(saved.coverage).not.toHaveProperty("openingText");
+    const retired = { ...BRIEF, olderHistory: ["Earlier index rewrite completed"] };
+    db.prepare("UPDATE journal_thread_briefs SET brief_json=? WHERE thread_id=?").run(JSON.stringify(retired), "thr_anchor");
+    addMessage(timelines, "thr_anchor", 901);
+    await harness.behavior.runCli(["brief", "thr_anchor", "--refresh"]);
+    expect((briefCalls()[1]!.input as { input: string }).input).toContain("Earlier index rewrite completed");
   });
 
   it("marks a briefing stale when a visible child changes, waits out the cooldown, and ignores hidden subtrees", async () => {
@@ -255,7 +306,7 @@ describe("subscription backend and thread briefings", () => {
       ? { available: false, models: [], usableAccounts: 0, inFlight: 0, maxConcurrent: 2, retryAt: null, reason: "No ChatGPT subscription account" }
       : { ok: false, code: "unavailable", message: "No ChatGPT subscription account", retryAt: null };
     await harness.behavior.emitThreadEvent("thread.idle", { thread: threads[1]! } as never);
-    expect(await harness.behavior.callRpc("journal_catch_up_narrative", { force: false }))
+    expect(await harness.behavior.callRpc("journal_catch_up_narrative", { force: true }))
       .toMatchObject({ paragraphs: (first as typeof CATCH_UP).paragraphs, notice: expect.stringContaining("unavailable") });
     expect(JSON.parse((await harness.behavior.runCli(["ai-status", "--json"])).stdout!))
       .toMatchObject({ configured: false, reason: "No ChatGPT subscription account" });
@@ -433,6 +484,7 @@ describe("subscription backend and thread briefings", () => {
     expect((catchUps()[1]!.input as { model: string }).model).toBe("gpt-5.6-luna");
     gatewayReply = () => ({ ok: false, code: "unavailable", message: "No ChatGPT subscription account", retryAt: null });
     await harness.behavior.emitThreadEvent("thread.created", { thread: thread("thr_new") } as never);
+    vi.setSystemTime(Date.now() + 16 * 60_000);
     expect(await harness.behavior.callRpc("journal_catch_up_narrative", { force: false }))
       .toMatchObject({ paragraphs: (first as typeof CATCH_UP).paragraphs, notice: expect.stringContaining("unavailable") });
     await harness.lifecycle.dispose();
@@ -482,4 +534,40 @@ describe("subscription backend and thread briefings", () => {
     expect(stale).toMatchObject({ narrativeStale: true });
     await harness.lifecycle.dispose();
   });
+});
+
+describe("generated briefing boundaries", () => {
+  it("reads legacy rows but rejects verbose new output instead of clipping facts", async () => {
+    const { briefSchema, generatedBriefSchema, briefFixtureSchema } = await import("./brief");
+    const legacy = { ...BRIEF, goal: "x".repeat(300), done: Array(8).fill("Old fact") };
+    expect(briefSchema.safeParse(legacy).success).toBe(true);
+    expect(generatedBriefSchema.safeParse(legacy).success).toBe(false);
+    expect(generatedBriefSchema.safeParse({ ...BRIEF, olderHistory: ["Retired benchmark"] }).success).toBe(true);
+    expect(briefFixtureSchema.safeParse({ source: { transcript: "Only one field" }, system: {} }).success).toBe(false);
+  });
+});
+
+ it("retains bounded history without repeating current or earlier history facts", async () => {
+  const { retainBriefHistory } = await import("./brief");
+  const first = retainBriefHistory({ ...BRIEF, olderHistory: ["Earlier fix"] }, { ...BRIEF, olderHistory: ["Earlier fix", "Prior release", "Built it"] });
+  expect(first.olderHistory).toEqual(["Earlier fix", "Prior release"]);
+  expect(retainBriefHistory({ ...BRIEF, olderHistory: [] }, first).olderHistory).toEqual(first.olderHistory);
+  expect(retainBriefHistory(BRIEF, { ...BRIEF, olderHistory: Array.from({ length: 20 }, (_, n) => `Fact ${n}`) }).olderHistory).toHaveLength(12);
+ });
+
+it("repairs invalid generation once without clipping and stops after two calls", async () => {
+  const { generateBrief } = await import("./brief");
+  const source = { title: "Work", project: "Project", previous: null, historyClipped: false, workDays: [], workDaysTrimmed: false, transcript: "USER: Fix the issue", children: [] };
+  const oversized = JSON.stringify({ ...BRIEF, goal: "x".repeat(111) });
+  let calls = 0;
+  const repaired = await generateBrief(source, async () => ++calls === 1 ? oversized : JSON.stringify(BRIEF));
+  expect(calls).toBe(2);
+  expect(repaired.brief.goal).toBe(BRIEF.goal);
+  expect(repaired.attempts[1]!.request.input).toContain("Validation failures");
+  calls = 0;
+  await expect(generateBrief(source, async () => { calls++; return oversized; })).rejects.toThrow("after two attempts");
+  expect(calls).toBe(2);
+  calls = 0;
+  await expect(generateBrief(source, async () => { calls++; throw new Error("rate limited"); })).rejects.toThrow("rate limited");
+  expect(calls).toBe(1);
 });

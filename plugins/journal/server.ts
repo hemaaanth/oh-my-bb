@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -16,8 +17,8 @@ import {
   type AiRequest, type GatewayModel, type JsonSchemaFormat,
 } from "./inference";
 import {
-  BRIEF_CHILD_CHARS, BRIEF_COOLDOWN_MS, BRIEF_FORMAT, BRIEF_IDLE_MS, BRIEF_MAX_ATTEMPTS, BRIEF_MAX_CHILDREN, BRIEF_MAX_WORK_DAYS,
-  BRIEF_RETRY_MS, BRIEF_SYSTEM, briefCoverageSchema, briefInput, briefSchema, briefTranscript, normalizeBrief,
+  BRIEF_CHILD_CHARS, BRIEF_COOLDOWN_MS, BRIEF_IDLE_MS, BRIEF_MAX_ATTEMPTS, BRIEF_MAX_CHILDREN, BRIEF_MAX_WORK_DAYS,
+  BRIEF_RETRY_MS, generateBrief, briefFixtureSchema, savedBriefCoverageSchema, briefCoverageSchema, briefSchema, briefTranscript,
   type Brief, type BriefCoverage,
 } from "./brief";
 import {
@@ -92,6 +93,7 @@ export const threadBriefSchema = z.object({
   pending: z.boolean(),
   /** Background refresh is on (intelligence enabled with the subscription backend). */
   automatic: z.boolean(),
+  automaticNotice: z.string().nullable().optional(),
 });
 export type ThreadBrief = z.infer<typeof threadBriefSchema>;
 export type IntelligenceStatus = z.infer<typeof rpcContract["journal_intelligence_status"]["output"]>;
@@ -186,6 +188,7 @@ export const rpcContract = defineRpcContract({
       unmeasuredCalls: z.number().int() }),
   }) },
   /** Saved briefing for the thread header. Reads stored rows only: never a model call or transcript read. */
+  journal_refresh_thread_brief: { input: z.object({ threadId: z.string().min(1) }).strict(), output: threadBriefSchema },
   journal_thread_brief: { input: z.object({ threadId: z.string().min(1) }).strict(), output: threadBriefSchema },
   /** Explicit connection test for RPC callers; never runs automatically. */
   journal_ai_test: { input: z.null(), output: z.object({ ok: z.boolean(), backend: z.enum(AI_BACKENDS), model: z.string(), message: z.string() }) },
@@ -591,6 +594,7 @@ export default async function plugin(bb: BbPluginApi) {
     );
     CREATE TABLE IF NOT EXISTS journal_brief_pending (thread_id TEXT PRIMARY KEY, idle_at INTEGER NOT NULL);`,
     `ALTER TABLE journal_ai_usage ADD COLUMN usage_unknown INTEGER NOT NULL DEFAULT 0;`,
+    `ALTER TABLE journal_auto_ai_budget ADD COLUMN brief_attempts INTEGER NOT NULL DEFAULT 0;`,
   ]);
 
   // Side chats are forks: BB records their owner in sourceThreadId, not parentThreadId.
@@ -705,7 +709,7 @@ export default async function plugin(bb: BbPluginApi) {
     const subscription = subscriptionBackend();
     const apiKey = intelligenceSettings.openRouterApiKey?.trim();
     if (!subscription && !apiKey) throw new Error("OpenRouter API key is not configured");
-    const reservation = automatic ? reserveAutomaticAi(request.input, request.maxTokens) : null;
+    const reservation = automatic ? reserveAutomaticAi(request.input, request.maxTokens, kind === "brief") : null;
     if (automatic && !reservation) throw new AutomaticAiBudgetError("Automatic Journal AI budget reached for today");
     let actualUsd: number | null = null;
     try {
@@ -772,6 +776,7 @@ export default async function plugin(bb: BbPluginApi) {
     return result;
   }
 
+  const catchUpInFlight = new Map<string, Promise<{ paragraphs: Array<{ text: string; links: Array<{ threadId: string; phrase: string }> }> }>>();
   const catchUpCache = new Map<string, Promise<{ paragraphs: Array<{ text: string; links: Array<{ threadId: string; phrase: string }> }> }>>();
   async function catchUpNarrative(input: { force?: boolean }) {
     // The journal database lives with the BB server and includes work from every machine.
@@ -830,16 +835,26 @@ export default async function plugin(bb: BbPluginApi) {
     const source = fitFacts(facts.length, (kept) => JSON.stringify(kept === facts.length ? facts
       : { threads: facts.slice(0, kept), omittedOlderThreads: facts.length - kept }));
     // The backend and model are part of the identity, so a switch never shows old prose as fresh.
-    const identity = `${aiModelLabel()}\n${source}`;
+    const identity = `${aiModelLabel()}\n${JSON.stringify(facts.map(({ updatedAt: _time, worked: _duration, ...content }) => content))}`;
     const sourceHash = createHash("sha256").update(identity).digest("hex");
     const cached = catchUpCache.get(identity); if (cached && !input.force) return cached;
-    const stored = db.prepare("SELECT source_json AS source, daily_narrative AS narrative FROM journal_period_cache WHERE cache_key='catch-up'")
-      .get() as { source: string; narrative: string } | undefined;
+    const stored = db.prepare("SELECT source_json AS source, daily_narrative AS narrative, ai_model AS model, updated_at AS updatedAt FROM journal_period_cache WHERE cache_key='catch-up'")
+      .get() as { source: string; narrative: string; model: string; updatedAt: number } | undefined;
     if (stored?.source === sourceHash && !input.force) return catchUpNarrativeSchema.parse(JSON.parse(stored.narrative));
     const budgetNotice = (notice: string) => {
       const previous = stored ? catchUpNarrativeSchema.safeParse(JSON.parse(stored.narrative)) : null;
       return { paragraphs: previous?.success ? previous.data.paragraphs : [], notice };
     };
+    const budget = automaticBudgetStatus();
+    if (!input.force && (budget.attempts >= budget.hardLimit || budget.attempts - budget.briefAttempts >= budget.otherLimit || (!subscriptionBackend() && budget.remainingUsd <= 0))) {
+      return budgetNotice("Automatic AI budget reached for today. Showing the last catch-up, if available. Manual Refresh is still available.");
+    }
+    const flightModel = aiModelLabel();
+    const flight = catchUpInFlight.get(flightModel);
+    if (flight) return flight;
+    if (!input.force && stored?.model === aiModelLabel() && Date.now() - stored.updatedAt < 15 * 60_000) {
+      return budgetNotice("Showing the recent catch-up. Use Refresh to include newer activity now.");
+    }
     const task = (async () => {
       let content: string;
       try {
@@ -910,6 +925,9 @@ export default async function plugin(bb: BbPluginApi) {
         return narrative;
       }
     })();
+    catchUpInFlight.set(flightModel, task);
+    const clearFlight = () => { if (catchUpInFlight.get(flightModel) === task) catchUpInFlight.delete(flightModel); };
+    task.then(clearFlight, clearFlight);
     catchUpCache.set(identity, task);
     if (catchUpCache.size > 8) catchUpCache.delete(catchUpCache.keys().next().value!);
     // A notice is not a narrative: the next open asks again.
@@ -1009,6 +1027,7 @@ export default async function plugin(bb: BbPluginApi) {
     source_mark AS sourceMark, model, generated_at AS generatedAt, error, attempts, retry_at AS retryAt
     FROM journal_thread_briefs WHERE thread_id=?`).get(rootId) as BriefRow | undefined;
   const parseBrief = (json: string | null) => { const parsed = json ? briefSchema.safeParse(JSON.parse(json)) : null; return parsed?.success ? parsed.data : null; };
+  const briefInFlight = new Map<string, Promise<BriefOutcome>>();
   const automaticBriefs = () => intelligenceSettings.intelligenceEnabled && subscriptionBackend();
 
   /** Saved briefings for catch-up facts: no model call, no transcript read. */
@@ -1027,20 +1046,23 @@ export default async function plugin(bb: BbPluginApi) {
     const automatic = automaticBriefs();
     if (!root) return { threadId, rootThreadId: null, visible: false, title: null, brief: null, coverage: null, generatedAt: null,
       model: null, stale: false, lastActivityAt: null, running: false, error: null, retryAt: null, pending: false, automatic };
+    const budget = automaticBudgetStatus();
+    const automaticNotice = automatic && budget.attempts >= budget.hardLimit
+      ? "Automatic summaries paused: today's 500-call limit reached. You can still update manually." : null;
     const ids = [root, ...visibleDescendants(root)];
     const placeholders = ids.map(() => "?").join(",");
     const last = db.prepare(`SELECT max(at) AS at FROM (SELECT max(coalesce(ended_at, started_at)) AS at FROM journal_turns WHERE thread_id IN (${placeholders})
       UNION ALL SELECT max(last_activity_at) FROM journal_work_days_v2 WHERE thread_id IN (${placeholders}) AND day_timezone=?)`)
       .get(...ids, ...ids, intelligenceSettings.workTimeZone) as { at: number | null };
     const row = briefRow(root);
-    const coverage = row?.coverageJson ? briefCoverageSchema.safeParse(JSON.parse(row.coverageJson)) : null;
+    const coverage = row?.coverageJson ? savedBriefCoverageSchema.safeParse(JSON.parse(row.coverageJson)) : null;
     const title = (db.prepare("SELECT title FROM journal_threads WHERE thread_id=?").get(root) as { title: string }).title;
     const brief = parseBrief(row?.briefJson ?? null);
-    return { threadId, rootThreadId: root, visible: true, title, brief, coverage: coverage?.success ? coverage.data : null,
+    return { threadId, rootThreadId: root, visible: true, title, brief, coverage: coverage?.success ? (({ openingText: _private, ...metadata }) => metadata)(coverage.data) : null,
       generatedAt: brief ? row!.generatedAt : null, model: brief ? row!.model : null,
       stale: Boolean(brief) && row!.sourceMark !== briefSourceMark(root), lastActivityAt: last.at, running: subtreeRunning(ids),
       error: row?.error ?? null, retryAt: row?.retryAt ?? null,
-      pending: Boolean(db.prepare("SELECT 1 FROM journal_brief_pending WHERE thread_id=?").get(root)), automatic };
+      pending: Boolean(db.prepare("SELECT 1 FROM journal_brief_pending WHERE thread_id=?").get(root)), automatic, automaticNotice };
   }
   /** An agent turn is running now in one of these threads, per the turn index's last known status. */
   function subtreeRunning(ids: string[]) {
@@ -1055,17 +1077,40 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   type BriefOutcome = "refreshed" | "unchanged" | "skipped" | "budget" | "unavailable" | "failed";
-  async function refreshBrief(rootId: string, manual: boolean): Promise<BriefOutcome> {
+  function refreshBrief(rootId: string, manual: boolean): Promise<BriefOutcome> {
+    const pending = briefInFlight.get(rootId);
+    if (pending) return manual ? pending.then(outcome => outcome === "budget" ? refreshBrief(rootId, true) : outcome) : pending;
+    const task = runBriefRefresh(rootId, manual).finally(() => briefInFlight.delete(rootId));
+    briefInFlight.set(rootId, task);
+    return task;
+  }
+  async function runBriefRefresh(rootId: string, manual: boolean): Promise<BriefOutcome> {
     const meta = db.prepare("SELECT title, project_name AS project, visibility FROM journal_threads WHERE thread_id=?")
       .get(rootId) as { title: string; project: string; visibility: string } | undefined;
     if (!meta || meta.visibility !== "visible" || visibleRoot(rootId) !== rootId) return "skipped";
     const mark = briefSourceMark(rootId);
     const row = briefRow(rootId); const previous = parseBrief(row?.briefJson ?? null);
     if (!manual && previous && row?.sourceMark === mark) return "unchanged";
-    const previousCoverage = row?.coverageJson ? briefCoverageSchema.safeParse(JSON.parse(row.coverageJson)) : null;
+    const previousCoverage = row?.coverageJson ? savedBriefCoverageSchema.safeParse(JSON.parse(row.coverageJson)) : null;
     try {
       const root = await latestConversation(rootId);
-      const transcript = briefTranscript(root.messages, !root.hasOlder);
+      const prior = previousCoverage?.success ? previousCoverage.data : null;
+      let opening = prior?.openingText;
+      if (!opening && !root.hasOlder) opening = briefTranscript(root.messages.slice(0, 21), true, 6000).text;
+      if (!opening && root.hasOlder) {
+        // Read at most 21 opening conversation rows once, never walk the whole timeline on idle.
+        try {
+          const first = await bb.sdk.threads.message({ threadId: rootId, seq: 1, after: 20 });
+          const rows = extractConversationMessages([first.message, ...first.after]);
+          opening = briefTranscript(rows, true, 6000).text;
+        } catch { /* Missing opening stays explicit in coverage; recent evidence still works. */ }
+      }
+      const cutoff = previous && prior?.toSeq;
+      const changed = cutoff ? root.messages.filter(message => message.sourceSeqEnd > cutoff) : root.messages;
+      const latestUser = [...root.messages].reverse().find(message => message.role === "user");
+      const recent = cutoff ? (changed.length ? changed : root.messages.slice(-2)) : root.messages;
+      const messages = latestUser && !recent.includes(latestUser) ? [latestUser, ...recent] : recent;
+      const transcript = briefTranscript(messages, !root.hasOlder && !cutoff);
       const zone = intelligenceSettings.workTimeZone;
       const allDays = db.prepare(`${workGroups} SELECT day_start AS dayStart, summary, outcome FROM indexed_days WHERE thread_id=? ORDER BY day_start`)
         .all(zone, rootId) as Array<{ dayStart: number; summary: string; outcome: string | null }>;
@@ -1080,23 +1125,20 @@ export default async function plugin(bb: BbPluginApi) {
         if (text) children.push({ title, transcript: text });
       }
       if (!transcript.text && !days.length && !children.length) return "skipped";
-      const text = await completeJson("brief", {
-        system: BRIEF_SYSTEM, schema: BRIEF_FORMAT, maxTokens: 1_200, timeoutMs: 60_000,
-        input: briefInput({ title: meta.title, project: meta.project, previous, historyClipped: root.hasOlder,
-          workDays: days.map((day) => ({ date: new Date(day.dayStart).toLocaleDateString("en-CA", { timeZone: zone }), summary: day.summary, outcome: day.outcome })),
-          workDaysTrimmed: allDays.length > days.length, transcript: transcript.text, children }),
-      }, !manual);
+      const source = { title: meta.title, project: meta.project, previous, historyClipped: root.hasOlder, opening,
+        workDays: days.map((day) => ({ date: new Date(day.dayStart).toLocaleDateString("en-CA", { timeZone: zone }), summary: day.summary, outcome: day.outcome })),
+        workDaysTrimmed: allDays.length > days.length, transcript: transcript.text, children };
+      const generated = await generateBrief(source, request => completeJson("brief", request, !manual));
       // A deletion or newer child turn can arrive while the gateway is answering. Never
       // resurrect a deleted root or save an obsolete child transcript as the current brief.
       if (visibleRoot(rootId) !== rootId) return "skipped";
       if (briefSourceMark(rootId) !== mark) return "unchanged";
-      const brief = normalizeBrief(JSON.parse(text));
-      const seqs = root.messages.map((message) => message.sourceSeqEnd).filter((seq) => seq > 0);
-      const prior = previousCoverage?.success ? previousCoverage.data : null;
+      const brief = generated.brief;
+      const seqs = messages.map((message) => message.sourceSeqEnd).filter((seq) => seq > 0);
       const coverage: BriefCoverage = {
         fromSeq: seqs.length ? Math.min(...seqs) : null, toSeq: seqs.length ? Math.max(...seqs) : null,
-        historyClipped: root.hasOlder, excerptClipped: transcript.clipped,
-        startRead: !root.hasOlder || Boolean(prior?.startRead), passes: (prior?.passes ?? 0) + 1,
+        historyClipped: root.hasOlder, excerptClipped: transcript.clipped || Boolean(cutoff),
+        openingText: opening, startRead: !root.hasOlder || Boolean(opening) || Boolean(prior?.startRead), passes: (prior?.passes ?? 0) + 1,
         workDays: days.length, workDaysTotal: allDays.length, children: children.length, childrenTotal: descendants.length,
       };
       db.prepare(`INSERT INTO journal_thread_briefs (thread_id, brief_json, coverage_json, source_mark, model, generated_at, error, attempts, retry_at)
@@ -1568,20 +1610,21 @@ export default async function plugin(bb: BbPluginApi) {
   // Persist estimated cost before a request. Interrupted requests keep their
   // reservation so a reload cannot spend the same budget twice.
   const AUTO_AI_HARD_LIMIT = 500;
+  const AUTO_OTHER_LIMIT = 400; // Reserve at least 100 automatic calls for thread summaries.
   type AutomaticReservation = { day: number; timeZone: string; estimatedUsd: number };
   class AutomaticAiBudgetError extends Error {}
   function automaticBudgetStatus(now = Date.now()) {
     const day = localDayStart(now, intelligenceSettings.workTimeZone);
-    const row = db.prepare(`SELECT attempts, spent_usd AS spentUsd, reserved_usd AS reservedUsd
+    const row = db.prepare(`SELECT attempts, brief_attempts AS briefAttempts, spent_usd AS spentUsd, reserved_usd AS reservedUsd
       FROM journal_auto_ai_budget WHERE day_start=? AND work_timezone=?`)
-      .get(day, intelligenceSettings.workTimeZone) as { attempts: number; spentUsd: number; reservedUsd: number } | undefined;
+      .get(day, intelligenceSettings.workTimeZone) as { attempts: number; briefAttempts: number; spentUsd: number; reservedUsd: number } | undefined;
     const limitUsd = intelligenceSettings.automaticDailyBudgetUsd;
     const spentUsd = row?.spentUsd ?? 0; const reservedUsd = row?.reservedUsd ?? 0;
     return { dayStart: day, timeZone: intelligenceSettings.workTimeZone, limitUsd,
       spentUsd, reservedUsd, remainingUsd: Math.max(0, limitUsd - spentUsd - reservedUsd),
-      attempts: row?.attempts ?? 0, hardLimit: AUTO_AI_HARD_LIMIT };
+      attempts: row?.attempts ?? 0, hardLimit: AUTO_AI_HARD_LIMIT, briefAttempts: row?.briefAttempts ?? 0, otherLimit: AUTO_OTHER_LIMIT };
   }
-  function reserveAutomaticAi(prompt: string, maxTokens: number): AutomaticReservation | null {
+  function reserveAutomaticAi(prompt: string, maxTokens: number, brief = false): AutomaticReservation | null {
     const status = automaticBudgetStatus();
     const subscription = subscriptionBackend();
     const model = intelligenceSettings.openRouterModel.trim() || DEFAULT_OPENROUTER_MODEL;
@@ -1590,13 +1633,13 @@ export default async function plugin(bb: BbPluginApi) {
     const estimatedUsd = subscription ? 0 : model === DEFAULT_OPENROUTER_MODEL
       ? (Math.ceil((prompt.length + 4_000) / 4) * 0.25 + maxTokens * 1.5) / 1_000_000
       : status.limitUsd;
-    if (status.attempts >= AUTO_AI_HARD_LIMIT || (!subscription && (estimatedUsd > status.remainingUsd || estimatedUsd <= 0))) return null;
+    if (status.attempts >= AUTO_AI_HARD_LIMIT || (!brief && status.attempts - status.briefAttempts >= AUTO_OTHER_LIMIT) || (!subscription && (estimatedUsd > status.remainingUsd || estimatedUsd <= 0))) return null;
     const saved = db.prepare(`INSERT INTO journal_auto_ai_budget
-      (day_start, work_timezone, attempts, reserved_usd) VALUES (?, ?, 1, ?)
+      (day_start, work_timezone, attempts, reserved_usd, brief_attempts) VALUES (?, ?, 1, ?, ?)
       ON CONFLICT(day_start, work_timezone) DO UPDATE SET attempts=attempts+1,
-        reserved_usd=reserved_usd+excluded.reserved_usd
-      WHERE attempts < ? AND spent_usd+reserved_usd+excluded.reserved_usd <= ?`)
-      .run(status.dayStart, status.timeZone, estimatedUsd, AUTO_AI_HARD_LIMIT, subscription ? Number.MAX_VALUE : status.limitUsd);
+        reserved_usd=reserved_usd+excluded.reserved_usd, brief_attempts=brief_attempts+excluded.brief_attempts
+      WHERE attempts < ? AND (?=1 OR attempts-brief_attempts < ?) AND spent_usd+reserved_usd+excluded.reserved_usd <= ?`)
+      .run(status.dayStart, status.timeZone, estimatedUsd, Number(brief), AUTO_AI_HARD_LIMIT, Number(brief), AUTO_OTHER_LIMIT, subscription ? Number.MAX_VALUE : status.limitUsd);
     return saved.changes ? { day: status.dayStart, timeZone: status.timeZone, estimatedUsd } : null;
   }
   function settleAutomaticAi(reservation: AutomaticReservation, actualUsd: number | null) {
@@ -2171,6 +2214,16 @@ export default async function plugin(bb: BbPluginApi) {
     },
     journal_intelligence_status: intelligenceStatus,
     journal_thread_brief: ({ threadId }) => readBrief(threadId),
+    journal_refresh_thread_brief: async ({ threadId }) => {
+      if (!aiReady()) throw new Error("Summary generation is not configured. Check Journal settings.");
+      const root = visibleRoot(threadId);
+      if (!root) throw new Error("Journal does not track this thread.");
+      const outcome = await refreshBrief(root, true);
+      if (outcome === "failed" || outcome === "unavailable") throw new Error(readBrief(root).error ?? "Summary generation failed. Try again.");
+      if (outcome === "unchanged") throw new Error("The conversation changed during generation. Try again when it pauses.");
+      if (outcome === "skipped") throw new Error("No conversation is available to summarize yet.");
+      return readBrief(threadId);
+    },
     journal_ai_test: async () => {
       const backend = subscriptionBackend() ? "subscription" as const : "openrouter" as const;
       try {
@@ -2298,7 +2351,8 @@ export default async function plugin(bb: BbPluginApi) {
       { name: "show", summary: "Read a thread's stored summary and dated work", usage: "bb journal show <threadId> [--limit <1-100>] [--offset <n>] [--json]" },
       { name: "stats", summary: "Show journal totals", usage: "bb journal stats [--json]" },
       { name: "cost", summary: "Show recorded AI tokens and cost (subscription calls cost $0)", usage: "bb journal cost [--json]" },
-      { name: "brief", summary: "Read a thread's saved catch-up briefing; --refresh makes one model call", usage: "bb journal brief <threadId> [--refresh] [--json]" },
+      { name: "brief-eval", summary: "Evaluate an explicitly authorized private fixture through subscription inference without saving a brief", usage: "bb journal brief-eval <private-fixture.json> [--json]" },
+      { name: "brief", summary: "Read a thread's saved catch-up briefing; --refresh generates with at most one validation repair", usage: "bb journal brief <threadId> [--refresh] [--json]" },
       { name: "ai-status", summary: "Show the AI backend, readiness, and automatic call budget", usage: "bb journal ai-status [--json]" },
       { name: "backfill", summary: "Estimate or resume all-time work-day indexing", usage: "bb journal backfill --dry-run|--status [--limit <n>] [--offset <n>]|[--limit <n>] [--restart] [--json]" },
       { name: "sync", summary: "Backfill and reconcile lifecycle events", usage: "bb journal sync [--json]" },
@@ -2357,6 +2411,15 @@ export default async function plugin(bb: BbPluginApi) {
             : `Automatic AI today: $${budget.spentUsd.toFixed(4)} spent / $${budget.limitUsd.toFixed(2)}; ${budget.attempts}/${budget.hardLimit} calls.`,
         ].join("\n") };
       }
+      if (command === "brief-eval") {
+        if (!subscriptionBackend()) throw new Error("Evaluation requires the subscription backend");
+        const fixture = briefFixtureSchema.parse(JSON.parse(await readFile(argv[1] ?? "", "utf8")));
+        const source = fixture.source;
+        if (!source || typeof source.transcript !== "string" || JSON.stringify(source).length > 64000) throw new Error("Invalid or oversized private fixture");
+        const generated = await generateBrief(source, request => completeJson("brief", request, false), fixture.system);
+        const last = generated.attempts.at(-1)!;
+        return { exitCode: 0, stdout: JSON.stringify({ ...generated, raw: last.raw, validation: true, request: last.request, model: aiModelLabel(), generatedAt: Date.now() }) };
+      }
       if (command === "brief") {
         const threadId = argv[1];
         if (!threadId || threadId.startsWith("--")) throw new Error("Usage: bb journal brief <threadId> [--refresh] [--json]");
@@ -2375,7 +2438,7 @@ export default async function plugin(bb: BbPluginApi) {
         return { exitCode: 0, stdout: [
           `${result.title} [${result.rootThreadId}]${result.stale ? " — newer activity since this briefing" : ""}`,
           `Goal: ${brief.goal}`, ...section("Done", brief.done), ...section("Remaining", brief.remaining),
-          `Current: ${brief.current}`, ...section("Decisions", brief.decisions), ...section("Open decisions", brief.openDecisions),
+          `Current: ${brief.current}`, ...section("Decisions", brief.decisions), ...section("Open decisions", brief.openDecisions), ...section("Older history", brief.olderHistory ?? []),
           `Generated ${new Date(result.generatedAt!).toISOString()} with ${result.model}.${result.coverage?.startRead ? "" : " The start of the thread was not read; the goal comes from saved history."}`,
         ].join("\n") };
       }

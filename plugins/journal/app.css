@@ -46,6 +46,11 @@
   }
 }
 
+/* Summary expansion must not change the Info panel's content width. */
+dl:has([data-bb-plugin="journal"] [data-info-section]) {
+  scrollbar-gutter: stable;
+}
+
 /* Demo Mode's text highlights do not cover native input values. */
 body[data-bb-demo-mode] .journal-panel input[data-bb-demo-sensitive] {
   color: transparent !important;

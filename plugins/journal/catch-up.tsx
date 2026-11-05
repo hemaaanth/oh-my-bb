@@ -25,9 +25,13 @@ export function CatchUpOverlay() {
   const [paragraphs, setParagraphs] = useState<Paragraph[] | null>(null);
   useEffect(() => { const handler = () => { opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setOpen(true); }; window.addEventListener(OPEN, handler); return () => window.removeEventListener(OPEN, handler); }, []);
   const refresh = useCallback(() => { rpc.call("journal_catch_up", null).then((result) => { setEntries(result.entries); setError(null); }, (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause))); }, [rpc]);
-  useEffect(() => { refresh(); }, [refresh]);
-  useRealtime("journal-changed", refresh);
-  useEffect(() => { const timer = window.setInterval(refresh, 5 * 60_000); return () => window.clearInterval(timer); }, [refresh]);
+  useEffect(() => { if (open) refresh(); }, [open, refresh]);
+  useRealtime("journal-changed", () => { if (open) refresh(); });
+  useEffect(() => {
+    if (!open) return;
+    const timer = window.setInterval(refresh, 5 * 60_000);
+    return () => window.clearInterval(timer);
+  }, [open, refresh]);
   const summary = useMemo(() => {
     const indexed = new Map(entries?.map((entry) => [entry.threadId, entry]) ?? []);
     const names = new Map(sidebar.projects.map((project) => [project.id, project.name]));
@@ -35,14 +39,14 @@ export function CatchUpOverlay() {
   }, [entries, sidebar.threads, sidebar.projects]);
   const items = useMemo(() => [...summary.attention, ...summary.active.flatMap((group) => group.items), ...summary.archive], [summary]);
   useEffect(() => {
-    if (!entries) return;
+    if (!open || !entries) return;
     let current = true;
     rpc.call("journal_catch_up_narrative", { force: false }).then(
       (result) => { if (current) { setParagraphs(result.paragraphs); setNarrativeNotice(result.notice ?? null); setNarrativeError(null); } },
       (cause: unknown) => { if (current) setNarrativeError(cause instanceof Error ? cause.message : String(cause)); },
     );
     return () => { current = false; };
-  }, [entries, rpc]);
+  }, [open, entries, rpc]);
   const refreshNarrative = () => {
     setRefreshing(true); setNarrativeError(null);
     rpc.call("journal_catch_up_narrative", { force: true }).then(

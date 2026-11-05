@@ -6,7 +6,7 @@ Journal records thread creation, archival, restoration, and deletion without tre
 
 ## Catch up on any thread
 
-Catch up in each thread's native three-dot menu opens a saved briefing: the original goal, what is done, what remains, where it stopped, and which decisions are made or still open, with live status and freshness. The action uses the Journal icon and is also available in native sidebar thread menus. Opening it never calls a model. With the optional subscription backend, Journal refreshes briefings in the background after a thread goes idle, through the Model Gateway's ChatGPT subscription accounts with no paid fallback.
+The Summary section in each thread's right sidebar Info tab shows a saved briefing: the original goal, what is done, what remains, where it stopped, and which decisions are made or still open, with quiet freshness on hover. Current facts are short one-line bullets in independently collapsible subsections; completed and superseded facts move into compact older history, initially collapsed. Only explicit unanswered user choices count as open decisions. It uses the native collapsible section layout above Commits and Thread storage. Opening it never calls a model. The header shows the summary age and newer activity; its refresh button generates an update with visible progress and errors, even when the automatic daily limit is reached. With the optional subscription backend, Journal refreshes briefings in the background after a thread goes idle, through the Model Gateway's ChatGPT subscription accounts with no paid fallback.
 
 ## Designed for a real archive
 
@@ -31,6 +31,8 @@ Existing non-secret settings import without resetting saved values. One finishin
 Use `bb journal list` for paginated work days, `bb journal list --lifecycle` for events, and `bb journal summary` for dated highlights. `bb journal brief <id>` reads a saved briefing; `--refresh` explicitly requests a model pass. `bb journal ai-status` reads backend readiness without a model request. `bb journal backfill --dry-run` estimates all-time coverage and cost before any AI calls. `bb journal backfill --limit 5` saves a cursor and resumes in bounded batches, with at most 100 daily AI attempts per invocation. `bb journal backfill --status` shows failed days, provider blocks, and today's automatic budget without sending work to a provider. `bb journal cost` reports token and spend totals. JSON output is available.
 
 All data stays in the plugin's BB-managed SQLite database. API keys remain host-local; transcripts go to the configured AI backend (OpenRouter, or ChatGPT subscription through Model Gateway) only when intelligence is enabled.
+
+Workspace catch-up runs only while open and reuses recent results for at least 15 minutes. A reserved share of the unchanged automatic limit protects thread summaries; explicit manual refreshes remain available.
 
 ### Demo Mode
 

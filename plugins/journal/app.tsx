@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { definePluginApp, ThreadChat, ThreadTitle, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
+import { definePluginApp, experimental_THREAD_INFO_SECTION_GROUPS, ThreadChat, ThreadTitle, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import * as Dialog from "@radix-ui/react-dialog";
 import { toast } from "sonner";
 import type { CalendarActivity, rpcContract } from "./server";
@@ -8,7 +8,7 @@ import { addDays, CHANGE_CHANNEL, DEFAULT_MERGE_GAP_MINUTES, formatDuration, MER
 import { CalendarEmpty, CalendarLegend, CalendarStats, CalendarView, filterActivity, OTHER_COLOR, Segmented, Swatch, useColors, useRevealed, type CalendarFilters, type ColorMode, type Grouping } from "./calendar-view";
 import { TimesheetView } from "./timesheet-view";
 import { CatchUpOverlay } from "./catch-up";
-import { openThreadBrief, ThreadBriefOverlay } from "./thread-brief";
+import { ThreadBriefSection } from "./thread-brief";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
@@ -439,17 +439,11 @@ export default definePluginApp((app) => {
     onActivate: () => { window.dispatchEvent(new Event("journal:open-catch-up")); },
   });
   app.slots.experimental_appOverlay({ id: "catch-up", component: CatchUpOverlay });
-  app.slots.experimental_appOverlay({ id: "thread-brief", component: ThreadBriefOverlay });
-  app.slots.experimental_threadAction({
-    id: "thread-brief",
-    title: "Catch up",
-    icon: "journal/journal",
-    group: "machine",
-    item: ({ thread }) => ({
-      label: "Catch up",
-      icon: "journal/journal",
-      run: () => openThreadBrief(thread.id),
-    }),
+  app.slots.experimental_threadInfoSection({
+    id: "summary",
+    group: experimental_THREAD_INFO_SECTION_GROUPS.related,
+    order: 0,
+    component: ThreadBriefSection,
   });
   app.slots.navPanel({ id: "journal", title: "Journal", icon: "journal/journal", path: "journal", component: ({ subPath }) => subPath === "setup" ? <JournalSetup /> : <JournalPanel />, headerContent: PanelHeader });
 });

@@ -201,6 +201,24 @@ describe("background enrichment", () => {
     await restarted.lifecycle.dispose();
   });
 
+  it("ignores timestamp-only changes and throttles changed catch-up facts until manual refresh", async () => {
+    const { harness, db } = await loadJournal([thread("thr_open")]);
+    await harness.behavior.emitThreadEvent("thread.created", { thread: thread("thr_open") } as never);
+    const first = await harness.behavior.callRpc("journal_catch_up_narrative", { force: false });
+    db.prepare("UPDATE journal_threads SET updated_at=updated_at+1000").run();
+    expect(await harness.behavior.callRpc("journal_catch_up_narrative", { force: false })).toEqual(first);
+    db.prepare("UPDATE journal_threads SET summary='New completed work'").run();
+    expect(await harness.behavior.callRpc("journal_catch_up_narrative", { force: false })).toMatchObject({ notice: expect.stringContaining("recent catch-up") });
+    expect(openRouter.filter(call => call.kind === "catch_up")).toHaveLength(1);
+    await harness.behavior.callRpc("journal_catch_up_narrative", { force: true });
+    expect(openRouter.filter(call => call.kind === "catch_up")).toHaveLength(2);
+    db.prepare("UPDATE journal_threads SET summary='Another completed task'").run();
+    vi.setSystemTime(start + 16 * 60_000);
+    await harness.behavior.callRpc("journal_catch_up_narrative", { force: false });
+    expect(openRouter.filter(call => call.kind === "catch_up")).toHaveLength(3);
+    await harness.lifecycle.dispose();
+  });
+
   it("shows the last catch-up with a note when the spend budget is exhausted", async () => {
     const { harness } = await loadJournal([thread("thr_open"), thread("thr_next")]);
     await harness.behavior.emitThreadEvent("thread.created", { thread: thread("thr_open") } as never);
@@ -241,18 +259,19 @@ describe("background enrichment", () => {
     await harness.lifecycle.dispose();
   });
 
-  it("enforces the hard backstop even when estimated cost is still below budget", async () => {
+  it("reserves the final 100 calls for thread summaries even below the dollar budget", async () => {
     const { harness, db } = await loadJournal([thread("thr_open"), thread("thr_next")]);
     await harness.behavior.emitThreadEvent("thread.created", { thread: thread("thr_open") } as never);
-    db.prepare("INSERT INTO journal_auto_ai_budget (day_start, work_timezone, attempts) VALUES (?, 'America/New_York', 499)")
+    db.prepare("INSERT INTO journal_auto_ai_budget (day_start, work_timezone, attempts) VALUES (?, 'America/New_York', 399)")
       .run(localDayStart(start));
     await harness.behavior.callRpc("journal_catch_up_narrative", { force: false });
     await harness.behavior.emitThreadEvent("thread.created", { thread: thread("thr_next") } as never);
+    vi.setSystemTime(start + 16 * 60_000);
     const fallback = await harness.behavior.callRpc("journal_catch_up_narrative", { force: false });
     expect(rpcContract.journal_catch_up_narrative.output.parse(fallback).notice).toContain("Automatic AI budget reached");
     expect(openRouter.filter((call) => call.kind === "catch_up")).toHaveLength(1);
     const status = JSON.parse((await harness.behavior.runCli(["backfill", "--status", "--json"])).stdout!);
-    expect(status.automaticAiBudget).toMatchObject({ attempts: 500, hardLimit: 500 });
+    expect(status.automaticAiBudget).toMatchObject({ attempts: 400, hardLimit: 500 });
     await harness.lifecycle.dispose();
   });
 

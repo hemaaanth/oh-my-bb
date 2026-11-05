@@ -1,8 +1,18 @@
 # Changelog
 
 ## Unreleased
-- Remove the legacy Traces view and stop recording its failure and input feed. The old feed table is left in place. Calendar, its turn data, and optional Dispatch calls remain.
 
+- Stop hidden workspace catch-up requests; cache by content, coalesce concurrent requests, and throttle automatic generation to once per 15 minutes. Reserve 100 of the 500 automatic attempts for thread summaries and use incremental conversation for updates.
+
+- Make the Summary refresh button generate an update, with a standard icon, progress/errors, visible generation age, and an explanation when automatic summaries hit the daily cap.
+
+- Keep the Summary header stable when collapsed; match native chevrons and indent subsection bullets.
+
+- Make Summary concise with validated one-line current facts, persistent bounded older history, explicit user decisions, and a private bounded opening anchor for paginated threads. Keep legacy saved briefings readable. Use independent subsection collapse, plain bullet rows, and quiet freshness hover. Add a subscription-only private-fixture evaluation command using the production request path, with at most one accounted validation repair and no output clipping.
+
+- Replace the per-thread Catch up popup and menu item with a native Summary section in the right sidebar Info tab. Upgrade to SDK 0.6.79 and require BB 0.47.1.
+
+- Remove the legacy Traces view and stop recording its failure and input feed. The old feed table is left in place.
 - Move Catch up from the thread top bar into the native three-dot menu and sidebar thread menus, with the canonical Journal icon. Keep saved briefing reads, reload, and background refresh unchanged.
 - Shorten settings descriptions and remove the backend-details disclosure and Test button. Keep readiness CLI and inference RPC behavior unchanged; setup details remain in the dedicated guide.
 - Follow the current SDK's `olderCursor` for full history and briefing coverage. Regression checks cover older work days and a newest-page briefing that cannot claim full-history coverage.

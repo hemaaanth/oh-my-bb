@@ -52,7 +52,9 @@ Idle turns index provisional work without AI. Automatic finalization considers c
 
 ## Thread briefings and AI backend
 
-`bb journal brief <id>` prints the saved six-section briefing (goal, done, remaining, where it stopped, decisions, open decisions) for the thread's visible root, with staleness, live running state, and coverage. It reads stored rows only. `--refresh` makes exactly one model call on the configured backend; use it only when the user asks. Report coverage honestly: if `startRead` is false, the goal came from saved summaries, not the opening request. An idle thread is not finished.
+The right sidebar Info tab has a native collapsible Summary section above Commits and Thread storage. Viewing reads saved briefings without a model call. The header shows generation age and newer activity. Its refresh button explicitly generates a summary with progress and errors; manual generation works outside the automatic daily cap.
+
+`bb journal brief <id>` prints the saved compact briefing (goal, done, remaining, where it stopped, decisions, open decisions, and bounded older history) for the thread's visible root, with staleness, live running state, and coverage. It reads stored rows only. `--refresh` makes one model call plus at most one validation repair call on the configured backend; use it only when the user asks. Report coverage honestly: if `startRead` is false, the goal came from saved summaries, not the opening request. An idle thread is not finished. Latest evidence overrides stale saved facts. Only explicit unanswered user choices are open decisions; recommendations are not. Current output is limited to 110 characters per item and three current bullets per list. Older history persists across refreshes, compacted to twelve entries; it is not a complete transcript. Paginated opening evidence is read once through a bounded message window and cached privately; omitted middle history remains partial coverage.
 
 `bb journal ai-status` shows the AI backend (`openrouter` default, or `subscription` through the Model Gateway plugin's ChatGPT subscription accounts), readiness, and today's automatic call count. Subscription calls cost $0 and never fall back to a paid key; automatic briefings run only on the subscription backend. `bb journal cost` counts calls with no reported tokens as `unmeasuredCalls`.
 
@@ -64,3 +66,5 @@ Native Configuration holds only the OpenRouter API key. Preferences holds models
 
 Do not change preferences, test a model, or request refresh/backfill/enrichment merely to answer a history question. A backend change can enable automatic work when intelligence is already on. Existing settings import preserves defaults, opt-ins, stored history, budgets, and saved briefings without a model request.
 
+
+Automatic generation keeps the 500-attempt daily ceiling. Other automatic work is limited to 400 attempts, reserving at least 100 for thread summaries. Manual refreshes remain explicit and outside these automatic limits. Existing counters survive reloads. Workspace catch-up makes no requests while closed; automatic regeneration uses content changes and a 15-minute minimum interval, while manual Refresh bypasses that interval. Thread updates use new conversation since the saved coverage, the latest user instruction, the private opening anchor, and the compact previous summary.
