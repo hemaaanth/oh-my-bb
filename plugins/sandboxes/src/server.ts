@@ -14,6 +14,7 @@ import { loadSandboxSettings } from "./settings-preferences.js";
 import { registerBrowserIntegration } from "./browser-integration.js";
 import {registerDesktops} from "./desktop.js";
 import { registerSandboxCli } from "./cli.js";
+import { SandboxRunner, type SandboxRunBackend } from "./run.js";
 import { runHostCommand } from "./host-command.js";
 import { SandboxSsh } from "./ssh.js";
 import { SandboxSshDesktop } from "./ssh-desktop.js";
@@ -169,7 +170,7 @@ const UNMANAGED_THREAD_RESOURCES: SandboxThreadResourcesView = {
 };
 
 const SANDBOX_MANAGEMENT_AGENT_INSTRUCTIONS =
-  'Create current sandboxes by selecting a Sandboxes environment when starting a BB thread; BB core owns those native machines and retires them after their last thread is archived. `bb sandbox list|show|delete` exists only for pre-0.43 legacy records while they are migrated or retired, and deletion requires `--yes` (plus `--force-live-threads` if an unarchived thread still uses the host). Use `bb sandbox capacity` for Daytona quota and `bb sandbox doctor` for configuration and version findings.';
+  'Create current sandboxes by selecting a Sandboxes environment when starting a BB thread; BB core owns those native machines and retires them after their last thread is archived. `bb sandbox list|show|delete` exists only for pre-0.43 legacy records while they are migrated or retired, and deletion requires `--yes` (plus `--force-live-threads` if an unarchived thread still uses the host). Use `bb sandbox capacity` for Daytona quota and `bb sandbox doctor` for configuration and version findings. Use `bb sandbox run -- <command>` to run one slow build or test command on a fresh sandbox that is removed afterwards.';
 
 export const SANDBOX_AGENT_INSTRUCTIONS =
   'If `IS_SANDBOX=1`, use the sandbox preview supervisor for every HTTP preview, even if generic preview or server-sharing instructions suggest another command. Inside a sandbox, always launch and share HTTP dev servers with `bb-sandbox-preview start --port <port> --name <name> --cwd "$PWD" -- <command> [args...]`. This is the canonical sandbox preview workflow and supersedes generic server-sharing guidance: it durably registers the launch command, supervises it, restores it when the machine boots, creates the bb Connect share before launch, and supplies its URL to the app as `BB_PREVIEW_URL`. Use `--public-url-env <name>` when the app has its own environment-variable contract for the browser-visible origin. For an app that intentionally accepts only one loopback hostname, add `--canonical-origin http://localhost:<app-port>` and use a different share port; the supervisor proxies HTTP and WebSockets while preserving that canonical origin. Do not start the server separately. Do not use bare `bb connect expose` for HTTP previews; reserve it for one-off non-HTTP ports such as VNC. Use `bb-sandbox-preview list` or `bb-sandbox-preview stop <name>` to inspect or remove registered previews.';
@@ -532,6 +533,7 @@ export default async function plugin(bb: BbPluginApi) {
         "removeLegacy" | "removeLegacyCheckpoint" | "execLegacy" | "stopLegacy"
       >
     >();
+    const runBackends = new Map<SandboxProvider, SandboxRunBackend>();
     const legacyMachine = (id: string) => {
       const record = store.getLegacySandbox(id);
       const backend = record === null ? undefined : legacyBackends.get(record.provider);
@@ -566,26 +568,31 @@ export default async function plugin(bb: BbPluginApi) {
         },
       );
       legacyBackends.set("daytona", backend);
+      runBackends.set("daytona", backend);
       registerSandboxBackend(bb, backend, optionsFor("daytona"));
     }
     if (config.modal !== null) {
       const backend = createModalMachineBackend(config.modal);
       legacyBackends.set("modal", backend);
+      runBackends.set("modal", backend);
       registerSandboxBackend(bb, backend, optionsFor("modal"));
     }
     if (config.freestyle !== null) {
       const backend = createFreestyleMachineBackend(config.freestyle);
       legacyBackends.set("freestyle", backend);
+      runBackends.set("freestyle", backend);
       registerSandboxBackend(bb, backend, optionsFor("freestyle"));
     }
     if (config.box !== null) {
       const backend = createBoxMachineBackend(config.box);
       legacyBackends.set("box", backend);
+      runBackends.set("box", backend);
       registerSandboxBackend(bb, backend, optionsFor("box"));
     }
     if (config.e2b !== null) {
       const backend = createE2bMachineBackend(config.e2b);
       legacyBackends.set("e2b", backend);
+      runBackends.set("e2b", backend);
       registerSandboxBackend(bb, backend, optionsFor("e2b"));
     }
     let reconfigureChain = Promise.resolve();
@@ -1461,6 +1468,13 @@ export default async function plugin(bb: BbPluginApi) {
         });
     }
 
+    const runner = new SandboxRunner({
+      backends: runBackends,
+      store,
+      warn: (message) => bb.log.warn(message),
+    });
+    void runner.cleanupLeftovers();
+
     registerSandboxCli(bb, manager, {
       sshStatus: () => ssh.list(),
       setupSsh: prepareSsh,
@@ -1486,6 +1500,8 @@ export default async function plugin(bb: BbPluginApi) {
         validateSizeRequest(provider, resources, tier, regionId ?? null),
       startUpgrade: (options) => upgrader.start(options),
       upgradeJob: (id, cursor) => upgrader.job(id, cursor),
+      startRun: (request) => runner.start(request),
+      runJob: (id, cursor) => runner.job(id, cursor),
     });
 
     bb.agents.contributeInstructions(() =>

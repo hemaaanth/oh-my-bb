@@ -23,9 +23,11 @@ import {
   sandboxSizeTierValues,
   type SandboxSizeTier,
 } from "./size-tiers.js";
+import type { SandboxRunRequest, SandboxRunStatus } from "./run.js";
 import type { SandboxImageRecord, SandboxRecord } from "./store.js";
 import type { VersionAudit } from "./version-audit.js";
 import { harnessNames } from "./upgrade.js";
+import { shQuote } from "./provider/backends/shell-exec.js";
 import type { SandboxSshRecord } from "./ssh.js";
 import type {
   SandboxUpgradeJobStatus,
@@ -73,6 +75,8 @@ export interface SandboxCliDeps {
   versionDoctor?: () => Promise<VersionAudit>;
   startUpgrade?: (options: SandboxUpgradeOptions) => string;
   upgradeJob?: (id: string, cursor: number) => SandboxUpgradeJobStatus;
+  startRun?: (request: SandboxRunRequest) => string;
+  runJob?: (id: string, cursor: number) => SandboxRunStatus;
 }
 
 function option(argv: string[], name: string): string | undefined {
@@ -90,6 +94,10 @@ function providerAlias(value: string | undefined): string | undefined {
 
 function isProvider(value: string): value is SandboxProvider {
   return sandboxProviderValues.some((provider) => provider === value);
+}
+
+function shellWord(word: string): string {
+  return /^[\w@%+=:,./-]+$/u.test(word) ? word : shQuote(word);
 }
 
 function json(value: unknown): PluginCliResult {
@@ -237,6 +245,58 @@ function renderImageJob(
       `${status.kind === "build" ? "Pushed" : "Registered"} ${status.pinnedReference ?? status.reference}.\n` +
       log +
       (rows.length === 0 ? "" : `${rows.join("\n")}\n`),
+    ...(status.error === null ? {} : { stderr: `${status.error}\n` }),
+  };
+}
+
+const DEFAULT_RUN_TIMEOUT_MINUTES = 30;
+/** Boat stops a machine after two hours whatever the command is doing. */
+const MAX_RUN_TIMEOUT_MINUTES = 110;
+/** Exit status of `bb sandbox run` when the watch window ends first. */
+const STILL_RUNNING_EXIT_CODE = 3;
+
+async function watchRun(
+  runJob: (id: string, cursor: number) => SandboxRunStatus,
+  jobId: string,
+  seconds: number,
+  signal: AbortSignal | undefined,
+): Promise<{ status: SandboxRunStatus; progress: string[] }> {
+  const deadline = Date.now() + seconds * 1_000;
+  const progress: string[] = [];
+  let cursor = 0;
+  for (;;) {
+    const status = runJob(jobId, cursor);
+    cursor = status.cursor;
+    progress.push(...status.progress);
+    if (progress.length > MAX_PROGRESS_LINES) {
+      progress.splice(0, progress.length - MAX_PROGRESS_LINES);
+    }
+    if (status.state !== "running") return { status, progress };
+    if (Date.now() >= deadline || signal?.aborted === true) {
+      return { status, progress };
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+}
+
+function runExitCode(status: SandboxRunStatus): number {
+  if (status.state === "running") return STILL_RUNNING_EXIT_CODE;
+  if (status.state === "error") return 1;
+  return status.exitCode ?? 1;
+}
+
+function renderRun(status: SandboxRunStatus, progress: string[], seconds: number): PluginCliResult {
+  const log = progress.length === 0 ? "" : `${progress.join("\n")}\n`;
+  const provider = status.provider === "box" ? "boat" : status.provider;
+  const tail =
+    status.state === "running"
+      ? `Still running on ${provider} after ${seconds}s. Keep watching:\n  bb sandbox run-status ${status.id}\n`
+      : status.state === "error"
+        ? ""
+        : `Exited ${status.exitCode} on ${provider} (${status.id}).\n`;
+  return {
+    exitCode: runExitCode(status),
+    stdout: log + tail,
     ...(status.error === null ? {} : { stderr: `${status.error}\n` }),
   };
 }
@@ -422,6 +482,18 @@ export function registerSandboxCli(
         summary: "Watch a running sandbox upgrade",
         usage:
           "bb sandbox upgrade-status <job-id> [--wait <seconds>|--no-wait] [--json]",
+      },
+      {
+        name: "run",
+        summary:
+          "Run one command on a fresh sandbox with a copy of this checkout, then remove the sandbox; exit 3 means still running",
+        usage:
+          `bb sandbox run [--provider <${providerUsage}>] [--tier <${sandboxSizeTierValues.join("|")}>] [--dir <checkout>|--no-upload] [--timeout <minutes>] [--wait <seconds>|--no-wait] [--json] -- <command...>`,
+      },
+      {
+        name: "run-status",
+        summary: "Watch a sandbox run; exits with the command's status once it finishes",
+        usage: "bb sandbox run-status <run-id> [--wait <seconds>|--no-wait] [--json]",
       },
       {
         name: "doctor",
@@ -802,6 +874,56 @@ export function registerSandboxCli(
         }
         return renderUpgrade(status, progress, seconds);
       }
+      if (command === "run" || command === "run-status") {
+        if (deps.startRun === undefined || deps.runJob === undefined) {
+          throw new Error("Sandbox runs are unavailable");
+        }
+        const separator = args.indexOf("--");
+        const options = separator < 0 ? args : args.slice(0, separator);
+        let jobId: string;
+        if (command === "run-status") {
+          const requested = options.find((arg) => !arg.startsWith("--"));
+          if (requested === undefined) {
+            throw new Error("Usage: bb sandbox run-status <run-id>");
+          }
+          jobId = requested;
+        } else {
+          const words = separator < 0 ? [] : args.slice(separator + 1);
+          if (words.length === 0) {
+            throw new Error("Usage: bb sandbox run [options] -- <command...>");
+          }
+          const providerValue = providerAlias(option(options, "--provider"));
+          if (providerValue !== undefined && !isProvider(providerValue)) {
+            throw new Error(`--provider must be one of ${providerUsage}`);
+          }
+          const noUpload = options.includes("--no-upload");
+          const directory = option(options, "--dir") ?? context.cwd;
+          if (noUpload && options.includes("--dir")) {
+            throw new Error("--dir and --no-upload contradict each other");
+          }
+          if (!noUpload && directory === undefined) {
+            throw new Error("Pass --dir <checkout> or --no-upload");
+          }
+          const minutes = positiveOption(options, "--timeout") ?? DEFAULT_RUN_TIMEOUT_MINUTES;
+          if (minutes > MAX_RUN_TIMEOUT_MINUTES) {
+            throw new Error(`--timeout must be at most ${MAX_RUN_TIMEOUT_MINUTES} minutes`);
+          }
+          const tier = tierOption(options);
+          jobId = deps.startRun({
+            ...(providerValue === undefined ? {} : { provider: providerValue }),
+            ...(tier === undefined ? {} : { tier }),
+            // One word is a shell script; several are an argv to quote.
+            command: words.length === 1 ? words[0]! : words.map(shellWord).join(" "),
+            directory: noUpload ? null : directory!,
+            timeoutMs: minutes * 60_000,
+          });
+        }
+        const seconds = watchSeconds(options);
+        const { status, progress } = await watchRun(deps.runJob, jobId, seconds, context.signal);
+        return options.includes("--json")
+          ? { ...json({ run: status, progress }), exitCode: runExitCode(status) }
+          : renderRun(status, progress, seconds);
+      }
       if (command === "doctor") {
         const [capacityFindings, versions] = await Promise.all([
           deps.capacityDoctor?.() ?? Promise.resolve([]),
@@ -847,7 +969,7 @@ export function registerSandboxCli(
       return {
         exitCode: 2,
         stderr:
-          "Usage: bb sandbox <list|show|delete|providers|provider|capacity|tiers|images|register-image|image-status|build-image|size|set-size|clear-size|resize|upgrade|doctor|ssh-status|ssh-setup> [options]\n",
+          "Usage: bb sandbox <list|show|delete|providers|provider|capacity|tiers|images|register-image|image-status|build-image|size|set-size|clear-size|resize|upgrade|run|run-status|doctor|ssh-status|ssh-setup> [options]\n",
       };
     },
   });

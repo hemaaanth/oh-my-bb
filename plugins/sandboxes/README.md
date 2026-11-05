@@ -626,7 +626,15 @@ bb sandbox set-size --provider <provider> [--project <id>] (--tier <S|M|L|XL> | 
 bb sandbox list
 bb sandbox show <id>
 bb sandbox delete <id> --yes [--force-live-threads]
+bb sandbox run [--provider <p>] [--tier <S|M|L|XL>] [--dir <checkout>|--no-upload] [--timeout <minutes>] -- <command...>
+bb sandbox run-status <run-id>
 ```
+
+`run` creates a fresh machine, copies the checkout's tracked and untracked
+non-ignored files (not `.git`), runs one command, streams its output, and
+removes the machine. It exits with the command's exit code, or 3 when the watch
+window ends first. The plugin records each run's machine before it starts, so a
+failed removal is retried at the next plugin start.
 
 Create current sandboxes by selecting the configured Sandboxes environment in
 BB's native New thread composer. BB core owns those machines. `list`, `show`,

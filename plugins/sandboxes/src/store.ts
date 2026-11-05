@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { z } from "zod";
+import type { PluginMachineProviderResource } from "@get-bb/plugin-sdk/machine-provider";
 import {
   sandboxResizeCapabilityValues,
   sandboxProviderValues,
@@ -106,6 +107,14 @@ export interface SandboxProviderSettingsRecord {
 
 export const sandboxImageStatusValues = ["building", "ready", "error"] as const;
 export type SandboxImageStatus = (typeof sandboxImageStatusValues)[number];
+
+/** A `bb sandbox run` machine that has not been removed yet. */
+export interface SandboxRunRecord {
+  id: string;
+  provider: SandboxProvider;
+  resource: PluginMachineProviderResource;
+  createdAt: number;
+}
 
 export interface SandboxImageRecord {
   id: string;
@@ -450,6 +459,12 @@ export const sandboxMigrations = [
     archive_sha256 TEXT NOT NULL,
     verified_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE sandbox_runs (
+    id TEXT PRIMARY KEY NOT NULL,
+    provider TEXT NOT NULL,
+    resource_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
 ] as const;
 
 function fromSandboxRow(row: SandboxRow): SandboxRecord {
@@ -560,6 +575,26 @@ export class SandboxStore {
     if (!row || !/@sha256:[a-f0-9]{64}$/u.test(row.pinned_reference)) return "unknown";
     return compatible.some(artifact => row.source_commit === artifact.sourceCommit &&
       row.inputs_sha256 === artifact.inputsSha256 && row.archive_sha256 === artifact.archiveSha256) ? "verified" : "incompatible";
+  }
+
+  recordRun(id: string, provider: SandboxProvider, resource: PluginMachineProviderResource): void {
+    this.db.prepare(`INSERT INTO sandbox_runs (id, provider, resource_json, created_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET resource_json = excluded.resource_json`).run(id, provider, JSON.stringify(resource), Date.now());
+  }
+
+  deleteRun(id: string): void {
+    this.db.prepare("DELETE FROM sandbox_runs WHERE id = ?").run(id);
+  }
+
+  listRuns(): SandboxRunRecord[] {
+    const rows = this.db.prepare("SELECT id, provider, resource_json, created_at FROM sandbox_runs ORDER BY created_at").all() as
+      { id: string; provider: string; resource_json: string; created_at: number }[];
+    return rows.flatMap((row) => {
+      const provider = sandboxProviderValues.find((value) => value === row.provider);
+      return provider === undefined ? [] : [{
+        id: row.id, provider, resource: JSON.parse(row.resource_json) as PluginMachineProviderResource, createdAt: row.created_at,
+      }];
+    });
   }
 
   isAlwaysOn(hostId: string): boolean {

@@ -96,6 +96,32 @@ report unknown. Create, resume, and heal install missing required binaries
 and reconcile Model Gateway files as the sandbox user. Subscription login
 copying is off by default; GitHub CLI authentication remains separate.
 
+## One-shot commands on a fresh sandbox
+
+Use `bb sandbox run` to move a slow build or test suite off this machine. It
+creates a fresh machine, copies the checkout, runs one command, streams its
+output, and removes the machine, even when the command fails.
+
+```bash
+bb sandbox run [--provider <provider>] [--tier <S|M|L|XL>] [--dir <checkout>|--no-upload] [--timeout <minutes>] -- <command...>
+bb sandbox run-status <run-id> [--wait <seconds>]
+```
+
+- Put the command after `--`. One word is a shell script, such as
+  `-- "npm ci && npm test"`. Several words are quoted as argv.
+- The copy contains tracked and untracked files that git does not ignore. It
+  does not contain `.git`, so the command cannot read git history.
+- `--dir` defaults to the caller's directory on the bb server's machine. Use
+  `--no-upload` for a command that needs no files.
+- Pick `--tier` for the work: L or XL for compiles and large test suites.
+- The command exits with the remote exit code. Exit 3 with a `run-status`
+  hint means it is still running; run that command to keep watching.
+- `--timeout` is in minutes (default 30, maximum 110, below Boat's two-hour
+  limit). Install-heavy commands pay for dependency downloads on each run.
+
+For GitHub pull-request checks, use the provider's own CI runner instead, such
+as Boat's `runs-on: boat` GitHub Actions runner.
+
 ## Legacy inventory and deletion
 
 `list`, `show`, and `delete` intentionally expose only sandbox records created

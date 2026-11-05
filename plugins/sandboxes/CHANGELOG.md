@@ -1,5 +1,7 @@
 # Unreleased
 
+- Add `bb sandbox run -- <command>` and `run-status`. They run one command on a fresh sandbox with a copy of the checkout, stream its output, exit with its exit code, and always remove the machine. Leftover machines are removed at the next plugin start.
+
 - Save and reuse the image build's layer cache in the image registry (`buildcache-<platform>` tags), so a fresh builder skips unchanged layers. Builders that cannot export cache still build without it.
 
 - Move remote sandbox status, CPU, RAM, and disk into a native Info section. Remove the combined machine/model header icon and its duplicate model-route polling. Keep local threads quiet and preserve existing sandbox controls under Manage sandbox. Require BB 0.47.1 and SDK 0.6.79.
