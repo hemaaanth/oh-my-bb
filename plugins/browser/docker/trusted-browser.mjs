@@ -471,7 +471,10 @@ function networkControl(held){
   const request=Buffer.from(JSON.stringify({argv:['network',held?'ensure':'release',...(networkGeneration?[networkGeneration]:[])]})).toString('base64url');
   if(held&&networkGeneration)writePrivate(join(threadDir(),threadOwner()+'.network.json'),JSON.stringify({generation:networkGeneration}));
   const result=spawnSync('bb',['plugin','run','browser',request],{encoding:'utf8',timeout:240000,maxBuffer:1024*1024});
-  if(result.status!==0)fail('Host network '+(held?'acquisition':'release')+' failed; no independent daemon or direct fallback was used');
+  if(result.status!==0){
+    const category=String(result.stderr||'').match(/Sandbox Browser: Tailscale (?:enrollment|command) failed \((authentication key rejected|control server unreachable|exit node unavailable|conflicting Tailscale preferences|local daemon unavailable|command arguments rejected|exit-node-related response|authentication-related response|connection-related response|timed out|unrecognized response|no diagnostic output)\)/)?.[1];
+    fail('Host network '+(held?'acquisition':'release')+' failed'+(category?' ('+category+')':'')+'; no independent daemon or direct fallback was used');
+  }
   if(held){let value;try{value=JSON.parse(result.stdout);}catch{fail('Invalid host network response');}useNetworkConnection(value);writePrivate(join(home,'shared-network.json'),JSON.stringify(value));networkAcquired=true;}
   else networkAcquired=false;
 }
@@ -2273,7 +2276,10 @@ let step = 'connect';
    if (!owned.some(t => t.targetId === input.targetId)) throw Error('Target does not belong to this thread');
    const session = (await call('Target.attachToTarget', {targetId:input.targetId, flatten:true})).sessionId;
    try {
-     const {pageOperation} = await import(input.operations); const output = await pageOperation((method, params) => call(method, params, session), input.argv,{dialog:input.dialog||null});
+     const {pageOperation} = await import(input.operations);
+     let output;
+     try { output = await pageOperation((method, params) => call(method, params, session), input.argv,{dialog:input.dialog||null}); }
+     catch (error) { if (input.argv[0] === 'act' && step === 'Runtime.evaluate') step = 'guarded action outcome unknown; observe before retrying'; throw error; }
      if(input.argv[0]==='viewer'&&JSON.parse(input.argv[1]).type==='frame')Object.assign(output,{tabs:owned.map(t=>({id:t.targetId,title:t.title,url:t.url})),current:input.targetId,dialog:input.dialog||null});
      process.stdout.write(JSON.stringify(output));
    }

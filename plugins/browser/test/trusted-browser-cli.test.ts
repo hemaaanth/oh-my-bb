@@ -570,6 +570,18 @@ describe("bb-browser provision", () => {
 describe("bb-browser home egress", () => {
   const exitNode = { BB_BROWSER_EXIT_NODE: "home-pc" };
 
+  it("shows only allowlisted host-network diagnoses", async () => {
+    await mkdir(home, { recursive: true });
+    await writeFile(join(home, "network-service"), "sandboxes-v1");
+    await writeFile(join(home, "legacy-egress-retired"), "1");
+    await fake("bb", `console.error('rpc failed: Sandbox Browser: Tailscale enrollment failed (authentication key rejected) secret tskey-test'); process.exit(1);`);
+    const result = run(["open", "https://example.com"], { env: { ...exitNode, BB_THREAD_ID: "thr_diagnosis", BB_BROWSER_TAILSCALE_USERSPACE: "1" } });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Host network acquisition failed (authentication key rejected)");
+    expect(result.stderr).not.toContain("tskey-test");
+    expect(await calls("agent-browser")).toEqual([]);
+  });
+
   it("releases a failed startup generation and retains it for recoverable discard", async () => {
     await mkdir(home, { recursive: true });
     await writeFile(join(home, "network-service"), "sandboxes-v1");
@@ -1706,6 +1718,41 @@ describe("native cookie merge", () => {
     for (const secret of [SECRET, deleted.name, deleted.domain]) {
       expect(result.stdout + result.stderr).not.toContain(secret);
     }
+  });
+});
+
+describe("guarded native actions", () => {
+  it("reports an uncertain evaluation without replaying the action or leaking protocol details", async () => {
+    const source = await readFile(script, "utf8");
+    const worker = source.match(/const THREAD_CDP = String.raw`([\s\S]*?)`;/)![1]
+      .replace("const {pageOperation} = await import(input.operations);", "const pageOperation = async call => call('Runtime.evaluate');");
+    const methods: string[] = [];
+    let stderr = "", status = 0;
+    class Peer {
+      onopen?: () => void;
+      onmessage?: (event: {data: string}) => void;
+      constructor() { queueMicrotask(() => this.onopen?.()); }
+      close() {}
+      send(message: string) {
+        const {id, method} = JSON.parse(message);
+        methods.push(method);
+        const result = method === "Target.getTargets" ? {targetInfos:[{type:"page",targetId:"owned"}]}
+          : method === "Browser.getWindowForTarget" ? {windowId:1}
+          : method === "Target.attachToTarget" ? {sessionId:"page"} : {};
+        queueMicrotask(() => this.onmessage?.({data:JSON.stringify(method === "Runtime.evaluate"
+          ? {id,error:{message:`Execution context destroyed: ${SECRET}`}} : {id,result})}));
+      }
+    }
+    await runInNewContext(worker, {
+      require:() => ({readFileSync:() => JSON.stringify({port:12345,op:"page",targetId:"owned",operations:"test",argv:["act","{}"],record:{browserKey:"/mock",windowId:1,tabOrder:["owned"]}})}),
+      fetch:async () => ({json:async () => ({webSocketDebuggerUrl:"ws://127.0.0.1:12345/mock"})}),
+      WebSocket:Peer,URL,setTimeout,clearTimeout,
+      process:{stdout:{write:() => {}},stderr:{write:(text:string) => {stderr+=text;}},exit:(code:number) => {status=code;}},
+    });
+    expect(status).toBe(1);
+    expect(methods.filter(method => method === "Runtime.evaluate")).toHaveLength(1);
+    expect(stderr).toContain("guarded action outcome unknown; observe before retrying");
+    expect(stderr).not.toContain(SECRET);
   });
 });
 
