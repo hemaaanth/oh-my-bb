@@ -12,7 +12,9 @@ set -eu
 #                              egress through a Tailscale exit node
 #   freeze                     one-shot PNG/SVG of a command's ANSI output
 #   vhs + ttyd                 scripted GIF/MP4 of a terminal session or TUI
-#   Xvfb + openbox + x11vnc    a virtual desktop for GUI apps
+#   Xvfb + openbox             a virtual desktop for GUI apps
+#   voxl                       H.264 desktop streaming for BB's viewer (built in
+#                              the Dockerfile; this installs its shared libraries)
 #   ffmpeg + ImageMagick       frame grabs and screen recording from that display
 #   cua computer-server        keyboard/mouse/screen control over HTTP and MCP
 #
@@ -57,12 +59,15 @@ apt-get install --yes --no-install-recommends \
   fonts-noto-color-emoji \
   fonts-noto-cjk \
   imagemagick \
+  libopus0 \
+  libpulse0 \
+  libx264-164 \
+  libyuv0 \
   openbox \
   scrot \
   wmctrl \
   x11-utils \
   x11-xserver-utils \
-  x11vnc \
   tigervnc-standalone-server \
   xauth \
   xdotool \

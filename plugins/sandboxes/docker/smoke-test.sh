@@ -69,7 +69,7 @@ check imagemagick import -version
 check xvfb Xvfb -help
 check tigervnc Xtigervnc -version
 check xdotool xdotool --version
-check x11vnc x11vnc -version
+check voxl voxl --version
 # cua's server imports python-xlib at module load, so even --help needs a
 # display; the functional check further down starts one and drives it.
 if bb_image_has cua; then check cua-server command -v cua-computer-server; fi
@@ -146,6 +146,25 @@ if bb_image_has vhs; then captured capture-tape "$( (cd "$capture_dir" && bb-san
 captured capture-screen "$(BB_SANDBOX_CAPTURE_DIR="$capture_dir" bb-sandbox-capture screen 2>/dev/null || true)"
 
 check window-manager pgrep -x openbox
+
+# The desktop viewer runs voxl on a private display; this proves it can attach
+# to the smoke display and encode a frame.
+voxl_password="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(24).toString("base64url"))')"
+DISPLAY="$(cat "${BB_DATA_DIR:-$HOME/.bb}/display" 2>/dev/null || echo :99)" VOXL_PASSWORD="$voxl_password" \
+  voxl --addr=127.0.0.1 --port=8766 --audio-enabled=false --microphone-enabled=false --file-transfers=none \
+  >/dev/null 2>&1 &
+voxl_pid=$!
+voxl_shot=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  voxl_shot="$(curl --fail --silent --max-time 5 -H "Authorization: Bearer $voxl_password" \
+    http://127.0.0.1:8766/screenshot 2>/dev/null | head -c 4 | od -An -c | tr -d ' ')" && [ -n "$voxl_shot" ] && break
+  sleep 1
+done
+kill "$voxl_pid" 2>/dev/null || true
+case "$voxl_shot" in
+  *PNG*) printf 'ok    %-22s %s\n' voxl-stream "screenshot from the smoke display" ;;
+  *) printf 'FAIL  %-22s %s\n' voxl-stream "voxl returned no screenshot"; failures=$((failures + 1)) ;;
+esac
 
 if bb_image_has cua; then
 if computer_start="$(bb-sandbox-computer start --port 8765 2>&1)"; then

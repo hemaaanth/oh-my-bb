@@ -1,6 +1,7 @@
 *
 !.dockerignore
 !Dockerfile
+!image-tools.sh
 !agent-guard.sh
 !agent-shim.sh
 !attach.sh

@@ -25,7 +25,7 @@ export default experimental_defineHostEntry({
  handlers:{
   runtimeEnvironment:()=>({home:homedir()}),
   openDesktop:(input,context)=>serialDesktop(async()=>{
-   desktops??=new SandboxDesktopHost(join(context.experimental_paths.dataDir,"desktops"),()=>{void desktopLease?.dispose();desktopLease=undefined;});
+   desktops??=new SandboxDesktopHost(()=>{void desktopLease?.dispose();desktopLease=undefined;});
    const result=await desktops.open(input,context.signal);desktopLease??=context.experimental_retainWorker();return result;
   }),
   closeDesktop:(input)=>serialDesktop(async()=>{await desktops?.close(input.id);return null;}),

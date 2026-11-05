@@ -1,3 +1,17 @@
+# voxl streams the private X displays to BB's desktop viewer. It has no prebuilt
+# Linux release, so it builds here against the same Debian release as the image.
+FROM rust:1.99-bookworm AS voxl
+ARG VOXL_VERSION=0.3.3
+ARG ESBUILD_VERSION=0.28.2
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends clang libclang-dev pkg-config npm \
+    libx264-dev libyuv-dev libopus-dev libpulse-dev \
+  && npm install --global "esbuild@${ESBUILD_VERSION}" \
+  && cargo install voxl-server --version "${VOXL_VERSION}" --locked --root /opt/voxl \
+  && mkdir -p /opt/voxl/share/doc/voxl \
+  && cp /usr/local/cargo/registry/src/*/"voxl-server-${VOXL_VERSION}"/LICENSE \
+    /usr/local/cargo/registry/src/*/"voxl-server-${VOXL_VERSION}"/Cargo.lock /opt/voxl/share/doc/voxl/
+
 FROM node:22-bookworm-slim
 
 ARG BB_IMAGE_TOOLS=omp,claude-code,codex,fx,pi,prime-agent,fx-acp,nanocodex-acp,prime-agent-acp,python,go,rust,java,bun,deno,pnpm,docker,mise,nix,devbox,direnv,process-compose,aws,kubectl,helm,doppler,duckdb,op,clickhouse,postgresql,redis,sqlite,freeze,vhs,cua,build-tools,clang,cmake,ninja,gdb,protobuf,fzf,shellcheck,strace,tmux,vim,zsh
@@ -61,6 +75,8 @@ COPY install-visual-capture.sh /tmp/install-visual-capture.sh
 RUN chmod 755 /tmp/install-visual-capture.sh \
   && /tmp/install-visual-capture.sh \
   && rm /tmp/install-visual-capture.sh
+COPY --from=voxl /opt/voxl/bin/voxl /usr/local/bin/voxl
+COPY --from=voxl /opt/voxl/share/doc/voxl /usr/share/doc/voxl
 
 # Harness pins match install-harnesses.sh and can be overridden by updates.
 ARG OMP_VERSION=18.10.3

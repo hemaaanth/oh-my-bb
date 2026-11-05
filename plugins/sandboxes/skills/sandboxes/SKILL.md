@@ -196,4 +196,4 @@ agent-browser, changing required state, or selecting direct egress.
 
 ## Shared remote desktop service
 
-The dedicated Browser plugin consumes Sandboxes' `desktopOpenV1` / `desktopCloseV1` RPC for streaming VNC handoff. Other installed GUI plugins may request the same service for an existing owned private X display and thread. A grant binds to that thread's sandbox host, expires after fifteen minutes, and closes when its consumer releases it or its owner dies. Never attach the host's personal desktop or share raw VNC. Keep the app alive while a person works; release the viewer before resuming automation.
+The dedicated Browser plugin consumes Sandboxes' `desktopOpenV1` / `desktopCloseV1` RPC for streaming desktop handoff through voxl. Other installed GUI plugins may request the same service for an existing owned private X display and thread. A grant binds to that thread's sandbox host, expires after fifteen minutes, and closes when its consumer releases it or its owner dies. Never attach the host's personal desktop or share raw VNC. Keep the app alive while a person works; release the viewer before resuming automation.
