@@ -44,7 +44,7 @@ it('rejects stale or non-owned displays before launching voxl',async()=>{
 // Answers like voxl: /healthz is public, every other reply echoes what the proxy forwarded.
 const fakeVoxl=`#!${process.execPath}
 const http=require('node:http'),port=Number(process.argv.find(a=>a.startsWith('--port=')).slice(7));
-const seen=req=>JSON.stringify({url:req.url,auth:req.headers.authorization,host:req.headers.host,origin:req.headers.origin??null,cookie:req.headers.cookie??null,password:process.env.VOXL_PASSWORD,display:process.env.DISPLAY});
+const seen=req=>JSON.stringify({url:req.url,auth:req.headers.authorization,host:req.headers.host,origin:req.headers.origin??null,cookie:req.headers.cookie??null,password:process.env.VOXL_PASSWORD,display:process.env.DISPLAY,args:process.argv.slice(2)});
 const server=http.createServer((req,res)=>{if(req.url==='/healthz'){res.end('ok');return;}res.setHeader('Connection','keep-alive');res.end(seen(req));});
 server.on('upgrade',(req,socket)=>{socket.write('HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nX-Seen: '+Buffer.from(seen(req)).toString('base64')+'\\r\\n\\r\\n');socket.pipe(socket);});
 server.listen(port,'127.0.0.1');`;
@@ -111,5 +111,7 @@ it.skipIf(process.platform!=='linux')('starts and streams the sandbox display wi
  const {port}=await host.openShared({id:'shared',threadTitle:'Thread',token,notices:'',tunnel:{label:'sbx',baseDomain:'getbb.app'}},AbortSignal.timeout(10000));
  const seen=JSON.parse(await (await fetch(`http://127.0.0.1:${port}/?token=${token}`)).text());
  expect(seen).toMatchObject({display:':88',auth:'Bearer '+seen.password});
+ // Resizing would leave the sandbox's windows off-screen and move the agent's click targets.
+ expect(seen.args).not.toContain('--enable-resize=true');
  await host.close('shared');
 });

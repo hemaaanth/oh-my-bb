@@ -73,13 +73,15 @@ export class SandboxDesktopHost{
  async dispose(){await Promise.all([...this.sessions.keys()].map(id=>this.close(id)));}
  async open(input:DesktopOpen,signal:AbortSignal){
   await this.close(input.id);await validateDesktop(input.target);signal.throwIfAborted();
-  return this.stream(input,{display:input.target.display,authority:input.target.authority,owners:[input.target.owner,input.target.displayOwner]},signal);
+  return this.stream(input,{display:input.target.display,authority:input.target.authority,owners:[input.target.owner,input.target.displayOwner]},signal,true);
  }
  async openShared(input:SharedDesktopOpen,signal:AbortSignal){
   await this.close(input.id);const screen=await sharedDisplay(signal);signal.throwIfAborted();
-  return this.stream(input,screen,signal);
+  // The sandbox desktop keeps its size: its windows and the agent's click
+  // coordinates assume it. voxl scales it to fit the viewer instead.
+  return this.stream(input,screen,signal,false);
  }
- private async stream(input:SharedDesktopOpen,screen:Screen,signal:AbortSignal){
+ private async stream(input:SharedDesktopOpen,screen:Screen,signal:AbortSignal,resize:boolean){
   const binary=await findVoxl();if(!binary)throw Error('This sandbox image has no voxl desktop viewer; rebuild the sandbox image');
   const password=randomBytes(24).toString('base64url'),reservation=tcpServer(),voxlPort=await listen(reservation);await new Promise<void>(resolve=>reservation.close(()=>resolve()));
   let child:ChildProcess|undefined,server:ReturnType<typeof httpServer>|undefined,timer:ReturnType<typeof setInterval>|undefined,closed=false,closing:Promise<void>|undefined;
@@ -89,7 +91,7 @@ export class SandboxDesktopHost{
   })();
   try{
    // The password stays out of argv, which other users can read in /proc.
-   child=spawn(binary,['--addr=127.0.0.1','--port='+voxlPort,'--title='+input.threadTitle,'--audio-enabled=false','--microphone-enabled=false','--file-transfers=none','--enable-clipboard=in',input.viewOnly?'--read-only=true':'--enable-resize=true'],{stdio:'ignore',env:{PATH:process.env.PATH,HOME:process.env.HOME,DISPLAY:screen.display,...(screen.authority?{XAUTHORITY:screen.authority}:{}),VOXL_PASSWORD:password}});
+   child=spawn(binary,['--addr=127.0.0.1','--port='+voxlPort,'--title='+input.threadTitle,'--audio-enabled=false','--microphone-enabled=false','--file-transfers=none','--enable-clipboard=in',...input.viewOnly?['--read-only=true']:resize?['--enable-resize=true']:[]],{stdio:'ignore',env:{PATH:process.env.PATH,HOME:process.env.HOME,DISPLAY:screen.display,...(screen.authority?{XAUTHORITY:screen.authority}:{}),VOXL_PASSWORD:password}});
    await new Promise<void>((resolve,reject)=>{child!.once('spawn',resolve);child!.once('error',reject);});
    const healthy=()=>new Promise<boolean>(resolve=>{const req=httpRequest({host:'127.0.0.1',port:voxlPort,path:'/healthz',timeout:200},res=>{res.resume();resolve(res.statusCode===200);});req.once('error',()=>resolve(false));req.once('timeout',()=>{req.destroy();resolve(false);});req.end();});
    let ready=false;
