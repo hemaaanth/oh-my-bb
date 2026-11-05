@@ -4,11 +4,12 @@ import type {browserHandoffRpcContract, BrowserLiveState} from '../src/browser-h
 
 const focusRing='focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
+/** Pass frameRef when the caller has its own fullscreen button; voxl then hides its inner one. */
 export function BrowserFrame({url,frameRef}:{url:string;frameRef?:Ref<HTMLIFrameElement>}){
   let valid=false;
   try{const parsed=new URL(url,location.href);valid=parsed.protocol==='https:'||parsed.origin===location.origin;}catch{}
   if(!valid)return null;
-  return <iframe ref={frameRef} title="Browser session" src={url} allow="fullscreen" allowFullScreen referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin" className="block w-full border-0 bg-black" style={{aspectRatio:'16 / 9',maxHeight:'70vh',minHeight:280}}/>;
+  return <iframe ref={frameRef} title="Browser session" src={url} {...frameRef?{}:{allow:'fullscreen',allowFullScreen:true}} referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin" className="block w-full border-0 bg-black" style={{aspectRatio:'16 / 9',maxHeight:'70vh',minHeight:280}}/>;
 }
 /** A 24px icon button. The label is both the accessible name and the tooltip. */
 function IconButton({label,icon,onClick,disabled}:{label:string;icon:string;onClick:()=>void;disabled?:boolean}){

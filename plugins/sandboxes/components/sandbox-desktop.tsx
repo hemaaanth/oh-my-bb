@@ -45,7 +45,8 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
     <span className="ml-1 flex shrink-0 items-center gap-0.5">{actions}</span>
   </div>;
   // The desktop keeps a fixed 16:9 size; voxl scales it to fit and centers it.
-  const body=open?<iframe ref={frame} title="Sandbox desktop" src={open.url} allow="fullscreen; clipboard-read; clipboard-write" allowFullScreen referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin"
+  // The header owns fullscreen. Without the fullscreen permission voxl hides its own button.
+  const body=open?<iframe ref={frame} title="Sandbox desktop" src={open.url} allow="clipboard-read; clipboard-write" referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin"
     className="block w-full border-0 bg-black" style={panel?{flex:1,minHeight:0}:{aspectRatio:'16 / 9',maxHeight:'70vh'}}/>:null;
   return panel
     ?<div className="flex h-full flex-col text-sm">{header}{body}</div>
