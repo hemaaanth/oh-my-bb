@@ -332,27 +332,32 @@ export default function bbExtension(pi) {
     });
   }
 
+  function activateInjectedTools() {
+    if (tools.length === 0 || typeof pi.setActiveTools !== "function") return;
+    const active = new Set(pi.getActiveTools?.() ?? []);
+    let missing = false;
+    for (const tool of tools) {
+      if (!active.has(tool.name)) {
+        active.add(tool.name);
+        missing = true;
+      }
+    }
+    if (missing) pi.setActiveTools([...active]);
+  }
+
   pi.on("session_start", async (_event, ctx) => {
     sessionContext = ctx;
     writeLine(CHILD_TO_BRIDGE_FD, {
       kind: "model-scope",
       ...currentModelScope(),
     });
-    // Pi's active-tool set is session state; a resumed or forked session can
-    // predate the bb tools, so make sure every injected tool is active.
-    if (tools.length > 0 && typeof pi.setActiveTools === "function") {
-      const active = new Set(pi.getActiveTools?.() ?? []);
-      let missing = false;
-      for (const tool of tools) {
-        if (!active.has(tool.name)) {
-          active.add(tool.name);
-          missing = true;
-        }
-      }
-      if (missing) pi.setActiveTools([...active]);
-    }
+    activateInjectedTools();
     writeLine(CHILD_TO_BRIDGE_FD, { kind: "ready" });
   });
+
+  // Hempi restores a saved tool baseline after session_start. Refresh the host
+  // tools again when that restore is done, before Pi builds the model request.
+  pi.on("before_agent_start", () => activateInjectedTools());
 
   // The run's checkpoint, read in-process the moment the run ends: pi emits
   // this to extensions before it writes its own agent_end to stdout, and
