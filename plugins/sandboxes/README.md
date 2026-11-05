@@ -138,6 +138,14 @@ reference with each provider that can consume it:
 Boat and Freestyle have no custom-image API. They install the same pinned
 toolchain through the portable runtime bootstrap on first boot.
 
+The build also reads and writes a layer cache in the same registry, tagged
+`buildcache-<platform>` (for example `buildcache-linux-amd64`). Layers are
+keyed by their content, so any machine that builds the image reuses every
+unchanged layer, including a new sandbox or CI runner with an empty Docker
+cache. The classic Docker driver cannot save this cache; the build then
+continues without saving it. Registry cleanup policies should keep the
+`buildcache-*` tags.
+
 The selected image pins the sandbox's bb version. When the host is upgraded,
 build and activate a new sandbox image with that same version. Boat and
 Freestyle install the same pinned version through the portable bootstrap on

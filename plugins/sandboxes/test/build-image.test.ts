@@ -13,6 +13,7 @@ afterEach(async () => {
   delete process.env.BB_TEST_DOCKER_ARGV;
   delete process.env.BB_TEST_DOCKER_STDIN;
   delete process.env.BB_TEST_DOCKER_DIGEST;
+  delete process.env.BB_TEST_DOCKER_NO_CACHE_EXPORT;
   await Promise.all(
     temporaryDirectories
       .splice(0)
@@ -42,6 +43,7 @@ async function fakeDocker(digestOutput: string): Promise<{
       'printf "%s\\n" "$*" >> "$BB_TEST_DOCKER_ARGV"',
       'if [ "$1" = "version" ]; then echo "28.1.2"; exit 0; fi',
       'if [ "$1" = "login" ]; then cat > "$BB_TEST_DOCKER_STDIN"; echo "Login Succeeded"; exit 0; fi',
+      'if [ "$2" = "build" ] && [ -n "$BB_TEST_DOCKER_NO_CACHE_EXPORT" ] && printf "%s" "$*" | grep -q -- "--cache-to"; then echo "ERROR: Cache export is not supported for the docker driver." >&2; exit 1; fi',
       'if [ "$2" = "build" ]; then echo "#5 exporting layers" >&2; exit 0; fi',
       'if [ "$2" = "imagetools" ]; then printf "%s\\n" "$BB_TEST_DOCKER_DIGEST"; exit 0; fi',
       "exit 3",
@@ -85,6 +87,37 @@ describe("buildAndPushSandboxImage", () => {
     expect(argv).not.toContain("super-secret-token");
     expect(logs.join("\n")).not.toContain("super-secret-token");
     expect(logs).toContain("#5 exporting layers");
+    expect(argv).toContain(
+      "--cache-from type=registry,ref=ghcr.io/acme/bb-sandbox:buildcache-linux-amd64",
+    );
+    expect(argv).toContain(
+      "--cache-to type=registry,ref=ghcr.io/acme/bb-sandbox:buildcache-linux-amd64,mode=max",
+    );
+  });
+
+  it("builds without saving layer cache when the builder cannot export it", async () => {
+    const { argvLog, contextDir } = await fakeDocker(JSON.stringify(digest));
+    process.env.BB_TEST_DOCKER_NO_CACHE_EXPORT = "1";
+    const logs: string[] = [];
+
+    await buildAndPushSandboxImage({
+      contextDir,
+      dockerfilePath: join(contextDir, "Dockerfile"),
+      reference: "ghcr.io/acme/bb-sandbox:v1",
+      platform: "linux/amd64",
+      bbAppVersion: "0.38.0",
+      registryUsername: null,
+      registryToken: null,
+      onLog: (message) => logs.push(message),
+    });
+
+    const builds = (await readFile(argvLog, "utf8"))
+      .split("\n")
+      .filter((line) => line.startsWith("buildx build"));
+    expect(builds).toHaveLength(2);
+    expect(builds[1]).toContain("--cache-from");
+    expect(builds[1]).not.toContain("--cache-to");
+    expect(logs.join("\n")).toContain("cannot export layer cache");
   });
 
   it("fails loudly when the pushed digest cannot be resolved", async () => {

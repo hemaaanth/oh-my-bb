@@ -147,7 +147,10 @@ export async function buildAndPushSandboxImage(
     }
     input.onLog?.(`Signed in to ${server ?? "Docker Hub"}`);
   }
-  const build = await runDocker(
+  // Layer cache lives in the registry next to the image, so a fresh builder
+  // (a new sandbox, CI machine, or host) reuses unchanged layers.
+  const cacheRef = `${repository}:buildcache-${input.platform.replaceAll("/", "-")}`;
+  const buildArgs = (exportCache: boolean) =>
     [
       "buildx",
       "build",
@@ -167,14 +170,23 @@ export async function buildAndPushSandboxImage(
       "--tag",
       input.reference,
       "--push",
+      "--cache-from",
+      `type=registry,ref=${cacheRef}`,
+      ...(exportCache
+        ? ["--cache-to", `type=registry,ref=${cacheRef},mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true`]
+        : []),
       "--progress",
       "plain",
       "-f",
       input.dockerfilePath,
       input.contextDir,
-    ],
-    { onLog: input.onLog },
-  );
+    ];
+  let build = await runDocker(buildArgs(true), { onLog: input.onLog });
+  // The classic docker driver without the containerd image store cannot export cache.
+  if (build.exitCode !== 0 && /cache export is not supported/iu.test(build.stderr)) {
+    input.onLog?.("This Docker builder cannot export layer cache; building without saving it");
+    build = await runDocker(buildArgs(false), { onLog: input.onLog });
+  }
   if (build.exitCode !== 0) {
     throw new Error(
       `docker buildx build exited ${build.exitCode}: ${redact(build.stderr.trim()).slice(-4_000) || "no output"}`,
