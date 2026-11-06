@@ -56,7 +56,8 @@ export async function findVoxl(){for(const directory of (process.env.PATH||'/usr
 // voxl's page loads these before it presents a token.
 const voxlPublic=new Set(['/client.js','/worker.js','/audio.js','/mic.js','/favicon.ico','/inter.woff2']);
 // voxl's page and worker pass ?token= on to every request; this moves the hash token there.
-const startPage=`<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Remote desktop</title><link rel="license" href="/licenses"><style>body{margin:0;height:100dvh;display:grid;place-items:center;background:#09090b;color:#9b9b9b;font:400 .875rem/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}</style><p id="status" role="status">Connecting…</p><script src="/bb-desktop-start.js"></script></html>`;
+// It stays blank: voxl's own page shows the connecting state.
+const startPage=`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Remote desktop</title><link rel="license" href="/licenses"><style>body{margin:0;height:100dvh;display:grid;place-items:center;background:#09090b;color:#9b9b9b;font:400 .875rem/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}</style><p id="status" role="status"></p><script src="/bb-desktop-start.js"></script></html>`;
 const startScript=`const token=location.hash.slice(1);if(/^[A-Za-z0-9_-]{43}$/.test(token))location.replace('/?token='+token);else document.getElementById('status').textContent='Session ended';`;
 type SharedDesktopOpen={id:string;viewOnly?:boolean;appOrigin?:string;threadTitle:string;token:string;notices:string;tunnel:{label:string;baseDomain:string}};
 type DesktopOpen=SharedDesktopOpen&{target:DesktopTarget};
@@ -109,9 +110,9 @@ export class SandboxDesktopHost{
    const upstream=(headers:IncomingHttpHeaders)=>{const out={...headers};for(const name of ['host','origin','referer','cookie','authorization'])delete out[name];return {...out,host:'127.0.0.1:'+voxlPort,authorization:'Bearer '+password};};
    server=httpServer((req,res)=>{
     const url=new URL(req.url||'/','http://desktop'),page="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; "+frameAncestors(input.appOrigin);
-    if(req.method==='GET'&&url.pathname==='/licenses'){secure(res,page);res.setHeader('Content-Type','text/plain');res.end(input.notices);return;}
+    if(req.method==='GET'&&url.pathname==='/licenses'){secure(res,page);res.setHeader('Content-Type','text/plain; charset=utf-8');res.end(input.notices);return;}
     if(req.method==='GET'&&url.pathname==='/bb-desktop-start.js'){secure(res,page);res.setHeader('Content-Type','text/javascript');res.end(startScript);return;}
-    if(req.method==='GET'&&url.pathname==='/'&&!url.searchParams.has('token')){secure(res,page);res.setHeader('Content-Type','text/html');res.end(startPage);return;}
+    if(req.method==='GET'&&url.pathname==='/'&&!url.searchParams.has('token')){secure(res,page);res.setHeader('Content-Type','text/html; charset=utf-8');res.end(startPage);return;}
     const token=url.searchParams.get('token')??req.headers.authorization?.replace(/^Bearer /,'');
     if(url.pathname.startsWith('/files/')||!(req.method==='GET'&&voxlPublic.has(url.pathname)||valid(token))||(req.method!=='GET'&&req.method!=='HEAD'&&!sameSite(req.headers.origin))){secure(res,page);res.writeHead(403);res.end('Session ended');return;}
     url.searchParams.delete('token');secure(res,frameAncestors(input.appOrigin));

@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useRef,useState,type Ref} from 'react';
 import {experimental_Icon as Icon,useRealtime,useRpc,type ExperimentalThreadActionTabProps,type PluginMessageDirectiveProps} from '@get-bb/plugin-sdk/app';
 import type {sandboxDesktopRpcContract,SandboxDesktopView} from '../src/desktop-contract.js';
 
@@ -18,12 +18,37 @@ function ModeButton({label,onClick,disabled,active}:{label:string;onClick:()=>vo
 
 const validUrl=(url:string)=>{try{return new URL(url).protocol==='https:';}catch{return false;}};
 
+// The last known view per thread. A remount or page reload starts from it, so the card keeps
+// its shape instead of collapsing to "Loading…" and growing back.
+const remembered=(threadId:string):SandboxDesktopView|null=>{
+  try{const view=JSON.parse(sessionStorage.getItem('sandbox-desktop:'+threadId)||'null') as SandboxDesktopView|null;return view?.kind==='open'&&view.expires>Date.now()?view:null;}catch{return null;}
+};
+const remember=(threadId:string,view:SandboxDesktopView)=>{try{sessionStorage.setItem('sandbox-desktop:'+threadId,JSON.stringify(view));}catch{}};
+
+type Frame={url:string;ready:boolean};
+/** Stacks voxl frames. A new stream loads hidden under the old one and replaces it once it is drawing. */
+function DesktopFrames({url,control,panel,frameRef,onPending}:{url:string|null;control:boolean;panel:boolean;frameRef:Ref<HTMLDivElement>;onPending:(pending:boolean)=>void}){
+  const [frames,setFrames]=useState<Frame[]>(()=>url?[{url,ready:true}]:[]);
+  useEffect(()=>{setFrames(list=>!url?[]:list.at(-1)?.url===url?list:[...list.filter(frame=>frame.ready).slice(-1),{url,ready:!list.some(frame=>frame.ready)}]);},[url]);
+  const reveal=useCallback((url:string)=>setFrames(list=>list.some(frame=>frame.url===url)?[{url,ready:true}]:list),[]);
+  const pending=frames.find(frame=>!frame.ready)?.url??null;
+  // voxl has no cross-origin ready signal. Its page connects about a second after it loads.
+  useEffect(()=>{onPending(!!pending);if(!pending)return;const timer=setTimeout(()=>reveal(pending),6000);return()=>clearTimeout(timer);},[pending,reveal,onPending]);
+  if(!frames.length)return null;
+  return <div ref={frameRef} className={`relative bg-black ${control?'outline outline-2 -outline-offset-2 outline-foreground/60':''}`} style={panel?{flex:1,minHeight:0}:{aspectRatio:'16 / 9',maxHeight:'70vh'}}>
+    {frames.map(frame=><iframe key={frame.url} title="Sandbox desktop" src={frame.url} allow="clipboard-read; clipboard-write" referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin"
+      onLoad={frame.ready?undefined:()=>setTimeout(()=>reveal(frame.url),2000)}
+      className={`absolute inset-0 block size-full border-0 bg-black ${frame.ready?'':'pointer-events-none opacity-0'}`}/>)}
+  </div>;
+}
+
 /** The sandbox's own display. The same view backs the inline directive and the side panel. */
 function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
   const rpc=useRpc<typeof sandboxDesktopRpcContract>();
-  const [view,setView]=useState<SandboxDesktopView|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
-  const frame=useRef<HTMLIFrameElement>(null);
-  const refresh=useCallback(()=>{void rpc.call('getSandboxDesktop',{threadId}).then(setView).catch(()=>setView({kind:'closed'}));},[rpc,threadId]);
+  const [view,setViewState]=useState<SandboxDesktopView|null>(()=>remembered(threadId)),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[pending,setPending]=useState(false);
+  const setView=useCallback((next:SandboxDesktopView)=>{remember(threadId,next);setViewState(next);},[threadId]);
+  const frame=useRef<HTMLDivElement>(null);
+  const refresh=useCallback(()=>{void rpc.call('getSandboxDesktop',{threadId}).then(setView).catch(()=>setView({kind:'closed'}));},[rpc,threadId,setView]);
   useEffect(refresh,[refresh]);useRealtime('sandbox-desktop:'+threadId,refresh);
   // Opening always starts in watch mode. Control is a separate, explicit step.
   const change=async(open:boolean,viewOnly=true)=>{
@@ -35,7 +60,7 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
   const until=open?' · until '+new Date(open.expires).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'';
   const status=error?<span role="alert" className="min-w-0 truncate text-destructive" title={error}>{error}</span>
     :view===null?<span className="text-muted-foreground">Loading…</span>
-    :busy?<span className="text-muted-foreground">{open?'Switching…':'Opening…'}</span>
+    :busy||pending?<span className="text-muted-foreground">{open?'Switching…':'Opening…'}</span>
     :open?.viewOnly?<span className="min-w-0 truncate tabular-nums text-muted-foreground">Watching{until}</span>
     :open?<span className="min-w-0 truncate tabular-nums font-medium text-foreground">You’re in control{until}</span>
     :<span className="text-muted-foreground">Closed</span>;
@@ -55,8 +80,7 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
   </div>;
   // The desktop keeps a fixed 16:9 size; voxl scales it to fit and centers it.
   // The header owns fullscreen. Without the fullscreen permission voxl hides its own button.
-  const body=open?<iframe ref={frame} title="Sandbox desktop" src={open.url} allow="clipboard-read; clipboard-write" referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin"
-    className={`block w-full border-0 bg-black ${open&&!open.viewOnly?'outline outline-2 -outline-offset-2 outline-foreground/60':''}`} style={panel?{flex:1,minHeight:0}:{aspectRatio:'16 / 9',maxHeight:'70vh'}}/>:null;
+  const body=<DesktopFrames url={open?.url??null} control={!!open&&!open.viewOnly} panel={panel} frameRef={frame} onPending={setPending}/>;
   return panel
     ?<div className="flex h-full flex-col text-sm">{header}{body}</div>
     :<div className="my-2 overflow-hidden rounded-lg border border-border bg-background text-sm">{header}{body}</div>;

@@ -14,28 +14,40 @@ export interface SandboxDesktops{open(threadId:string,viewOnly:boolean):Promise<
  */
 export function registerDesktops(bb:BbPluginApi,idle:()=>NativeIdleSuspendHolds|undefined=()=>undefined):SandboxDesktops{
  const client=bb.hosts.experimental_client({contract:desktopHostContract});
- const active=new Map<string,{hostId:string;port:number;expires:number;url:string;viewOnly:boolean;shared?:string}>();
+ type Grant={hostId:string;session:string;port:number;expires:number;url:string;viewOnly:boolean;shared?:string};
+ const active=new Map<string,Grant>();
+ // A replaced grant keeps streaming briefly, so the viewer can swap frames without a black gap.
+ const retiring=new Map<string,{grant:Grant;timer:ReturnType<typeof setTimeout>}>();
+ let serial=0;
  const idFor=(plugin:string,thread:string)=>createHash('sha256').update(plugin+'\0'+thread).digest('hex');
  // A plugin id cannot contain '/', so this never collides with a consumer's grant.
  const sharedId=(threadId:string)=>idFor('sandboxes/desktop',threadId);
  const changed=(threadId:string)=>bb.realtime.publish('sandbox-desktop:'+threadId,null);
- const publish=(hostId:string)=>bb.hosts.declareSharedPorts(hostId,[...active.values()].filter(v=>v.hostId===hostId).map(v=>v.port));
- const close=async(id:string)=>{const value=active.get(id);if(!value)return;active.delete(id);publish(value.hostId);if(value.shared)changed(value.shared);try{await client.call('closeDesktop',{id},{hostId:value.hostId,timeoutMs:10000});}finally{idle()?.release(value.hostId,'desktop:'+id);}};
+ const publish=(hostId:string)=>bb.hosts.declareSharedPorts(hostId,[...active.values(),...[...retiring.values()].map(v=>v.grant)].filter(v=>v.hostId===hostId).map(v=>v.port));
+ const stop=async(grant:Grant)=>{try{await client.call('closeDesktop',{id:grant.session},{hostId:grant.hostId,timeoutMs:10000});}finally{idle()?.release(grant.hostId,'desktop:'+grant.session);}};
+ const retire=(id:string)=>{const value=retiring.get(id);if(!value)return;clearTimeout(value.timer);retiring.delete(id);publish(value.grant.hostId);void stop(value.grant).catch(()=>{});};
+ const close=async(id:string)=>{retire(id);const value=active.get(id);if(!value)return;active.delete(id);publish(value.hostId);if(value.shared)changed(value.shared);await stop(value);};
  const grant=async(id:string,threadId:string,viewOnly:boolean,target?:DesktopTarget)=>{
   const thread=await bb.sdk.threads.get({threadId});if(!thread.environmentId)throw Error('Desktop thread has no host');
   const {hostId}=await bb.sdk.environments.get({environmentId:thread.environmentId}),host=await bb.sdk.hosts.get({hostId});
   if(host.status!=='connected'||!host.machineProviderId?.startsWith('sandbox-'))throw Error('A connected sandbox desktop is required');
-  await close(id);
-  idle()?.hold(hostId,'desktop:'+id);
+  // Consumers' private displays switch at once. The sandbox's own view overlaps the old and new streams.
+  const previous=active.get(id);
+  if(target||previous?.hostId!==hostId)await close(id);else retire(id);
+  const session=id+'-'+(++serial).toString(36);
+  idle()?.hold(hostId,'desktop:'+session);
   try{
    const token=randomBytes(32).toString('base64url'),tunnel=await bb.hosts.ensureSharedPortTunnel(hostId);
-   const payload={id,appOrigin:new URL(bb.server.experimental_appUrl||bb.server.loopbackBaseUrl).origin,viewOnly,threadTitle:(thread.title?.trim()||thread.titleFallback?.trim()||'Untitled thread').slice(0,240),token,notices:await readFile(new URL('../dist/desktop-licenses.txt',import.meta.url),'utf8'),tunnel};
+   const payload={id:session,appOrigin:new URL(bb.server.experimental_appUrl||bb.server.loopbackBaseUrl).origin,viewOnly,threadTitle:(thread.title?.trim()||thread.titleFallback?.trim()||'Untitled thread').slice(0,240),token,notices:await readFile(new URL('../dist/desktop-licenses.txt',import.meta.url),'utf8'),tunnel};
    // Starting the sandbox display can take up to 20 seconds.
    const {port,expires}=target?await client.call('openDesktop',{...payload,target},{hostId,timeoutMs:15000}):await client.call('openSharedDesktop',payload,{hostId,timeoutMs:45000});
    const url=`https://${tunnel.label}--${port}.${tunnel.baseDomain}/#${token}`;
-   active.set(id,{hostId,port,expires,url,viewOnly,...(target?{}:{shared:threadId})});publish(hostId);if(!target)changed(threadId);
+   const old=active.get(id);
+   active.set(id,{hostId,session,port,expires,url,viewOnly,...(target?{}:{shared:threadId})});
+   if(old){const timer=setTimeout(()=>retire(id),8000);timer.unref?.();retiring.set(id,{grant:old,timer});}
+   publish(hostId);if(!target)changed(threadId);
    return {url,expires};
-  }catch(error){idle()?.release(hostId,'desktop:'+id);throw error;}
+  }catch(error){idle()?.release(hostId,'desktop:'+session);throw error;}
  };
  const view=(threadId:string):SandboxDesktopView=>{const value=active.get(sharedId(threadId));return value&&value.expires>Date.now()?{kind:'open',url:value.url,expires:value.expires,viewOnly:value.viewOnly}:{kind:'closed'};};
  const desktops:SandboxDesktops={

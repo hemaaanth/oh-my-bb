@@ -32,10 +32,14 @@ it('opens one shared desktop per thread for the panel, the directive and the age
  expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toEqual(view);
  expect(fake.harness.inspection.realtimeSignals.filter(signal=>signal.channel==='sandbox-desktop:thr_fixture')).toHaveLength(1);
  expect(await fake.harness.behavior.callAgentTool('sandbox_desktop',{action:'open'},{threadId:'thr_fixture'})).toContain('::sandbox-desktop{}');
- expect(calls.map(call=>call.method)).toEqual(['openSharedDesktop','closeDesktop','openSharedDesktop']);
+ // A switch starts the new stream before the old one stops, so the viewer never shows a black gap.
+ expect(calls.map(call=>call.method)).toEqual(['openSharedDesktop','openSharedDesktop']);
+ const sessions=calls.map(call=>(call.input as {id:string}).id);expect(sessions[0]).not.toEqual(sessions[1]);
  // The agent tool opens view only unless asked; switching mode restarts the session.
- expect(calls[2]).toMatchObject({input:{viewOnly:true}});expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toMatchObject({kind:'open',viewOnly:true});
+ expect(calls[1]).toMatchObject({input:{viewOnly:true}});expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toMatchObject({kind:'open',viewOnly:true});
  await fake.harness.behavior.callAgentTool('sandbox_desktop',{action:'close'},{threadId:'thr_fixture'});
+ // Closing the view also stops the stream it replaced.
+ expect(calls.slice(2).map(call=>(call.input as {id:string}).id).sort()).toEqual([...sessions].sort());
  expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toEqual({kind:'closed'});
  expect(fake.harness.inspection.sharedPortDeclarations.at(-1)).toMatchObject({hostId:'host_fixture',ports:[]});
 });
