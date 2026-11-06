@@ -1,31 +1,28 @@
 ---
 name: catalog
-description: Use Executor's approved versioned skills and remote services in the current BB project.
+description: Use the skills and remote services that Executor connections provide in the current BB project.
 ---
 
 # Executor
 
-Executor keeps approved versioned skills and agent-facing remote Executor
-services for BB projects, machines and harnesses. The plugin ID and skill
-discovery identities remain `catalog`, `catalog_search` and `catalog_read`.
+Executor apps ship skills and remote services to BB threads. The plugin ID and
+skill tools stay `catalog`, `catalog_search` and `catalog_read`.
 
-- Use `catalog_search` to find an applicable approved skill. An empty query
-  lists the skills available in the current context.
-- Use `catalog_read` with the returned skill id to load its `SKILL.md` or a
-  supporting text file before following the workflow.
-- Treat source and revision metadata as provenance. Never substitute an
-  unapproved upstream revision for the approved one.
+- Use `catalog_search` to find a skill or native capability for the task. An
+  empty query lists everything available in this thread.
+- Use `catalog_read` with a returned ID, such as `hstack/build`, to load its
+  `SKILL.md` or a supporting file before you follow it.
+- Use `executor_execute` to call the apps in this thread's Executor
+  connections. Read `executor_docs` with name `code-mode` first.
 - Skills can contain executable instructions. Follow the normal permission and
   repository safety rules when a skill asks you to run code.
 
-## Readiness and owner actions
+## Approvals and errors
 
-Opening Executor does not initialize assignments or materialize skill folders.
-An unavailable assignment source is an error, not evidence that no assignments
-exist. Do not initialize fresh assignments or move ownership to clear that
-error. Existing assignments require the explicit source-first handoff.
+Executor decides which calls need approval. A paused call asks the user in
+this thread. You cannot approve it. If no answer came, call `executor_resume`
+with the execution ID.
 
-Executor credentials stay in native Configuration. Optional Agents profile
-toolkit scopes follow the saved Preferences choice. Generic RPC input and an
-SDK client identity are not proof of owner approval. `executorDecide` cannot
-accept; thread tools keep their actual native approval cards.
+A connection that is "not signed in" needs the user. Ask them to sign in from
+Executor settings or with `bb catalog executor connect <connection>`. Do not
+look for another way to reach the service.

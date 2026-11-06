@@ -1,26 +1,26 @@
 # Executor
 
-Executor gives BB agents remote Executor services and approved versioned skills. Run assigned toolkits, subscribe to Git skill sources, review updates and choose enabled skills. Build custom capability sets and assign them globally or to native projects. The remote Executor server keeps integration credentials and tool rules. This BB plugin keeps its Executor API key server-side, stores mappings and routes thread calls.
+Executor connects BB agents to a self-hosted Executor 2 server. Executor owns the apps, accounts, tools, approval rules and skills. This plugin signs BB in to Executor connections, records which connections each project, Agents profile or plugin uses, runs agent calls from the BB server, and projects the skills that the connections' apps ship.
 
-The rename changes only the display name. The plugin ID remains `catalog`; the package remains `bb-plugin-catalog`. Existing `bb catalog` commands, skill and Executor tool IDs, RPCs, storage/secret identities, assignments and `catalog-*` skill folders remain unchanged. Skills stay fully supported in this plugin and their existing provider roots.
+The plugin ID stays `catalog` and the package stays `bb-plugin-catalog`. The `bb catalog` commands, `catalog_search`, `catalog_read` and `executor_*` tools, RPC routes and storage keys keep their names.
 
 ## Configuration
 
-Set Executor URL and API key in BB's native Configuration fields. The key stays on the server. No custom auth form duplicates those fields.
+Set the Executor URL in BB's native Configuration. An optional personal access token reads account health for connection alerts; it never runs code. Executor settings → Oh My BB holds the optional Agents profile integration, which is off on a fresh install. Opening settings reads local data only.
 
-Executor settings → Oh My BB contains optional integrations. Agents profile toolkit scopes are off on a fresh install. Saved false stays false. An existing agent toolkit map retains its previous consent until explicitly changed. No optional source is probed merely by opening settings.
+## Connections
 
-Sources, custom sets and toolkit mappings use scoped native dialogs. More is collapsed help, including explicit assignment readiness. Connection diagnostics contact Executor only when Check Executor is chosen; opening settings reads local configuration and cached alerts.
-
-Editors keep saved configuration/membership baselines. Stale saves fail without restoring revoked choices or dropping the open draft. Explicit toolkit clears remain available. Preferences and toolkit-map saves serialize independently; failed durable map writes do not install grants in memory.
-
-## Assignment authority
-
-Use the explicit source-first Projects C1 handoff for existing assignments. A new standalone install needs native confirmation that Projects is not installed and an explicit declaration that no legacy assignments exist. Unknown/unavailable authority never becomes an empty projection. After local activation, ordinary Executor assignment reads/writes work without Projects at startup. Reverse reconciliation restores source use without thawing destination rows. See ASSIGNMENT_HANDOFF.md.
+BB signs in to each Executor connection with OAuth (PKCE) and keeps one refreshed grant per connection. A thread's connections are its agent's, then its project's, then the global ones. The first is the default. Calls run on the BB server, so no token reaches a sandbox.
 
 ## Approval
 
-Plugin toolkit RPCs bind the supplied caller to the SDK-authenticated plugin ID. A plugin can decline its own paused work. Generic RPC acceptance is unsupported for all callers, including SDK clients. Native thread approval cards retain once/thread/all decisions and in-memory grants; stale revoked access cannot accept.
+Executor decides which calls need approval. The plugin shows each paused call as a native card in the thread, with once, thread and all choices. An agent cannot approve its own call. A plugin backend can decline its own paused work, never accept it.
+
+## Skills
+
+Executor apps ship skills, with IDs `<app>/<skill>`. `catalog_search` and `catalog_read` expose the skills of a thread's connections. The plugin writes them into `~/.agents/skills`, `~/.claude/skills` and each project workspace's roots. Native capabilities from other plugins stay available through Projects.
+
+Catalog 0.2's Git sources, skill sets and assignments are removed. `scripts/executor-skill-apps.mjs` moves old sources into Executor apps.
 
 ## Distribution
 

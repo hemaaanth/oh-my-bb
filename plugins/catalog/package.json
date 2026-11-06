@@ -1,9 +1,9 @@
 {
   "name": "bb-plugin-catalog",
-  "version": "0.2.1",
-  "description": "Agent-facing Executor services and approved versioned skills for BB.",
+  "version": "0.3.0",
+  "description": "Executor v2 connections, approvals, and app skills for BB agents.",
   "license": "MIT",
-  "files": ["dist", "icons", "skills", "LICENSE", "THIRD_PARTY.md", "README.md", "PLUGIN_OVERVIEW.md", "ASSIGNMENT_HANDOFF.md", "CHANGELOG.md"],
+  "files": ["dist", "icons", "skills", "LICENSE", "THIRD_PARTY.md", "README.md", "PLUGIN_OVERVIEW.md", "CHANGELOG.md"],
   "type": "module",
   "engines": {
     "bb": ">=0.46",
@@ -11,7 +11,7 @@
   },
   "bb": {
     "name": "Executor",
-    "description": "Run assigned Executor toolkits, manage approved skill sources and sets, and choose project availability.",
+    "description": "Sign in to Executor connections, choose which connection each project or agent uses, and project the skills Executor apps ship.",
     "branding": {
       "icon": "./icons/catalog.svg"
     },

@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
+
+- Move to Executor 2. Connections replace toolkits; connection IDs keep the old toolkit slugs, so existing mappings carry over.
+- Sign in to each connection with OAuth (PKCE) from settings or `bb catalog executor connect`. Keep one refreshed grant per connection in the plugin database. The personal access token is now optional and only reads account health.
+- Read skills from the apps in each thread's connections. Skill IDs are `<app>/<skill>`. Executor's own docs stay in `executor_docs`.
+- Remove Git skill sources, skill sets, release approval, assignments and the Projects handoff. Migrations drop their tables and keep native capabilities.
+- Add `scripts/executor-skill-apps.mjs`, which moves Catalog 0.2 sources into Executor apps that use `githubSkills`.
+- Open settings without calling Projects, Agents or Executor's health API. The scheduled account check records its own error.
+
+## 0.2.x
 
 - Display the plugin as Executor. Keep `catalog` package/plugin/tool/RPC, storage, secret and assignment identities and existing skill roots unchanged.
 - Bind Executor plugin RPCs to verified SDK caller identity. Reject plugin toolkit-map spoofing before lookup, queues, rate limits, audits or external work.

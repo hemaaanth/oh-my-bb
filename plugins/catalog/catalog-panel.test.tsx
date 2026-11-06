@@ -3,94 +3,88 @@ import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 const app = await loadPluginApp(() => import("./app"));
-afterEach(cleanup);
-const sources = Array.from({ length: 8 }, (_, i) => ({ id: `source-${i}`, name: `Source ${i}`, repositoryUrl: `https://github.com/example/source-${i}`, gitRef: "main", subdirectory: "skills", updatePolicy: "review", enabled: false, lastError: null, pendingRevision: null }));
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+const skill = (app: string, name: string) => ({ id: `${app}/${name}`, sourceId: app, sourceName: app, name, description: `${name} description that is long enough to need a hover title.`, relativePath: name, revision: "r1", fileCount: 1 });
+const NATIVE = "2f576f36-0d16-4f76-9a21-b66bcb47e100";
+
 function render() {
   const assignments: Array<{ bundleId: string; kind: string; targetId: string }> = [];
   const snapshot = vi.fn(async () => ({ assignments: [...assignments] }));
   const setAssignment = vi.fn(async (input: { bundleId: string; kind: string; targetId: string; enabled: boolean }) => { if (input.enabled) assignments.push(input); return { ok: true }; });
-  const executorOverview = vi.fn(async () => ({ error: null, warnings: [] }));
+  const connectStart = vi.fn(async () => ({ url: "https://executor.test/api/auth/oauth2/authorize?x=1" }));
+  const disconnect = vi.fn(async () => ({ ok: true }));
   const slot = renderSlot(app.settingsSections.find(section => section.id === "catalog")!, {}, { rpc: {
-    catalogOverview: () => ({ sources, skills: Array.from({ length: 36 }, (_, i) => ({ id: `skill-${i}`, sourceId: sources[0]!.id, name: `Skill ${i}`, description: `A long description for skill ${i} that should stay on one line and be available in full on hover.`, enabled: true })), bundles: [{ id: "set-one", name: "Source set", description: "Every enabled skill from Source 0.", skillIds: [], sourceId: sources[0]!.id, nativeCapability: null }, { id: "custom", name: "Security review", description: "Selected security skills.", skillIds: ["skill-0"], sourceId: null, nativeCapability: null }, { id: "plugin", name: "Prospecting", description: "Prospecting tools.", skillIds: [], sourceId: null, nativeCapability: { pluginId: "prospecting", toolIds: ["tool-one"], skillIds: ["skill-one"] } }], targets: [], assignments: null, assignmentState: { state: "uninitialized" }, harnesses: [] }),
-    preferences: () => ({ agentsIntegration: false }), executorConfiguration: () => ({ configured: true, mappings: [] }),
-    snapshot, executorOverview, setAssignment,
+    catalogOverview: () => ({
+      skills: [skill("hstack", "build"), skill("hstack", "review"), skill("docs", "write")],
+      bundles: [{ id: NATIVE, name: "Prospecting", description: "Prospecting tools.", skillIds: [], sourceId: null, nativeCapability: { pluginId: "prospecting", toolIds: ["tool-one"], skillIds: ["skill-one"] } }],
+      targets: [{ kind: "project", id: "proj_one", name: "One", detail: null }], harnesses: [], skillsError: "ops: BB is not signed in to Executor connection ops.",
+    }),
+    preferences: () => ({ agentsIntegration: false }),
+    executorConfiguration: () => ({ configured: true, url: "https://executor.test", mappings: [{ scope: "global", targetId: "*", toolkits: ["gtm", "ops"] }] }),
+    executorOverview: () => ({ configured: true, url: "https://executor.test", error: null, connections: [
+      { id: "gtm", url: "https://executor.test/mcp?connection=gtm", connected: true, assignedTo: ["Every project"] },
+      { id: "ops", url: "https://executor.test/mcp?connection=ops", connected: false, assignedTo: ["Every project"] },
+    ] }),
+    snapshot, setAssignment, connectStart, disconnect,
   } as never });
-  return { slot, snapshot, executorOverview, setAssignment };
+  return { slot, snapshot, setAssignment, connectStart, disconnect };
 }
-it("puts the optional integration in Oh My BB instead of a Preferences dialog", async () => {
+
+it("puts the optional integration in Oh My BB", async () => {
   expect(app.settingsSections.map(section => section.id)).toEqual(["catalog", "oh-my-bb"]);
   const update = vi.fn(async () => { throw new Error("Save failed"); });
   const slot = renderSlot(app.settingsSections[1]!, {}, { rpc: { preferences: () => ({ agentsIntegration: false }), updatePreferences: update } as never });
-  const toggle = await slot.findByRole("switch", { name: "Assign toolkits to Agents profiles" });
+  const toggle = await slot.findByRole("switch", { name: "Assign connections to Agents profiles" });
   await waitFor(() => expect(toggle.getAttribute("disabled")).toBeNull());
-  expect(toggle.getAttribute("aria-checked")).toBe("false");
   fireEvent.click(toggle);
   await slot.findByRole("alert");
   expect(toggle.getAttribute("aria-checked")).toBe("false");
   expect(update).toHaveBeenCalledWith({ agentsIntegration: true });
 });
-it("bounds and filters source rows without syncing or editing anything", async () => {
-  const { slot } = render();
-  await slot.findByText("Source 0");
-  expect(slot.queryByText("Source 7")).toBeNull();
-  fireEvent.change(slot.getByRole("textbox", { name: "Search sources" }), { target: { value: "Source 7" } });
-  expect(slot.getByText("Source 7")).toBeTruthy();
-  expect(slot.queryByText("Source 0")).toBeNull();
-  expect(slot.inspection.rpcCalls.map(call => call.method)).toEqual(["catalogOverview", "preferences", "executorConfiguration"]);
-});
-it("keeps assignment reads and remote checks behind their explicit actions", async () => {
-  const { slot, snapshot, executorOverview } = render();
-  const load = await slot.findByRole("button", { name: "Projects for Source 0" });
-  expect(snapshot).not.toHaveBeenCalled(); expect(executorOverview).not.toHaveBeenCalled();
-  fireEvent.click(load);
-  await waitFor(() => expect(snapshot).toHaveBeenCalledTimes(1));
-  fireEvent.click(slot.getByRole("button", { name: "Done" }));
-  await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
-  fireEvent.click(slot.getByRole("button", { name: "Check Executor" }));
-  await waitFor(() => expect(executorOverview).toHaveBeenCalledTimes(1));
-});
-it("opens the guide without initializing assignments", async () => {
-  const { slot } = render();
-  fireEvent.click(await slot.findByRole("button", { name: "Open setup guide" }));
-  await slot.findByRole("dialog");
-  expect(slot.getByRole("button", { name: "Initialize standalone assignments" }).getAttribute("disabled")).not.toBeNull();
-  expect(slot.inspection.rpcCalls.some(call => call.method === "initializeAssignmentsV1")).toBe(false);
+
+it("shows connections with their sign-in state and reads assignments only on request", async () => {
+  const { slot, snapshot, disconnect, connectStart } = render();
+  await slot.findByText("Signed in · Every project");
+  expect(slot.getByText("Not signed in")).toBeTruthy();
+  expect(slot.inspection.rpcCalls.map(call => call.method).sort()).toEqual(["catalogOverview", "executorConfiguration", "executorOverview", "preferences"]);
+  expect(snapshot).not.toHaveBeenCalled();
+
+  const tab = { opener: {}, location: { href: "" }, close: vi.fn() };
+  vi.stubGlobal("open", vi.fn(() => tab));
+  fireEvent.click(slot.getByRole("button", { name: "Sign in to ops" }));
+  await waitFor(() => expect(tab.location.href).toBe("https://executor.test/api/auth/oauth2/authorize?x=1"));
+  expect(connectStart).toHaveBeenCalledWith({ connection: "ops", redirectOrigin: window.location.origin });
+  expect(tab.opener).toBeNull();
+
+  await waitFor(() => expect(slot.getByRole("button", { name: "Sign out of gtm" }).getAttribute("disabled")).toBeNull());
+  fireEvent.click(slot.getByRole("button", { name: "Sign out of gtm" }));
+  await waitFor(() => expect(disconnect).toHaveBeenCalledWith({ connection: "gtm" }));
 });
 
-it("combines source availability with its source row and edits it in one modal", async () => {
-  const { slot, setAssignment, snapshot } = render();
-  const button = await slot.findByRole("button", { name: "Projects for Source 0" });
-  expect(slot.queryByText("Source set")).toBeNull();
-  expect(slot.queryByRole("button", { name: "Load assignments" })).toBeNull();
-  fireEvent.click(button);
-  const checkbox = await slot.findByRole("checkbox", { name: "Every project" });
-  expect(checkbox.getAttribute("aria-checked")).toBe("false");
-  fireEvent.click(checkbox);
-  await waitFor(() => expect(setAssignment).toHaveBeenCalledTimes(1));
-  expect(setAssignment.mock.calls[0]![0]).toMatchObject({ enabled: true, bundleId: "set-one", kind: "global", targetId: "*" });
-  await waitFor(() => expect(snapshot).toHaveBeenCalledTimes(2));
-  expect(await snapshot.mock.results[1]!.value).toMatchObject({ assignments: [{ bundleId: "set-one", kind: "global", targetId: "*" }] });
-  await waitFor(() => expect(slot.getByRole("checkbox", { name: "Every project" }).getAttribute("aria-checked")).toBe("true"));
-  expect(setAssignment).toHaveBeenCalledWith({ bundleId: "set-one", kind: "global", targetId: "*", enabled: true });
-  expect(slot.getByRole("dialog")).toBeTruthy();
-});
-it("exposes the total and full descriptions for a bounded skill list", async () => {
+it("groups skills by app and reports a connection that could not be read", async () => {
   const { slot } = render();
-  await slot.findByText("Skills · 36 total · 36 enabled");
-  expect(slot.getByText("Scrollable list · 36 skills · scroll to see all")).toBeTruthy();
-  expect(slot.getByRole("region", { name: "Source 0 skills", hidden: true }).querySelectorAll('[role="switch"]')).toHaveLength(36);
-  const description = "A long description for skill 0 that should stay on one line and be available in full on hover.";
+  await slot.findByText("hstack · 2 skills");
+  expect(slot.getByText("docs · 1 skill")).toBeTruthy();
+  expect(slot.getByText(/^ops: BB is not signed in/u)).toBeTruthy();
+  const description = "build description that is long enough to need a hover title.";
   expect(slot.getByTitle(description).textContent).toBe(description);
 });
 
-it("presents custom and plugin-provided sets together with clear ownership", async () => {
+it("edits plugin capability availability in one dialog", async () => {
+  const { slot, setAssignment, snapshot } = render();
+  fireEvent.click(await slot.findByRole("button", { name: "Projects for Prospecting" }));
+  const every = await slot.findByRole("checkbox", { name: "Every project" });
+  expect(snapshot).toHaveBeenCalledTimes(1);
+  fireEvent.click(every);
+  await waitFor(() => expect(setAssignment).toHaveBeenCalledWith({ bundleId: NATIVE, kind: "global", targetId: "*", enabled: true }));
+  await waitFor(() => expect(slot.getByRole("checkbox", { name: "Every project" }).getAttribute("aria-checked")).toBe("true"));
+  expect(slot.getByRole("checkbox", { name: "One" }).getAttribute("aria-checked")).toBe("false");
+});
+
+it("keeps setup guidance in its own dialog", async () => {
   const { slot } = render();
-  await slot.findByRole("heading", { name: "Sets", exact: true });
-  expect(slot.queryByRole("heading", { name: "Plugin capabilities" })).toBeNull();
-  expect(slot.getByText("1 skill · Custom")).toBeTruthy();
-  expect(slot.getByText("1 tool · 1 skill · Provided by prospecting")).toBeTruthy();
-  expect(slot.getByRole("button", { name: "Projects for Security review" }).textContent).toBe("Projects");
-  expect(slot.getByRole("button", { name: "Projects for Prospecting" }).textContent).toBe("Projects");
-  expect(slot.getByRole("button", { name: "Edit Security review" })).toBeTruthy();
-  expect(slot.queryByRole("button", { name: "Edit Prospecting" })).toBeNull();
+  fireEvent.click(await slot.findByRole("button", { name: "Open setup guide" }));
+  expect(await slot.findByRole("heading", { name: "Executor setup guide" })).toBeTruthy();
+  expect(slot.getByText(/Sign in to each connection/u)).toBeTruthy();
 });

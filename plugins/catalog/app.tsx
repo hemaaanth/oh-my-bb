@@ -102,7 +102,7 @@ function ExecutorApproval({ interaction, submit }: PluginPendingInteractionProps
         </div>
       ) : null}
       <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
-        <a className="mr-auto text-muted-foreground underline-offset-2 hover:underline" href={payload.approvalUrl} target="_blank" rel="noreferrer">Open in Executor</a>
+        <span className="mr-auto" />
         <Button size="sm" variant="outline" disabled={busy} aria-keyshortcuts={keys(CHOICES.decline)} onClick={() => void answer(false)}>Decline{key(CHOICES.decline)}</Button>
         <Button size="sm" variant="outline" disabled={busy} aria-keyshortcuts={keys(CHOICES.thread)} onClick={() => void answer(true, "thread")}>Approve for this thread{key(CHOICES.thread)}</Button>
         {others.length ? <Button size="sm" variant="outline" disabled={busy} aria-keyshortcuts={keys(CHOICES.all)} onClick={() => void answer(true, "all")}>Approve all {others.length + 1}{key(CHOICES.all)}</Button> : null}

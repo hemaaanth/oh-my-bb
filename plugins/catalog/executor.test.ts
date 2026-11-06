@@ -1,61 +1,106 @@
 import { describe, expect, it } from "vitest";
-import { ExecutorClient, parseRpcResponse, patternMatches } from "./executor.js";
-import { fakeExecutor, pausedResult } from "./test-support/executor-fake.js";
+import {
+  ExecutorApi, McpConnectionClient, authorizationUrl, connectionUrl, exchangeCode, parseConnectionRef, parseRpcResponse,
+  readOutcome, refreshTokens, registerClient,
+} from "./executor.js";
+import { fakeExecutor } from "./test-support/executor-fake.js";
+
+const ORIGIN = "https://executor.test";
+const REDIRECT = "https://bb.test/api/v1/plugins/catalog/http/oauth/callback";
+
+/** Runs the OAuth flow against the fake and returns tokens for one connection. */
+async function tokensFor(executor: ReturnType<typeof fakeExecutor>, connection: string) {
+  const client = await registerClient(ORIGIN, REDIRECT, executor.fetcher);
+  const resource = connectionUrl(ORIGIN, connection);
+  const pending = authorizationUrl(ORIGIN, client, resource);
+  const code = new URLSearchParams(executor.approve(pending.url).split("?")[1]).get("code")!;
+  return { client, resource, tokens: await exchangeCode(ORIGIN, client, code, pending.verifier, resource, executor.fetcher) };
+}
 
 describe("Executor client", () => {
-  it("matches Executor patterns against tool addresses", () => {
-    expect(patternMatches("slack.*", "tools.slack.user.goldsky.post")).toBe(true);
-    expect(patternMatches("slack.user.goldsky.post", "tools.slack.user.goldsky.post")).toBe(true);
-    expect(patternMatches("slack.user.goldsky.post", "tools.slack.user.goldsky.post_draft")).toBe(false);
-    expect(patternMatches("slack.*", "tools.slackbot.user.goldsky.post")).toBe(false);
-    expect(patternMatches("pandadoc_com.user.gm(x).*", "tools.pandadoc_com.user.gm(x).a")).toBe(true);
-  });
-
   it("finds the matching JSON-RPC response in an SSE stream", () => {
     const body = `data: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/progress" })}\n\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: 7, result: { ok: true } })}\n\n`;
     expect(parseRpcResponse(body, "text/event-stream", 7)).toMatchObject({ result: { ok: true } });
   });
 
-  it("reads which integrations each named toolkit reaches", async () => {
-    const executor = fakeExecutor({ toolkits: { gtm: ["goldtalk.user.goldsky.*", "argus.*", "argus.user.other.*"], other: ["pylon.*"] } });
-    const client = new ExecutorClient({ url: "https://executor.test", apiKey: "key" }, executor.fetcher);
-    expect(Object.fromEntries(await client.toolkitIntegrations(["gtm", "missing"]))).toEqual({ gtm: ["argus", "goldtalk"] });
+  it("reads connection URLs and bare connection IDs", () => {
+    expect(connectionUrl(ORIGIN, "gtm")).toBe("https://executor.test/mcp?connection=gtm");
+    expect(parseConnectionRef("gtm", ORIGIN)).toEqual({ origin: ORIGIN, connection: "gtm" });
+    expect(parseConnectionRef("https://other.test/mcp?connection=ops", ORIGIN)).toEqual({ origin: "https://other.test", connection: "ops" });
+    expect(() => parseConnectionRef("gtm", null)).toThrow(/Configure the Executor URL/u);
+    expect(() => parseConnectionRef("https://other.test/mcp", ORIGIN)).toThrow(/connection URL/u);
+    expect(() => connectionUrl(ORIGIN, "../x")).toThrow(/Not an Executor connection ID/u);
   });
 
-  it("calls the toolkit endpoint in browser-approval mode and reopens an expired session once", async () => {
-    const executor = fakeExecutor({ expireFirstSession: true });
-    const client = new ExecutorClient({ url: "https://executor.test", apiKey: "key" }, executor.fetcher);
-
-    expect(await client.callTool("gtm", "execute", { code: "return 1" })).toEqual({ text: "ran execute", paused: null });
-    const toolCalls = executor.calls.filter((call) => (call.body as { method?: string } | undefined)?.method === "tools/call");
-    expect(toolCalls.map((call) => call.session)).toEqual(["s1", "s2"]);
-    expect(toolCalls[0]!.url).toBe("/mcp/toolkits/gtm?elicitation_mode=browser&artifacts=false");
-  });
-
-  it("makes approval links absolute and surfaces tool errors", async () => {
-    const executor = fakeExecutor({
-      toolResult: (name) => name === "execute"
-        ? { content: [{ type: "text", text: "Approve at /resume/exec_1 then call resume" }] }
-        : { content: [{ type: "text", text: "Tool blocked by policy" }], isError: true },
+  it("reads approvals, approvals without fields, and form requests", () => {
+    expect(readOutcome({
+      status: "approval-required", requestId: "r1", expiresAt: "2026-01-01",
+      invocation: { app: "slack", tool: "sendMessage", input: { text: "hi" }, accounts: { user: "acct_1" } },
+      elicitation: { message: "Send?" },
+    })).toEqual({
+      approval: { requestId: "r1", address: "slack.sendMessage", app: "slack", tool: "sendMessage", input: { text: "hi" }, account: "acct_1", message: "Send?", expiresAt: "2026-01-01" },
+      input: null,
     });
-    const client = new ExecutorClient({ url: "https://executor.test", apiKey: "key" }, executor.fetcher);
-
-    expect((await client.callTool("gtm", "execute", { code: "x" })).text).toBe("Approve at https://executor.test/resume/exec_1 then call resume");
-    await expect(client.callTool("gtm", "resume", { executionId: "exec_1" })).rejects.toThrow("Tool blocked by policy");
+    const form = (properties: Record<string, unknown>) => readOutcome({
+      status: "input-required", requestId: "r2", tool: { app: "linear", tool: "create" }, elicitation: { message: "Fill", requestedSchema: { properties } },
+    });
+    expect(form({}).approval).toMatchObject({ requestId: "r2", address: "linear.create" });
+    expect(form({ title: { type: "string" } })).toEqual({ approval: null, input: { requestId: "r2", address: "linear.create", message: "Fill" } });
+    expect(readOutcome({ status: "completed" })).toEqual({ approval: null, input: null });
   });
 
-  it("reads a paused call and records the decision through the approval API", async () => {
-    const executor = fakeExecutor({
-      toolResult: () => pausedResult("exec_2", "s9"),
-      approvals: { exec_2: { address: "tools.hubspot.user.goldsky.submit_feedback", message: "Allow this call?", args: { note: "hi" } } },
-    });
-    const client = new ExecutorClient({ url: "https://executor.test", apiKey: "key" }, executor.fetcher);
+  it("signs in with PKCE, rotates refresh tokens, and refuses a reused one", async () => {
+    const executor = fakeExecutor({ connections: ["gtm"] });
+    const { client, resource, tokens } = await tokensFor(executor, "gtm");
+    expect(client.clientId).toBe("client_1");
+    expect(tokens.refreshToken).toBeTruthy();
+    const next = await refreshTokens(ORIGIN, client.clientId, tokens.refreshToken!, resource, executor.fetcher);
+    expect(next.accessToken).not.toBe(tokens.accessToken);
+    await expect(refreshTokens(ORIGIN, client.clientId, tokens.refreshToken!, resource, executor.fetcher)).rejects.toMatchObject({ status: 400 });
+  });
 
-    const { paused } = await client.callTool("gtm", "execute", { code: "x" });
-    expect(paused).toEqual({ executionId: "exec_2", mcpSessionId: "s9", approvalUrl: "https://executor.test/resume/exec_2?mcp_session_id=s9" });
-    expect(await client.approvalRequest(paused!)).toEqual({ address: "tools.hubspot.user.goldsky.submit_feedback", message: "Allow this call?", args: { note: "hi" } });
-    await client.decide(paused!, "accept");
-    expect(executor.decisions).toEqual([{ executionId: "exec_2", mcpSessionId: "s9", body: { action: "accept", content: {} } }]);
-    await expect(client.approvalRequest(paused!)).rejects.toThrow("HTTP 404");
+  it("calls a connection's MCP tools and refreshes once when the token stops working", async () => {
+    const executor = fakeExecutor({
+      connections: ["gtm"],
+      skills: { gtm: [{ app: "hstack", appName: "hstack", name: "build", description: "Build it" }] },
+      approvals: { r1: { app: "slack", tool: "send" } },
+      execute: (code) => code === "pause" ? { approval: "r1" } : `ran ${code}`,
+    });
+    const { client, resource, tokens } = await tokensFor(executor, "gtm");
+    let current = tokens;
+    const refreshes: boolean[] = [];
+    const mcp = new McpConnectionClient(resource, async ({ refresh }) => {
+      refreshes.push(refresh);
+      if (refresh) current = await refreshTokens(ORIGIN, client.clientId, current.refreshToken!, resource, executor.fetcher);
+      return current.accessToken;
+    }, executor.fetcher);
+
+    expect((await mcp.execute("x")).text).toBe("ran x");
+    expect(await mcp.listSkills()).toEqual([{ app: "hstack", appName: "hstack", name: "build", description: "Build it", version: "1", revision: "r1" }]);
+    expect(await mcp.readSkill({ app: "hstack", name: "build", version: "1", revision: "r1" })).toEqual({ content: "# build\n", files: ["SKILL.md"] });
+
+    executor.expireAccess();
+    const paused = await mcp.execute("pause");
+    expect(paused.approval).toMatchObject({ requestId: "r1", address: "slack.send" });
+    expect((await mcp.resume("r1", "accept")).text).toBe("resumed r1");
+    expect(executor.decisions).toEqual([{ requestId: "r1", action: "accept", connection: "gtm" }]);
+    expect(refreshes.filter(Boolean)).toHaveLength(1);
+    await expect(mcp.resume("r1", "accept")).rejects.toThrow("No request r1");
+  });
+
+  it("reads organization context and broken account checks with a PAT", async () => {
+    const executor = fakeExecutor({
+      inventory: {
+        apps: [{ id: "app_1", slug: "slack", name: "Slack" }, { id: "app_2", slug: "linear", name: "Linear" }],
+        accounts: [{ id: "acct_1", label: "Goldsky", health: { apps: [
+          { app: "app_1", check: { status: "credentials_rejected", message: "invalid_grant" } },
+          { app: "app_2", check: { status: "ok" } },
+        ] } }],
+      },
+    });
+    const api = new ExecutorApi(ORIGIN, executor.pat, executor.fetcher);
+    expect(await api.context()).toEqual({ organization: "org_1", slug: "hex", role: "owner" });
+    expect(await api.accountProblems()).toEqual([{ account: "acct_1", label: "Goldsky", app: "slack", appName: "Slack", problem: "credentials_rejected: invalid_grant" }]);
+    await expect(new ExecutorApi(ORIGIN, "wrong", executor.fetcher).context()).rejects.toMatchObject({ status: 401 });
   });
 });

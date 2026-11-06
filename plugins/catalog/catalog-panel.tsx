@@ -14,10 +14,8 @@ type Overview = PluginRpcResult<(typeof rpcContract)["catalogOverview"]>;
 type Preferences = PluginRpcResult<(typeof rpcContract)["preferences"]>;
 type Executor = PluginRpcResult<(typeof rpcContract)["executorConfiguration"]>;
 type Diagnostics = PluginRpcResult<(typeof rpcContract)["executorOverview"]>;
-type Source = Overview["sources"][number];
 type Bundle = Overview["bundles"][number];
-type SourceDraft = Pick<Source, "name" | "repositoryUrl" | "gitRef" | "subdirectory" | "updatePolicy" | "enabled"> & { id?: string };
-type BundleDraft = Pick<Bundle, "name" | "description" | "skillIds"> & { id?: string };
+type Connection = Diagnostics["connections"][number];
 type Mapping = Executor["mappings"][number];
 const labelClass = "grid min-w-0 gap-1.5 text-sm";
 const countLabel = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -35,8 +33,6 @@ function SettingsList<T extends { id: string; name: string }>({ items, label, ch
   return <div className="min-w-0 space-y-2">{items.length > 6 && <Input aria-label={`Search ${label}`} placeholder={`Search ${label}…`} value={query} onChange={event => setQuery(event.target.value)} className="h-8" />}<div className={boxClass}>{(expanded || query.trim() ? matches : matches.slice(0, 6)).map(children)}{!matches.length && <p className="py-3 text-sm text-muted-foreground">No {label} found.</p>}</div>{!query.trim() && items.length > 6 && <Button size="sm" variant="ghost" onClick={() => setExpanded(!expanded)}>{expanded ? "Show fewer" : `Show all ${items.length} ${label}`}</Button>}</div>;
 }
 const projectMenuStyle = { maxWidth: "var(--radix-select-content-available-width)", overflowWrap: "anywhere" } as const;
-const sourceFields = ({ name, repositoryUrl, gitRef, subdirectory, updatePolicy, enabled }: SourceDraft) => ({ name, repositoryUrl, gitRef, subdirectory, updatePolicy, enabled });
-const bundleFields = ({ name, description, skillIds }: BundleDraft) => ({ name, description, skillIds });
 type EditorExit = { onClose: () => void; onCloseAutoFocus: (event: Event) => void };
 
 function useEditorOpen(onClose: () => void) {
@@ -44,76 +40,6 @@ function useEditorOpen(onClose: () => void) {
   // Commit native closed state before removing the editor, so the drawer restores focus.
   useEffect(() => { if (!open) onClose(); }, [open, onClose]);
   return [open, setOpen] as const;
-}
-
-function SourceEditor({ initial, onSave, onClose, onCloseAutoFocus }: { initial: SourceDraft; onSave: (draft: SourceDraft, expected: SourceDraft) => Promise<Source> } & EditorExit) {
-  const [open, setOpen] = useEditorOpen(onClose);
-  const [draft, setDraft] = useState(initial);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const revision = useRef(0);
-  const baseline = useRef(initial);
-  const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const update = (value: Partial<SourceDraft>) => { revision.current++; setDraft((current) => ({ ...current, ...value })); };
-  async function save(event: FormEvent) {
-    event.preventDefault();
-    const submitted = revision.current;
-    setSaving(true); setError(null);
-    try {
-      const saved = await onSave(draft, baseline.current);
-      if (!mounted.current) return;
-      baseline.current = saved;
-      if (revision.current === submitted) setOpen(false);
-      else setDraft((current) => ({ ...current, id: saved.id }));
-    } catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : String(cause)); }
-    finally { if (mounted.current) setSaving(false); }
-  }
-  return <Dialog open={open} onOpenChange={setOpen}><DialogContent onCloseAutoFocus={onCloseAutoFocus} className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>{draft.id ? "Edit source" : "Add source"}</DialogTitle><DialogDescription>Subscribe to an HTTPS Git repository. Weekly checks are opt-in.</DialogDescription></DialogHeader>
-    <form className="grid min-w-0 gap-4" onSubmit={(event) => void save(event)}>
-      <label className={labelClass}>Name<Input required maxLength={100} value={draft.name} onChange={(event) => update({ name: event.target.value })} /></label>
-      <label className={labelClass}>Repository URL<Input required type="url" placeholder="https://github.com/example/skills.git" value={draft.repositoryUrl} onChange={(event) => update({ repositoryUrl: event.target.value })} /></label>
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 9rem), 1fr))" }}><label className={labelClass}>Git ref<Input required value={draft.gitRef} onChange={(event) => update({ gitRef: event.target.value })} /></label><label className={labelClass}>Subdirectory<Input placeholder="skills" value={draft.subdirectory} onChange={(event) => update({ subdirectory: event.target.value })} /></label></div>
-      <label className={labelClass}>Updates<Select value={draft.updatePolicy} onValueChange={(value) => update({ updatePolicy: value as SourceDraft["updatePolicy"] })}><SelectTrigger aria-label="Source update policy"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="automatic">Automatic</SelectItem><SelectItem value="review">Require approval</SelectItem></SelectContent></Select></label>
-      <label className="flex min-w-0 items-center justify-between gap-3 text-sm"><span>Check this source weekly</span><Switch aria-label="Check this source weekly" checked={draft.enabled} onCheckedChange={(enabled) => update({ enabled })} /></label>
-      {error && <p role="alert" className="break-words text-sm text-destructive">{error}</p>}
-      <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save source"}</Button></DialogFooter>
-    </form>
-  </DialogContent></Dialog>;
-}
-
-function BundleEditor({ initial, skills, onSave, onClose, onCloseAutoFocus }: { initial: BundleDraft; skills: Overview["skills"]; onSave: (draft: BundleDraft, expected: BundleDraft) => Promise<Bundle> } & EditorExit) {
-  const [open, setOpen] = useEditorOpen(onClose);
-  const [draft, setDraft] = useState(initial);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const revision = useRef(0);
-  const baseline = useRef(initial);
-  const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const update = (value: Partial<BundleDraft>) => { revision.current++; setDraft((current) => ({ ...current, ...value })); };
-  async function save(event: FormEvent) {
-    event.preventDefault(); const submitted = revision.current; setSaving(true); setError(null);
-    try {
-      const saved = await onSave(draft, baseline.current);
-      if (!mounted.current) return;
-      baseline.current = saved;
-      if (revision.current === submitted) setOpen(false); else setDraft((current) => ({ ...current, id: saved.id }));
-    } catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : String(cause)); }
-    finally { if (mounted.current) setSaving(false); }
-  }
-  return <Dialog open={open} onOpenChange={setOpen}><DialogContent onCloseAutoFocus={onCloseAutoFocus} className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>{draft.id ? "Edit set" : "Create set"}</DialogTitle><DialogDescription>Choose approved skills. Source sets keep their own membership.</DialogDescription></DialogHeader>
-    <form className="grid min-w-0 gap-4" onSubmit={(event) => void save(event)}>
-      <label className={labelClass}>Name<Input required maxLength={100} value={draft.name} onChange={(event) => update({ name: event.target.value })} /></label>
-      <label className={labelClass}>Description<Textarea value={draft.description} onChange={(event) => update({ description: event.target.value })} /></label>
-      <fieldset className="max-h-64 min-w-0 space-y-2 overflow-y-auto rounded-md border border-border p-3"><legend className="px-1 text-sm">Skills</legend>
-        {skills.filter((skill) => skill.enabled || draft.skillIds.includes(skill.id)).map((skill) => <label key={skill.id} className="flex min-w-0 items-start gap-2 text-sm"><Checkbox className="mt-1 shrink-0" checked={draft.skillIds.includes(skill.id)} onCheckedChange={(checked) => update({ skillIds: checked === true ? [...draft.skillIds, skill.id] : draft.skillIds.filter((id) => id !== skill.id) })} /><span className="min-w-0 break-words"><span className="block font-medium">{skill.name}</span><span className="text-xs text-muted-foreground">{skill.sourceName}</span></span></label>)}
-        {!skills.length && <p className="text-sm text-muted-foreground">Sync a source to add skills.</p>}
-      </fieldset>
-      {error && <p role="alert" className="break-words text-sm text-destructive">{error}</p>}
-      <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save set"}</Button></DialogFooter>
-    </form>
-  </DialogContent></Dialog>;
 }
 
 function ToolkitEditor({ initial, mappings, projects, agentsEnabled, onSave, onClose, onCloseAutoFocus }: { initial: Mapping; mappings: Mapping[]; projects: Overview["targets"]; agentsEnabled: boolean; onSave: (mapping: Mapping, expected: string[]) => Promise<void> } & EditorExit) {
@@ -139,15 +65,24 @@ function ToolkitEditor({ initial, mappings, projects, agentsEnabled, onSave, onC
     } catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { if (mounted.current) setSaving(false); }
   }
-  return <Dialog open={open} onOpenChange={setOpen}><DialogContent onCloseAutoFocus={onCloseAutoFocus} className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>Assign Executor toolkits</DialogTitle><DialogDescription>The first toolkit is the default. Executor keeps the connections and approval rules.</DialogDescription></DialogHeader>
+  return <Dialog open={open} onOpenChange={setOpen}><DialogContent onCloseAutoFocus={onCloseAutoFocus} className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>Assign Executor connections</DialogTitle><DialogDescription>The first connection is the default. Executor keeps the apps, accounts, and approval rules.</DialogDescription></DialogHeader>
     <form className="grid min-w-0 gap-4" onSubmit={(event) => void save(event)} onChange={() => { revision.current++; }}>
-      <label className={labelClass}>Scope<Select value={scope} disabled={initial.toolkits.length > 0} onValueChange={(value) => { revision.current++; setScope(value as Mapping["scope"]); setTargetId(value === "global" ? "*" : ""); }}><SelectTrigger aria-label="Toolkit scope"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="global">Every project</SelectItem><SelectItem value="project">One project</SelectItem><SelectItem value="agent" disabled={!agentsEnabled}>Agents profile</SelectItem><SelectItem value="plugin">Plugin backend</SelectItem></SelectContent></Select></label>
-      {scope === "project" ? <label className={labelClass}>Project<Select value={targetId} disabled={initial.toolkits.length > 0} onValueChange={(id) => { revision.current++; setTargetId(id); }}><SelectTrigger className="min-w-0" aria-label="Toolkit project"><SelectValue placeholder="Choose a project" /></SelectTrigger><SelectContent style={projectMenuStyle}>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent></Select></label> : scope !== "global" ? <label className={labelClass}>{scope === "agent" ? "Agents profile ID" : "Plugin ID"}<Input required readOnly={initial.toolkits.length > 0} value={targetId} onChange={(event) => setTargetId(event.target.value)} /></label> : null}
-      <label className={labelClass}>Toolkits<Textarea placeholder={"first-toolkit\nsecond-toolkit"} value={slugs} onChange={(event) => setSlugs(event.target.value)} /><span className="text-xs text-muted-foreground">One name per line. Clear the list to remove this assignment.</span></label>
+      <label className={labelClass}>Scope<Select value={scope} disabled={initial.toolkits.length > 0} onValueChange={(value) => { revision.current++; setScope(value as Mapping["scope"]); setTargetId(value === "global" ? "*" : ""); }}><SelectTrigger aria-label="Connection scope"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="global">Every project</SelectItem><SelectItem value="project">One project</SelectItem><SelectItem value="agent" disabled={!agentsEnabled}>Agents profile</SelectItem><SelectItem value="plugin">Plugin backend</SelectItem></SelectContent></Select></label>
+      {scope === "project" ? <label className={labelClass}>Project<Select value={targetId} disabled={initial.toolkits.length > 0} onValueChange={(id) => { revision.current++; setTargetId(id); }}><SelectTrigger className="min-w-0" aria-label="Connection project"><SelectValue placeholder="Choose a project" /></SelectTrigger><SelectContent style={projectMenuStyle}>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent></Select></label> : scope !== "global" ? <label className={labelClass}>{scope === "agent" ? "Agents profile ID" : "Plugin ID"}<Input required readOnly={initial.toolkits.length > 0} value={targetId} onChange={(event) => setTargetId(event.target.value)} /></label> : null}
+      <label className={labelClass}>Connections<Textarea placeholder={"first-connection\nsecond-connection"} value={slugs} onChange={(event) => setSlugs(event.target.value)} /><span className="text-xs text-muted-foreground">One connection ID per line. Clear the list to remove this assignment.</span></label>
       {error && <p role="alert" className="break-words text-sm text-destructive">{error}</p>}
-      <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={saving || (scope !== "global" && !targetId)}>{saving ? "Saving…" : "Save toolkits"}</Button></DialogFooter>
+      <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={saving || (scope !== "global" && !targetId)}>{saving ? "Saving…" : "Save connections"}</Button></DialogFooter>
     </form>
   </DialogContent></Dialog>;
+}
+
+/** Opens the sign-in tab before the RPC answers, so a popup blocker does not stop it. */
+async function openSignIn(start: () => Promise<{ url: string }>) {
+  const tab = window.open("", "_blank");
+  try {
+    const { url } = await start();
+    if (tab) { tab.opener = null; tab.location.href = url; } else window.location.assign(url);
+  } catch (cause) { tab?.close(); throw cause; }
 }
 
 export function CatalogPanel() {
@@ -155,19 +90,16 @@ export function CatalogPanel() {
   const [data, setData] = useState<Overview | null>(null);
   const [preferences, setPreferences] = useState<Preferences | null>(null);
   const [executor, setExecutor] = useState<Executor | null>(null);
-  const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
+  const [connections, setConnections] = useState<Diagnostics | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sourceDraft, setSourceDraft] = useState<SourceDraft | null>(null);
-  const [bundleDraft, setBundleDraft] = useState<BundleDraft | null>(null);
   const [mappingDraft, setMappingDraft] = useState<Mapping | null>(null);
   const [availabilityBundle, setAvailabilityBundle] = useState<Bundle | null>(null);
-  const [availabilityAssignments, setAvailabilityAssignments] = useState<Overview["assignments"]>(null);
+  const [availabilityAssignments, setAvailabilityAssignments] = useState<PluginRpcResult<(typeof rpcContract)["snapshot"]>["assignments"] | null>(null);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const availabilitySequence = useRef(0);
   const [setupOpen, setSetupOpen] = useState(false);
-  const [freshConfirmed, setFreshConfirmed] = useState(false);
   const sequence = useRef(0);
   const settingsRoot = useRef<HTMLDivElement | null>(null);
   const editorTrigger = useRef<HTMLButtonElement | null>(null);
@@ -179,9 +111,9 @@ export function CatalogPanel() {
   const load = useCallback(async () => {
     const current = ++sequence.current; setLoading(true);
     try {
-      const [next, prefs, configuration] = await Promise.all([rpc.call("catalogOverview"), rpc.call("preferences"), rpc.call("executorConfiguration")]);
+      const [next, prefs, configuration, overview] = await Promise.all([rpc.call("catalogOverview"), rpc.call("preferences"), rpc.call("executorConfiguration"), rpc.call("executorOverview")]);
       if (sequence.current !== current) return;
-      setData(next); setPreferences(prefs); setExecutor(configuration); setError(null);
+      setData(next); setPreferences(prefs); setExecutor(configuration); setConnections(overview); setError(null);
     } catch (cause) { if (sequence.current === current) setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { if (sequence.current === current) setLoading(false); }
   }, [rpc]);
@@ -198,50 +130,48 @@ export function CatalogPanel() {
     try { const snapshot = await rpc.call("snapshot"); if (sequence === availabilitySequence.current) setAvailabilityAssignments(snapshot.assignments); }
     catch { if (sequence === availabilitySequence.current) setAvailabilityError("Could not load project availability. Try again."); }
   }
-  function availabilityButton(bundle: Bundle | undefined, name: string) {
-    return <Button size="sm" variant="outline" disabled={!bundle} aria-label={`Projects for ${name}`} onClick={event => {
-      if (!bundle) return;
-      editorTrigger.current = event.currentTarget;
-      setAvailabilityBundle(bundle); setAvailabilityAssignments(null);
-      void readAvailability(++availabilitySequence.current);
-    }}>Projects</Button>;
+  function connect(connection: Connection) {
+    setBusy(true); setError(null);
+    void openSignIn(() => rpc.call("connectStart", { connection: connection.id, redirectOrigin: window.location.origin }))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => setBusy(false));
   }
-  function bundleList(bundles: Bundle[]) {
-    return <SettingsList items={bundles} label="sets">{bundle => <div key={bundle.id} className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-3"><div className="min-w-0 flex-1 basis-48"><p className="break-words text-sm font-medium">{bundle.name}</p><p className="text-xs text-muted-foreground">{bundle.nativeCapability ? `${countLabel(bundle.nativeCapability.toolIds.length, "tool")} · ${countLabel(bundle.nativeCapability.skillIds.length, "skill")} · Provided by ${bundle.nativeCapability.pluginId}` : `${countLabel(bundle.skillIds.length, "skill")} · Custom`}</p>{bundle.description && <p className="truncate text-xs text-muted-foreground" title={bundle.description}>{bundle.description}</p>}</div><div className="flex flex-wrap items-center gap-1">{availabilityButton(bundle, bundle.name)}{!bundle.nativeCapability && <><RowAction label={`Edit ${bundle.name}`} icon="Edit" onClick={event => { editorTrigger.current = event.currentTarget; setBundleDraft(bundle); }} /><RowAction label={`Remove ${bundle.name}`} icon="Trash2" disabled={busy} onClick={() => void run(() => rpc.call("deleteBundle", { id: bundle.id }))} /></>}</div></div>}</SettingsList>;
-  }
-  const skillsBySource = useMemo(() => {
+  const skillsByApp = useMemo(() => {
     const result = new Map<string, Overview["skills"]>();
-    for (const skill of data?.skills ?? []) result.set(skill.sourceId, [...(result.get(skill.sourceId) ?? []), skill]);
-    return result;
+    for (const skill of data?.skills ?? []) result.set(skill.sourceName, [...(result.get(skill.sourceName) ?? []), skill]);
+    return [...result.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [data?.skills]);
+  const native = (data?.bundles ?? []).filter((bundle) => bundle.nativeCapability);
+  const scopeName = (mapping: Mapping) => mapping.scope === "global" ? "Every project" : mapping.scope === "agent" ? "Agent profile" : mapping.scope === "plugin" ? `Plugin · ${mapping.targetId}` : data?.targets.find(target => target.id === mapping.targetId)?.name ?? "Project (missing)";
   const assignmentTargets = [{ id: "*", name: "Every project", kind: "global" as const }, ...(data?.targets ?? []).filter((target) => target.kind === "project")];
   return <div ref={settingsRoot} className="min-w-0 space-y-6" data-catalog-settings="">
     {error && <div role="alert" className="min-w-0 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm"><p className="break-words text-destructive">{error}</p><Button className="mt-2" size="sm" variant="outline" disabled={loading} onClick={() => void load()}>Retry</Button></div>}
-    {loading && <p role="status" className="text-sm text-muted-foreground">Loading Executor…</p>}
+    {loading && !data && <p role="status" className="text-sm text-muted-foreground">Loading Executor…</p>}
     {data && <>
-      <SettingsSection title="Skill sources" help="Manage skills and project availability from each repository." action={<Button size="sm" variant="outline" onClick={(event) => { editorTrigger.current = event.currentTarget; setSourceDraft({ name: "", repositoryUrl: "", gitRef: "main", subdirectory: "", updatePolicy: "review", enabled: false }); }}><Icon name="Plus" />Add source</Button>}>
-        <SettingsList items={data.sources} label="sources">{source => <div key={source.id} className="min-w-0 py-3">
-          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2"><div className="min-w-0 flex-1 basis-48"><p className="break-words text-sm font-medium">{source.name}</p><p className="truncate text-xs text-muted-foreground" title={source.repositoryUrl}>{source.repositoryUrl.replace(/^https?:\/\//, "").replace(/\.git$/, "")}</p><p className="mt-0.5 truncate text-xs text-muted-foreground" title={`${source.gitRef} / ${source.subdirectory}`}>{source.gitRef}{source.subdirectory ? ` / ${source.subdirectory}` : ""} · Weekly checks {source.enabled ? "on" : "off"}</p></div><div className="flex flex-wrap items-center gap-1">{availabilityButton(data.bundles.find(bundle => bundle.sourceId === source.id), source.name)}<Button size="sm" variant="outline" disabled={busy} onClick={() => void run(() => rpc.call("syncSource", { id: source.id }))}>Sync</Button><RowAction label={`Edit ${source.name}`} icon="Edit" onClick={event => { editorTrigger.current = event.currentTarget; setSourceDraft(source); }} /><RowAction label={`Remove ${source.name}`} icon="Trash2" disabled={busy} onClick={() => void run(() => rpc.call("deleteSource", { id: source.id }))} /></div></div>
-          {source.lastError && <p className="mt-2 break-words text-xs text-destructive">{source.lastError}</p>}
-          {source.pendingRevision && <div className="mt-2 flex flex-wrap items-center gap-2"><p className="min-w-0 break-all text-xs text-warning-text">Update awaiting approval · {source.pendingRevision.slice(0, 12)}</p><Button size="sm" disabled={busy} onClick={() => void run(() => rpc.call("approveSource", { id: source.id }))}>Approve revision</Button></div>}
-          <div className="mt-2"><details className="min-w-0"><summary className="cursor-pointer text-sm">Skills · {(skillsBySource.get(source.id) ?? []).length} total · {(skillsBySource.get(source.id) ?? []).filter((skill) => skill.enabled).length} enabled</summary><div role="region" aria-label={`${source.name} skills`} tabIndex={0} className="mt-2 max-h-72 space-y-2 overflow-y-auto rounded-md border border-border p-3" style={{ scrollbarGutter: "stable" }}>{(skillsBySource.get(source.id) ?? []).map((skill) => <label key={skill.id} className="flex min-w-0 items-start justify-between gap-3 text-sm"><span className="min-w-0 flex-1"><span className="block truncate font-medium" title={skill.name}>{skill.name}</span><span className="block truncate text-xs text-muted-foreground" title={skill.description}>{skill.description}</span></span><Switch className="mt-1 shrink-0" aria-label={`Enable ${skill.name}`} checked={skill.enabled} disabled={busy} onCheckedChange={(enabled) => void run(() => rpc.call("setSkillsEnabled", { skillIds: [skill.id], enabled }))} /></label>)}</div>{(skillsBySource.get(source.id) ?? []).length > 5 && <p className="mt-1.5 text-xs text-muted-foreground">Scrollable list · {(skillsBySource.get(source.id) ?? []).length} skills · scroll to see all</p>}</details></div>
-        </div>}</SettingsList>
+      <SettingsSection title="Connections" help="Each connection is a scoped set of Executor apps and accounts. BB signs in to each one once." action={<Button size="sm" variant="outline" disabled={!executor?.configured} onClick={(event) => { editorTrigger.current = event.currentTarget; setMappingDraft({ scope: "global", targetId: "*", toolkits: [] }); }}><Icon name="Plus" />Assign connections</Button>}>
+        {!executor?.configured && <p className="text-sm text-muted-foreground">Add the Executor URL in Configuration.</p>}
+        {connections?.error && <p role="alert" className="break-words text-xs text-destructive">{connections.error}</p>}
+        {executor?.configured && <SettingsList items={(connections?.connections ?? []).map(connection => ({ ...connection, name: connection.id }))} label="connections">{connection => <div key={connection.id} className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-3"><div className="min-w-0 flex-1 basis-48"><p className="break-all text-sm font-medium">{connection.id}</p><p className="text-xs text-muted-foreground">{connection.connected ? "Signed in" : <span className="text-warning-text">Not signed in</span>} · {connection.assignedTo.join(", ") || "Unassigned"}</p></div>{connection.connected
+          ? <Button size="sm" variant="outline" disabled={busy} aria-label={`Sign out of ${connection.id}`} onClick={() => void run(() => rpc.call("disconnect", { connection: connection.id }))}>Sign out</Button>
+          : <Button size="sm" disabled={busy} aria-label={`Sign in to ${connection.id}`} onClick={() => connect(connection)}>Sign in</Button>}</div>}</SettingsList>}
+        {!!executor?.mappings.length && <div className={boxClass}>{executor.mappings.map(mapping => <div key={`${mapping.scope}:${mapping.targetId}`} className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-3"><div className="min-w-0 flex-1 basis-48"><p className="text-sm" title={mapping.targetId}>{scopeName(mapping)}{mapping.scope === "agent" && <span className="ml-2 text-xs text-muted-foreground">{mapping.targetId.slice(0, 8)}</span>}</p><div className="mt-1 flex flex-wrap gap-1">{mapping.toolkits.map(toolkit => <span key={toolkit} className="min-w-0 break-all rounded border border-border/60 px-1.5 py-0.5 text-xs text-muted-foreground">{toolkit}</span>)}</div></div><RowAction label={`Edit connections for ${scopeName(mapping)}`} icon="Edit" onClick={event => { editorTrigger.current = event.currentTarget; setMappingDraft(mapping); }} /></div>)}</div>}
       </SettingsSection>
-      <SettingsSection title="Sets" help="Groups of skills and tools you can assign to projects." action={<Button size="sm" variant="outline" onClick={event => { editorTrigger.current = event.currentTarget; setBundleDraft({ name: "", description: "", skillIds: [] }); }}><Icon name="Plus" />Create set</Button>}>
-        {data.bundles.some(bundle => !bundle.sourceId) ? bundleList(data.bundles.filter(bundle => !bundle.sourceId)) : <p className="text-sm text-muted-foreground">No sets. Create one to group skills across sources.</p>}
+      <SettingsSection title="Skills" help="Executor apps ship these skills. Add or change them in Executor; BB copies them into each project's skill folders.">
+        {data.skillsError && <p role="alert" className="break-words text-xs text-destructive">{data.skillsError}</p>}
+        {skillsByApp.length ? <div className={boxClass}>{skillsByApp.map(([app, skills]) => <details key={app} className="min-w-0 py-3"><summary className="cursor-pointer text-sm">{app} · {countLabel(skills.length, "skill")}</summary><div role="region" aria-label={`${app} skills`} tabIndex={0} className="mt-2 max-h-72 space-y-2 overflow-y-auto" style={{ scrollbarGutter: "stable" }}>{skills.map(skill => <div key={skill.id} className="min-w-0 text-sm"><span className="block truncate font-medium" title={skill.name}>{skill.name}</span><span className="block truncate text-xs text-muted-foreground" title={skill.description}>{skill.description}</span></div>)}</div></details>)}</div>
+          : <p className="text-sm text-muted-foreground">No skills yet. Add a skills app in Executor and include it in a connection.</p>}
       </SettingsSection>
-      <SettingsSection title="Executor toolkits" help="Service connections available to each project." action={<Button size="sm" variant="outline" disabled={!executor?.configured} onClick={(event) => { editorTrigger.current = event.currentTarget; setMappingDraft({ scope: "global", targetId: "*", toolkits: [] }); }}><Icon name="Plus" />Assign toolkits</Button>}>
-        {!executor?.configured && <p className="text-sm text-muted-foreground">Add the Executor URL and API key in Configuration.</p>}
-        <div className={boxClass}>{executor?.mappings.map(mapping => <div key={`${mapping.scope}:${mapping.targetId}`} className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-3"><div className="min-w-0 flex-1 basis-48"><p className="text-sm" title={mapping.targetId}>{mapping.scope === "global" ? "Every project" : mapping.scope === "agent" ? "Agent profile" : mapping.scope === "plugin" ? `Plugin · ${mapping.targetId}` : data.targets.find(target => target.id === mapping.targetId)?.name ?? "Project (missing)"}{mapping.scope === "agent" && <span className="ml-2 text-xs text-muted-foreground">{mapping.targetId.slice(0, 8)}</span>}</p><div className="mt-1 flex flex-wrap gap-1">{mapping.toolkits.map(toolkit => <span key={toolkit} className="min-w-0 break-all rounded border border-border/60 px-1.5 py-0.5 text-xs text-muted-foreground">{toolkit}</span>)}</div></div><RowAction label={`Edit toolkits for ${mapping.scope === "global" ? "every project" : data.targets.find(target => target.id === mapping.targetId)?.name ?? mapping.targetId}`} icon="Edit" onClick={event => { editorTrigger.current = event.currentTarget; setMappingDraft(mapping); }} /></div>)}
-          <div className="py-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm">Connection check</p><p className="mt-0.5 text-xs text-muted-foreground">Contacts Executor only when you run it.</p></div><Button size="sm" variant="outline" disabled={busy || !executor?.configured} onClick={() => void run(async () => { setDiagnostics(await rpc.call("executorOverview", null)); })}>Check Executor</Button></div>{diagnostics?.error && <p role="alert" className="mt-2 break-words text-xs text-destructive">{diagnostics.error}</p>}{diagnostics?.warnings.map(warning => <p key={warning} className="mt-2 break-words text-xs text-warning-text">{warning}</p>)}{diagnostics && !diagnostics.error && !diagnostics.warnings.length && <p className="mt-2 text-xs text-muted-foreground">No connection or policy warnings.</p>}</div>
-        </div>
-      </SettingsSection>
-      <SettingsSection title="More"><div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-surface-recessed/70 p-3"><div><p className="text-sm">Setup guide</p><p className="mt-0.5 text-xs text-muted-foreground">Sources, assignments, and other harnesses.</p></div><Button size="sm" variant="outline" onClick={event => { editorTrigger.current = event.currentTarget; setSetupOpen(true); }}>Open setup guide</Button></div></SettingsSection>
+      {native.length > 0 && <SettingsSection title="Plugin capabilities" help="Tools and skills other BB plugins provide. Choose which projects can use them.">
+        <SettingsList items={native} label="capabilities">{bundle => <div key={bundle.id} className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-3"><div className="min-w-0 flex-1 basis-48"><p className="break-words text-sm font-medium">{bundle.name}</p><p className="text-xs text-muted-foreground">{countLabel(bundle.nativeCapability!.toolIds.length, "tool")} · {countLabel(bundle.nativeCapability!.skillIds.length, "skill")} · Provided by {bundle.nativeCapability!.pluginId}</p>{bundle.description && <p className="truncate text-xs text-muted-foreground" title={bundle.description}>{bundle.description}</p>}</div><Button size="sm" variant="outline" aria-label={`Projects for ${bundle.name}`} onClick={event => {
+          editorTrigger.current = event.currentTarget;
+          setAvailabilityBundle(bundle); setAvailabilityAssignments(null);
+          void readAvailability(++availabilitySequence.current);
+        }}>Projects</Button></div>}</SettingsList>
+      </SettingsSection>}
+      <SettingsSection title="More"><div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-surface-recessed/70 p-3"><div><p className="text-sm">Setup guide</p><p className="mt-0.5 text-xs text-muted-foreground">Connections, sign-in, skills, and other harnesses.</p></div><Button size="sm" variant="outline" onClick={event => { editorTrigger.current = event.currentTarget; setSetupOpen(true); }}>Open setup guide</Button></div></SettingsSection>
     </>}
-    {sourceDraft && <SourceEditor initial={sourceDraft} onCloseAutoFocus={restoreEditorFocus} onClose={() => setSourceDraft(null)} onSave={async (draft, expected) => { const saved = await rpc.call("saveSource", { ...(draft.id ? { id: draft.id, expected: sourceFields(expected) } : {}), ...sourceFields(draft) }); await load(); return saved; }} />}
-    {bundleDraft && data && <BundleEditor initial={bundleDraft} skills={data.skills} onCloseAutoFocus={restoreEditorFocus} onClose={() => setBundleDraft(null)} onSave={async (draft, expected) => { const saved = await rpc.call("saveBundle", { ...(draft.id ? { id: draft.id, expected: bundleFields(expected) } : {}), ...bundleFields(draft) }); await load(); return saved; }} />}
     {mappingDraft && data && <ToolkitEditor initial={mappingDraft} mappings={executor?.mappings ?? []} projects={data.targets} agentsEnabled={preferences?.agentsIntegration ?? false} onCloseAutoFocus={restoreEditorFocus} onClose={() => setMappingDraft(null)} onSave={async (mapping, expectedToolkits) => { await rpc.call("setExecutorToolkits", { ...mapping, expectedToolkits }); await load(); }} />}
-    <Dialog open={availabilityBundle !== null} onOpenChange={open => { if (!open) { availabilitySequence.current++; setAvailabilityBundle(null); } }}>{availabilityBundle && <DialogContent onCloseAutoFocus={restoreEditorFocus} className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>Projects</DialogTitle><DialogDescription>{availabilityBundle.name} · Choose which projects can use this set. Changes apply as you select.</DialogDescription></DialogHeader>
+    <Dialog open={availabilityBundle !== null} onOpenChange={open => { if (!open) { availabilitySequence.current++; setAvailabilityBundle(null); } }}>{availabilityBundle && <DialogContent onCloseAutoFocus={restoreEditorFocus} className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>Projects</DialogTitle><DialogDescription>{availabilityBundle.name} · Choose which projects can use this capability. Changes apply as you select.</DialogDescription></DialogHeader>
       {availabilityError && <div role="alert" className="space-y-2 text-sm text-destructive"><p>{availabilityError}</p><Button size="sm" variant="outline" onClick={() => void readAvailability(availabilitySequence.current)}>Retry</Button></div>}
       {availabilityAssignments === null ? !availabilityError && <p role="status" className="text-sm text-muted-foreground">Loading projects…</p> : <div className="max-h-[50dvh] overflow-y-auto rounded-md border border-border px-3" style={{ scrollbarGutter: "stable" }}>{assignmentTargets.map(target => <label key={target.id} className="flex min-w-0 items-center gap-3 border-b border-border/60 py-3 text-sm last:border-0"><Checkbox disabled={busy} checked={availabilityAssignments.some(assignment => assignment.bundleId === availabilityBundle.id && assignment.kind === target.kind && assignment.targetId === target.id)} onCheckedChange={enabled => {
         const bundleId = availabilityBundle.id, sequence = availabilitySequence.current;
@@ -250,8 +180,7 @@ export function CatalogPanel() {
       }} /><span className="min-w-0 break-words">{target.name}</span></label>)}</div>}
       <DialogFooter><Button variant="outline" onClick={() => { availabilitySequence.current++; setAvailabilityBundle(null); }}>Done</Button></DialogFooter>
     </DialogContent>}</Dialog>
-    <Dialog open={setupOpen} onOpenChange={setSetupOpen}>{setupOpen && <DialogContent onCloseAutoFocus={restoreEditorFocus} className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>Executor setup guide</DialogTitle><DialogDescription>Connect services and make skills available to projects.</DialogDescription></DialogHeader><div className="space-y-4 text-sm"><ol className="list-decimal space-y-2 pl-5"><li>Add the Executor URL and API key in Configuration.</li><li>Assign toolkits to the projects that need their service connections.</li><li>Add a skill source, sync it, and approve any pending revision.</li><li>Choose Projects on a skill source or set.</li></ol>{data && <><div className="space-y-2"><h3 className="font-medium">Assignments</h3><p className="text-muted-foreground">{data.assignmentState.state === "uninitialized" ? "Assignments are not initialized. If you are migrating an existing installation, retain and transfer its assignments before continuing." : `Assignment status: ${data.assignmentState.state}.`}</p>{data.assignmentState.state === "uninitialized" && <><label className="flex items-start gap-2"><Checkbox className="mt-1 shrink-0" checked={freshConfirmed} onCheckedChange={checked => setFreshConfirmed(checked === true)} /><span>I confirm this is a new installation with no existing assignments.</span></label><Button size="sm" variant="outline" disabled={busy || !freshConfirmed} onClick={() => void run(() => rpc.call("initializeAssignmentsV1", { confirmation: "no-legacy-assignments" }))}>Initialize standalone assignments</Button></>}</div><div className="space-y-2"><h3 className="font-medium">Other harnesses</h3>{data.harnesses.map(harness => <p key={harness.id} className="break-words text-xs text-muted-foreground"><span className="font-medium text-foreground">{harness.name}: </span>{harness.detail}</p>)}</div></>}<p className="text-xs text-muted-foreground">Use <code>bb catalog</code> for command-line management. Credentials stay on the server; approve requested actions in the thread.</p></div><DialogFooter><Button variant="outline" onClick={() => setSetupOpen(false)}>Done</Button></DialogFooter></DialogContent>}</Dialog>
-
+    <Dialog open={setupOpen} onOpenChange={setSetupOpen}>{setupOpen && <DialogContent onCloseAutoFocus={restoreEditorFocus} className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>Executor setup guide</DialogTitle><DialogDescription>Connect Executor and make its apps and skills available to projects.</DialogDescription></DialogHeader><div className="space-y-4 text-sm"><ol className="list-decimal space-y-2 pl-5"><li>Add the Executor URL in Configuration. A personal access token is optional; it turns on account health alerts.</li><li>In Executor, create a connection for each group of apps and accounts. Its ID is the name BB uses.</li><li>Assign connections to every project, one project, an Agents profile, or a plugin backend.</li><li>Sign in to each connection. Executor asks you to approve BB once.</li><li>Skills come from skills apps in each connection. Change them in Executor.</li></ol>{data && <div className="space-y-2"><h3 className="font-medium">Other harnesses</h3>{data.harnesses.map(harness => <p key={harness.id} className="break-words text-xs text-muted-foreground"><span className="font-medium text-foreground">{harness.name}: </span>{harness.detail}</p>)}</div>}<p className="text-xs text-muted-foreground">Use <code>bb catalog</code> for command-line management. Grants stay on the BB server; approve requested actions in the thread.</p></div><DialogFooter><Button variant="outline" onClick={() => setSetupOpen(false)}>Done</Button></DialogFooter></DialogContent>}</Dialog>
   </div>;
 }
 
@@ -263,5 +192,5 @@ export function CatalogIntegrationSettings() {
   const load = useCallback(() => { void rpc.call("preferences").then(setPreferences, () => setError("Could not load integration settings.")); }, [rpc]);
   useEffect(load, [load]);
   useRealtime("catalog-changed", load);
-  return <SettingsSection title="Oh My BB"><div className={boxClass}><label className="flex items-center justify-between gap-3 py-3"><span className="min-w-0"><span className="block text-sm">Agents</span><span className="mt-0.5 block text-xs text-muted-foreground">Assign toolkits to Agents profiles.</span></span><Switch aria-label="Assign toolkits to Agents profiles" disabled={busy || !preferences} checked={preferences?.agentsIntegration ?? false} onCheckedChange={agentsIntegration => { setBusy(true); setError(null); void rpc.call("updatePreferences", { agentsIntegration }).then(setPreferences, () => setError("Could not save integration settings.")).finally(() => setBusy(false)); }} /></label></div>{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</SettingsSection>;
+  return <SettingsSection title="Oh My BB"><div className={boxClass}><label className="flex items-center justify-between gap-3 py-3"><span className="min-w-0"><span className="block text-sm">Agents</span><span className="mt-0.5 block text-xs text-muted-foreground">Assign connections to Agents profiles.</span></span><Switch aria-label="Assign connections to Agents profiles" disabled={busy || !preferences} checked={preferences?.agentsIntegration ?? false} onCheckedChange={agentsIntegration => { setBusy(true); setError(null); void rpc.call("updatePreferences", { agentsIntegration }).then(setPreferences, () => setError("Could not save integration settings.")).finally(() => setBusy(false)); }} /></label></div>{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</SettingsSection>;
 }

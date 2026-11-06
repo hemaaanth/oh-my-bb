@@ -1,31 +1,31 @@
 import { homedir } from "node:os";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import type { BbPluginApi, ExperimentalPluginRpcHandlerContext, PluginCliResult } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { ExecutorClient, connectionProblem, normalizeExecutorUrl, patternMatches, toolkitSlugPattern, type ApprovalRequest, type ExecutorTool, type PausedCall, type ToolkitDetail } from "./executor.js";
+import {
+  ExecutorApi, ExecutorError, McpConnectionClient, authorizationUrl, connectionIdPattern, connectionUrl, exchangeCode,
+  normalizeExecutorUrl, parseConnectionRef, refreshTokens, registerClient,
+  type ApprovalRequired, type OAuthClient, type RemoteSkill, type ToolOutput,
+} from "./executor.js";
 import { harnessCatalog, materializeSkills } from "./materialize.js";
 import { pluginCallerSchema, preferencesSchema, rpcContract, type NativeCapabilityInput } from "./contract.js";
-import { CatalogStore, migrations, type ApprovedSkill, type PluginExecutorCall, type Source } from "./store.js";
-import { syncCatalogSource } from "./sync.js";
-import manifest from "./package.json" with { type: "json" };
-import { CatalogAssignmentStore } from "./assignment-store.js";
-import { createAssignmentRuntime, requireAssignmentClient, requireProjects } from "./assignment-runtime.js";
-import { AssignmentError } from "./assignment-contract.js";
+import { CatalogStore, migrations, type ApprovedSkill, type Grant, type PluginExecutorCall, type StoredFile } from "./store.js";
 
 const okSchema = z.object({ ok: z.literal(true) });
 /** One checkout on one machine: a project source or a bb worktree. */
 interface Workspace { hostId: string; path: string; projectId: string }
+interface ThreadContext { threadId: string; projectId: string; signal: AbortSignal }
+/** A skill as one connection sees it. */
+interface FoundSkill { connection: string; remote: RemoteSkill }
 
-function sourceDto(source: Source) {
-  const { approvedReleaseId: _approvedReleaseId, pendingReleaseId: _pendingReleaseId, ...visible } = source;
-  return visible;
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
-function skillDto(skill: ApprovedSkill) {
-  const { files, skillId: _skillId, ...visible } = skill;
-  return { ...visible, fileCount: files.length };
+function skillId(skill: Pick<RemoteSkill, "app" | "name">): string {
+  return `${skill.app}/${skill.name}`;
 }
 
 function nativeCapabilityDto(capability: NativeCapabilityInput) {
@@ -42,7 +42,7 @@ function nativeCapabilityDto(capability: NativeCapabilityInput) {
 }
 
 function resultError(error: unknown): PluginCliResult {
-  return { exitCode: 1, stderr: `${error instanceof Error ? error.message : String(error)}\n` };
+  return { exitCode: 1, stderr: `${message(error)}\n` };
 }
 
 function cliOption(argv: string[], name: string): string | undefined {
@@ -71,20 +71,33 @@ function requirePluginCaller(caller: string, context: ExperimentalPluginRpcHandl
 }
 
 function requireCatalogClient(context: ExperimentalPluginRpcHandlerContext) {
-  if (context?.experimental_caller?.kind !== "client") throw new Error("Use the BB client for Executor settings and toolkit configuration.");
+  if (context?.experimental_caller?.kind !== "client") throw new Error("Use the BB client for Executor settings and connection configuration.");
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/gu, (char) => `&#${char.charCodeAt(0)};`);
+}
+
+function callbackPage(status: number, title: string, body: string): Response {
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(title)}</title></head>`
+    + `<body style="font-family:system-ui,sans-serif;max-width:560px;margin:15vh auto;padding:0 16px;line-height:1.5">`
+    + `<h1 style="font-size:20px">${escapeHtml(title)}</h1><p>${escapeHtml(body)}</p></body></html>`;
+  return new Response(html, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" } });
 }
 
 /**
- * Project → Executor toolkit slugs. The `*` key holds toolkits every project
- * gets, and `agent:<profile-id>` keys hold toolkits for every thread an Agents
- * profile runs, in whichever project that thread runs. `plugin:<plugin-id>`
- * keys hold toolkits another plugin's backend reaches through `executorCall`;
- * they are separate from the thread scopes and `*` does not apply to them.
+ * Scope → Executor connection IDs. The `*` key holds connections every project
+ * gets, and `agent:<profile-id>` keys hold connections for every thread an
+ * Agents profile runs. `plugin:<plugin-id>` keys hold connections another
+ * plugin's backend reaches through `executorCall`; `*` does not apply to them.
+ * The key keeps its v1 name: connection IDs equal the old toolkit slugs.
  */
-const toolkitMapSchema = z.record(z.string(), z.array(z.string().regex(toolkitSlugPattern)));
+const toolkitMapSchema = z.record(z.string(), z.array(z.string().regex(connectionIdPattern)));
 const TOOLKIT_MAP_KEY = "executor-toolkits";
 const connectionAlertsSchema = z.record(z.string(), z.object({ name: z.string().optional(), problem: z.string(), since: z.number() }));
 const CONNECTION_ALERTS_KEY = "executor-connection-alerts";
+const SKILLS_DIGEST_KEY = "executor-skills-digest";
+const oauthClientSchema = z.object({ clientId: z.string(), redirectUri: z.string() });
 /** Must match CONNECTIONS_CHANGED in app.tsx. */
 const CONNECTIONS_CHANGED = "executor-connections-changed";
 const GLOBAL_TOOLKITS = "*";
@@ -96,7 +109,12 @@ const PLUGIN_CALL_TIMEOUT_MS = 3 * 60_000;
 const PLUGIN_PAUSE_TTL_MS = 60 * 60_000;
 const threadAgentSchema = z.object({ profileId: z.string().uuid().nullable(), bound: z.boolean() });
 const agentProfilesSchema = z.array(z.object({ id: z.string().uuid(), slug: z.string() }));
+const bundleProjectionSchema = z.object({
+  globalBundleIds: z.array(z.string()),
+  projects: z.array(z.object({ projectId: z.string(), bundleIds: z.array(z.string()) })),
+});
 type ThreadAgent = z.infer<typeof threadAgentSchema>;
+type BundleProjection = z.infer<typeof bundleProjectionSchema>;
 /** Must match APPROVAL_RENDERER_ID in app.tsx. */
 const APPROVAL_RENDERER_ID = "executor-approval";
 /** One Executor call can pause more than once, e.g. code that makes two gated calls. */
@@ -106,10 +124,20 @@ const MAX_APPROVAL_ARGS_CHARS = 8_000;
 const APPROVAL_QUEUE_WAIT_MS = 30_000;
 const APPROVALS_CHANGED = "executor-approvals-changed";
 const MAX_ALLOWED_THREADS = 1_000;
-const APPROVAL_INDEX_TTL_MS = 60 * 60_000;
-const APPROVAL_INDEX_RETRY_MS = 60_000;
+/** Executor keeps a paused program until it restarts or the request expires. */
+const PENDING_RESUME_TTL_MS = 60 * 60_000;
+const SIGN_IN_TTL_MS = 15 * 60_000;
+const MAX_PENDING_SIGN_INS = 100;
+/** Refresh an access token when less than this is left. */
+const TOKEN_MARGIN_MS = 60_000;
+const SKILLS_TTL_MS = 10 * 60_000;
+const MAX_SKILL_FILES = 200;
+const MAX_CACHED_SKILLS = 500;
+const CALLBACK_ROUTE = "/oauth/callback";
+const CALLBACK_PATH = `/api/v1/plugins/catalog/http${CALLBACK_ROUTE}`;
+/** The Executor app's own skills are docs for executor_docs, not skills to project. */
+const EXECUTOR_APP = "executor";
 
-interface ApprovalIndex { at: number; tools: Map<string, ExecutorTool>; integrations: Map<string, string>; accounts: Map<string, string> }
 interface QueuedApproval { id: string; address: string; name: string; summary: string; open: boolean; decision: "accept" | "decline" | null; stop: AbortController }
 interface ApprovalQueue { entries: QueuedApproval[]; changed: Promise<void>; wake: () => void }
 
@@ -126,36 +154,26 @@ function safeSkillPath(value: string): string {
   return normalized;
 }
 
+function shownArgs(value: unknown): string {
+  const shown = value == null ? "" : JSON.stringify(value, null, 2) ?? "";
+  return shown.length > MAX_APPROVAL_ARGS_CHARS ? `${shown.slice(0, MAX_APPROVAL_ARGS_CHARS)}\n… (truncated)` : shown;
+}
+
+/** `fetch` read at call time, so tests can replace the global. */
+const globalFetch: typeof fetch = (input, init) => fetch(input, init);
+
 export default async function plugin(bb: BbPluginApi) {
   const db = bb.storage.database();
   bb.storage.migrate(db, migrations);
   db.pragma("foreign_keys = ON");
   const store = new CatalogStore(db);
   const bundleCache = new Map<string, string[]>();
-  const assignmentStore = new CatalogAssignmentStore(db, store);
-  const assignments = createAssignmentRuntime(bb, assignmentStore, manifest.version, () => {
-    bundleCache.clear();
-    publish("assignment-changed");
-  });
-  const sandboxSkills = new Map(await Promise.all((await bb.storage.kv.list("sandbox-skills:" )).map(async (key) => [key.slice("sandbox-skills:".length), z.array(z.string()).parse(await bb.storage.kv.get(key))] as const)));
-  const selectedSkills = (hostId: string) => {
-    const ids = sandboxSkills.get(hostId);
-    return ids === undefined ? undefined : store.listApprovedSkills().filter((skill) => ids.includes(skill.id));
-  };
+  const sandboxSkills = new Map(await Promise.all((await bb.storage.kv.list("sandbox-skills:")).map(async (key) => [key.slice("sandbox-skills:".length), z.array(z.string()).parse(await bb.storage.kv.get(key))] as const)));
   async function threadHost(threadId?: string) {
     if (!threadId || sandboxSkills.size === 0) return undefined;
     const thread = await bb.sdk.threads.get({ threadId });
     if (!thread.environmentId) return undefined;
     return (await bb.sdk.environments.get({ environmentId: thread.environmentId })).hostId;
-  }
-
-
-  function skillsForBundleIds(bundleIds: readonly string[]) {
-    const bundles = new Map(store.listBundles().map((bundle) => [bundle.id, bundle]));
-    const missing = bundleIds.find((id) => !bundles.has(id));
-    if (missing) throw new AssignmentError("owner-unavailable", `Assigned Executor bundle ${missing} is unresolved. Restore its definition before materializing skills.`);
-    const skillIds = new Set(bundleIds.flatMap((bundleId) => bundles.get(bundleId)?.skillIds ?? []));
-    return store.listApprovedSkills().filter((skill) => skillIds.has(skill.id));
   }
   function nativeCapabilitiesForBundleIds(bundleIds: readonly string[]) {
     const wanted = new Set(bundleIds);
@@ -164,37 +182,39 @@ export default async function plugin(bb: BbPluginApi) {
       .map((bundle) => bundle.nativeCapability!);
   }
 
-  // The remote Executor server owns which connections and policies make up a toolkit.
-  // This plugin records which toolkits each project's agents may use, and carries
-  // their calls from the BB server so sandboxes never hold the key.
+  // Executor owns apps, accounts, tools, approval rules and skills. This plugin
+  // records which connection each scope uses, holds one OAuth grant per
+  // connection, and carries calls from the BB server so sandboxes never hold a token.
   const executorSettings = bb.settings.define({
     executorUrl: {
       type: "string",
       label: "Executor URL",
-      description: "Server that stores your service connections.",
+      description: "Your Executor server, for example https://executor.example. Sign in to each connection from Settings or with bb catalog executor connect.",
       default: "",
     },
     executorApiKey: {
       type: "string",
-      label: "Executor API key",
-      description: "Connects this BB server to Executor.",
+      label: "Executor personal access token",
+      description: "Optional. Reads account health for connection alerts. It never runs code.",
       secret: true,
     },
   });
-  let executor: { client: ExecutorClient; url: string } | null = null;
+  let executor: { url: string; api: ExecutorApi | null } | null = null;
   let toolkitMap = toolkitMapSchema.parse(await bb.storage.kv.get(TOOLKIT_MAP_KEY) ?? {});
   let preferences = preferencesSchema.parse(await bb.storage.kv.get("preferences") ?? {
     agentsIntegration: Object.keys(toolkitMap).some((key) => key.startsWith(AGENT_TOOLKITS)),
   });
   let preferenceWrites: Promise<unknown> = Promise.resolve();
   let toolkitWrites: Promise<unknown> = Promise.resolve();
-  /** Integrations per mapped toolkit, for agent instructions; refreshed on changes and hourly. */
-  let toolkitIntegrations = new Map<string, string[]>();
 
-  /** A thread's toolkits: its agent's, then its project's, then the global ones. The first is the default. */
+  /** A thread's connections: its agent's, then its project's, then the global ones. The first is the default. */
   function threadToolkits(projectId: string, profileId: string | null): string[] {
     const agent = preferences.agentsIntegration && profileId ? toolkitMap[AGENT_TOOLKITS + profileId] ?? [] : [];
     return [...new Set([...agent, ...(toolkitMap[projectId] ?? []), ...(toolkitMap[GLOBAL_TOOLKITS] ?? [])])];
+  }
+  /** Every connection a thread can reach in some scope. Plugin scopes are separate. */
+  function threadConnections(): string[] {
+    return [...new Set(Object.entries(toolkitMap).filter(([key]) => !key.startsWith(PLUGIN_TOOLKITS)).flatMap(([, ids]) => ids))];
   }
   /** Which Agents profile each thread runs as. Only `configure` reads this cache, because it cannot wait. */
   const threadAgents = new Map<string, ThreadAgent>();
@@ -219,30 +239,22 @@ export default async function plugin(bb: BbPluginApi) {
     if (!preferences.agentsIntegration) return [];
     return bb.sdk.plugins.callRpc({ pluginId: "agent-profiles", method: "listProfiles", input: null, outputSchema: agentProfilesSchema });
   }
-  async function refreshToolkitIntegrations() {
-    if (!executor) { toolkitIntegrations = new Map(); return; }
-    toolkitIntegrations = await executor.client.toolkitIntegrations([...new Set(Object.values(toolkitMap).flat())]);
-  }
   // Queue target lookups too: an earlier slow lookup must not outlive a later clear.
   function queueToolkitWrite<T>(write: () => Promise<T>) {
     const save = toolkitWrites.then(write);
     toolkitWrites = save.catch(() => undefined);
     return save;
   }
-  async function saveExecutorToolkits(key: string, slugs: string[], expected?: string[]) {
-    if (slugs.length && expected && JSON.stringify(toolkitMap[key] ?? []) !== JSON.stringify(expected)) throw new Error("This toolkit mapping changed. Reopen it and review the current choices before saving.");
-    if (slugs.length) {
-      if (!executor) throw new Error("Configure Executor in the native Configuration fields first.");
-      const known = new Set((await executor.client.listToolkits()).map((toolkit) => toolkit.slug));
-      const missing = slugs.filter((slug) => !known.has(slug));
-      if (missing.length) throw new Error(`Executor has no toolkit named ${missing.join(", ")}. Create it in Executor first.`);
-    }
+  async function saveExecutorToolkits(key: string, ids: string[], expected?: string[]) {
+    if (ids.length && expected && JSON.stringify(toolkitMap[key] ?? []) !== JSON.stringify(expected)) throw new Error("This connection mapping changed. Reopen it and review the current choices before saving.");
+    const bad = ids.find((id) => !connectionIdPattern.test(id));
+    if (bad) throw new Error(`Not an Executor connection ID: ${bad}`);
     const next = { ...toolkitMap };
-    if (slugs.length) next[key] = [...new Set(slugs)];
+    if (ids.length) next[key] = [...new Set(ids)];
     else delete next[key];
     await bb.storage.kv.set(TOOLKIT_MAP_KEY, next);
     toolkitMap = next;
-    await refreshToolkitIntegrations().catch(() => bb.log.warn("Executor toolkit mapping saved, but integration descriptions could not be refreshed."));
+    publish("toolkits-changed");
   }
   function executorConfiguration() {
     return { configured: executor !== null, url: executor?.url ?? null,
@@ -253,124 +265,295 @@ export default async function plugin(bb: BbPluginApi) {
       })),
     };
   }
+
+  // ---------------------------------------------------------------------------
+  // Grants: one OAuth grant per connection, refreshed by BB.
+
+  const grants = new Map(store.grants().map((grant) => [grant.connection, grant]));
+  const refreshing = new Map<string, Promise<Grant>>();
+  const clients = new Map<string, McpConnectionClient>();
+
+  function signInAgain(connection: string, reason?: string) {
+    return new Error(`BB is not signed in to Executor connection ${connection}${reason ? ` (${reason})` : ""}. Run: bb catalog executor connect ${connection}`);
+  }
+  /** The grant for a connection at the configured Executor. A grant for another server does not count. */
+  function currentGrant(connection: string): Grant | null {
+    const grant = grants.get(connection);
+    return grant && executor && grant.origin === executor.url ? grant : null;
+  }
+  function saveGrant(grant: Grant) {
+    store.saveGrant(grant);
+    grants.set(grant.connection, grant);
+  }
+  function forgetGrant(connection: string) {
+    store.deleteGrant(connection);
+    grants.delete(connection);
+    clients.delete(connection);
+    skillIndexes.delete(connection);
+  }
+  /** One refresh at a time per connection: Executor rotates the refresh token on each one. */
+  function refreshGrant(connection: string, stale: Grant): Promise<Grant> {
+    const running = refreshing.get(connection);
+    if (running) return running;
+    const next = (async () => {
+      const latest = grants.get(connection) ?? stale;
+      if (latest.accessToken !== stale.accessToken && latest.expiresAt - Date.now() > TOKEN_MARGIN_MS) return latest;
+      if (!latest.refreshToken) throw signInAgain(connection, "the grant has no refresh token");
+      try {
+        const tokens = await refreshTokens(latest.origin, latest.clientId, latest.refreshToken, connectionUrl(latest.origin, connection), globalFetch);
+        const refreshed = { ...latest, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken ?? latest.refreshToken, expiresAt: tokens.expiresAt };
+        saveGrant(refreshed);
+        return refreshed;
+      } catch (error) {
+        if (error instanceof ExecutorError && error.status !== undefined && error.status >= 400 && error.status < 500) {
+          bb.log.warn(`Executor refused to refresh the grant for connection ${connection}.`);
+          throw signInAgain(connection, "Executor refused the refresh");
+        }
+        throw error;
+      }
+    })().finally(() => refreshing.delete(connection));
+    refreshing.set(connection, next);
+    return next;
+  }
+  function clientFor(connection: string): McpConnectionClient {
+    if (!executor) throw new Error("Executor is not configured. Run: bb catalog executor configure --url <url>");
+    const cached = clients.get(connection);
+    if (cached) return cached;
+    const client = new McpConnectionClient(connectionUrl(executor.url, connection), async ({ refresh }) => {
+      const grant = currentGrant(connection);
+      if (!grant) throw signInAgain(connection);
+      if (!refresh && grant.expiresAt - Date.now() > TOKEN_MARGIN_MS) return grant.accessToken;
+      return (await refreshGrant(connection, grant)).accessToken;
+    }, globalFetch);
+    clients.set(connection, client);
+    return client;
+  }
+
+  // Sign-ins. Executor is the authorization server; BB is a public client.
+  const pendingSignIns = new Map<string, { origin: string; connection: string; client: OAuthClient; verifier: string; expires: number }>();
+  async function oauthClient(origin: string, redirectUri: string): Promise<OAuthClient> {
+    const key = `oauth-client:${origin} ${redirectUri}`;
+    const saved = oauthClientSchema.safeParse(await bb.storage.kv.get(key));
+    if (saved.success) return saved.data;
+    const client = await registerClient(origin, redirectUri, globalFetch);
+    await bb.storage.kv.set(key, client);
+    return client;
+  }
+  async function connectStart(ref: string, redirectOrigin: string): Promise<{ url: string; connection: string; redirectUri: string }> {
+    if (!executor) throw new Error("Configure the Executor URL first.");
+    const { origin, connection } = parseConnectionRef(ref, executor.url);
+    if (origin !== executor.url) throw new Error(`That connection belongs to ${origin}, but Executor is configured at ${executor.url}.`);
+    const redirect = new URL(redirectOrigin);
+    if (redirect.protocol !== "https:" && redirect.protocol !== "http:") throw new Error("Use an http or https BB address for the sign-in callback.");
+    const redirectUri = `${redirect.origin}${CALLBACK_PATH}`;
+    const client = await oauthClient(origin, redirectUri);
+    const pending = authorizationUrl(origin, client, connectionUrl(origin, connection));
+    const now = Date.now();
+    for (const [state, entry] of pendingSignIns) if (entry.expires < now) pendingSignIns.delete(state);
+    while (pendingSignIns.size >= MAX_PENDING_SIGN_INS) pendingSignIns.delete(pendingSignIns.keys().next().value!);
+    pendingSignIns.set(pending.state, { origin, connection, client, verifier: pending.verifier, expires: now + SIGN_IN_TTL_MS });
+    return { url: pending.url, connection, redirectUri };
+  }
+  // A remote BB is reached through its public address, so "local" auth would
+  // refuse the browser. The single-use state from connectStart is the check.
+  bb.http.route("GET", CALLBACK_ROUTE, async (c) => {
+    const params = new URL(c.req.url).searchParams;
+    const state = params.get("state") ?? "";
+    const pending = pendingSignIns.get(state);
+    if (!pending || pending.expires < Date.now()) {
+      return callbackPage(400, "Sign-in link expired", "This sign-in link expired or was already used. Start the sign-in again from BB.");
+    }
+    pendingSignIns.delete(state);
+    const denied = params.get("error");
+    if (denied) return callbackPage(400, "Executor did not grant access", `${denied}${params.get("error_description") ? `: ${params.get("error_description")}` : ""}`);
+    const code = params.get("code");
+    if (!code) return callbackPage(400, "Sign-in failed", "Executor returned no authorization code. Start the sign-in again from BB.");
+    try {
+      const tokens = await exchangeCode(pending.origin, pending.client, code, pending.verifier, connectionUrl(pending.origin, pending.connection), globalFetch);
+      saveGrant({
+        connection: pending.connection, origin: pending.origin, clientId: pending.client.clientId, redirectUri: pending.client.redirectUri,
+        accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresAt: tokens.expiresAt,
+      });
+      clients.delete(pending.connection);
+      skillIndexes.delete(pending.connection);
+      bb.log.info(`Signed in to Executor connection ${pending.connection}.`);
+      publish("connection-signed-in");
+      return callbackPage(200, "Connected", `BB can now use Executor connection ${pending.connection}. You can close this tab.`);
+    } catch (error) {
+      bb.log.warn(`Could not finish the Executor sign-in for ${pending.connection}: ${message(error)}`);
+      return callbackPage(502, "Sign-in failed", `Could not finish the sign-in: ${message(error)}`);
+    }
+  }, { auth: "none" });
+
+  // ---------------------------------------------------------------------------
+  // Account health
+
   /**
-   * Broken connections, by address. Executor gives up on a connection after one
-   * refused refresh and says nothing, so this plugin checks every ten minutes. Each
-   * change goes out on CONNECTIONS_CHANGED, and the app shows it as a pop-up.
+   * Accounts whose credentials stopped working, keyed `<account>:<app>`.
+   * The PAT reads Executor's inventory every ten minutes. Each change goes out
+   * on CONNECTIONS_CHANGED, and the app shows it as a pop-up.
    */
   const connectionAlerts = connectionAlertsSchema.parse(await bb.storage.kv.get(CONNECTION_ALERTS_KEY) ?? {});
-  /** One check at a time, so a scheduled run and a settings view never record the same change twice. */
+  /** One check at a time, so two runs never record the same change twice. */
   let checking: Promise<void> | null = null;
+  /** The last scheduled account check's failure. Settings show it without calling Executor. */
+  let checkError: string | null = null;
   function checkConnections(): Promise<void> {
-    checking ??= runConnectionCheck().finally(() => { checking = null; });
+    checking ??= runConnectionCheck()
+      .then(() => { checkError = null; }, (error: unknown) => { checkError = `Could not read account health: ${message(error)}`; throw error; })
+      .finally(() => { checking = null; });
     return checking;
   }
   async function runConnectionCheck() {
-    if (!executor) return;
+    if (!executor?.api) return;
     const now = Date.now();
-    const connections = await executor.client.listConnections();
+    const problems = await executor.api.accountProblems();
+    const current = new Map(problems.map((problem) => [`${problem.account}:${problem.app}`, problem]));
     let changed = false;
     const recovered: { address: string; name: string; removed: boolean }[] = [];
-    for (const connection of connections) {
-      const problem = connectionProblem(connection);
-      const known = connectionAlerts[connection.address];
-      if (!problem || known?.problem === problem) continue;
-      const name = `${connection.address.replace(/^tools\./u, "")}${connection.identityLabel ? ` (${connection.identityLabel})` : ""}`;
-      connectionAlerts[connection.address] = { name, problem, since: known?.since ?? now };
-      bb.log.warn(`Executor connection ${name} needs attention: ${problem}`);
+    for (const [key, problem] of current) {
+      const known = connectionAlerts[key];
+      if (known?.problem === problem.problem) continue;
+      const name = `${problem.appName} (${problem.label})`;
+      connectionAlerts[key] = { name, problem: problem.problem, since: known?.since ?? now };
+      bb.log.warn(`Executor account ${name} needs attention: ${problem.problem}`);
       changed = true;
     }
-    for (const [address, entry] of Object.entries(connectionAlerts)) {
-      const connection = connections.find((candidate) => candidate.address === address);
-      if (connection && connectionProblem(connection)) continue;
-      const name = entry.name ?? address.replace(/^tools\./u, "");
-      recovered.push({ address, name, removed: !connection });
-      bb.log.info(`Executor connection ${name} ${connection ? "works again" : "was removed"}.`);
-      delete connectionAlerts[address];
+    for (const [key, entry] of Object.entries(connectionAlerts)) {
+      if (current.has(key)) continue;
+      const name = entry.name ?? key;
+      recovered.push({ address: key, name, removed: false });
+      bb.log.info(`Executor account ${name} works again.`);
+      delete connectionAlerts[key];
       changed = true;
     }
     if (!changed) return;
     await bb.storage.kv.set(CONNECTION_ALERTS_KEY, connectionAlerts);
     bb.realtime.publish(CONNECTIONS_CHANGED, { recovered });
   }
-  /** Broken connections for the app's pop-ups. Reads the last check, so it is cheap on every app load. */
+  /** Broken accounts for the app's pop-ups. Reads the last check, so it is cheap on every app load. */
   function executorConnections() {
     return {
       url: executor?.url ?? null,
-      broken: executor ? Object.entries(connectionAlerts).map(([address, entry]) => ({ address, name: entry.name ?? address.replace(/^tools\./u, ""), problem: entry.problem, since: entry.since })) : [],
+      broken: executor ? Object.entries(connectionAlerts).map(([address, entry]) => ({ address, name: entry.name ?? address, problem: entry.problem, since: entry.since })) : [],
     };
   }
   async function loadExecutor() {
     const values = await executorSettings.get();
     const url = values.executorUrl.trim() ? normalizeExecutorUrl(values.executorUrl) : "";
-    const apiKey = (values.executorApiKey ?? "").trim();
-    executor = url && apiKey ? { client: new ExecutorClient({ url, apiKey }), url } : null;
-    await refreshToolkitIntegrations().catch((error) => bb.log.warn(`Could not read Executor toolkits: ${error instanceof Error ? error.message : String(error)}`));
+    const pat = (values.executorApiKey ?? "").trim();
+    executor = url ? { url, api: pat ? new ExecutorApi(url, pat, globalFetch) : null } : null;
+    clients.clear();
+    skillIndexes.clear();
   }
   executorSettings.onChange(() => {
-    void loadExecutor().catch((error) => bb.log.warn(`Invalid Executor settings: ${error instanceof Error ? error.message : String(error)}`));
+    void loadExecutor().catch((error) => bb.log.warn(`Invalid Executor settings: ${message(error)}`));
   });
-  await loadExecutor().catch((error) => bb.log.warn(`Invalid Executor settings: ${error instanceof Error ? error.message : String(error)}`));
 
-  async function callExecutor(context: { threadId: string; projectId: string; signal: AbortSignal }, toolkit: string | undefined, tool: string, args: Record<string, unknown>) {
-    if (!executor) throw new Error("Executor is not configured. Run: bb catalog executor configure --url <url> --key-file <dotenv>");
-    const client = executor.client;
-    const allowed = threadToolkits(context.projectId, (await threadAgent(context.threadId)).profileId);
-    if (!allowed.length) throw new Error("No Executor toolkits are assigned to this project or agent.");
-    const slug = toolkit ?? allowed[0]!;
-    if (!allowed.includes(slug)) throw new Error(`Toolkit ${slug} is not assigned to this project or agent. Use one of: ${allowed.join(", ")}.`);
-    let output = await client.callTool(slug, tool, args, context.signal);
-    for (let approvals = 0; output.paused && approvals < MAX_APPROVALS_PER_CALL; approvals += 1) {
-      // Without a decision from the thread, the agent gets Executor's own link.
-      if (!await askInThread(client, context, slug, output.paused)) break;
-      output = await client.callTool(slug, "resume", { executionId: output.paused.executionId }, context.signal);
+  // ---------------------------------------------------------------------------
+  // Skills. Executor apps ship them; BB projects them into skill roots.
+
+  const skillIndexes = new Map<string, { at: number; skills: RemoteSkill[] }>();
+  const skillFiles = new Map<string, ApprovedSkill>();
+  await loadExecutor().catch((error) => bb.log.warn(`Invalid Executor settings: ${message(error)}`));
+
+  /** One connection's skills, cached for ten minutes. A failed read keeps the last good list. */
+  async function connectionSkills(connection: string, force = false): Promise<RemoteSkill[]> {
+    const cached = skillIndexes.get(connection);
+    if (!force && cached && Date.now() - cached.at < SKILLS_TTL_MS) return cached.skills;
+    try {
+      const skills = (await clientFor(connection).listSkills()).filter((skill) => skill.app !== EXECUTOR_APP);
+      skillIndexes.set(connection, { at: Date.now(), skills });
+      return skills;
+    } catch (error) {
+      if (!cached) throw error;
+      bb.log.warn(`Could not refresh skills for Executor connection ${connection}; using the last list: ${message(error)}`);
+      skillIndexes.set(connection, { ...cached, at: Date.now() });
+      return cached.skills;
     }
-    return output.text;
+  }
+  /**
+   * The skills of some connections, first connection first. `strict` throws
+   * when any connection cannot be read, so a projection never removes skills
+   * because Executor was briefly down. Only a mapping change removes them.
+   */
+  async function skillsOf(connections: readonly string[], strict: boolean): Promise<{ skills: FoundSkill[]; errors: string[] }> {
+    const found = new Map<string, FoundSkill>();
+    const errors: string[] = [];
+    for (const connection of connections) {
+      try {
+        for (const remote of await connectionSkills(connection)) {
+          if (!found.has(skillId(remote))) found.set(skillId(remote), { connection, remote });
+        }
+      } catch (error) {
+        if (strict) throw new Error(`Could not read skills for Executor connection ${connection}: ${message(error)}`);
+        errors.push(`${connection}: ${message(error)}`);
+      }
+    }
+    return { skills: [...found.values()], errors };
+  }
+  /** Skill IDs from the cache only, for `configure`, which cannot wait. */
+  function cachedSkillIds(connections: readonly string[]): Set<string> {
+    return new Set(connections.flatMap((connection) => (skillIndexes.get(connection)?.skills ?? []).map(skillId)));
+  }
+  /** A skill with all its files. Files are cached per revision. */
+  async function fullSkill({ connection, remote }: FoundSkill): Promise<ApprovedSkill> {
+    const key = `${skillId(remote)}@${remote.revision}`;
+    const cached = skillFiles.get(key);
+    if (cached) return cached;
+    const client = clientFor(connection);
+    const main = await client.readSkill(remote);
+    const files: StoredFile[] = [{ path: "SKILL.md", content: main.content, contentEncoding: "utf8" }];
+    const extra = main.files.map(safeSkillPath).filter((path) => path !== "SKILL.md");
+    if (extra.length + 1 > MAX_SKILL_FILES) throw new Error(`Skill ${skillId(remote)} has more than ${MAX_SKILL_FILES} files.`);
+    for (const path of extra) files.push({ path, content: (await client.readSkill(remote, path)).content, contentEncoding: "utf8" });
+    const id = skillId(remote);
+    const skill: ApprovedSkill = {
+      id, skillId: id, sourceId: remote.app, sourceName: remote.appName, name: remote.name, description: remote.description,
+      relativePath: id, revision: remote.revision,
+      digest: createHash("sha256").update(JSON.stringify(files)).digest("hex"),
+      enabled: true, files,
+    };
+    skillFiles.set(key, skill);
+    if (skillFiles.size > MAX_CACHED_SKILLS) skillFiles.delete(skillFiles.keys().next().value!);
+    return skill;
+  }
+  async function fullSkills(found: readonly FoundSkill[]): Promise<ApprovedSkill[]> {
+    const skills: ApprovedSkill[] = [];
+    for (const entry of found) skills.push(await fullSkill(entry));
+    return skills;
+  }
+  function skillDto({ remote }: FoundSkill) {
+    const id = skillId(remote);
+    return {
+      id, sourceId: remote.app, sourceName: remote.appName, name: remote.name, description: remote.description,
+      relativePath: id, revision: remote.revision, fileCount: skillFiles.get(`${id}@${remote.revision}`)?.files.length ?? 0,
+      digest: remote.revision, enabled: true,
+    };
+  }
+  /** A sandbox's chosen skills, or undefined when it follows its connections. */
+  async function selectedSkills(hostId: string): Promise<FoundSkill[] | undefined> {
+    const ids = sandboxSkills.get(hostId);
+    if (ids === undefined) return undefined;
+    const wanted = new Set(ids);
+    return (await skillsOf(threadConnections(), true)).skills.filter((entry) => wanted.has(skillId(entry.remote)));
+  }
+  /**
+   * Rereads every connection's skills. When a revision changed since the last
+   * run, even across restarts, it projects again.
+   */
+  async function refreshSkills(reason: string) {
+    const connections = threadConnections().filter((connection) => currentGrant(connection));
+    for (const connection of connections) await connectionSkills(connection, true).catch((error) => bb.log.warn(`Could not read skills for Executor connection ${connection}: ${message(error)}`));
+    const digest = createHash("sha256").update(JSON.stringify(connections.map((connection) =>
+      [connection, (skillIndexes.get(connection)?.skills ?? []).map((skill) => `${skillId(skill)}@${skill.revision}`).sort()]))).digest("hex");
+    if (digest === await bb.storage.kv.get(SKILLS_DIGEST_KEY)) return;
+    await bb.storage.kv.set(SKILLS_DIGEST_KEY, digest);
+    publish(reason);
   }
 
-  /**
-   * What an approval card shows beside the call itself: the integration's
-   * name, the account, the tool's own description, and why Executor asks.
-   * Tools, integrations and accounts change rarely, so they are cached for an
-   * hour and reread at most once a minute when a tool is missing. Rules are
-   * read per approval, because they are the part people edit.
-   */
-  let approvalIndex: ApprovalIndex | null = null;
-  async function loadApprovalIndex(client: ExecutorClient, address: string): Promise<ApprovalIndex | null> {
-    const age = approvalIndex ? Date.now() - approvalIndex.at : Infinity;
-    if (approvalIndex && age < APPROVAL_INDEX_TTL_MS && (approvalIndex.tools.has(address) || age < APPROVAL_INDEX_RETRY_MS)) return approvalIndex;
-    const [tools, integrations, connections] = await Promise.all([client.listTools(), client.listIntegrations(), client.listConnections()]);
-    approvalIndex = {
-      at: Date.now(),
-      tools: new Map(tools.map((tool) => [tool.address, tool])),
-      integrations: new Map(integrations.map((integration) => [integration.slug, integration.name])),
-      accounts: new Map(connections.map((connection) => [connection.address, connection.identityLabel || connection.name])),
-    };
-    return approvalIndex;
-  }
-  async function approvalDetail(client: ExecutorClient, toolkit: string, request: ApprovalRequest) {
-    const [index, policies] = await Promise.all([
-      loadApprovalIndex(client, request.address).catch(() => approvalIndex),
-      client.toolkitPolicies(toolkit).catch(() => null),
-    ]);
-    const tool = index?.tools.get(request.address);
-    const [integrationSlug = "", , connection = ""] = request.address.replace(/^tools\./u, "").split(".");
-    const integration = index?.integrations.get(tool?.integration ?? integrationSlug) ?? tool?.integration ?? integrationSlug;
-    const rule = policies?.find((policy) => policy.action === "require_approval" && patternMatches(policy.pattern, request.address));
-    const reason = rule
-      ? `Toolkit ${toolkit} has a rule that asks before ${rule.pattern.endsWith("*") ? `every ${rule.pattern} tool` : "this tool"}.`
-      : tool?.requiresApproval ? `${integration} marks this tool as one that changes data, so Executor asks first.` : "Executor asks before this call.";
-    const toolName = tool?.name ?? request.address.split(".").at(-1) ?? "";
-    return {
-      integration,
-      account: index?.accounts.get(`tools.${tool?.integration ?? integrationSlug}.user.${tool?.connection ?? connection}`) ?? null,
-      tool: toolName,
-      description: tool?.description?.trim() || null,
-      reason,
-      // Executor's own message often just repeats the tool name and its arguments.
-      message: request.message.startsWith(`${toolName} Arguments:`) ? "" : request.message,
-    };
-  }
+  // ---------------------------------------------------------------------------
+  // Calls and approvals
 
   /**
    * Approvals wait in one queue per thread so a burst of calls shows one card
@@ -433,38 +616,28 @@ export default async function plugin(bb: BbPluginApi) {
     }
   }
 
-  function requireApprovalAccess(client: ExecutorClient, context: { threadId: string; projectId: string; signal: AbortSignal }, toolkit: string) {
+  /** An accept must still go to the same Executor, as a connection this thread may use. */
+  function requireApprovalAccess(client: McpConnectionClient, context: ThreadContext, connection: string) {
     context.signal.throwIfAborted();
-    if (executor?.client !== client || !threadToolkits(context.projectId, threadAgents.get(context.threadId)?.profileId ?? null).includes(toolkit)) {
-      throw new Error("Executor toolkit access changed while approval was pending. Run it again.");
+    if (clients.get(connection) !== client || !threadToolkits(context.projectId, threadAgents.get(context.threadId)?.profileId ?? null).includes(connection)) {
+      throw new Error("Executor connection access changed while approval was pending. Run it again.");
     }
   }
 
   /**
-   * Asks the user in the thread, then records their answer with Executor.
-   * Only the user can answer the form, so the agent still cannot approve its
-   * own call. False when no answer came (timeout, restart) or Executor could
-   * not show the call, which leaves the approval link as the way to answer.
+   * Asks the user in the thread. Only the user can answer the form, so the
+   * agent cannot approve its own call. Null when no answer came (timeout,
+   * restart, or a busy queue).
    */
-  async function askInThread(client: ExecutorClient, context: { threadId: string; projectId: string; signal: AbortSignal }, toolkit: string, paused: PausedCall): Promise<boolean> {
-    const request = await client.approvalRequest(paused).catch((error: unknown) => {
-      bb.log.warn(`Could not read Executor approval ${paused.executionId}: ${error instanceof Error ? error.message : String(error)}`);
-      return null;
-    });
-    if (!request) return false;
-    if (threadAllowed.get(context.threadId)?.has(request.address)) {
-      requireApprovalAccess(client, context, toolkit);
-      await client.decide(paused, "accept");
-      return true;
+  async function askInThread(client: McpConnectionClient, context: ThreadContext, connection: string, approval: ApprovalRequired): Promise<"accept" | "decline" | null> {
+    if (threadAllowed.get(context.threadId)?.has(approval.address)) {
+      requireApprovalAccess(client, context, connection);
+      return "accept";
     }
-    const name = request.address.replace(/^tools\./u, "");
-    const shown = request.args === null ? "" : JSON.stringify(request.args, null, 2) ?? "";
-    const args = shown.length > MAX_APPROVAL_ARGS_CHARS ? `${shown.slice(0, MAX_APPROVAL_ARGS_CHARS)}\n… (truncated)` : shown;
-    const detail = await approvalDetail(client, toolkit, request);
+    const name = approval.address;
     const queue = approvalQueue(context.threadId);
     const entry: QueuedApproval = {
-      id: randomUUID(), address: request.address, name,
-      summary: detail.description ? `${detail.integration}: ${detail.description}` : `${detail.integration}: ${detail.tool}`,
+      id: randomUUID(), address: approval.address, name, summary: `${approval.app}: ${approval.tool}`,
       open: false, decision: null, stop: new AbortController(),
     };
     queue.entries.push(entry);
@@ -472,12 +645,16 @@ export default async function plugin(bb: BbPluginApi) {
     try {
       await waitForTurn(queue, entry, context.signal);
       if (!entry.decision) {
-        if (!entry.open) return false;
+        if (!entry.open) return null;
         const result = await bb.ui.requestInput({
           threadId: context.threadId,
           rendererId: APPROVAL_RENDERER_ID,
           title: `Approve ${name}`.slice(0, 200),
-          payload: { approvalId: entry.id, toolkit, address: request.address, ...detail, args, approvalUrl: paused.approvalUrl },
+          payload: {
+            approvalId: entry.id, toolkit: connection, address: approval.address, integration: approval.app, account: approval.account,
+            tool: approval.tool, description: null, reason: "Executor asks before this call.", message: approval.message,
+            args: shownArgs(approval.input), approvalUrl: "",
+          },
           timeoutMs: 60 * 60 * 1000,
           presentation: { label: { pending: "Waiting for your approval", completed: "Answered Executor approval" }, icon: { glyph: "Workflow" } },
           describeSubmission: (value) => {
@@ -489,23 +666,22 @@ export default async function plugin(bb: BbPluginApi) {
         }, { signal: AbortSignal.any([context.signal, entry.stop.signal]) });
         if (result.outcome === "submitted") {
           const answer = approvalAnswer(result.value);
-          if (answer.approved) requireApprovalAccess(client, context, toolkit);
+          if (answer.approved) requireApprovalAccess(client, context, connection);
           entry.decision = answer.approved ? "accept" : "decline";
           const others = queue.entries.filter((other) => other !== entry);
           if (answer.approved && answer.scope === "thread") {
-            allowInThread(context.threadId, request.address);
-            answerQueued(context.threadId, others.filter((other) => other.address === request.address));
+            allowInThread(context.threadId, approval.address);
+            answerQueued(context.threadId, others.filter((other) => other.address === approval.address));
           }
           if (answer.approved && answer.scope === "all") answerQueued(context.threadId, others);
         } else if (!entry.decision) {
           // Dismissing the form is a decline; any other cancellation is no answer at all.
-          if (result.reason !== "user") return false;
+          if (result.reason !== "user") return null;
           entry.decision = "decline";
         }
       }
-      if (entry.decision === "accept") requireApprovalAccess(client, context, toolkit);
-      await client.decide(paused, entry.decision!);
-      return true;
+      if (entry.decision === "accept") requireApprovalAccess(client, context, connection);
+      return entry.decision;
     } finally {
       entry.open = false;
       queue.entries.splice(queue.entries.indexOf(entry), 1);
@@ -513,18 +689,77 @@ export default async function plugin(bb: BbPluginApi) {
     }
   }
 
-  // Plugin toolkit scopes are bound to the SDK's verified caller. Background
-  // reads decline immediately; paused writes can be displayed and declined.
+  /** Paused agent calls the user has not answered yet, by Executor request ID. */
+  const pendingResumes = new Map<string, { threadId: string; connection: string; approval: ApprovalRequired; expires: number }>();
+  function rememberPending(threadId: string, connection: string, approval: ApprovalRequired) {
+    const now = Date.now();
+    for (const [id, entry] of pendingResumes) if (entry.expires < now) pendingResumes.delete(id);
+    pendingResumes.set(approval.requestId, { threadId, connection, approval, expires: now + PENDING_RESUME_TTL_MS });
+  }
+  function waitingText(approval: ApprovalRequired) {
+    return `Executor is waiting for approval of ${approval.address}, and no answer came in this thread. Call executor_resume with executionId "${approval.requestId}" to ask the user again.`;
+  }
+
+  /** Asks for every approval the call needs, then returns its final output. */
+  async function finishCall(client: McpConnectionClient, context: ThreadContext, connection: string, first: ToolOutput): Promise<string> {
+    let output = first;
+    for (let approvals = 0; output.approval && approvals < MAX_APPROVALS_PER_CALL; approvals += 1) {
+      const approval = output.approval;
+      rememberPending(context.threadId, connection, approval);
+      const decision = await askInThread(client, context, connection, approval);
+      if (!decision) return waitingText(approval);
+      pendingResumes.delete(approval.requestId);
+      output = await client.resume(approval.requestId, decision, context.signal);
+    }
+    if (output.approval) {
+      rememberPending(context.threadId, connection, output.approval);
+      return waitingText(output.approval);
+    }
+    if (output.input) {
+      await client.resume(output.input.requestId, "decline", context.signal).catch(() => undefined);
+      return `${output.input.address} asked for form input (${output.input.message || "no message"}). BB does not fill in forms for the user, so it declined the request. Pass the values as tool arguments instead.`;
+    }
+    return output.text;
+  }
+
+  async function threadClient(context: ThreadContext, toolkit: string | undefined) {
+    if (!executor) throw new Error("Executor is not configured. Run: bb catalog executor configure --url <url>");
+    const allowed = threadToolkits(context.projectId, (await threadAgent(context.threadId)).profileId);
+    if (!allowed.length) throw new Error("No Executor connections are assigned to this project or agent.");
+    const connection = toolkit ?? allowed[0]!;
+    if (!allowed.includes(connection)) throw new Error(`Connection ${connection} is not assigned to this project or agent. Use one of: ${allowed.join(", ")}.`);
+    return { client: clientFor(connection), connection };
+  }
+
+  async function callExecutor(context: ThreadContext, toolkit: string | undefined, run: (client: McpConnectionClient) => Promise<ToolOutput>) {
+    const { client, connection } = await threadClient(context, toolkit);
+    return finishCall(client, context, connection, await run(client));
+  }
+
+  async function resumeInThread(context: ThreadContext, executionId: string) {
+    const pending = pendingResumes.get(executionId);
+    if (!pending || pending.threadId !== context.threadId || pending.expires < Date.now()) {
+      throw new Error("No Executor approval with that ID is waiting in this thread. It may have expired or Executor restarted; run the call again.");
+    }
+    const { client, connection } = await threadClient(context, pending.connection);
+    const decision = await askInThread(client, context, connection, pending.approval);
+    if (!decision) return waitingText(pending.approval);
+    pendingResumes.delete(executionId);
+    return finishCall(client, context, connection, await client.resume(executionId, decision, context.signal));
+  }
+
+  // Plugin connection scopes are bound to the SDK's verified caller. Background
+  // reads decline at once; paused writes can be displayed and declined.
   // Acceptance is only through the native owner interaction, never this RPC.
-  const pluginPaused = new Map<string, { caller: string; toolkit: string; purpose: string; paused: PausedCall; expires: number }>();
+  const pluginPaused = new Map<string, { caller: string; toolkit: string; purpose: string; expires: number }>();
   const pluginQueues = new Map<string, Promise<unknown>>();
   const pluginCallTimes = new Map<string, number[]>();
-  function pluginClient(caller: string, toolkit: string): ExecutorClient {
-    if (!executor) throw new Error("Executor is not configured. Run: bb catalog executor configure --url <url> --key-file <dotenv>");
+  function pluginClient(caller: string, toolkit: string): McpConnectionClient {
+    if (!executor) throw new Error("Executor is not configured. Run: bb catalog executor configure --url <url>");
     const allowed = toolkitMap[PLUGIN_TOOLKITS + caller] ?? [];
-    if (!allowed.length) throw new Error(`No Executor toolkit is mapped to plugin ${caller}. Run: bb catalog executor use <toolkit> --plugin ${caller}`);
-    if (!allowed.includes(toolkit)) throw new Error(`Toolkit ${toolkit} is not mapped to plugin ${caller}. Use one of: ${allowed.join(", ")}.`);
-    return executor.client;
+    if (!allowed.length) throw new Error(`No Executor connection is mapped to plugin ${caller}. Run: bb catalog executor use <connection> --plugin ${caller}`);
+    if (!allowed.includes(toolkit)) throw new Error(`Connection ${toolkit} is not mapped to plugin ${caller}. Use one of: ${allowed.join(", ")}.`);
+    return clientFor(toolkit);
   }
   /** One call at a time per plugin, so a slow sync cannot fan out against Executor. */
   function serialized<T>(caller: string, run: () => Promise<T>): Promise<T> {
@@ -540,23 +775,6 @@ export default async function plugin(bb: BbPluginApi) {
     recent.push(at);
     pluginCallTimes.set(caller, recent);
   }
-  async function pausedForPlugin(client: ExecutorClient, entry: { caller: string; toolkit: string; purpose: string; paused: PausedCall }) {
-    const request = await client.approvalRequest(entry.paused).catch((error: unknown) => {
-      bb.log.warn(`Could not read Executor approval ${entry.paused.executionId}: ${error instanceof Error ? error.message : String(error)}`);
-      return null;
-    });
-    const at = Date.now();
-    for (const [id, pending] of pluginPaused) if (pending.expires < at) pluginPaused.delete(id);
-    pluginPaused.set(entry.paused.executionId, { ...entry, expires: at + PLUGIN_PAUSE_TTL_MS });
-    const shown = request?.args == null ? "" : JSON.stringify(request.args, null, 2) ?? "";
-    return {
-      executionId: entry.paused.executionId,
-      approvalUrl: entry.paused.approvalUrl,
-      address: request?.address.replace(/^tools\./u, "") ?? "unknown",
-      message: request?.message ?? "",
-      args: shown.length > MAX_APPROVAL_ARGS_CHARS ? `${shown.slice(0, MAX_APPROVAL_ARGS_CHARS)}\n… (truncated)` : shown,
-    };
-  }
   /** Runs one plugin request and writes its audit row, whatever happens. */
   async function auditedPluginCall<T extends { text: string }>(call: Pick<PluginExecutorCall, "caller" | "toolkit" | "mode" | "purpose">, run: (outcome: (value: PluginExecutorCall["outcome"]) => void) => Promise<T>): Promise<T> {
     const started = Date.now();
@@ -569,11 +787,11 @@ export default async function plugin(bb: BbPluginApi) {
       return result;
     } catch (caught) {
       if (outcome === "ok") outcome = "error";
-      error = (caught instanceof Error ? caught.message : String(caught)).slice(0, 500);
+      error = message(caught).slice(0, 500);
       throw caught;
     } finally {
       try { store.recordPluginCall({ ...call, bytesOut, durationMs: Date.now() - started, outcome, error }); }
-      catch (caught) { bb.log.warn(`Could not record Executor call from plugin ${call.caller}: ${caught instanceof Error ? caught.message : String(caught)}`); }
+      catch (caught) { bb.log.warn(`Could not record Executor call from plugin ${call.caller}: ${message(caught)}`); }
     }
   }
   function pluginExecutorCall(input: { caller: string; toolkit: string; code: string; mode: "read" | "write"; purpose: string }, context: ExperimentalPluginRpcHandlerContext) {
@@ -582,23 +800,33 @@ export default async function plugin(bb: BbPluginApi) {
     return serialized(caller, () => auditedPluginCall({ caller, toolkit, mode, purpose }, async (outcome) => {
       const client = pluginClient(caller, toolkit);
       takeCallSlot(caller);
-      const output = await client.callTool(toolkit, "execute", { code }, AbortSignal.timeout(PLUGIN_CALL_TIMEOUT_MS));
-      if (!output.paused) return { text: output.text, paused: null };
+      const output = await client.execute(code, AbortSignal.timeout(PLUGIN_CALL_TIMEOUT_MS));
+      if (output.input) {
+        outcome("declined");
+        await client.resume(output.input.requestId, "decline", AbortSignal.timeout(PLUGIN_CALL_TIMEOUT_MS)).catch(() => undefined);
+        throw new Error(`${output.input.address} asked for form input, which plugin calls cannot give, so this plugin declined it.`);
+      }
+      const approval = output.approval;
+      if (!approval) return { text: output.text, paused: null };
       if (mode === "read") {
         outcome("declined");
-        const request = await client.approvalRequest(output.paused).catch(() => null);
-        await client.decide(output.paused, "decline").catch((error: unknown) => bb.log.warn(`Could not decline Executor call ${output.paused!.executionId} for plugin ${caller}: ${error instanceof Error ? error.message : String(error)}`));
-        throw new Error(`${request?.address.replace(/^tools\./u, "") ?? "A tool"} needs approval, and read calls never wait for one, so this plugin declined it. Make writes in mode "write".`);
+        await client.resume(approval.requestId, "decline", AbortSignal.timeout(PLUGIN_CALL_TIMEOUT_MS))
+          .catch((error: unknown) => bb.log.warn(`Could not decline Executor call ${approval.requestId} for plugin ${caller}: ${message(error)}`));
+        throw new Error(`${approval.address} needs approval, and read calls never wait for one, so this plugin declined it. Make writes in mode "write".`);
       }
       outcome("paused");
-      return { text: output.text, paused: await pausedForPlugin(client, { caller, toolkit, purpose, paused: output.paused }) };
+      const now = Date.now();
+      for (const [id, pending] of pluginPaused) if (pending.expires < now) pluginPaused.delete(id);
+      pluginPaused.set(approval.requestId, { caller, toolkit, purpose, expires: now + PLUGIN_PAUSE_TTL_MS });
+      return {
+        text: output.text,
+        paused: { executionId: approval.requestId, approvalUrl: "", address: approval.address, message: approval.message, args: shownArgs(approval.input) },
+      };
     }));
   }
   function pluginExecutorDecide(input: { caller: string; executionId: string; action: "accept" | "decline" }, context: ExperimentalPluginRpcHandlerContext) {
     const { caller, executionId, action } = input;
-    if (context?.experimental_caller?.kind !== "client") {
-      requirePluginCaller(caller, context);
-    }
+    if (context?.experimental_caller?.kind !== "client") requirePluginCaller(caller, context);
     if (action === "accept") throw new Error("Executor acceptance requires a native owner interaction; executorDecide only supports decline.");
     const pending = pluginPaused.get(executionId);
     if (!pending || pending.caller !== caller || pending.expires < Date.now()) {
@@ -607,83 +835,95 @@ export default async function plugin(bb: BbPluginApi) {
     pluginPaused.delete(executionId);
     return serialized(caller, () => auditedPluginCall({ caller, toolkit: pending.toolkit, mode: "write", purpose: `${action}: ${pending.purpose}`.slice(0, 200) }, async (outcome) => {
       const client = pluginClient(caller, pending.toolkit);
-      await client.decide(pending.paused, action);
+      await client.resume(executionId, "decline", AbortSignal.timeout(PLUGIN_CALL_TIMEOUT_MS));
       outcome("declined");
-      // The declined execution still finishes; its result carries nothing the plugin needs.
-      await client.callTool(pending.toolkit, "resume", { executionId }, AbortSignal.timeout(PLUGIN_CALL_TIMEOUT_MS)).catch(() => undefined);
       return { text: "Declined.", paused: null };
     }));
   }
 
+  // ---------------------------------------------------------------------------
+  // Native capabilities. Projects owns where they are available; it is optional.
+
+  let lastAssignments: BundleProjection | null = null;
+  async function readAssignments(): Promise<BundleProjection> {
+    try {
+      lastAssignments = await bb.sdk.plugins.callRpc({ pluginId: "projects", method: "bundleAssignmentSnapshot", input: null, outputSchema: bundleProjectionSchema });
+    } catch (error) {
+      bb.log.warn(`Could not read native capability assignments from Projects: ${message(error)}`);
+    }
+    return lastAssignments ?? { globalBundleIds: [], projects: [] };
+  }
+  function bundleIdsFor(projection: BundleProjection, projectId: string) {
+    return [...new Set([...projection.globalBundleIds, ...(projection.projects.find((project) => project.projectId === projectId)?.bundleIds ?? [])])];
+  }
   async function projectBundleIds(projectId: string): Promise<string[]> {
-    const projection = await assignments.read();
-    const ids = [...new Set([...projection.globalBundleIds, ...(projection.projects.find((project) => project.projectId === projectId)?.bundleIds ?? [])])];
+    const ids = bundleIdsFor(await readAssignments(), projectId);
     bundleCache.set(projectId, ids);
     return ids;
   }
-
-  async function globalBundleIds(): Promise<string[]> {
-    return (await assignments.read()).globalBundleIds;
-  }
-
   async function warmBundleCache(projectId?: string | null) {
     if (projectId) {
       await projectBundleIds(projectId);
       return;
     }
-    const projectIds = (await targets()).map((target) => target.id);
-    const projection = await assignments.read();
+    const projection = await readAssignments();
     bundleCache.clear();
-    for (const projectId of projectIds) bundleCache.set(projectId, [...new Set([
-      ...projection.globalBundleIds, ...(projection.projects.find((project) => project.projectId === projectId)?.bundleIds ?? []),
-    ])]);
+    for (const target of await targets()) bundleCache.set(target.id, bundleIdsFor(projection, target.id));
   }
-
   async function targets() {
     return bb.sdk.projects.list().then((projects) => projects
       .filter((project) => project.kind === "standard")
       .map((project) => ({ kind: "project" as const, id: project.id, name: project.name, detail: project.gitRemoteUrl })));
   }
+  async function setCanonicalAssignment(bundleId: string, kind: "global" | "project", targetId: string, enabled: boolean) {
+    const write = (method: string, input: Record<string, string | boolean>) => bb.sdk.plugins.callRpc({ pluginId: "projects", method, input, outputSchema: okSchema.strict() })
+      .catch((error: unknown) => { throw new Error(`Projects stores native capability assignments, and it refused this change: ${message(error)}`); });
+    if (kind === "global") {
+      if (targetId !== "*") throw new Error("Global assignments use the * target");
+      await write("setGlobalBundle", { targetId: bundleId, enabled });
+      await warmBundleCache();
+    } else {
+      await write("setProjectBundle", { projectId: targetId, targetId: bundleId, enabled });
+      await warmBundleCache(targetId);
+    }
+    const capability = store.nativeCapability(bundleId);
+    if (capability?.assignmentChangedRpc) {
+      await bb.sdk.plugins.callRpc({ pluginId: capability.pluginId, method: capability.assignmentChangedRpc, input: { bundleId }, outputSchema: okSchema })
+        .catch((error) => bb.log.warn(`Could not refresh ${capability.name} assignment state: ${message(error)}`));
+    }
+    publish("assignment-changed");
+  }
 
-  async function catalogOverview() {
-    const assignmentState = assignmentStore.status();
+  /** Settings read this. It never calls Projects; only the availability dialog needs assignments. */
+  async function overview() {
+    const [catalog, projectTargets] = await Promise.all([skillsOf(threadConnections(), false), targets()]);
     return {
-      sources: store.listSources().map(sourceDto), skills: store.listApprovedSkills({ includeDisabled: true }).map(skillDto),
-      bundles: store.listBundles(), targets: await targets(), harnesses: harnessCatalog(), assignmentState,
-      assignments: assignmentState.state === "active" ? assignmentStore.records().flatMap((record) => record.type === "reference"
-        ? [{ bundleId: record.targetId, kind: record.projectId === null ? "global" as const : "project" as const, targetId: record.projectId ?? "*" }]
-        : []) : null,
+      skills: catalog.skills.map(skillDto),
+      bundles: store.listBundles(),
+      targets: projectTargets,
+      harnesses: harnessCatalog(),
+      skillsError: catalog.errors.length ? catalog.errors.join("; ") : null,
     };
   }
 
   async function snapshot() {
-    const bundles = store.listBundles();
-    const canonical = await assignments.read();
-    const assignmentRows = [
-      ...canonical.globalBundleIds.map((bundleId) => ({ bundleId, kind: "global" as const, targetId: "*" })),
-      ...canonical.projects.flatMap((project) => project.bundleIds.map((bundleId) => ({ bundleId, kind: "project" as const, targetId: project.projectId }))),
-    ];
+    const [canonical, data] = await Promise.all([readAssignments(), overview()]);
     return {
-      sources: store.listSources().map(sourceDto),
-      skills: store.listApprovedSkills({ includeDisabled: true }).map(skillDto),
-      bundles,
-      assignments: assignmentRows,
-      targets: await targets(),
-      harnesses: harnessCatalog(),
+      ...data,
+      assignments: [
+        ...canonical.globalBundleIds.map((bundleId) => ({ bundleId, kind: "global" as const, targetId: "*" })),
+        ...canonical.projects.flatMap((project) => project.bundleIds.map((bundleId) => ({ bundleId, kind: "project" as const, targetId: project.projectId }))),
+      ],
     };
   }
 
-  async function removeCanonicalBundles(bundleIds: readonly string[]) {
-    for (const bundleId of bundleIds) {
-      await assignments.write("removeBundle", { bundleId });
-    }
-  }
-
+  // ---------------------------------------------------------------------------
+  // Projection into skill roots
 
   /**
-   * Shared agent and Claude roots carry global skills. BB receives the same
-   * capabilities through this plugin's tools, so publishing another copy into its
-   * own root would advertise every skill twice to Codex.
+   * Shared agent and Claude roots carry the global connections' skills. BB
+   * receives the same skills through this plugin's tools, so publishing
+   * another copy into its own root would advertise every skill twice to Codex.
    */
   async function projectMachine(hostId: string, homePath: string | null) {
     const config = await bb.sdk.system.config();
@@ -691,8 +931,9 @@ export default async function plugin(bb: BbPluginApi) {
     const home = primary ? homedir() : homePath;
     if (!home) throw new Error("Could not resolve a home directory for that machine");
     const base = primary ? config.dataDir : `${home}/.bb`;
+    const found = await selectedSkills(hostId) ?? (await skillsOf(toolkitMap[GLOBAL_TOOLKITS] ?? [], true)).skills;
     return materializeSkills({
-      bb, hostId, skills: selectedSkills(hostId) ?? skillsForBundleIds(await globalBundleIds()),
+      bb, hostId, skills: await fullSkills(found),
       roots: [
         { path: `${base}/skills`, rootPath: base, publish: false },
         { path: `${home}/.agents/skills`, rootPath: home },
@@ -704,15 +945,20 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   /**
-   * A workspace carries skills assigned to its project in provider roots.
-   * The skill tools expose them inside BB without a second BB-root projection.
+   * A workspace carries its project connections' skills, minus the global
+   * ones the machine roots already hold. A sandbox with chosen skills gets
+   * them in its machine roots only.
    */
   async function projectWorkspace(workspace: Workspace) {
-    const globalIds = new Set(await globalBundleIds());
-    const workspaceBundleIds = (await projectBundleIds(workspace.projectId)).filter((id) => !globalIds.has(id));
+    let found: FoundSkill[] = [];
+    if (!sandboxSkills.has(workspace.hostId)) {
+      const global = cachedSkillIds([]);
+      for (const entry of (await skillsOf(toolkitMap[GLOBAL_TOOLKITS] ?? [], true)).skills) global.add(skillId(entry.remote));
+      found = (await skillsOf(toolkitMap[workspace.projectId] ?? [], true)).skills.filter((entry) => !global.has(skillId(entry.remote)));
+    }
     return materializeSkills({
       bb, hostId: workspace.hostId, keepOutOfGit: true,
-      skills: selectedSkills(workspace.hostId) !== undefined ? [] : skillsForBundleIds(workspaceBundleIds),
+      skills: await fullSkills(found),
       roots: [
         { path: `${workspace.path}/.bb/skills`, rootPath: workspace.path, publish: false },
         { path: `${workspace.path}/.agents/skills`, rootPath: workspace.path },
@@ -744,7 +990,7 @@ export default async function plugin(bb: BbPluginApi) {
         const key = `${workspace.hostId}:${workspace.path}`;
         // A legacy or manually selected environment can point at a checkout
         // registered to another project. Keep the project source authoritative
-        // for that path so an old thread cannot replace its skill assignment.
+        // for that path so an old thread cannot replace its skills.
         if (!found.has(key)) found.set(key, workspace);
       }
     }
@@ -771,8 +1017,6 @@ export default async function plugin(bb: BbPluginApi) {
 
   /** An unreachable machine or a retired worktree is reported, never fatal. */
   async function projectEverything(reason: string): Promise<ProjectionReport> {
-    const projection = await assignments.read();
-    skillsForBundleIds([...projection.globalBundleIds, ...projection.projects.flatMap((project) => project.bundleIds)]);
     const config = await bb.sdk.system.config();
     const machine = config.primaryHostId ? await projectMachine(config.primaryHostId, null) : null;
     const report: ProjectionReport = { machine: { skillCount: machine?.skillCount ?? 0, roots: machine?.roots ?? [] }, workspaces: [] };
@@ -781,9 +1025,8 @@ export default async function plugin(bb: BbPluginApi) {
         const outcome = await projectWorkspace(workspace);
         report.workspaces.push({ path: workspace.path, skillCount: outcome.skillCount, error: null });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        report.workspaces.push({ path: workspace.path, skillCount: 0, error: message });
-        bb.log.warn(`Could not project Executor skills into ${workspace.path}: ${message}`);
+        report.workspaces.push({ path: workspace.path, skillCount: 0, error: message(error) });
+        bb.log.warn(`Could not project Executor skills into ${workspace.path}: ${message(error)}`);
       }
     }
     const reached = report.workspaces.filter((workspace) => workspace.error === null).length;
@@ -799,75 +1042,21 @@ export default async function plugin(bb: BbPluginApi) {
     return next;
   }
   function queueProjection(reason: string, work: () => Promise<unknown>) {
-    void serialize(work).catch((error) => bb.log.warn(`Could not project Executor skills (${reason}): ${error instanceof Error ? error.message : String(error)}`));
+    void serialize(work).catch((error) => bb.log.warn(`Could not project Executor skills (${reason}): ${message(error)}`));
   }
-
   function publish(reason: string) {
     bb.realtime.publish("catalog-changed", { reason });
-    void queueProjection(reason, () => projectEverything(reason));
+    queueProjection(reason, () => projectEverything(reason));
   }
 
-  async function syncOne(id: string) {
-    const outcome = await syncCatalogSource(store, store.requireSource(id));
-    publish("source-synced");
-    return outcome;
-  }
-
-  async function syncAll() {
-    let checked = 0;
-    let updated = 0;
-    let failed = 0;
-    for (const source of store.listSources().filter((candidate) => candidate.enabled)) {
-      checked += 1;
-      try {
-        if ((await syncCatalogSource(store, source)).updated) updated += 1;
-      } catch (error) {
-        failed += 1;
-        bb.log.warn(`Could not sync Executor source ${source.name}: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-    if (checked) publish("sources-synced");
-    return { checked, updated, failed };
-  }
-
-  async function skillsForTool(context: { projectId: string; threadId?: string }) {
+  async function skillsForTool(context: { projectId: string; threadId: string }): Promise<FoundSkill[]> {
     const hostId = await threadHost(context.threadId);
-    if (hostId && sandboxSkills.has(hostId)) return selectedSkills(hostId)!;
-    return skillsForBundleIds(await projectBundleIds(context.projectId));
-  }
-  async function nativeCapabilitiesForTool(context: { projectId: string }) {
-    return nativeCapabilitiesForBundleIds(await projectBundleIds(context.projectId));
-  }
-
-
-  async function setCanonicalAssignment(bundleId: string, kind: "global" | "project", targetId: string, enabled: boolean) {
-    if (kind === "global") {
-      if (targetId !== "*") throw new Error("Global assignments use the * target");
-      await assignments.write("setGlobalBundle", { targetId: bundleId, enabled });
-      await warmBundleCache();
-    } else {
-      await assignments.write("setProjectBundle", { projectId: targetId, targetId: bundleId, enabled });
-      await warmBundleCache(targetId);
-    }
-    const capability = store.nativeCapability(bundleId);
-    if (capability?.assignmentChangedRpc) {
-      await bb.sdk.plugins.callRpc({
-        pluginId: capability.pluginId,
-        method: capability.assignmentChangedRpc,
-        input: { bundleId },
-        outputSchema: okSchema,
-      }).catch((error) => {
-        bb.log.warn(`Could not refresh ${capability.name} assignment state: ${error instanceof Error ? error.message : String(error)}`);
-      });
-    }
-    publish("assignment-changed");
+    if (hostId && sandboxSkills.has(hostId)) return (await selectedSkills(hostId))!;
+    const connections = threadToolkits(context.projectId, (await threadAgent(context.threadId)).profileId);
+    return (await skillsOf(connections, false)).skills;
   }
 
   const materialize = (input: { hostId: string; homePath: string; projectId: string | null; workspacePath: string | null }) => serialize(async () => {
-    if (!sandboxSkills.has(input.hostId)) {
-      const projection = await assignments.read();
-      skillsForBundleIds([...projection.globalBundleIds, ...(projection.projects.find((project) => project.projectId === input.projectId)?.bundleIds ?? [])]);
-    }
     const machine = await projectMachine(input.hostId, input.homePath);
     const workspace = input.projectId && input.workspacePath
       ? await projectWorkspace({ hostId: input.hostId, path: input.workspacePath, projectId: input.projectId })
@@ -891,10 +1080,7 @@ export default async function plugin(bb: BbPluginApi) {
     materializationJobs.set(jobId, { state: "running" });
     void materialize(input).then(
       (result) => materializationJobs.set(jobId, { state: "complete", result }),
-      (error) => materializationJobs.set(jobId, {
-        state: "failed",
-        error: error instanceof Error ? error.message : String(error),
-      }),
+      (error) => materializationJobs.set(jobId, { state: "failed", error: message(error) }),
     ).finally(() => {
       const expiry = setTimeout(() => materializationJobs.delete(jobId), 60 * 60_000);
       expiry.unref();
@@ -902,8 +1088,38 @@ export default async function plugin(bb: BbPluginApi) {
     return { jobId };
   };
 
+  /** Names a connection-map key for people: a project, an agent, a plugin, or every project. Null when its target is gone. */
+  async function scopeNamer() {
+    const [projects, agents] = await Promise.all([bb.sdk.projects.list(), agentProfiles().catch(() => [])]);
+    return (key: string): string | null => {
+      if (key === GLOBAL_TOOLKITS) return "every project";
+      if (key.startsWith(PLUGIN_TOOLKITS)) return `plugin ${key.slice(PLUGIN_TOOLKITS.length)}`;
+      if (key.startsWith(AGENT_TOOLKITS)) {
+        const slug = agents.find((agent) => AGENT_TOOLKITS + agent.id === key)?.slug;
+        return slug ? `agent @${slug}` : null;
+      }
+      return projects.find((project) => project.id === key)?.name ?? null;
+    };
+  }
+
+  /** Every mapped or signed-in connection, whether BB holds a grant, and where it is used. */
+  async function executorOverview() {
+    if (!executor) return { configured: false, url: null, error: null, connections: [] };
+    const url = executor.url;
+    const error = checkError;
+    const scopeName = await scopeNamer();
+    const ids = [...new Set([...Object.values(toolkitMap).flat(), ...[...grants.keys()].filter((id) => currentGrant(id))])].sort();
+    return {
+      configured: true, url, error,
+      connections: ids.map((id) => ({
+        id, url: connectionUrl(url, id), connected: currentGrant(id) !== null,
+        assignedTo: Object.entries(toolkitMap).filter(([, mapped]) => mapped.includes(id)).map(([key]) => scopeName(key) ?? key),
+      })),
+    };
+  }
+
   bb.rpc.register(rpcContract, {
-    catalogOverview: (_input, context) => { requireCatalogClient(context); return catalogOverview(); },
+    catalogOverview: async (_input, context) => { requireCatalogClient(context); return overview(); },
     preferences: (_input, context) => { requireCatalogClient(context); return preferences; },
     updatePreferences: (input, context) => {
       requireCatalogClient(context);
@@ -922,353 +1138,231 @@ export default async function plugin(bb: BbPluginApi) {
     setExecutorToolkits: ({ scope, targetId, toolkits, expectedToolkits }, context) => {
       requireCatalogClient(context);
       return queueToolkitWrite(async () => {
-        if (scope === "global" && targetId !== "*") throw new Error("Global toolkits use the * target.");
+        if (scope === "global" && targetId !== "*") throw new Error("Global connections use the * target.");
         if (toolkits.length && scope === "project" && !(await targets()).some((project) => project.id === targetId)) throw new Error("Choose an existing project.");
         if (scope === "plugin") pluginCallerSchema.parse(targetId);
         if (toolkits.length && scope === "agent" && (!preferences.agentsIntegration || !(await agentProfiles()).some((agent) => agent.id === targetId))) throw new Error("Enable Agents in Executor settings → Oh My BB and choose an existing profile ID.");
         const key = scope === "global" ? GLOBAL_TOOLKITS : scope === "agent" ? AGENT_TOOLKITS + targetId : scope === "plugin" ? PLUGIN_TOOLKITS + targetId : targetId;
         await saveExecutorToolkits(key, toolkits, expectedToolkits);
-        bb.realtime.publish("catalog-changed", { reason: "toolkits-changed" });
         return { ok: true as const };
       });
     },
-    assignmentStatus: () => assignmentStore.status(),
-    initializeAssignmentsV1: async (input, context) => {
-      requireAssignmentClient(context);
-      await assignments.initialize(input);
-      return { ok: true as const };
-    },
-    stageAssignmentsV1: (identity, context) => {
-      requireAssignmentClient(context);
-      return assignments.stage(identity);
-    },
-    activateAssignmentsV1: async (identity, context) => {
-      requireAssignmentClient(context);
-      await assignments.activate(identity);
-      bundleCache.clear();
-      return { ok: true as const };
-    },
-    assignmentReceiptV1: (identity, context) => {
-      requireProjects(context);
-      if (assignmentStore.status().state === "staged") assignments.requirePinnedRelease(identity);
-      return assignmentStore.receipt(identity);
-    },
-    assignmentAbortV1: (identity, context) => {
-      requireProjects(context);
-      assignmentStore.abort(identity);
-      return { ok: true as const };
-    },
-    assignmentReadV1: ({ method, input, ...identity }, context) => {
-      requireProjects(context);
-      return assignments.compatibilityRead(identity, method, input);
-    },
-    assignmentWriteV1: ({ method, input, ...identity }, context) => {
-      requireProjects(context);
-      assignmentStore.requireActive(identity);
-      return assignments.write(method, input);
-    },
-    assignmentReverseExportV1: ({ cursor, reverseGeneration, ...identity }, context) => {
-      requireProjects(context);
-      return assignments.reverse(identity, cursor, reverseGeneration);
-    },
+    assignmentStatus: () => ({ state: "uninitialized" as const, transfer: null, destinationRevision: null, conflicts: 0 as const }),
     getSandboxSkills: ({ hostId }) => ({ skillIds: sandboxSkills.get(hostId) ?? null }),
-    executorToolkits: ({ caller }, context) => {
-      requirePluginCaller(caller, context);
-      return {
-        configured: executor !== null,
-        toolkits: (toolkitMap[PLUGIN_TOOLKITS + caller] ?? []).map((slug) => ({ slug, integrations: toolkitIntegrations.get(slug) ?? [] })),
-      };
-    },
-    executorCall: pluginExecutorCall,
-    executorDecide: pluginExecutorDecide,
-    executorApprovals: ({ threadId }) => ({
-      pending: (approvalQueues.get(threadId)?.entries ?? []).filter((entry) => !entry.decision).map(({ id, name, summary, open }) => ({ approvalId: id, name, summary, open })),
-    }),
-    executorOverview,
-    executorConnections,
     setSandboxSkills: async ({ hostId, skillIds }) => {
-      const available = new Set(store.listApprovedSkills().map((skill) => skill.id));
+      const available = new Set((await skillsOf(threadConnections(), true)).skills.map((entry) => skillId(entry.remote)));
       if (skillIds.some((id) => !available.has(id))) throw new Error("An unavailable skill was selected.");
       const selected = [...new Set(skillIds)];
       await bb.storage.kv.set(`sandbox-skills:${hostId}`, selected);
       sandboxSkills.set(hostId, selected);
       return { ok: true as const };
     },
-    snapshot,
+    snapshot: async () => {
+      const { skillsError: _skillsError, ...data } = await snapshot();
+      return data;
+    },
     listBundles: () => ({ bundles: store.listBundles() }),
-    legacyAssignments: () => ({ assignments: store.listAssignments() }),
+    legacyAssignments: () => ({ assignments: [] }),
     registerNativeCapability: (input) => {
       const { bundle, changed } = store.saveNativeCapability(input);
       if (changed) publish("native-capability-registered");
       return bundle;
     },
-    saveSource: ({ expected, ...input }) => {
-      if (input.id) {
-        const current = store.requireSource(input.id);
-        const fields = ["name", "repositoryUrl", "gitRef", "subdirectory", "updatePolicy", "enabled"] as const;
-        if (!expected || fields.some((key) => current[key] !== expected[key])) throw new Error("This source changed. Reopen it and review the current values before saving.");
-      }
-      const saved = store.saveSource(input); publish("source-saved"); return sourceDto(saved);
-    },
-    deleteSource: async ({ id }) => {
-      store.requireSource(id);
-      const generatedBundleIds = store.listBundles().filter((bundle) => bundle.sourceId === id).map((bundle) => bundle.id);
-      await removeCanonicalBundles(generatedBundleIds);
-      store.deleteSource(id);
-      publish("source-deleted");
-      return { ok: true as const };
-    },
-    syncSource: async ({ id }) => sourceDto((await syncOne(id)).source),
-    syncAll: async () => syncAll(),
-    approveSource: ({ id }) => { const source = store.approveSource(id); publish("source-approved"); return sourceDto(source); },
-    saveBundle: ({ expected, ...input }) => {
-      if (input.id) {
-        const current = store.requireBundle(input.id);
-        const members = (ids: string[]) => JSON.stringify([...new Set(ids)].sort());
-        if (!expected || current.name !== expected.name || current.description !== expected.description || members(current.skillIds) !== members(expected.skillIds)) throw new Error("This custom set changed. Reopen it and review the current skills before saving.");
-      }
-      const validIds = new Set(store.listApprovedSkills().map((skill) => skill.id));
-      const unknown = input.skillIds.find((id) => !validIds.has(id));
-      if (unknown) throw new Error(`Bundle references an unavailable approved skill: ${unknown}`);
-      const saved = store.saveBundle(input); publish("bundle-saved"); return saved;
-    },
-    deleteBundle: async ({ id }) => {
-      const bundle = store.requireBundle(id);
-      if (bundle.sourceId) throw new Error(`${bundle.name} belongs to a source and is removed with it`);
-      await removeCanonicalBundles([id]);
-      store.deleteBundle(id);
-      publish("bundle-deleted");
-      return { ok: true as const };
-    },
     setAssignment: async ({ bundleId, kind, targetId, enabled }) => {
       store.requireBundle(bundleId);
-      if (kind !== "global" && kind !== "project") throw new Error("Skills are assigned to projects now. Agent and credential-set assignments were migrated into Projects.");
+      if (kind !== "global" && kind !== "project") throw new Error("Native capabilities are assigned globally or to projects.");
       await setCanonicalAssignment(bundleId, kind, targetId, enabled);
       return { ok: true as const };
     },
-    setSkillsEnabled: ({ skillIds, enabled }) => {
-      for (const skillId of skillIds) store.setSkillEnabled(skillId, enabled);
-      publish("skills-toggled");
-      return { ok: true as const };
-    },
+    materialize,
+    startMaterialize,
+    materializationStatus: ({ jobId }) => materializationJobs.get(jobId) ?? { state: "failed" as const, error: "Materialization job is no longer available" },
     refreshAvailability: async ({ projectId }) => {
       await warmBundleCache(projectId);
       publish("project-availability-changed");
       return { ok: true as const };
     },
-    materialize,
-    startMaterialize,
-    materializationStatus: ({ jobId }) => materializationJobs.get(jobId) ?? {
-      state: "failed" as const,
-      error: "Materialization job is no longer available",
+    executorToolkits: ({ caller }, context) => {
+      requirePluginCaller(caller, context);
+      return { configured: executor !== null, toolkits: (toolkitMap[PLUGIN_TOOLKITS + caller] ?? []).map((slug) => ({ slug, integrations: [] })) };
+    },
+    executorCall: pluginExecutorCall,
+    executorDecide: pluginExecutorDecide,
+    executorApprovals: ({ threadId }) => ({
+      pending: (approvalQueues.get(threadId)?.entries ?? []).filter((entry) => !entry.decision).map(({ id, name, summary, open }) => ({ approvalId: id, name, summary, open })),
+    }),
+    executorOverview: (_input, context) => { requireCatalogClient(context); return executorOverview(); },
+    executorConnections,
+    connectStart: async ({ connection, redirectOrigin }, context) => {
+      requireCatalogClient(context);
+      const { url } = await connectStart(connection, redirectOrigin);
+      return { url };
+    },
+    disconnect: ({ connection }, context) => {
+      requireCatalogClient(context);
+      forgetGrant(connection);
+      publish("connection-signed-out");
+      return { ok: true as const };
     },
   });
 
   bb.agents.registerTool({
     name: "catalog_search",
-    description: "Search approved skills available to this project before reading one in full.",
+    description: "Search the skills and native capabilities available in this thread before reading one in full.",
     instructions: "Search returns capability IDs and provenance. Pass an exact returned ID to catalog_read.",
-    presentation: {
-      label: {
-        pending: "Searching Executor skills",
-        completed: "Searched Executor skills",
-      },
-      icon: { glyph: "Search" },
-    },
+    presentation: { label: { pending: "Searching Executor skills", completed: "Searched Executor skills" }, icon: { glyph: "Search" } },
     parameters: z.object({ query: z.string().trim().max(500).default(""), limit: z.number().int().min(1).max(50).default(20) }).strict(),
     async execute({ query, limit }, context) {
       const needle = query.toLowerCase();
-      const bundleIds = await projectBundleIds(context.projectId);
-      const skills = (await skillsForTool(context)).map((skill) => ({ kind: "skill" as const, ...skillDto(skill) }));
-      const native = nativeCapabilitiesForBundleIds(bundleIds).map(nativeCapabilityDto);
-      const matches = [...native, ...skills].filter((capability) =>
-        JSON.stringify(capability).toLowerCase().includes(needle),
-      ).slice(0, limit);
+      const skills = (await skillsForTool(context)).map((entry) => ({ kind: "skill" as const, ...skillDto(entry) }));
+      const native = nativeCapabilitiesForBundleIds(await projectBundleIds(context.projectId)).map(nativeCapabilityDto);
+      const matches = [...native, ...skills].filter((capability) => JSON.stringify(capability).toLowerCase().includes(needle)).slice(0, limit);
       return JSON.stringify({ count: matches.length, capabilities: matches });
     },
   });
 
   bb.agents.registerTool({
     name: "catalog_read",
-    description: "Read a file from one approved Executor skill available to this project.",
-    presentation: {
-      label: {
-        pending: "Reading Executor skill",
-        completed: "Read Executor skill",
-      },
-      icon: { glyph: "Explore" },
-    },
+    description: "Read a file from one Executor skill available in this thread.",
+    presentation: { label: { pending: "Reading Executor skill", completed: "Read Executor skill" }, icon: { glyph: "Explore" } },
     parameters: z.object({ skillId: z.string().min(1), path: z.string().default("SKILL.md") }).strict(),
-    async execute({ skillId, path }, context) {
-      if (skillId.startsWith("native:")) {
-        const bundleId = skillId.slice("native:".length);
-        const capability = (await nativeCapabilitiesForTool(context)).find((candidate) => candidate.id === bundleId);
+    async execute({ skillId: wanted, path }, context) {
+      if (wanted.startsWith("native:")) {
+        const bundleId = wanted.slice("native:".length);
+        const capability = nativeCapabilitiesForBundleIds(await projectBundleIds(context.projectId)).find((candidate) => candidate.id === bundleId);
         if (!capability) throw new Error("That native capability is not available in this project");
-        return JSON.stringify({
-          capability: nativeCapabilityDto(capability),
-          provenance: { pluginId: capability.pluginId, managedBy: "catalog" },
-        });
+        return JSON.stringify({ capability: nativeCapabilityDto(capability), provenance: { pluginId: capability.pluginId, managedBy: "catalog" } });
       }
-      const skill = (await skillsForTool(context)).find((candidate) => candidate.id === skillId);
-      if (!skill) throw new Error("That skill is not available in this project");
+      const entry = (await skillsForTool(context)).find((candidate) => skillId(candidate.remote) === wanted);
+      if (!entry) throw new Error("That skill is not available in this thread");
+      const skill = await fullSkill(entry);
       const requestedPath = safeSkillPath(path);
       const file = skill.files.find((candidate) => candidate.path === requestedPath);
       if (!file) throw new Error(`Unknown file in ${skill.name}: ${requestedPath}`);
       return JSON.stringify({
-        skill: skillDto(skill), path: requestedPath, content: file.content,
-        provenance: { repository: store.requireSource(skill.sourceId).repositoryUrl, revision: skill.revision },
+        skill: skillDto(entry), path: requestedPath, content: file.content,
+        provenance: { app: entry.remote.app, connection: entry.connection, revision: skill.revision },
       });
     },
   });
 
   const executorPresentation = (pending: string, completed: string) => ({ label: { pending, completed }, icon: { glyph: "Workflow" } });
-  const toolkitParameter = z.string().regex(toolkitSlugPattern).optional()
-    .describe("Executor toolkit to use. Omit for this thread's default; the instructions list the others.");
+  const toolkitParameter = z.string().regex(connectionIdPattern).optional()
+    .describe("Executor connection to use. Omit for this thread's default; the instructions list the others.");
 
   bb.agents.registerTool({
     name: "executor_execute",
-    description: "Run TypeScript in Executor's sandbox with access to the remote MCP and API integrations in this thread's Executor toolkits.",
-    instructions: "Call executor_docs with name \"execute\" before your first call. One call runs in one toolkit. Credentials stay in Executor. A call that needs approval asks the user in this thread and returns once they answer. If it returns an approval link instead, give the user the link, then call executor_resume with the same toolkit.",
+    description: "Run TypeScript in Executor's sandbox with access to the apps in this thread's Executor connections.",
+    instructions: "Call executor_docs with name \"code-mode\" before your first call. One call runs in one connection. Credentials stay in Executor. A call that needs approval asks the user in this thread and returns once they answer. If no answer came, call executor_resume with the returned execution ID.",
     presentation: executorPresentation("Running in Executor", "Ran in Executor"),
     parameters: z.object({ code: z.string().min(1).max(100_000), toolkit: toolkitParameter }).strict(),
-    execute: ({ code, toolkit }, context) => callExecutor(context, toolkit, "execute", { code }),
+    execute: ({ code, toolkit }, context) => callExecutor(context, toolkit, (client) => client.execute(code, context.signal)),
   });
 
   bb.agents.registerTool({
     name: "executor_docs",
-    description: "Read Executor's own how-to docs, such as the workflow for executor_execute. Omit name to list them.",
+    description: "Read Executor's how-to docs, such as \"code-mode\" for executor_execute, or one app's skills. Omit name to list them.",
     presentation: executorPresentation("Reading Executor docs", "Read Executor docs"),
-    parameters: z.object({ name: z.string().trim().max(100).optional(), toolkit: toolkitParameter }).strict(),
-    execute: ({ name, toolkit }, context) => callExecutor(context, toolkit, "skills", name ? { name } : {}),
+    parameters: z.object({
+      name: z.string().trim().max(100).optional(),
+      app: z.string().trim().min(1).max(100).default(EXECUTOR_APP).describe("App whose skills to read. Defaults to Executor's own docs."),
+      toolkit: toolkitParameter,
+    }).strict(),
+    execute: ({ name, app, toolkit }, context) => callExecutor(context, toolkit, (client) =>
+      // v1 called the code-mode doc "execute".
+      client.callTool("skills", name ? { app, name: app === EXECUTOR_APP && name === "execute" ? "code-mode" : name } : { app }, context.signal)),
   });
 
   bb.agents.registerTool({
     name: "executor_resume",
-    description: "Continue an Executor call that returned an approval link. It waits for the user's decision; it cannot approve on its own.",
+    description: "Ask the user again about an Executor call that is still waiting for approval, then continue it. It cannot approve on its own.",
     presentation: executorPresentation("Waiting for Executor approval", "Resumed Executor call"),
     parameters: z.object({ executionId: z.string().min(1).max(200), toolkit: toolkitParameter }).strict(),
-    execute: ({ executionId, toolkit }, context) => callExecutor(context, toolkit, "resume", { executionId }),
+    execute: ({ executionId }, context) => resumeInThread(context, executionId),
   });
 
   bb.agents.configure((context) => {
-    const local = assignmentStore.status().state === "active" ? assignmentStore.projection() : null;
-    const bundleIds = local ? [...new Set([...local.globalBundleIds, ...(local.projects.find((project) => project.projectId === context.project.id)?.bundleIds ?? [])])]
-      : bundleCache.get(context.project.id) ?? [];
-    const skills = selectedSkills(context.host.id) ?? skillsForBundleIds(bundleIds);
+    const bundleIds = bundleCache.get(context.project.id) ?? [];
     const native = nativeCapabilitiesForBundleIds(bundleIds);
-    const count = native.length + skills.length;
     const agent = threadAgents.get(context.thread.id);
     if (preferences.agentsIntegration && !agent?.bound) void threadAgent(context.thread.id);
     const toolkits = executor ? threadToolkits(context.project.id, agent?.profileId ?? null) : [];
-    // Until Agents answers, an agent's own toolkits are unknown; the tools still check at call time.
+    const selected = sandboxSkills.get(context.host.id);
+    const count = native.length + (selected ? selected.length : cachedSkillIds(toolkits).size);
+    // Until Agents answers, an agent's own connections are unknown; the tools still check at call time.
     const agentMayHaveToolkits = preferences.agentsIntegration && Boolean(executor) && !agent?.bound && Object.keys(toolkitMap).some((key) => key.startsWith(AGENT_TOOLKITS));
-    const described = toolkits.map((slug) => {
-      const integrations = toolkitIntegrations.get(slug);
-      return integrations?.length ? `${slug} (${integrations.join(", ")})` : slug;
-    });
+    const described = toolkits.map((id) => currentGrant(id) ? id : `${id} (not signed in)`);
     return {
       tools: ["catalog_search", "catalog_read", ...(toolkits.length || agentMayHaveToolkits ? ["executor_execute", "executor_docs", "executor_resume"] : [])],
       skills: ["catalog"],
       instructions: [
         count
-          ? `Executor has ${count} approved capabilities assigned to this project. Use catalog_search to find relevant capabilities and catalog_read to load full instructions.`
+          ? `Executor has ${count} skills and capabilities for this thread. Use catalog_search to find relevant ones and catalog_read to load full instructions.`
           : "Executor is available. Search to discover the skills assigned to this project.",
         toolkits.length
-          ? `Executor toolkits for this thread: ${described.join("; ")}. The default is ${toolkits[0]}. Reach them with executor_execute (TypeScript calling tools.<integration>.…), and read executor_docs with name "execute" first. Prefer these over locally configured MCP servers for the same service.`
+          ? `Executor connections for this thread: ${described.join(", ")}. The default is ${toolkits[0]}. Reach them with executor_execute (TypeScript calling tools.<app>.…), and read executor_docs with name "code-mode" first. Prefer these over locally configured MCP servers for the same service.`
           : agentMayHaveToolkits
-            ? "This thread's agent may have Executor toolkits. Call executor_docs without a toolkit to use its default; an unassigned toolkit fails with the list of assigned ones."
+            ? "This thread's agent may have Executor connections. Call executor_docs without a connection to use its default; an unassigned connection fails with the list of assigned ones."
             : "",
       ].filter(Boolean).join("\n\n"),
     };
   });
 
-  bb.background.schedule("sync-sources", "17 3 * * 0", async () => { await syncAll(); });
-  bb.background.schedule("refresh-executor-toolkits", "23 * * * *", async () => { await refreshToolkitIntegrations(); });
+  bb.background.schedule("refresh-executor-skills", "23 * * * *", async () => { await refreshSkills("skills-changed"); });
   bb.background.schedule("check-executor-connections", "*/10 * * * *", async () => {
-    await checkConnections().catch((error) => bb.log.warn(`Could not check Executor connections: ${error instanceof Error ? error.message : String(error)}`));
+    await checkConnections().catch((error) => bb.log.warn(`Could not check Executor accounts: ${message(error)}`));
   });
+
+  const executorUsage = "Usage: bb catalog executor <status|configure [--url <url>] [--key-file <dotenv>]|connect <connection-or-url> [--redirect-origin <bb-url>]|disconnect <connection>|use <connection>... (--project <id-or-name>|--agent <@slug-or-id>|--plugin <id>|--global)|use --clear (--project <id-or-name>|--agent <@slug-or-id>|--plugin <id>|--global)|calls [--plugin <id>] [--json]>\n";
+  const usage = "Usage: bb catalog <list [--json]|skills [--app <slug>] [--json]|assign <native-capability> [--project <id>]|unassign <native-capability> [--project <id>]|project [--json]|executor ...>\n";
 
   bb.cli.register({
     name: "catalog",
-    summary: "Manage versioned skill sources and capability bundles",
+    summary: "Manage Executor connections, skills, and native capabilities",
     commands: [
-      { name: "list", summary: "List sources, packages, bundles, and assignments", usage: "bb catalog list [--json]" },
-      { name: "add", summary: "Subscribe to and initially sync a Git skill source", usage: "bb catalog add <name> <https-url> [--ref <git-ref>] [--subdirectory <path>] [--review]" },
-      { name: "sync", summary: "Sync every enabled source or one source ID", usage: "bb catalog sync [source-id]" },
-      { name: "approve", summary: "Approve a source's pending revision", usage: "bb catalog approve <source-id>" },
-      { name: "skills", summary: "List approved skills and whether each one is on", usage: "bb catalog skills [--source <name>] [--json]" },
-      { name: "enable", summary: "Turn one approved skill on", usage: "bb catalog enable <skill-id>" },
-      { name: "disable", summary: "Turn one approved skill off", usage: "bb catalog disable <skill-id>" },
-      { name: "assign", summary: "Make a skill set available globally or to one project", usage: "bb catalog assign <skill-set> [--project <id>]" },
-      { name: "unassign", summary: "Remove a global or project skill-set assignment", usage: "bb catalog unassign <skill-set> [--project <id>]" },
-      { name: "project", summary: "Rewrite this machine's and every workspace's skill roots from the current assignments", usage: "bb catalog project [--json]" },
-      { name: "executor", summary: "Configure Executor and choose which of its toolkits each project uses", usage: "bb catalog executor <status|configure [--url <url>] [--key-file <dotenv>]|use <toolkit>... (--project <id-or-name>|--agent <@slug-or-id>|--plugin <id>|--global)|use --clear (--project <id-or-name>|--agent <@slug-or-id>|--plugin <id>|--global)|calls [--plugin <id>] [--json]>" },
+      { name: "list", summary: "List connections, skills, and native capabilities", usage: "bb catalog list [--json]" },
+      { name: "skills", summary: "List the skills Executor apps ship to your connections", usage: "bb catalog skills [--app <slug>] [--json]" },
+      { name: "assign", summary: "Make a native capability available globally or to one project", usage: "bb catalog assign <native-capability> [--project <id>]" },
+      { name: "unassign", summary: "Remove a global or project native capability assignment", usage: "bb catalog unassign <native-capability> [--project <id>]" },
+      { name: "project", summary: "Rewrite this machine's and every workspace's skill roots", usage: "bb catalog project [--json]" },
+      { name: "executor", summary: "Configure Executor, sign in to connections, and choose which connection each scope uses", usage: executorUsage.replace(/^Usage: /u, "").trimEnd() },
     ],
     async run(argv) {
       try {
         if (argv[0] === "list") {
-          const data = await snapshot();
-          if (argv.includes("--json")) return { exitCode: 0, stdout: `${JSON.stringify(data, null, 2)}\n` };
-          const packages = data.bundles.map((bundle) => {
-            const assignmentCount = data.assignments.filter((assignment) => assignment.bundleId === bundle.id).length;
-            if (bundle.nativeCapability) {
-              return `native\t${bundle.name}\t${bundle.nativeCapability.toolIds.length} tools · ${bundle.nativeCapability.skillIds.length} skills\t${assignmentCount} assignments`;
-            }
-            return `${bundle.sourceId ? "package" : "bundle "}\t${bundle.name}\t${bundle.skillIds.length} skills\t${assignmentCount} assignments`;
-          });
+          const [data, overview] = await Promise.all([snapshot(), executorOverview()]);
+          if (argv.includes("--json")) return { exitCode: 0, stdout: `${JSON.stringify({ ...data, connections: overview.connections }, null, 2)}\n` };
           const lines = [
-            ...data.sources.map((source) => `${source.enabled ? "on " : "off"}\t${source.name}\t${source.approvedRevision?.slice(0, 12) ?? "not synced"}${source.pendingRevision ? "\tupdate awaiting approval" : ""}`),
-            ...packages,
+            ...overview.connections.map((connection) => `connection\t${connection.id}\t${connection.connected ? "signed in" : "not signed in"}\t${connection.assignedTo.join(", ") || "unassigned"}`),
+            ...data.skills.map((skill) => `skill\t${skill.id}\t${skill.revision.slice(0, 12)}`),
+            ...data.bundles.filter((bundle) => bundle.nativeCapability).map((bundle) => {
+              const count = data.assignments.filter((assignment) => assignment.bundleId === bundle.id).length;
+              return `native\t${bundle.name}\t${bundle.nativeCapability!.toolIds.length} tools · ${bundle.nativeCapability!.skillIds.length} skills\t${count} assignments`;
+            }),
+            ...(data.skillsError ? [`warning\t${data.skillsError}`] : []),
           ];
-          return { exitCode: 0, stdout: `${lines.join("\n")}${lines.length ? "\n" : "No Executor sources configured.\n"}` };
-        }
-        if (argv[0] === "add" && argv[1] && argv[2]) {
-          const input = {
-            name: argv[1],
-            repositoryUrl: argv[2],
-            gitRef: cliOption(argv, "--ref") ?? "main",
-            subdirectory: cliOption(argv, "--subdirectory") ?? "",
-            updatePolicy: argv.includes("--review") ? "review" as const : "automatic" as const,
-            enabled: true,
-          };
-          const source = store.saveSource(input);
-          publish("source-saved");
-          const synced = await syncOne(source.id);
-          return {
-            exitCode: 0,
-            stdout: `${JSON.stringify({ source: sourceDto(synced.source), importedSkills: store.listApprovedSkills().filter((skill) => skill.sourceId === source.id).length, assignments: 0 }, null, 2)}\n`,
-          };
-        }
-        if (argv[0] === "sync") {
-          const outcome = argv[1] ? { source: sourceDto((await syncOne(argv[1])).source) } : await syncAll();
-          return { exitCode: 0, stdout: `${JSON.stringify(outcome, null, 2)}\n` };
-        }
-        if (argv[0] === "approve" && argv[1]) {
-          const source = sourceDto(store.approveSource(argv[1])); publish("source-approved");
-          return { exitCode: 0, stdout: `${source.name} now uses ${source.approvedRevision}.\n` };
+          return { exitCode: 0, stdout: `${lines.join("\n")}${lines.length ? "\n" : "Nothing configured yet.\n"}` };
         }
         if (argv[0] === "skills") {
-          const wanted = cliOption(argv, "--source");
-          const skills = store.listApprovedSkills({ includeDisabled: true })
-            .filter((skill) => !wanted || skill.sourceName.toLowerCase() === wanted.toLowerCase());
-          if (argv.includes("--json")) return { exitCode: 0, stdout: `${JSON.stringify(skills.map(skillDto), null, 2)}\n` };
-          const lines = skills.map((skill) => `${skill.enabled ? "on " : "off"}\t${skill.id}\t${skill.name}`);
-          return { exitCode: 0, stdout: `${lines.join("\n")}${lines.length ? "\n" : "No approved skills yet.\n"}` };
-        }
-        if ((argv[0] === "enable" || argv[0] === "disable") && argv[1]) {
-          store.setSkillEnabled(argv[1], argv[0] === "enable");
-          publish("skill-toggled");
-          return { exitCode: 0, stdout: `${argv[1]} is now ${argv[0] === "enable" ? "on" : "off"}.\n` };
+          const wanted = cliOption(argv, "--app");
+          for (const connection of threadConnections()) await connectionSkills(connection, true).catch(() => undefined);
+          const catalog = await skillsOf(threadConnections(), false);
+          const skills = catalog.skills.filter((entry) => !wanted || entry.remote.app.toLowerCase() === wanted.toLowerCase());
+          if (argv.includes("--json")) return { exitCode: 0, stdout: `${JSON.stringify(skills.map((entry) => ({ ...skillDto(entry), connection: entry.connection })), null, 2)}\n` };
+          const lines = [
+            ...skills.map((entry) => `${skillId(entry.remote)}\t${entry.connection}\t${entry.remote.description.slice(0, 80)}`),
+            ...catalog.errors.map((error) => `warning\t${error}`),
+          ];
+          return { exitCode: 0, stdout: `${lines.join("\n")}${lines.length ? "\n" : "No skills yet. Add a skills app in Executor and include it in a connection.\n"}` };
         }
         if ((argv[0] === "assign" || argv[0] === "unassign") && argv[1]) {
-          const bundle = store.listBundles().find((value) => value.name.toLowerCase() === argv[1].toLowerCase());
-          if (!bundle) return { exitCode: 1, stderr: `Unknown Executor package or bundle: ${argv[1]}\n` };
+          const bundle = store.listBundles().find((value) => value.nativeCapability && value.name.toLowerCase() === argv[1]!.toLowerCase());
+          if (!bundle) return { exitCode: 1, stderr: `Unknown native capability: ${argv[1]}\n` };
           const targetId = cliOption(argv, "--project") ?? "*";
           const kind = targetId === "*" ? "global" : "project";
           await setCanonicalAssignment(bundle.id, kind, targetId, argv[0] === "assign");
-          const report = await serialize(() => projectEverything("cli"));
           const scope = kind === "project" ? `project ${targetId}` : "global";
-          return { exitCode: 0, stdout: `${bundle.name} ${argv[0] === "assign" ? "assigned to" : "unassigned from"} ${scope}. ${report.machine.skillCount} global skills projected.\n` };
+          return { exitCode: 0, stdout: `${bundle.name} ${argv[0] === "assign" ? "assigned to" : "unassigned from"} ${scope}.\n` };
         }
         if (argv[0] === "executor") return await executorCli(argv.slice(1));
         if (argv[0] === "project") {
@@ -1280,132 +1374,74 @@ export default async function plugin(bb: BbPluginApi) {
           ];
           return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
         }
-        return { exitCode: 1, stderr: "Usage: bb catalog <list [--json]|add <name> <https-url> [--ref <git-ref>] [--subdirectory <path>] [--review]|sync [source-id]|approve <source-id>|skills [--source <name>] [--json]|enable <skill-id>|disable <skill-id>|assign <skill-set> [--project <id>]|unassign <skill-set> [--project <id>]|project>\n" };
+        return { exitCode: 1, stderr: usage };
       } catch (error) { return resultError(error); }
     },
   });
 
-  /** Names a toolkit-map key for people: a project, an agent, a plugin, or every project. Null when its target is gone. */
-  async function scopeNamer() {
-    const [projects, agents] = await Promise.all([bb.sdk.projects.list(), agentProfiles().catch(() => [])]);
-    return (key: string): string | null => {
-      if (key === GLOBAL_TOOLKITS) return "every project";
-      if (key.startsWith(PLUGIN_TOOLKITS)) return `plugin ${key.slice(PLUGIN_TOOLKITS.length)}`;
-      if (key.startsWith(AGENT_TOOLKITS)) {
-        const slug = agents.find((agent) => AGENT_TOOLKITS + agent.id === key)?.slug;
-        return slug ? `agent @${slug}` : null;
-      }
-      return projects.find((project) => project.id === key)?.name ?? null;
-    };
-  }
-
-  /**
-   * Compares Catalog's toolkit map with Executor. A thread can call any of
-   * its toolkits, so when two of them treat one tool differently the looser
-   * rule decides; those pairs are reported, together with broken
-   * connections, toolkits nothing uses, and assignments that name a missing
-   * toolkit, project or agent.
-   */
-  async function executorOverview() {
-    if (!executor) return { configured: false, url: null, error: null, toolkits: [], warnings: [] };
-    try {
-      await checkConnections();
-      const [details, tools, scopeName] = await Promise.all([executor.client.toolkitDetails(), executor.client.listTools(), scopeNamer()]);
-      const bySlug = new Map(details.map((detail) => [detail.slug, detail]));
-      const warnings = Object.entries(connectionAlerts).map(([address, entry]) =>
-        `Connection ${address.replace(/^tools\./u, "")} has needed attention since ${new Date(entry.since).toISOString()}: ${entry.problem}. Fix or reconnect it in Executor.`);
-      for (const [key, slugs] of Object.entries(toolkitMap)) {
-        const scope = scopeName(key);
-        if (!scope) warnings.push(`Toolkits ${slugs.join(", ")} are assigned to ${key.startsWith(AGENT_TOOLKITS) ? "an agent" : "a project"} that no longer exists (${key}).`);
-        for (const slug of slugs.filter((candidate) => !bySlug.has(candidate))) warnings.push(`${scope ?? key} uses toolkit ${slug}, which Executor does not have.`);
-      }
-      const assigned = (slug: string) => Object.entries(toolkitMap).filter(([, slugs]) => slugs.includes(slug)).map(([key]) => scopeName(key) ?? key);
-      for (const detail of details) if (!assigned(detail.slug).length) warnings.push(`Toolkit ${detail.slug} is not assigned anywhere, so no thread can use it.`);
-
-      // Rules replace the tool's own default; among matching rules the most restrictive wins.
-      const rank = { approve: 0, require_approval: 1, block: 2 } as const;
-      const effective = (detail: ToolkitDetail, tool: ExecutorTool) => {
-        if (!detail.connections.some((pattern) => patternMatches(pattern, tool.address))) return null;
-        const matched = detail.policies.filter((policy) => patternMatches(policy.pattern, tool.address));
-        if (!matched.length) return tool.requiresApproval ? "require_approval" : "approve";
-        return matched.reduce((strictest, policy) => rank[policy.action] > rank[strictest.action] ? policy : strictest).action;
-      };
-      const threadSets = Object.keys(toolkitMap).filter((key) => !key.startsWith(PLUGIN_TOOLKITS))
-        .map((key) => key.startsWith(AGENT_TOOLKITS) ? threadToolkits("", key.slice(AGENT_TOOLKITS.length)) : threadToolkits(key === GLOBAL_TOOLKITS ? "" : key, null));
-      const pairs = new Set(threadSets.flatMap((slugs) => slugs.flatMap((a, i) => slugs.slice(i + 1).map((b) => [a, b].sort().join(" ")))));
-      const verb = { approve: "runs it", require_approval: "asks first", block: "blocks it" } as const;
-      for (const pair of [...pairs].sort()) {
-        const [a, b] = pair.split(" ").map((slug) => bySlug.get(slug)) as [ToolkitDetail | undefined, ToolkitDetail | undefined];
-        if (!a || !b) continue;
-        const differing = tools.flatMap((tool) => {
-          const [left, right] = [effective(a, tool), effective(b, tool)];
-          return left && right && left !== right ? [`${tool.address.replace(/^tools\./u, "")} (${a.slug} ${verb[left]}, ${b.slug} ${verb[right]})`] : [];
-        });
-        if (differing.length) warnings.push(`${a.slug} and ${b.slug} share threads but treat ${differing.length} tool${differing.length === 1 ? "" : "s"} differently, so the looser one decides: ${differing.slice(0, 3).join("; ")}${differing.length > 3 ? "; …" : ""}`);
-      }
-      return {
-        configured: true, url: executor.url, error: null, warnings,
-        toolkits: details.map((detail) => ({
-          slug: detail.slug, name: detail.name,
-          integrations: [...new Set(detail.connections.map((pattern) => pattern.split(".")[0]!))].sort(),
-          assignedTo: assigned(detail.slug),
-          tools: tools.filter((tool) => detail.connections.some((pattern) => patternMatches(pattern, tool.address))).length,
-          rules: {
-            approve: detail.policies.filter((policy) => policy.action === "approve").length,
-            requireApproval: detail.policies.filter((policy) => policy.action === "require_approval").length,
-            block: detail.policies.filter((policy) => policy.action === "block").length,
-          },
-        })),
-      };
-    } catch (error) {
-      return { configured: true, url: executor.url, error: error instanceof Error ? error.message : String(error), toolkits: [], warnings: [] };
-    }
-  }
-
   async function executorCli(argv: string[]): Promise<PluginCliResult> {
-    const usage = "Usage: bb catalog executor <status|configure [--url <url>] [--key-file <dotenv>]|use <toolkit>... (--project <id-or-name>|--agent <@slug-or-id>|--plugin <id>|--global)|use --clear (--project <id-or-name>|--agent <@slug-or-id>|--plugin <id>|--global)|calls [--plugin <id>] [--json]>\n";
     if (argv[0] === "configure") {
       const keyFile = cliOption(argv, "--key-file");
       const url = cliOption(argv, "--url");
-      if (!keyFile && !url) return { exitCode: 1, stderr: usage };
-      const apiKey = keyFile ? dotenvValue(await readFile(keyFile, "utf8"), "EXECUTOR_API_KEY") : undefined;
-      if (keyFile && !apiKey) return { exitCode: 1, stderr: `${keyFile} has no EXECUTOR_API_KEY\n` };
-      await executorSettings.experimental_set({ ...(url ? { executorUrl: normalizeExecutorUrl(url) } : {}), ...(apiKey ? { executorApiKey: apiKey } : {}) });
+      if (!keyFile && !url) return { exitCode: 1, stderr: executorUsage };
+      const source = keyFile ? await readFile(keyFile, "utf8") : "";
+      const pat = keyFile ? dotenvValue(source, "EXECUTOR_PAT") ?? dotenvValue(source, "EXECUTOR_API_KEY") : undefined;
+      if (keyFile && !pat) return { exitCode: 1, stderr: `${keyFile} has no EXECUTOR_PAT\n` };
+      await executorSettings.experimental_set({ ...(url ? { executorUrl: normalizeExecutorUrl(url) } : {}), ...(pat ? { executorApiKey: pat } : {}) });
       await loadExecutor();
-      if (!executor) return { exitCode: 1, stderr: "Executor needs both a URL and an API key.\n" };
-      await executor.client.listToolkits();
-      return { exitCode: 0, stdout: `Executor at ${executor.url} is reachable with the stored key.${keyFile ? ` You can delete ${keyFile}.` : ""}\n` };
+      if (!executor) return { exitCode: 1, stderr: "Executor needs a URL.\n" };
+      if (!executor.api) return { exitCode: 0, stdout: `Executor URL is ${executor.url}. Add a personal access token with --key-file for account health alerts.\n` };
+      const context = await executor.api.context();
+      return { exitCode: 0, stdout: `Executor at ${executor.url} accepts the stored token for organization ${context.slug || context.organization}.${keyFile ? ` You can delete ${keyFile}.` : ""}\n` };
+    }
+    if (argv[0] === "connect" && argv[1]) {
+      const config = await bb.sdk.system.config();
+      const redirectOrigin = cliOption(argv, "--redirect-origin") ?? config.serverAccess.effectiveUrl ?? config.serverUrl;
+      const started = await connectStart(argv[1], redirectOrigin);
+      return {
+        exitCode: 0,
+        stdout: `Open this link in a browser that is signed in to Executor, and approve access for connection ${started.connection}:\n\n${started.url}\n\nExecutor then sends the browser to ${started.redirectUri}, and BB stores the grant. The link works once, for 15 minutes.\n`,
+      };
+    }
+    if (argv[0] === "disconnect" && argv[1]) {
+      if (!grants.has(argv[1])) return { exitCode: 1, stderr: `BB holds no grant for connection ${argv[1]}.\n` };
+      forgetGrant(argv[1]);
+      publish("connection-signed-out");
+      return { exitCode: 0, stdout: `BB forgot its grant for connection ${argv[1]}. Revoke it in Executor too if you no longer trust this BB.\n` };
     }
     if (argv[0] === "use") {
       return queueToolkitWrite(async () => {
         const projectRef = cliOption(argv, "--project");
         const agentRef = cliOption(argv, "--agent");
         const pluginRef = cliOption(argv, "--plugin");
-        if ([projectRef, agentRef, pluginRef, argv.includes("--global") || undefined].filter(Boolean).length !== 1) return { exitCode: 1, stderr: usage };
-        if (agentRef && !preferences.agentsIntegration) return { exitCode: 1, stderr: "Enable Agents in Executor settings → Oh My BB before choosing an agent toolkit scope.\n" };
+        if ([projectRef, agentRef, pluginRef, argv.includes("--global") || undefined].filter(Boolean).length !== 1) return { exitCode: 1, stderr: executorUsage };
+        if (agentRef && !preferences.agentsIntegration) return { exitCode: 1, stderr: "Enable Agents in Executor settings → Oh My BB before choosing an agent connection scope.\n" };
         if (pluginRef && !pluginCallerSchema.safeParse(pluginRef).success) return { exitCode: 1, stderr: `Not a plugin ID: ${pluginRef}\n` };
         const project = projectRef ? (await bb.sdk.projects.list()).find((candidate) => candidate.id === projectRef || candidate.name === projectRef) : null;
         if (projectRef && !project) return { exitCode: 1, stderr: `Unknown project: ${projectRef}\n` };
         const agent = agentRef ? (await agentProfiles()).find((candidate) => candidate.id === agentRef || candidate.slug === agentRef.replace(/^@/u, "")) : null;
         if (agentRef && !agent) return { exitCode: 1, stderr: `Unknown agent: ${agentRef}\n` };
         const key = project?.id ?? (agent ? AGENT_TOOLKITS + agent.id : pluginRef ? PLUGIN_TOOLKITS + pluginRef : GLOBAL_TOOLKITS);
-        const slugs = argv.slice(1).filter((value, index, all) => !value.startsWith("--") && !["--project", "--agent", "--plugin"].includes(all[index - 1]!));
-        if (!argv.includes("--clear") && !slugs.length) return { exitCode: 1, stderr: usage };
-        await saveExecutorToolkits(key, argv.includes("--clear") ? [] : slugs);
+        const ids = argv.slice(1).filter((value, index, all) => !value.startsWith("--") && !["--project", "--agent", "--plugin"].includes(all[index - 1]!));
+        if (!argv.includes("--clear") && !ids.length) return { exitCode: 1, stderr: executorUsage };
+        await saveExecutorToolkits(key, argv.includes("--clear") ? [] : ids);
         const scope = project ? project.name : agent ? `agent @${agent.slug}` : pluginRef ? `plugin ${pluginRef}` : "every project";
-        return { exitCode: 0, stdout: `${scope}: ${toolkitMap[key]?.join(", ") ?? "no Executor toolkits"}\n` };
+        const unsigned = (toolkitMap[key] ?? []).filter((id) => !currentGrant(id));
+        return {
+          exitCode: 0,
+          stdout: `${scope}: ${toolkitMap[key]?.join(", ") ?? "no Executor connections"}\n${unsigned.length ? `Not signed in yet: ${unsigned.join(", ")}. Run: bb catalog executor connect <connection>\n` : ""}`,
+        };
       });
     }
     if (argv[0] === "status" || argv.length === 0) {
       if (!executor) return { exitCode: 0, stdout: "Executor is not configured.\n" };
-      await refreshToolkitIntegrations();
-      const [connections, scopeName, overview] = await Promise.all([executor.client.listConnections(), scopeNamer(), executorOverview()]);
+      const overview = await executorOverview();
       const lines = [
         `url\t${executor.url}`,
-        ...connections.map((connection) => `connection\t${connection.address.replace(/^tools\./u, "")}\t${connection.lastHealth?.status ?? "unknown"}`),
-        ...Object.entries(toolkitMap).map(([key, slugs]) => `toolkits\t${scopeName(key) ?? key}\t${slugs.map((slug) => toolkitIntegrations.has(slug) ? `${slug} (${toolkitIntegrations.get(slug)!.join(", ") || "empty"})` : `${slug} (missing)`).join("; ")}`),
-        ...overview.warnings.map((warning) => `warning\t${warning}`),
-        ...(overview.error ? [`warning\tCould not compare toolkits: ${overview.error}`] : []),
+        `token\t${executor.api ? "set (account health on)" : "not set (account health off)"}`,
+        ...overview.connections.map((connection) => `connection\t${connection.id}\t${connection.connected ? "signed in" : "not signed in"}\t${connection.assignedTo.join(", ") || "unassigned"}`),
+        ...executorConnections().broken.map((entry) => `warning\t${entry.name}: ${entry.problem}`),
+        ...(overview.error ? [`warning\t${overview.error}`] : []),
       ];
       return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
     }
@@ -1416,18 +1452,18 @@ export default async function plugin(bb: BbPluginApi) {
       const lines = calls.map((call) => [call.at, call.caller, call.toolkit, call.mode, call.outcome, `${call.durationMs}ms`, `${call.bytesOut}B`, call.purpose, call.error ?? ""].join("\t").trimEnd());
       return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
     }
-    return { exitCode: 1, stderr: usage };
+    return { exitCode: 1, stderr: executorUsage };
   }
-
-  for (const source of store.listSources()) store.ensurePackageBundle(source.id);
 
   bb.events.on("thread.created", async ({ thread }) => {
     if (preferences.agentsIntegration && executor && Object.keys(toolkitMap).some((key) => key.startsWith(AGENT_TOOLKITS))) void warmThreadAgent(thread);
     if (!thread.environmentId) return;
     const workspace = await readyWorkspace(thread.environmentId, 10);
-    if (workspace) await queueProjection("thread-created", () => projectWorkspace(workspace));
+    if (workspace) queueProjection("thread-created", () => projectWorkspace(workspace));
   });
 
+  // Fill the skill cache in the background. A changed skill set projects again.
+  void refreshSkills("skills-changed").catch((error) => bb.log.warn(`Could not refresh Executor skills: ${message(error)}`));
 
   bb.log.info("loaded");
 }

@@ -1,37 +1,19 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { assignmentId, assignmentReceiptSchema, assignmentReverseSchema, localAssignmentStatusSchema, transferIdentitySchema } from "./assignment-contract.js";
 
-export const updatePolicies = ["automatic", "review"] as const;
-export const updatePolicySchema = z.enum(updatePolicies);
 export const assignmentKinds = ["global", "project", "project-environment", "agent-profile"] as const;
 export const assignmentKindSchema = z.enum(assignmentKinds);
 export const harnessIds = ["bb", "claude-code", "codex", "omp", "pi", "prime-agent", "exo", "fx"] as const;
 export const harnessIdSchema = z.enum(harnessIds);
+const targetIdSchema = z.string().min(1).max(200);
 
-export const sourceInputSchema = z.object({
-  id: z.string().uuid().optional(),
-  name: z.string().trim().min(1).max(100),
-  repositoryUrl: z.string().url().max(2_000).refine((value) => value.startsWith("https://"), "Use an HTTPS Git repository URL"),
-  gitRef: z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/u).max(200).default("main"),
-  subdirectory: z.string().trim().max(500).refine((value) => !value.startsWith("/") && !value.split("/").includes(".."), "Use a repository-relative subdirectory"),
-  updatePolicy: updatePolicySchema,
-  enabled: z.boolean(),
-}).strict();
-
-export const sourceSchema = sourceInputSchema.extend({
-  id: z.string().uuid(),
-  approvedRevision: z.string().nullable(),
-  pendingRevision: z.string().nullable(),
-  lastCheckedAt: z.string().nullable(),
-  lastError: z.string().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-
+/**
+ * A skill an Executor app ships, as BB projects it. `sourceId` is the app slug,
+ * `sourceName` the app name, and `revision` and `digest` the skill's revision.
+ */
 export const skillSchema = z.object({
   id: z.string(),
-  sourceId: z.string().uuid(),
+  sourceId: z.string(),
   sourceName: z.string(),
   name: z.string(),
   description: z.string(),
@@ -61,23 +43,20 @@ export const nativeCapabilityInputSchema = z.object({
 
 export const nativeCapabilitySchema = nativeCapabilityInputSchema;
 
-export const bundleInputSchema = z.object({
-  id: z.string().uuid().optional(),
-  name: z.string().trim().min(1).max(100),
-  description: z.string().trim().max(500),
-  skillIds: z.array(z.string().min(1)).max(500),
-}).strict();
-
-export const bundleSchema = bundleInputSchema.extend({
+/** A plugin's native capability. Projects owns where it is available. */
+export const bundleSchema = z.object({
   id: z.string().uuid(),
-  sourceId: z.string().uuid().nullable(),
+  name: z.string(),
+  description: z.string(),
+  skillIds: z.array(z.string()),
+  sourceId: z.string().nullable(),
   nativeCapability: nativeCapabilitySchema.nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
 export const assignmentSchema = z.object({
-  bundleId: assignmentId,
+  bundleId: targetIdSchema,
   kind: assignmentKindSchema,
   targetId: z.string(),
 });
@@ -97,7 +76,6 @@ export const harnessSchema = z.object({
 });
 
 export const snapshotSchema = z.object({
-  sources: z.array(sourceSchema),
   skills: z.array(skillSchema),
   bundles: z.array(bundleSchema),
   assignments: z.array(assignmentSchema),
@@ -106,9 +84,14 @@ export const snapshotSchema = z.object({
 });
 
 export const preferencesSchema = z.object({ agentsIntegration: z.boolean() }).strict();
-export const catalogOverviewSchema = snapshotSchema.omit({ assignments: true }).extend({
-  assignments: z.array(assignmentSchema).nullable(),
-  assignmentState: localAssignmentStatusSchema,
+export const catalogOverviewSchema = snapshotSchema.omit({ assignments: true }).extend({ skillsError: z.string().nullable() });
+
+/** Catalog no longer holds assignments. Projects reads this and finds nothing to move. */
+export const assignmentStatusSchema = z.object({
+  state: z.literal("uninitialized"),
+  transfer: z.null(),
+  destinationRevision: z.null(),
+  conflicts: z.literal(0),
 });
 
 export const materializeInputSchema = z.object({
@@ -131,10 +114,11 @@ const materializeJobStatusSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("failed"), error: z.string() }),
 ]);
 
-/** A plugin's own id, self-declared: plugin RPC carries no caller identity. The toolkit map is the check. */
+/** A plugin's own id, self-declared: plugin RPC carries no caller identity. The connection map is the check. */
 export const pluginCallerSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,99}$/u);
-const toolkitSlugSchema = z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u);
-/** A write paused for a person's approval. `args` is the call's arguments as bounded JSON text. */
+/** An Executor connection ID. The field keeps its old name, `toolkit`, for callers. */
+const connectionIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/u);
+/** A write paused for a person's approval. `executionId` is Executor's request ID; `args` is bounded JSON text. */
 export const executorPausedSchema = z.object({
   executionId: z.string(),
   approvalUrl: z.string(),
@@ -148,84 +132,57 @@ const executorResultSchema = z.object({ text: z.string(), paused: executorPaused
 export const executorApprovalsSchema = z.object({
   pending: z.array(z.object({ approvalId: z.string(), name: z.string(), summary: z.string(), open: z.boolean() })),
 });
-/** Every Executor toolkit, where Catalog assigns it, and what looks out of sync. */
+
+/** Every connection Catalog maps, whether BB holds a grant for it, and where it is used. */
 export const executorOverviewSchema = z.object({
   configured: z.boolean(),
   url: z.string().nullable(),
   error: z.string().nullable(),
-  toolkits: z.array(z.object({
-    slug: z.string(),
-    name: z.string(),
-    integrations: z.array(z.string()),
+  connections: z.array(z.object({
+    id: z.string(),
+    url: z.string(),
+    connected: z.boolean(),
     assignedTo: z.array(z.string()),
-    tools: z.number().int().nonnegative(),
-    rules: z.object({ approve: z.number().int().nonnegative(), requireApproval: z.number().int().nonnegative(), block: z.number().int().nonnegative() }),
   })),
-  warnings: z.array(z.string()),
 });
 
-/** Executor connections that need attention, from Catalog's last ten-minute check. */
+/** Executor accounts that need attention, from Catalog's last ten-minute check. */
 export const executorConnectionsSchema = z.object({
   url: z.string().nullable(),
   broken: z.array(z.object({ address: z.string(), name: z.string(), problem: z.string(), since: z.number() })),
 });
 
 const toolkitScopeSchema = z.enum(["global", "project", "agent", "plugin"]);
-const toolkitMappingSchema = z.object({ scope: toolkitScopeSchema, targetId: assignmentId, toolkits: z.array(toolkitSlugSchema) }).strict();
+const toolkitMappingSchema = z.object({ scope: toolkitScopeSchema, targetId: targetIdSchema, toolkits: z.array(connectionIdSchema) }).strict();
 export const executorConfigurationSchema = z.object({
   configured: z.boolean(), url: z.string().nullable(), mappings: z.array(toolkitMappingSchema),
 });
+const okSchema = z.object({ ok: z.literal(true) });
 
 export const rpcContract = defineRpcContract({
   catalogOverview: { input: z.null(), output: catalogOverviewSchema },
   preferences: { input: z.null(), output: preferencesSchema },
   updatePreferences: { input: preferencesSchema.partial().strict(), output: preferencesSchema },
   executorConfiguration: { input: z.null(), output: executorConfigurationSchema },
-  setExecutorToolkits: { input: toolkitMappingSchema.extend({ expectedToolkits: z.array(toolkitSlugSchema) }).strict(), output: z.object({ ok: z.literal(true) }) },
-  assignmentStatus: { input: z.null(), output: localAssignmentStatusSchema },
-  initializeAssignmentsV1: { input: z.object({ confirmation: z.literal("no-legacy-assignments") }).strict(), output: z.object({ ok: z.literal(true) }) },
-  stageAssignmentsV1: { input: transferIdentitySchema, output: assignmentReceiptSchema },
-  activateAssignmentsV1: { input: transferIdentitySchema, output: z.object({ ok: z.literal(true) }) },
-  assignmentReceiptV1: { input: transferIdentitySchema, output: assignmentReceiptSchema },
-  assignmentAbortV1: { input: transferIdentitySchema, output: z.object({ ok: z.literal(true) }) },
-  assignmentReadV1: { input: transferIdentitySchema.extend({ method: z.string(), input: z.unknown() }).strict(), output: z.unknown() },
-  assignmentWriteV1: { input: transferIdentitySchema.extend({ method: z.enum(["setGlobalBundle", "setProjectBundle", "removeBundle"]), input: z.unknown() }).strict(), output: z.object({ ok: z.literal(true) }) },
-  assignmentReverseExportV1: { input: transferIdentitySchema.extend({ cursor: z.number().int().nonnegative(), reverseGeneration: assignmentId.nullable() }).strict(), output: assignmentReverseSchema },
+  setExecutorToolkits: { input: toolkitMappingSchema.extend({ expectedToolkits: z.array(connectionIdSchema) }).strict(), output: okSchema },
+  assignmentStatus: { input: z.null(), output: assignmentStatusSchema },
   getSandboxSkills: { input: z.object({ hostId: z.string().min(1) }).strict(), output: z.object({ skillIds: z.array(z.string()).nullable() }) },
-  setSandboxSkills: { input: z.object({ hostId: z.string().min(1), skillIds: z.array(z.string()).max(1000) }).strict(), output: z.object({ ok: z.literal(true) }) },
+  setSandboxSkills: { input: z.object({ hostId: z.string().min(1), skillIds: z.array(z.string()).max(1000) }).strict(), output: okSchema },
   snapshot: { input: z.null(), output: snapshotSchema },
   listBundles: { input: z.null(), output: z.object({ bundles: z.array(bundleSchema) }) },
+  /** Always empty: Projects owns assignments now. */
   legacyAssignments: { input: z.null(), output: z.object({ assignments: z.array(assignmentSchema) }) },
   registerNativeCapability: { input: nativeCapabilityInputSchema, output: bundleSchema },
-  saveSource: { input: sourceInputSchema.extend({ expected: sourceInputSchema.omit({ id: true }).optional() }).strict(), output: sourceSchema },
-  deleteSource: { input: z.object({ id: z.string().uuid() }).strict(), output: z.object({ ok: z.literal(true) }) },
-  syncSource: { input: z.object({ id: z.string().uuid() }).strict(), output: sourceSchema },
-  syncAll: { input: z.null(), output: z.object({ checked: z.number().int().nonnegative(), updated: z.number().int().nonnegative(), failed: z.number().int().nonnegative() }) },
-  approveSource: { input: z.object({ id: z.string().uuid() }).strict(), output: sourceSchema },
-  saveBundle: { input: bundleInputSchema.extend({ expected: bundleInputSchema.omit({ id: true }).optional() }).strict(), output: bundleSchema },
-  deleteBundle: { input: z.object({ id: z.string().uuid() }).strict(), output: z.object({ ok: z.literal(true) }) },
+  /** Writes a native capability's availability to Projects. */
   setAssignment: {
     input: z.object({ bundleId: z.string().uuid(), kind: assignmentKindSchema, targetId: z.string(), enabled: z.boolean() }).strict(),
-    output: z.object({ ok: z.literal(true) }),
-  },
-  setSkillsEnabled: {
-    input: z.object({ skillIds: z.array(z.string().min(1)).min(1).max(1_000), enabled: z.boolean() }).strict(),
-    output: z.object({ ok: z.literal(true) }),
+    output: okSchema,
   },
   materialize: { input: materializeInputSchema, output: materializeOutputSchema },
-  startMaterialize: {
-    input: materializeInputSchema,
-    output: z.object({ jobId: z.string().uuid() }),
-  },
-  materializationStatus: {
-    input: z.object({ jobId: z.string().uuid() }).strict(),
-    output: materializeJobStatusSchema,
-  },
-  refreshAvailability: {
-    input: z.object({ projectId: z.string().min(1).nullable() }).strict(),
-    output: z.object({ ok: z.literal(true) }),
-  },
-  /** Toolkits mapped to the verified matching plugin caller with `bb catalog executor use <toolkit> --plugin <id>`. */
+  startMaterialize: { input: materializeInputSchema, output: z.object({ jobId: z.string().uuid() }) },
+  materializationStatus: { input: z.object({ jobId: z.string().uuid() }).strict(), output: materializeJobStatusSchema },
+  refreshAvailability: { input: z.object({ projectId: z.string().min(1).nullable() }).strict(), output: okSchema },
+  /** Connections mapped to the plugin caller with `bb catalog executor use <connection> --plugin <id>`. */
   executorToolkits: {
     input: z.object({ caller: pluginCallerSchema }).strict(),
     output: z.object({
@@ -234,7 +191,7 @@ export const rpcContract = defineRpcContract({
     }),
   },
   /**
-   * Runs Executor code for a verified matching plugin caller in its mapped toolkits.
+   * Runs Executor code for a plugin caller at one of its mapped connections.
    * `read` never waits: a call that pauses for approval is declined at once
    * and fails. `write` returns the paused call for the plugin to show.
    * Acceptance requires the native owner interaction; `executorDecide` only declines.
@@ -242,7 +199,7 @@ export const rpcContract = defineRpcContract({
   executorCall: {
     input: z.object({
       caller: pluginCallerSchema,
-      toolkit: toolkitSlugSchema,
+      toolkit: connectionIdSchema,
       code: z.string().min(1).max(100_000),
       mode: z.enum(["read", "write"]),
       purpose: z.string().trim().min(1).max(200),
@@ -258,10 +215,16 @@ export const rpcContract = defineRpcContract({
   executorApprovals: { input: z.object({ threadId: z.string().min(1).max(200) }).strict(), output: executorApprovalsSchema },
   executorOverview: { input: z.null(), output: executorOverviewSchema },
   executorConnections: { input: z.null(), output: executorConnectionsSchema },
+  /** Starts a sign-in for one connection. BB's callback route finishes it. */
+  connectStart: {
+    input: z.object({ connection: connectionIdSchema, redirectOrigin: z.string().url().max(500) }).strict(),
+    output: z.object({ url: z.string() }),
+  },
+  /** Forgets BB's grant for one connection. */
+  disconnect: { input: z.object({ connection: connectionIdSchema }).strict(), output: okSchema },
 });
 
 export type AssignmentKind = z.infer<typeof assignmentKindSchema>;
-export type BundleInput = z.infer<typeof bundleInputSchema>;
 export type NativeCapabilityInput = z.infer<typeof nativeCapabilityInputSchema>;
 export type HarnessId = z.infer<typeof harnessIdSchema>;
-export type SourceInput = z.infer<typeof sourceInputSchema>;
+export type Skill = z.infer<typeof skillSchema>;

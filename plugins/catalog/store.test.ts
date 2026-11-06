@@ -1,32 +1,19 @@
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import Database from "better-sqlite3";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { CatalogStore, migrations } from "./store.js";
-import { syncCatalogSource } from "./sync.js";
 
-const temporaryDirectories: string[] = [];
-
-function temporaryDirectory() {
-  const directory = mkdtempSync(join(tmpdir(), "bb-catalog-test-"));
-  temporaryDirectories.push(directory);
-  return directory;
-}
+const NATIVE = "2f576f36-0d16-4f76-9a21-b66bcb47e100";
 
 function makeStore() {
   const db = new Database(":memory:");
-  for (const migration of migrations) db.exec(migration);
   db.pragma("foreign_keys = ON");
+  for (const migration of migrations) db.exec(migration);
   return new CatalogStore(db);
 }
 
-afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
-});
+const tables = (db: Database.Database) => (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((row) => row.name);
 
-describe("Catalog", () => {
+describe("Catalog store", () => {
   it("drops the generated Executor sets and their columns from databases that had them", () => {
     const db = new Database(":memory:");
     const drop = migrations.findIndex((migration) => migration.startsWith("DROP INDEX catalog_bundles_executor_integration"));
@@ -38,69 +25,43 @@ describe("Catalog", () => {
     expect((db.prepare("PRAGMA table_info(catalog_bundles)").all() as Array<{ name: string }>).map((column) => column.name)).not.toContain("executor_connections");
   });
 
-  it("imports folded metadata and binary assets from a Git source", async () => {
-    const repository = temporaryDirectory();
-    mkdirSync(join(repository, "skills", "example"), { recursive: true });
-    writeFileSync(join(repository, "skills", "example", "SKILL.md"), "---\nname: example\ndescription: >-\n  A useful skill from an\n  upstream repository.\n---\n\nUse it.\n");
-    writeFileSync(join(repository, "skills", "example", "asset.bin"), Buffer.from([0, 255, 1, 2]));
-    execFileSync("git", ["init", "--quiet", repository]);
-    execFileSync("git", ["-C", repository, "add", "."]);
-    execFileSync("git", ["-C", repository, "-c", "user.name=Catalog Test", "-c", "user.email=catalog@example.invalid", "commit", "--quiet", "-m", "initial"]);
+  it("drops Git sources, skill sets, and old assignments, and keeps native capabilities", () => {
+    const db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    const v2 = migrations.findIndex((migration) => migration.includes("DROP TABLE catalog_skill_states"));
+    for (const migration of migrations.slice(0, v2)) db.exec(migration);
+    db.exec(`INSERT INTO catalog_sources (id, name, repository_url, git_ref, subdirectory, update_policy, enabled, created_at, updated_at)
+        VALUES ('src', 'hstack', 'https://example.invalid/hstack.git', 'main', '', 'automatic', 1, 'now', 'now');
+      INSERT INTO catalog_bundles (id, name, description, skill_ids, source_id, created_at, updated_at) VALUES
+        ('pkg', 'hstack', '', '[]', 'src', 'now', 'now'),
+        ('set', 'My set', '', '[]', NULL, 'now', 'now'),
+        ('${NATIVE}', 'Native', '', '[]', NULL, 'now', 'now');
+      INSERT INTO catalog_native_capabilities (bundle_id, plugin_id, tool_ids, skill_ids, setup_json, assignment_changed_rpc, updated_at)
+        VALUES ('${NATIVE}', 'fixture-native', '["fixture_action"]', '[]', '[]', NULL, 'now');`);
+    for (const migration of migrations.slice(v2)) db.exec(migration);
 
-    const store = makeStore();
-    const source = store.saveSource({ name: "Upstream", repositoryUrl: repository, gitRef: "HEAD", subdirectory: "skills", updatePolicy: "automatic", enabled: true });
-    await syncCatalogSource(store, source);
-
-    const [skill] = store.listApprovedSkills();
-    expect(skill?.description).toBe("A useful skill from an upstream repository.");
-    expect(skill?.files.find((file) => file.path === "asset.bin")?.contentEncoding).toBe("base64");
+    for (const gone of ["catalog_releases", "catalog_release_skills", "catalog_skill_states", "catalog_assignments", "catalog_assignment_records"]) expect(tables(db)).not.toContain(gone);
+    const store = new CatalogStore(db);
+    expect(store.listBundles().map((bundle) => [bundle.id, bundle.nativeCapability?.pluginId])).toEqual([[NATIVE, "fixture-native"]]);
   });
 
-  it("combines global, project, environment, and agent bundle assignments", () => {
+  it("stores one grant per connection and replaces it on a new sign-in", () => {
     const store = makeStore();
-    const source = store.saveSource({ name: "Local", repositoryUrl: "https://example.invalid/skills.git", gitRef: "main", subdirectory: "", updatePolicy: "automatic", enabled: true });
-    store.saveRelease(source.id, "abc123", [{
-      skillId: "review", name: "review", description: "Review code", relativePath: "review", digest: "digest",
-      files: [{ path: "SKILL.md", content: "---\nname: review\ndescription: Review code\n---\n", contentEncoding: "utf8" }],
-    }], true);
-    const skillId = store.listApprovedSkills()[0]!.id;
-    const bundle = store.saveBundle({ name: "Engineering", description: "", skillIds: [skillId] });
-    store.setAssignment(bundle.id, "agent-profile", "agent-1", true);
-    expect(store.effectiveSkills({ projectId: "other", agentProfileId: "agent-1" }).map((skill) => skill.id)).toEqual([skillId]);
-    expect(store.effectiveSkills({ projectId: "other", agentProfileId: "agent-2" })).toEqual([]);
-    expect(store.machineSkills()).toEqual([]);
-    expect(store.workspaceSkills({ projectId: "other" })).toEqual([]);
+    const grant = { connection: "gtm", origin: "https://executor.test", clientId: "client_1", redirectUri: "https://bb.test/cb", accessToken: "at_1", refreshToken: "rt_1", expiresAt: 1 };
+    store.saveGrant(grant);
+    store.saveGrant({ ...grant, connection: "ops" });
+    store.saveGrant({ ...grant, accessToken: "at_2", refreshToken: null, expiresAt: 2 });
+    expect(store.grants()).toEqual([{ ...grant, accessToken: "at_2", refreshToken: null, expiresAt: 2 }, { ...grant, connection: "ops" }]);
+    store.deleteGrant("gtm");
+    expect(store.grants().map((row) => row.connection)).toEqual(["ops"]);
   });
 
-  it("gives every source an assignable package that follows per-skill switches", () => {
+  it("saves a native capability once and reports only real changes", () => {
     const store = makeStore();
-    const source = store.saveSource({ name: "Local", repositoryUrl: "https://example.invalid/skills.git", gitRef: "main", subdirectory: "", updatePolicy: "automatic", enabled: true });
-    store.saveRelease(source.id, "abc123", [
-      { skillId: "review", name: "review", description: "Review code", relativePath: "review", digest: "one", files: [] },
-      { skillId: "teach", name: "teach", description: "Teach a topic", relativePath: "teach", digest: "two", files: [] },
-    ], true);
-
-    const pkg = store.listBundles().find((bundle) => bundle.sourceId === source.id);
-    expect(pkg?.name).toBe("Local");
-    expect(pkg?.skillIds).toHaveLength(2);
-
-    store.setSkillEnabled(`${source.id}:teach`, false);
-    expect(store.requireBundle(pkg!.id).skillIds).toEqual([`${source.id}:review`]);
-    expect(store.listApprovedSkills().map((skill) => skill.name)).toEqual(["review"]);
-    expect(store.listApprovedSkills({ includeDisabled: true }).map((skill) => [skill.name, skill.enabled])).toEqual([["review", true], ["teach", false]]);
-
-    store.setAssignment(pkg!.id, "project", "proj-1", true);
-    expect(store.effectiveSkills({ projectId: "proj-1" }).map((skill) => skill.name)).toEqual(["review"]);
-    expect(store.machineSkills()).toEqual([]);
-    expect(store.workspaceSkills({ projectId: "proj-1" }).map((skill) => skill.name)).toEqual(["review"]);
-    expect(store.workspaceSkills({ projectId: "proj-2" })).toEqual([]);
-
-    store.setAssignment(pkg!.id, "global", "*", true);
-    expect(store.machineSkills().map((skill) => skill.name)).toEqual(["review"]);
-    expect(store.workspaceSkills({ projectId: "proj-1" })).toEqual([]);
-    store.setAssignment(pkg!.id, "global", "*", false);
-
-    store.deleteSource(source.id);
-    expect(store.listBundles()).toEqual([]);
+    const input = { id: NATIVE, pluginId: "fixture-native", name: "Fixture", description: "Synthetic", toolIds: ["fixture_action"], skillIds: [], setup: [], assignmentChangedRpc: null };
+    expect(store.saveNativeCapability(input).changed).toBe(true);
+    expect(store.saveNativeCapability(input).changed).toBe(false);
+    expect(store.saveNativeCapability({ ...input, toolIds: ["other"] }).bundle.nativeCapability?.toolIds).toEqual(["other"]);
+    expect(() => store.requireBundle("missing")).toThrow("Unknown native capability: missing");
   });
 });
