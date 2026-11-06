@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Remove the one-time `scripts/executor-skill-apps.mjs` migration script. The move to Executor 2 is complete.
+- `executor_docs` no longer maps the Executor 1 doc name `execute` to `code-mode`.
+
 ## 0.3.0
 
 - Move to Executor 2. Connections replace toolkits; connection IDs keep the old toolkit slugs, so existing mappings carry over.

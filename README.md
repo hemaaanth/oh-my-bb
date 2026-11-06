@@ -63,8 +63,8 @@ as `fx-acp/v0.1.0`.
   for presentations while keeping sidebar structure, counts, and status visible.
 - [`plugins/sandboxes`](plugins/sandboxes) supplies native runtime adapters for five
   providers. BB owns machine lifecycle; optional integrations keep their own authority.
-- [`plugins/catalog`](plugins/catalog), displayed as Executor, connects agents to
-  assigned remote toolkits and approved versioned skills. The `catalog` identity stays stable.
+- [`plugins/catalog`](plugins/catalog), displayed as Executor, signs agents in to
+  Executor 2 connections and projects the skills their apps ship. The `catalog` identity stays stable.
 - [`plugins/agent-profiles`](plugins/agent-profiles), displayed as Agents, provides
   portable saved personalities, permanent DMs, channels and delegated tasks.
 - [`agents/fx-acp`](agents/fx-acp) is an optional standalone ACP adapter for FX.
@@ -121,12 +121,11 @@ Agents and Projects call paths are off for fresh installs; Browser owns its own
 Sandboxes opt-in. Existing image provenance and builder routes need explicit
 preservation checks before cutover. See [Sandboxes migration](docs/migrations/sandboxes.md).
 
-Executor keeps remote service credentials on the Executor server. This BB plugin
-keeps its server-side API key and local toolkit/skill assignments. Skills work
-without remote Executor configuration. Optional Agents profile scopes start off.
-The display rename changes no plugin, tool, command, storage or secret identity.
-See [Executor migration](docs/migrations/catalog.md) for existing assignment
-handoffs and the distinction between a native approval and an SDK client call.
+Executor 2 owns apps, accounts, tools, approval rules and skills on the Executor
+server. This BB plugin keeps one OAuth grant per connection and the map from
+projects, Agents profiles and plugins to connections. Optional Agents profile
+scopes start off. The display name changes no plugin, tool, command, storage or
+secret identity. See [Executor migration](docs/migrations/catalog.md).
 
 Agents installs and builds independently. Managed turns require separately
 configured Model Gateway and Pi on the execution host; native Pi authentication

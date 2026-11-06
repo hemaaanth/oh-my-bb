@@ -90,7 +90,7 @@ function callbackPage(status: number, title: string, body: string): Response {
  * gets, and `agent:<profile-id>` keys hold connections for every thread an
  * Agents profile runs. `plugin:<plugin-id>` keys hold connections another
  * plugin's backend reaches through `executorCall`; `*` does not apply to them.
- * The key keeps its v1 name: connection IDs equal the old toolkit slugs.
+ * The key keeps its old name: connection IDs equal the old toolkit slugs.
  */
 const toolkitMapSchema = z.record(z.string(), z.array(z.string().regex(connectionIdPattern)));
 const TOOLKIT_MAP_KEY = "executor-toolkits";
@@ -1269,8 +1269,7 @@ export default async function plugin(bb: BbPluginApi) {
       toolkit: toolkitParameter,
     }).strict(),
     execute: ({ name, app, toolkit }, context) => callExecutor(context, toolkit, (client) =>
-      // v1 called the code-mode doc "execute".
-      client.callTool("skills", name ? { app, name: app === EXECUTOR_APP && name === "execute" ? "code-mode" : name } : { app }, context.signal)),
+      client.callTool("skills", name ? { app, name } : { app }, context.signal)),
   });
 
   bb.agents.registerTool({

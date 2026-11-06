@@ -52,7 +52,7 @@ bb catalog executor status
 
 A thread's connections are its agent's, then its project's, then the global
 ones. The first is the default. A `toolkit` argument picks another one. (The
-argument keeps its v1 name. Connection IDs match the old toolkit slugs.)
+argument keeps its old name. Connection IDs match the old toolkit slugs.)
 
 Threads with connections get `executor_execute`, `executor_docs` and
 `executor_resume`. One call runs in one connection. The tools run on the BB
@@ -131,23 +131,9 @@ See them with `bb catalog executor calls --plugin <id>`.
 ## Moving from Catalog 0.2
 
 Catalog 0.2 kept Git skill sources, skill sets and assignments in this plugin.
-Version 0.3 removes them. Executor apps now publish skills.
-
-`scripts/executor-skill-apps.mjs` moves the old sources. It reads the old
-database read-only and prints one Executor execute script:
-
-```sh
-node scripts/executor-skill-apps.mjs ~/.bb/plugins/catalog/data.db <organization-id> > skill-apps.js
-```
-
-Run the printed script with Executor's `execute` tool. Each source becomes one
-app named after it. Skills that were off stay off. Executor rejects a whole
-source when one skill breaks its rules or when the source has more than 1,000
-files. Then the script loads each skill folder that was on by itself, and a
-broken skill drops out alone. The script reports each app's skill count. Run
-it again at any time. It updates the apps in place.
-
-Old sandbox skill choices used v1 skill IDs. Choose them again.
+Version 0.3 removes them. Executor apps now publish skills; an app can load a
+GitHub repository's skills with `githubSkills`. Old sandbox skill choices used
+the 0.2 skill IDs, so choose them again.
 
 ## Development
 

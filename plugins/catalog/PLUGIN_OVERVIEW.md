@@ -20,7 +20,7 @@ Executor decides which calls need approval. The plugin shows each paused call as
 
 Executor apps ship skills, with IDs `<app>/<skill>`. `catalog_search` and `catalog_read` expose the skills of a thread's connections. The plugin writes them into `~/.agents/skills`, `~/.claude/skills` and each project workspace's roots. Native capabilities from other plugins stay available through Projects.
 
-Catalog 0.2's Git sources, skill sets and assignments are removed. `scripts/executor-skill-apps.mjs` moves old sources into Executor apps.
+Catalog 0.2's Git sources, skill sets and assignments are removed. Executor apps publish skills instead.
 
 ## Distribution
 
