@@ -3,6 +3,7 @@ import {spawn} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {chmod,copyFile,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
 import {request} from 'node:http';
+import {createServer} from 'node:net';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import type {Duplex} from 'node:stream';
@@ -21,6 +22,20 @@ it('binds a desktop grant to the requesting thread host and withdraws only its p
  expect(fake.harness.inspection.sharedPortDeclarations.at(-1)).toMatchObject({hostId:'host_fixture',ports:[41234]});
  await fake.harness.behavior.callRpc('desktopCloseV1',{threadId:'thr_fixture'},{experimental_caller:{kind:'plugin',pluginId:'other-plugin'}});expect(calls).toHaveLength(1);
  await fake.harness.behavior.callRpc('desktopCloseV1',{threadId:'thr_fixture'},caller);expect(calls.at(-1)?.method).toBe('closeDesktop');expect(fake.harness.inspection.sharedPortDeclarations.at(-1)).toMatchObject({hostId:'host_fixture',ports:[]});
+});
+it('shares a consumer private display on the server machine through bb connect but keeps the shared screen sandbox-only',async()=>{
+ const calls:Array<{method:string;input:unknown}>=[],cli:string[][]=[];
+ const fake=createFakePluginHost({pluginId:'sandboxes',experimental_hostEntry:true,experimental_callHostRpc:async call=>{calls.push(call);return call.method==='openDesktop'?{port:41234,expires:Date.now()+900000}:null;},sdk:{threads:{get:async()=>makeThreadResponse({id:'thr_fixture',title:'Local',environmentId:'env_fixture'})},environments:{get:async()=>({hostId:'host_local'}) as never},hosts:{get:async()=>makeHostResponse({id:'host_local',machineProviderId:null})}}});dispose.push(()=>fake.harness.lifecycle.dispose());
+ registerDesktops(fake.bb,undefined,async args=>{cli.push(args);return args[1]==='status'?JSON.stringify({state:'connected',url:'https://owner.getbb.app'}):'{}';});
+ const caller={experimental_caller:{kind:'plugin' as const,pluginId:'browser'}};
+ expect(await fake.harness.behavior.callRpc('desktopOpenV1',{threadId:'thr_fixture',target},caller)).toMatchObject({url:expect.stringMatching(/^https:\/\/owner--41234.getbb.app\/#[-\w]{43}$/)});
+ expect(calls[0]).toMatchObject({method:'openDesktop',input:{tunnel:{label:'owner',baseDomain:'getbb.app'}}});
+ expect(cli).toEqual([['connect','status','--json'],['connect','expose','41234','--host','host_local','--json']]);
+ await expect(fake.harness.behavior.callRpc('openSandboxDesktop',{threadId:'thr_fixture',viewOnly:true})).rejects.toThrow('sandbox desktop is required');
+ await fake.harness.behavior.callRpc('desktopCloseV1',{threadId:'thr_fixture'},caller);
+ expect(calls.map(call=>call.method)).toEqual(['openDesktop','closeDesktop']);
+ expect(cli.at(-1)).toEqual(['connect','unexpose','41234','--host','host_local']);
+ expect(fake.harness.inspection.sharedPortDeclarations.filter(value=>value.hostId==='host_local')).toEqual([]);
 });
 it('opens one shared desktop per thread for the panel, the directive and the agent tool',async()=>{
  const calls:Array<{method:string;input:unknown}>=[];
@@ -79,9 +94,10 @@ it.skipIf(process.platform!=='linux')('proxies an owned display through voxl wit
  const host=new SandboxDesktopHost();dispose.push(()=>host.dispose());
  const token=randomBytes(32).toString('base64url');
  const input={id:'desk',target,threadTitle:'Thread',token,notices:'NOTICES',tunnel:{label:'sbx',baseDomain:'getbb.app'}};
- process.env.PATH='/nonexistent';
+ const home=process.env.HOME;dispose.push(async()=>{process.env.HOME=home;});
+ process.env.PATH='/nonexistent';process.env.HOME=directory;
  await expect(host.open(input,AbortSignal.timeout(5000))).rejects.toThrow('no voxl');
- process.env.PATH=directory+':'+path;
+ process.env.PATH=directory+':'+path;process.env.HOME=home;
  const {port}=await host.open(input,AbortSignal.timeout(10000)),base=`http://127.0.0.1:${port}`,origin=base;
  const get=async(route:string,init?:RequestInit)=>{const res=await fetch(base+route,init);return {status:res.status,text:await res.text(),policy:res.headers.get('content-security-policy')};};
  expect((await get('/')).text).toContain('/bb-desktop-start.js');
@@ -106,6 +122,17 @@ it.skipIf(process.platform!=='linux')('proxies an owned display through voxl wit
  const voxlGone=Promise.all([first,second].map(view=>new Promise(resolve=>view.socket!.once('close',resolve))));
  await host.close('desk');await voxlGone;
  await expect(fetch(base+'/')).rejects.toThrow();
+});
+it.skipIf(process.platform!=='linux')('accepts an owned TigerVNC display under its Arch name Xvnc',async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'bb-desktop-'));dispose.push(()=>rm(directory,{recursive:true,force:true}));
+ const authority=join(directory,'authority'),vncSocket=join(directory,'vnc.sock');await writeFile(authority,'',{mode:0o600});
+ const socket=createServer();await new Promise<void>(resolve=>socket.listen(vncSocket,resolve));dispose.push(()=>new Promise(resolve=>socket.close(()=>resolve())));await chmod(vncSocket,0o600);
+ await copyFile('/bin/sh',join(directory,'Xvnc'));await chmod(join(directory,'Xvnc'),0o755);
+ const x=spawn(join(directory,'Xvnc'),['-c','sleep 60; :',':78','-rfbport','-1','-rfbunixpath',vncSocket,'-nolisten','tcp','-auth',authority],{stdio:'ignore'});dispose.push(async()=>{x.kill();});
+ await new Promise(resolve=>x.once('spawn',resolve));
+ const owned={display:':78',authority,vncSocket,owner:{pid:process.pid,start:await started(process.pid)},displayOwner:{pid:x.pid!,start:await started(x.pid!)}};
+ await expect(validateDesktop(owned)).resolves.toBeUndefined();
+ await chmod(vncSocket,0o666);await expect(validateDesktop(owned)).rejects.toThrow('private VNC socket');
 });
 it.skipIf(process.platform!=='linux')('starts and streams the sandbox display without an authority file',async()=>{
  const directory=await mkdtemp(join(tmpdir(),'bb-desktop-'));dispose.push(()=>rm(directory,{recursive:true,force:true}));

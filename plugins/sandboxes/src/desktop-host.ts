@@ -16,7 +16,8 @@ export async function validateDesktop(target:DesktopTarget){
  if(process.platform!=='linux'||!await processMatches(target.owner)||!await processMatches(target.displayOwner))throw Error('Desktop session is no longer running');
  const [args,file,owner,app]=await Promise.all([readFile('/proc/'+target.displayOwner.pid+'/cmdline','utf8'),stat(target.authority),stat('/proc/'+target.displayOwner.pid),stat('/proc/'+target.owner.pid)]);
  const words=args.split('\0'),binary=words[0]?.split('/').at(-1);
- const tiger=binary==='Xtigervnc'&&!!target.vncSocket;
+ // Debian names TigerVNC's server Xtigervnc; Arch names it Xvnc.
+ const tiger=(binary==='Xtigervnc'||binary==='Xvnc')&&!!target.vncSocket;
  if(tiger){const socket=await stat(target.vncSocket!);if(!socket.isSocket()||socket.uid!==owner.uid||(socket.mode&0o077)!==0||words[words.indexOf('-rfbunixpath')+1]!==target.vncSocket||words[words.indexOf('-rfbport')+1]!=='-1')throw Error('Only an owned private VNC socket can be shared');}
  if((!tiger&&(binary!=='Xvfb'||!!target.vncSocket))||!words.includes(target.display)||words[words.indexOf('-auth')+1]!==target.authority||owner.uid!==process.getuid?.()||app.uid!==owner.uid||file.uid!==owner.uid||words[words.indexOf('-nolisten')+1]!=='tcp'||!file.isFile()||(file.mode&0o077)!==0)throw Error('Only an owned private X display can be shared');
 }
@@ -78,7 +79,8 @@ const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 async function listen(server:TcpServer){await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});const address=server.address();if(!address||typeof address==='string')throw Error('Cannot allocate a private desktop port');return address.port;}
 
 // voxl streams H.264 over WebSockets from the X display. Every sandbox image ships it.
-export async function findVoxl(){for(const directory of (process.env.PATH||'/usr/local/bin:/usr/bin').split(':')){const file=join(directory||'.','voxl');try{await access(file,constants.X_OK);return file;}catch{}}return null;}
+// cargo install puts voxl in ~/.cargo/bin, which a host daemon's PATH may lack.
+export async function findVoxl(){for(const directory of [...(process.env.PATH||'/usr/local/bin:/usr/bin').split(':'),join(homedir(),'.cargo','bin')]){const file=join(directory||'.','voxl');try{await access(file,constants.X_OK);return file;}catch{}}return null;}
 // voxl's page loads these before it presents a token.
 const voxlPublic=new Set(['/client.js','/worker.js','/audio.js','/mic.js','/favicon.ico','/inter.woff2']);
 // voxl's page and worker pass ?token= on to every request; this moves the hash token there.
@@ -109,7 +111,7 @@ export class SandboxDesktopHost{
   return this.stream(input,screen,signal,false);
  }
  private async stream(input:SharedDesktopOpen,screen:Screen,signal:AbortSignal,resize:boolean){
-  const binary=await findVoxl();if(!binary)throw Error('This sandbox image has no voxl desktop viewer; rebuild the sandbox image');
+  const binary=await findVoxl();if(!binary)throw Error('This host has no voxl desktop viewer; rebuild the sandbox image, or run cargo install voxl on a local host');
   const password=randomBytes(24).toString('base64url'),reservation=tcpServer(),voxlPort=await listen(reservation);await new Promise<void>(resolve=>reservation.close(()=>resolve()));
   let child:ChildProcess|undefined,server:ReturnType<typeof httpServer>|undefined,timer:ReturnType<typeof setInterval>|undefined,closed=false,closing:Promise<void>|undefined;
   const sockets=new Set<Duplex>();

@@ -116,7 +116,7 @@ Check the thread environment and `IS_SANDBOX` first. Sandbox browsers run on the
 
 When the user asks to watch sandbox browser work live, open the page with `bb-browser`, call `browser_live`, and emit `::browser-live{}` on its own line in your reply. Watching is read-only and does not pause automation. Never emit viewer capability URLs in chat; the directive resolves them through Browser. Use `browser_live` with `action: "close"` when viewing is finished. Views expire after fifteen minutes.
 
-For local browser work, use `browser_handoff` to request attention through BB. Let the user visit the browser workspace themselves. Never switch workspaces, focus windows, or expose the personal desktop through VNC. An inline handoff is interactive only while automation is paused.
+For local browser work, use `browser_handoff` to request attention through BB. When the user is at the local machine, let them visit the browser workspace themselves. When they work remotely through bb Connect, bb-browser moves the native Brave to a private display, and `browser_handoff` and `browser_live` embed it like a sandbox desktop. `BB_BROWSER_DISPLAY=auto|desktop|private` overrides the choice. Never switch workspaces, focus windows, or stream the user's own Hyprland desktop. An inline handoff is interactive only while automation is paused.
 
 ### Global sandbox policy
 

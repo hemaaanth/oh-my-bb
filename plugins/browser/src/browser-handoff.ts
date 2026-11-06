@@ -19,7 +19,7 @@ export function browserThreadControl(input: { threadId: string; action: "pause" 
   });
 }
 
-export const BROWSER_AGENT_INSTRUCTIONS = 'Use bb-browser for browser work. BB_THREAD_ID automatically gives this thread its own window and tabs. Use browser_handoff when login, OAuth, a bot check, or another manual browser action needs the user. It pauses automation and preserves the window until Done or Cancel. Never move hidden windows with external commands or kill Brave to expose them. In a sandbox, browser_handoff embeds its private desktop in chat. If the user asks to watch live, use browser_live and emit its ::browser-live{} directive on its own line; watching does not pause automation. On a local machine, browser_handoff requests attention through BB; let the user visit the browser workspace themselves. Never activate windows or change workspaces. Check IS_SANDBOX and the thread environment rather than assuming where the browser runs. Close your browser with `bb-browser close --all` after completing browser work, unless the user is still watching.';
+export const BROWSER_AGENT_INSTRUCTIONS = 'Use bb-browser for browser work. BB_THREAD_ID automatically gives this thread its own window and tabs. Use browser_handoff when login, OAuth, a bot check, or another manual browser action needs the user. It pauses automation and preserves the window until Done or Cancel. Never move hidden windows with external commands or kill Brave to expose them. In a sandbox, browser_handoff embeds its private desktop in chat. On a local machine used remotely through bb Connect, bb-browser moves Brave to a private display and browser_handoff and browser_live embed it the same way. If the user asks to watch live, use browser_live and emit its ::browser-live{} directive on its own line; watching does not pause automation. When the user is at the local machine, browser_handoff requests attention through BB; let the user visit the browser workspace themselves. Never activate windows or change workspaces. Check IS_SANDBOX and the thread environment rather than assuming where the browser runs. Close your browser with `bb-browser close --all` after completing browser work, unless the user is still watching.';
 
 export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: string, threadId: string): void | Promise<void>; release(hostId: string, threadId: string): void | Promise<void>;openDesktop?(hostId:string,threadId:string,viewOnly?:boolean):Promise<string|null>;closeDesktop?(threadId:string):Promise<void> }) {
   const viewer = registerViewer(bb);
@@ -51,8 +51,8 @@ export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: st
     const existing=opening.get(id);if(existing)return existing;
     const task=(async()=>{
       const hostId=await hostForThread(id),host=await bb.sdk.hosts.get({hostId});
-      if(!host.machineProviderId?.startsWith('sandbox-'))return {kind:'local'} as const;
       const url=await idle?.openDesktop?.(hostId,id,true);
+      if(!url&&!host.machineProviderId?.startsWith('sandbox-'))return {kind:'local'} as const;
       if(!url)throw Error('Open a headed sandbox browser with bb-browser first');
       live.set(id,{url,expires:Date.now()+15*60000});changed(id);return state(id);
     })().finally(()=>opening.delete(id));
@@ -68,13 +68,13 @@ export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: st
     },
   });
   bb.agents.registerTool({
-    name:'browser_live',description:'Show or close an inline live view of this thread’s sandbox browser, when the user asks to watch. Does not pause automation. Local browsers use browser_handoff for attention instead.',
+    name:'browser_live',description:'Show or close an inline live view of this thread’s browser, when the user asks to watch. Works in sandboxes and on local hosts used remotely. Does not pause automation. A browser on the local desktop uses browser_handoff for attention instead.',
     instructions:'Open the page with bb-browser first. Use only when the user requests live viewing. After opening, emit ::browser-live{} exactly once on its own line in the reply. Viewing is read-only; use browser_handoff when the user needs to interact.',
     parameters:z.object({action:z.enum(['open','close']).default('open')}).strict(),
     execute:async({action},context)=>{
       if(action==='close'){await finishLive(context.threadId);return 'Live browser view closed.';}
       const view=await startLive(context.threadId);
-      return view.kind==='local'?'This browser is local. Use browser_handoff if the user needs to act; it requests attention without switching workspaces.':view.kind==='handoff'?'A browser handoff is already waiting in this chat.':'Live sandbox browser view opened. Automation can continue.\n::browser-live{}';
+      return view.kind==='local'?'This browser is on the local desktop. Use browser_handoff if the user needs to act; it requests attention without switching workspaces.':view.kind==='handoff'?'A browser handoff is already waiting in this chat.':'Live browser view opened. Automation can continue.\n::browser-live{}';
     },
   });
   bb.agents.registerTool({

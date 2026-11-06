@@ -968,6 +968,8 @@ function removeWindowRule(windowClass) {
 // Check ownership, not placement: users can move windows during manual work.
 // Returns how many managed windows there are.
 function nativeWindows(browser) {
+  // A private display has no Hyprland windows.
+  if (browser?.placement === "private") return [];
   const result = spawnSync("hyprctl", ["clients", "-j"], { encoding: "utf8", timeout: 10_000 });
   let clients;
   try {
@@ -1088,7 +1090,8 @@ function liveNativeBrowser(identity) {
     browser.windowClass !== identity.windowClass ||
     !ownsNativeProcess(browser.pid, browser) ||
     !Number.isInteger(browser.port) ||
-    debugListener(browser.pid, browser.port) !== "loopback"
+    debugListener(browser.pid, browser.port) !== "loopback" ||
+    (browser.placement === "private" && !privateDisplayLive(browser))
   ) {
     return null;
   }
@@ -1147,6 +1150,7 @@ function stopNativeBrowser(identity) {
   }
   rmSync(stateMarkerPath(identity), { force: true });
   rmSync(`${stateMarkerPath(identity)}.cookies`, { force: true });
+  stopPrivateDisplay(recorded?.display);
   removeWindowRule(identity.windowClass);
   rmSync(recordPath(identity), { force: true });
 }
@@ -1179,9 +1183,89 @@ function clearNativeRuntime(identity) {
   rmSync(join(identity.runtime, "namespaces", identity.namespace), { recursive: true, force: true });
 }
 
+// Where the managed Brave draws. "desktop" is the Hyprland session. "private"
+// is a TigerVNC display that only this user can open, streamed to a remote
+// viewer. auto picks private while someone uses this host through bb Connect.
+// One profile runs in one place, so a change restarts Brave with its sign-ins.
+function wantedPlacement() {
+  const mode = setting("BB_BROWSER_DISPLAY", "display") || "auto";
+  if (!["auto", "desktop", "private"].includes(mode)) fail("BB_BROWSER_DISPLAY must be auto, desktop, or private");
+  return mode === "auto" ? (remoteViewer() ? "private" : "desktop") : mode;
+}
+
+// Same rule as bb's own presence check: a connected remote client, or remote
+// activity in the last five minutes. Unknown means local.
+function remoteViewer() {
+  const bb = env.BB_CLI || which("bb");
+  if (!bb) return false;
+  const result = spawnSync(bb, ["connect", "status", "--json"], { encoding: "utf8", timeout: 5_000, maxBuffer: 1024 * 1024 });
+  try {
+    const status = JSON.parse(result.stdout);
+    return status.remoteClients > 0 || Date.now() - Number(status.lastRemoteActivityAt) < 300_000;
+  } catch {
+    return false;
+  }
+}
+
+function privateDisplayServer() {
+  return which("Xtigervnc") || which("Xvnc");
+}
+
+// Starts a private display: a cookie file, TigerVNC on a 0600 unix socket with
+// no TCP listener, and Openbox to maximize windows.
+function startPrivateDisplay(identity, children) {
+  const server = privateDisplayServer();
+  for (const tool of ["xauth", "openbox"]) if (!which(tool)) fail(`a remote browser view needs ${tool}; install TigerVNC, xauth, and Openbox, or set BB_BROWSER_DISPLAY=desktop`);
+  if (!server) fail("a remote browser view needs TigerVNC (Xvnc); install it, or set BB_BROWSER_DISPLAY=desktop");
+  let number;
+  for (let i = 0; i < 20 && number === undefined; i++) {
+    const candidate = randomInt(100, 10_000);
+    if (!existsSync(`/tmp/.X${candidate}-lock`) && !existsSync(`/tmp/.X11-unix/X${candidate}`)) number = candidate;
+  }
+  if (number === undefined) fail("no free X display number for the private browser display");
+  const name = `:${number}`;
+  const authority = join(identity.dir, "Xauthority");
+  rmSync(authority, { force: true });
+  const auth = spawnSync("xauth", ["-f", authority, "add", name, ".", randomBytes(16).toString("hex")], { stdio: "ignore", timeout: 5_000 });
+  if (auth.status !== 0) fail("xauth could not create the private display cookie");
+  chmodSync(authority, 0o600);
+  const vncSocket = `/tmp/bb-vnc-${randomBytes(16).toString("hex")}.sock`;
+  const log = openSync(join(identity.dir, "display.log"), "a", 0o600);
+  try {
+    const x = spawn(server, [name, "-geometry", `${NATIVE_WINDOW.width}x${NATIVE_WINDOW.height}`, "-depth", "24", "-rfbport", "-1", "-rfbunixpath", vncSocket, "-rfbunixmode", "0600", "-SecurityTypes", "None", "-AcceptSetDesktopSize", "1", "-AlwaysShared", "-nolisten", "tcp", "-auth", authority], { detached: true, stdio: ["ignore", log, log] });
+    x.on("error", () => {});
+    x.unref();
+    if (x.pid) children.push(x.pid);
+    if (!waitFor(() => existsSync(`/tmp/.X11-unix/X${number}`) && existsSync(vncSocket), 10_000)) fail(`the private browser display did not start; see ${join(identity.dir, "display.log")}`);
+    const display = { name, authority, vncSocket, pid: x.pid, start: processStart(x.pid) };
+    const manager = spawn("openbox", [], { detached: true, stdio: ["ignore", log, log], env: { ...agentBrowserEnv(), DISPLAY: name, XAUTHORITY: authority, WAYLAND_DISPLAY: "" } });
+    manager.on("error", () => {});
+    manager.unref();
+    if (manager.pid) children.push(manager.pid);
+    display.manager = { pid: manager.pid, start: processStart(manager.pid) };
+    return display;
+  } finally {
+    closeSync(log);
+  }
+}
+
+function stopPrivateDisplay(display) {
+  for (const owner of [display?.manager, display]) {
+    if (!owner || !sameProcess(owner.pid, owner.start)) continue;
+    try { process.kill(owner.pid, "SIGTERM"); } catch {}
+    if (!waitFor(() => !alive(owner.pid), 3_000)) terminate(owner.pid);
+  }
+  if (/^\/tmp\/bb-vnc-[a-f0-9]{32}\.sock$/.test(display?.vncSocket || "")) rmSync(display.vncSocket, { force: true });
+}
+
+function privateDisplayLive(browser) {
+  const display = browser?.placement === "private" ? browser.display : null;
+  return display && sameProcess(display.pid, display.start) ? display : null;
+}
+
 // Launches Brave on the profile. Any failure stops what it started and
 // removes the window rule.
-function launchNativeBrowser(identity) {
+function launchNativeBrowser(identity, placement = "desktop") {
   const { profile } = identity;
   mkdirSync(profile, { recursive: true, mode: 0o700 });
   chmodSync(profile, 0o700);
@@ -1195,7 +1279,7 @@ function launchNativeBrowser(identity) {
   let launched = null;
   const children = [];
   try {
-    launched = startNativeBrowser(identity, children);
+    launched = startNativeBrowser(identity, children, placement);
     return launched;
   } finally {
     if (!launched) {
@@ -1205,10 +1289,12 @@ function launchNativeBrowser(identity) {
   }
 }
 
-function startNativeBrowser(identity, children) {
+function startNativeBrowser(identity, children, placement = "desktop") {
   const { profile, windowClass } = identity;
+  const display = placement === "private" ? startPrivateDisplay(identity, children) : null;
+  const method = display ? "private-x11" : "hyprland-wayland";
   // Place even the startup window on the configured workspace without focus.
-  addWindowRule(windowClass);
+  if (!display) addWindowRule(windowClass);
   const logPath = join(identity.dir, "brave.log");
   // Another process can take the probed port before Brave binds it. Brave then
   // never holds the listener, so the attempt fails and retries.
@@ -1217,9 +1303,7 @@ function startNativeBrowser(identity, children) {
     const log = openSync(logPath, "a", 0o600);
     let child;
     try {
-      child = spawn(
-        identity.brave.path,
-        [
+      const flags = [
           `--user-data-dir=${profile}`,
           `--class=${windowClass}`,
           // A fixed port: with --remote-debugging-port=0 Brave reports
@@ -1227,16 +1311,21 @@ function startNativeBrowser(identity, children) {
           `--remote-debugging-port=${port}`,
           "--no-first-run",
           "--no-default-browser-check",
-          "--ozone-platform=wayland",
+          display ? "--ozone-platform=x11" : "--ozone-platform=wayland",
           `--load-extension=${join(runtimeDirectory, "../browser-extension")}`,
           `--window-size=${NATIVE_WINDOW.width},${NATIVE_WINDOW.height}`,
+          ...(display ? ["--start-maximized"] : []),
           "about:blank",
-        ],
-        { detached: true, stdio: ["ignore", log, log], env: agentBrowserEnv() },
-      );
+        ];
+      // On the private display Brave draws only on X. It keeps the login
+      // session bus: its cookie key is in that session's unlocked keyring.
+      const env = display
+        ? { ...agentBrowserEnv(), DISPLAY: display.name, XAUTHORITY: display.authority, WAYLAND_DISPLAY: "", GTK_USE_PORTAL: "0", GDK_BACKEND: "x11" }
+        : agentBrowserEnv();
+      child = spawn(identity.brave.path, flags, { detached: true, stdio: ["ignore", log, log], env });
       child.unref();
       if (child.pid) children.push(child.pid);
-      logNativeLifecycle(identity, "launch-started", { pid: child.pid, port }, { method: "hyprland-wayland" });
+      logNativeLifecycle(identity, "launch-started", { pid: child.pid, port }, { method });
     } finally {
       closeSync(log);
     }
@@ -1246,13 +1335,13 @@ function startNativeBrowser(identity, children) {
       return listener ? { pid, listener } : null;
     }, 20_000);
     if (started?.listener === "loopback") {
-      const browser = { pid: started.pid, port, profile, windowClass, startedAt: new Date().toISOString() };
+      const browser = { pid: started.pid, port, profile, windowClass, startedAt: new Date().toISOString(), placement, ...(display ? { display } : {}) };
       writePrivate(recordPath(identity), `${JSON.stringify(browser)}\n`);
       // The window must appear under the distinct managed class.
-      if (!waitFor(() => checkNativeWindows(browser) > 0, 15_000)) {
+      if (!display && !waitFor(() => checkNativeWindows(browser) > 0, 15_000)) {
         fail(`the native browser opened no ${windowClass} window`);
       }
-      logNativeLifecycle(identity, "running", browser, { method: "hyprland-wayland" });
+      logNativeLifecycle(identity, "running", browser, { method });
       return browser;
     }
     // The spawned process is ours even when it never proved itself.
@@ -1260,6 +1349,7 @@ function startNativeBrowser(identity, children) {
     if (alive(child.pid)) terminate(child.pid);
     if (started) fail(`Brave's debugging port ${port} is reachable beyond loopback; bb-browser stopped it`);
   }
+  stopPrivateDisplay(display);
   fail(`Brave did not open its debugging port on the native profile after ${NATIVE_LAUNCH_ATTEMPTS} attempts; see ${logPath}`);
 }
 
@@ -1320,7 +1410,13 @@ function withNativeBrowser(identity, launch, action) {
   const browser = withNativeLock(identity, () => {
     let running = liveNativeBrowser(identity);
     let launched = false;
-    if (running && launch) {
+    const placement = launch ? wantedPlacement() : null;
+    // Move Brave only while nobody drives it or holds it for manual work.
+    if (running && launch && (running.placement || "desktop") !== placement && !anyThreadHandoff() && !otherLeases(identity)) {
+      logNativeLifecycle(identity, "placement-change", running, { from: running.placement || "desktop", to: placement });
+      running = null;
+    }
+    if (running && launch && running.placement !== "private") {
       // A compositor problem must never destroy a person's manual login.
       addWindowRule(identity.windowClass);
       checkNativeWindows(running);
@@ -1328,7 +1424,7 @@ function withNativeBrowser(identity, launch, action) {
       if (anyThreadHandoff()) fail("a browser handoff is pending; finish or cancel it before restarting Brave");
       resetNativeSessions(identity);
       stopNativeBrowser(identity);
-      running = launchNativeBrowser(identity);
+      running = launchNativeBrowser(identity, placement);
       launched = true;
     }
     if (running && launch) {
@@ -1873,8 +1969,11 @@ function liveCheck(identity) {
       detail += "; navigator.webdriver is false";
       const browser = liveNativeBrowser(identity);
       if (!browser) fail("the native browser stopped during the live check");
-      if (checkNativeWindows(browser) === 0) fail(`the native browser has no ${identity.windowClass} window`);
-      detail += `; its ${identity.windowClass} window is verified; new windows use workspace ${nativeWorkspace()}`;
+      if (browser.placement === "private") detail += `; it runs on private display ${browser.display.name} for a remote viewer`;
+      else {
+        if (checkNativeWindows(browser) === 0) fail(`the native browser has no ${identity.windowClass} window`);
+        detail += `; its ${identity.windowClass} window is verified; new windows use workspace ${nativeWorkspace()}`;
+      }
       if (identity.state) {
         if (!nativeStateCurrent(identity)) fail("the trusted state is not loaded into the native profile at its current revision");
         detail += "; the trusted state is loaded at its current revision";
@@ -2386,7 +2485,7 @@ function ensureThreadTab(identity, browser, session) {
 }
 function ensureThreadTabLocked(identity, browser, session) {
   const prior = readThreadRecord(identity);
-  const before = identity.backend === "native" ? new Set(nativeWindows(browser).map(window => window.address)) : null;
+  const before = identity.backend === "native" && browser.placement !== "private" ? new Set(nativeWindows(browser).map(window => window.address)) : null;
   const result = threadCdp(identity, browser, "ensure", { session });
   if (before && (prior?.browserKey !== result.record.browserKey || prior?.windowId !== result.record.windowId)) {
     let address;
@@ -2494,7 +2593,20 @@ function threadCommand(args) {
     console.log(JSON.stringify({ok:true, workspace:nativeWorkspace()})); return 0;
   }
   if (op === "resume") { rmSync(threadHoldPath(), {force:true}); return 0; }
-  if (!['show', 'close', 'discard', 'viewer'].includes(op)) fail("usage: bb-browser thread pause|resume|show|close|discard|viewer");
+  if (op === "desktop") {
+    // The private display a remote viewer streams. Never the Hyprland desktop.
+    if (args.length > 2 || (args[1] && args[1] !== "--watch")) fail("usage: bb-browser thread desktop [--watch]");
+    const identity = plannedIdentity();
+    if (identity.backend !== "native") fail("thread desktop is for the native browser on a private display");
+    return withNativeBrowser(identity, false, browser => {
+      const display = privateDisplayLive(browser);
+      if (!display) fail("the browser runs on this host's own desktop; open the browser workspace there");
+      if (!existsSync(threadHoldPath()) && args[1] !== "--watch") fail("pause this thread's browser for interactive access, or pass --watch");
+      console.log(JSON.stringify({display:display.name, authority:display.authority, vncSocket:display.vncSocket, owner:{pid:browser.pid, start:processStart(browser.pid)}, displayOwner:{pid:display.pid, start:display.start}}));
+      return 0;
+    });
+  }
+  if (!['show', 'close', 'discard', 'viewer'].includes(op)) fail("usage: bb-browser thread pause|resume|show|close|discard|desktop|viewer");
   if (op === "close" && existsSync(threadHoldPath())) return 0;
   if (op === "discard") rmSync(threadHoldPath(), {force:true});
   const identity = plannedIdentity();
@@ -2524,6 +2636,10 @@ function threadCommand(args) {
   if (identity.backend === "native") {
     result = withNativeBrowser(identity, false, browser => withNativeLock(identity, () => withThreadLock(identity, () => {
       show(browser);
+      if (browser.placement === "private") {
+        console.log(JSON.stringify({ok:true, desktop:true, message:"The browser is on a private display; open it from the thread's live view."}));
+        return 0;
+      }
       const record = readThreadRecord(identity);
       const address = record?.windowAddress;
       if (!/^0x[0-9a-f]+$/i.test(address || "") || !nativeWindows(browser).some(window => window.address === address)) {
@@ -2711,6 +2827,7 @@ const USAGE = `bb-browser — Brave through agent-browser with a pinned identity
   bb-browser thread label [chat title]        refresh or override this thread's label
   bb-browser workspace <number|name:NAME|special:NAME>  set the native workspace (default 8)
   bb-browser thread pause|resume|show|close|discard  handoff and cleanup for BB_THREAD_ID
+  bb-browser thread desktop [--watch]               private display target for a remote viewer
   bb-browser doctor [--offline] [--json]      verify Brave, user agent, egress, and state
   bb-browser egress up|status                 start or inspect Tailscale home egress
   bb-browser state import <name> [file|-]     import cookies/localStorage (values never printed)

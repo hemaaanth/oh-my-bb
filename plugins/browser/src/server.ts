@@ -59,11 +59,15 @@ export default async function plugin(bb: BbPluginApi) {
   const closeDesktop=async(threadId:string)=>{if(!desktopSessions.has(threadId))return;await bb.sdk.plugins.callRpc({pluginId:'sandboxes',method:'desktopCloseV1',input:{threadId},outputSchema:z.null()});desktopSessions.delete(threadId);};
   bb.onDispose(async()=>{await Promise.allSettled([...desktopSessions].map(closeDesktop));});
   registerBrowserHandoff(bb, { openDesktop:async(hostId,threadId,viewOnly=false)=>{
-    const host=await bb.sdk.hosts.get({hostId});if(!host.machineProviderId?.startsWith('sandbox-'))return null;
-    await requireSandboxes();
+    const host=await bb.sdk.hosts.get({hostId}),sandbox=!!host.machineProviderId?.startsWith('sandbox-');
+    // A local host streams only when bb-browser moved Brave to a private display
+    // for a remote viewer. Otherwise the user opens the browser workspace there.
+    if(sandbox)await requireSandboxes();else if(host.status!=='connected'||!(await settings.get()).sandboxesIntegration)return null;
     const target=await desktopClient.call('browserDesktopTarget',{threadId,watch:viewOnly},{hostId,timeoutMs:30000});
-    if(!target)return null; // Paired regular profiles and scratch headless sessions remain page-only.
-    const result=await bb.sdk.plugins.callRpc({pluginId:'sandboxes',method:'desktopOpenV1',input:{threadId,target,viewOnly},outputSchema:z.object({url:z.string(),expires:z.number()})});desktopSessions.add(threadId);return result.url;
+    if(!target)return null; // Paired regular profiles, scratch headless sessions, and desktop-placed browsers remain page-only.
+    const open=()=>bb.sdk.plugins.callRpc({pluginId:'sandboxes',method:'desktopOpenV1',input:{threadId,target,viewOnly},outputSchema:z.object({url:z.string(),expires:z.number()})});
+    const result=sandbox?await open():await open().catch(error=>{bb.log.warn('Local desktop viewer unavailable: '+(error instanceof Error?error.message:String(error)));return null;});
+    if(!result)return null;desktopSessions.add(threadId);return result.url;
   },closeDesktop,hold, release: (hostId, threadId) => hold(hostId, threadId, false) });
   registerRelay(bb, cookies, () => settings.get(),async(threadId,held,generation)=>{
     const thread=await bb.sdk.threads.get({threadId});if(!thread.environmentId)throw Error('This thread has no sandbox network host');
