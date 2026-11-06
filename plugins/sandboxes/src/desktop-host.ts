@@ -1,7 +1,7 @@
 import {spawn,type ChildProcess} from 'node:child_process';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {constants} from 'node:fs';
-import {access,readdir,readFile,stat} from 'node:fs/promises';
+import {access,readdir,readFile,stat,writeFile} from 'node:fs/promises';
 import {createServer as httpServer,request as httpRequest,type IncomingHttpHeaders,type ServerResponse} from 'node:http';
 import type {Duplex} from 'node:stream';
 import {createServer as tcpServer,type Server as TcpServer} from 'node:net';
@@ -46,7 +46,33 @@ export async function sharedDisplay(signal:AbortSignal):Promise<Screen>{
   signal.throwIfAborted();xvfb=await sharedXvfb();
  }
  if(!xvfb)throw Error('This sandbox has no desktop; start one with bb-sandbox-display start');
+ await maximizeWindows(xvfb.display).catch(()=>{});
  return {display:xvfb.display,owners:[{pid:xvfb.pid,start:xvfb.start}]};
+}
+// Apps open at their own size and leave most of the 16:9 screen black.
+// This openbox rule maximizes every normal window; dialogs keep their size.
+export const maximizeRule='<application type="normal"><maximized>yes</maximized></application>';
+export function openboxConfig(system:string|null){
+ if(system?.includes('</applications>'))return system.replace('</applications>',maximizeRule+'</applications>');
+ return '<?xml version="1.0" encoding="UTF-8"?><openbox_config xmlns="http://openbox.org/3.4/rc"><applications>'+maximizeRule+'</applications></openbox_config>';
+}
+async function maximizeWindows(display:string){
+ const state=process.env.BB_DATA_DIR||join(homedir(),'.bb'),file=join(state,'openbox-rc.xml'),uid=process.getuid?.();
+ for(const pid of await readdir('/proc')){
+  if(!/^\d+$/.test(pid))continue;
+  try{
+   const [args,environ,info]=await Promise.all([readFile('/proc/'+pid+'/cmdline','utf8'),readFile('/proc/'+pid+'/environ','utf8'),stat('/proc/'+pid)]);
+   const words=args.split('\0');
+   // Already running with the rule.
+   if(info.uid===uid&&words[0]?.split('/').at(-1)==='openbox'&&environ.split('\0').includes('DISPLAY='+display)&&words[words.indexOf('--config-file')+1]===file)return;
+  }catch{}
+ }
+ await writeFile(file,openboxConfig(await readFile('/etc/xdg/openbox/rc.xml','utf8').catch(()=>null)),{mode:0o600});
+ // --replace takes over from the running openbox and applies the rule to open windows too.
+ const child=spawn('openbox',['--replace','--sm-disable','--config-file',file],{detached:true,stdio:'ignore',env:{...process.env,DISPLAY:display}});
+ child.once('error',()=>{});child.unref();
+ // bb-sandbox-display stop finds the window manager through this file.
+ if(child.pid)await writeFile(join(state,'openbox-'+display.slice(1)+'.pid'),child.pid+'\n').catch(()=>{});
 }
 const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 async function listen(server:TcpServer){await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});const address=server.address();if(!address||typeof address==='string')throw Error('Cannot allocate a private desktop port');return address.port;}

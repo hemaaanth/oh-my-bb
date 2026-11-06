@@ -8,7 +8,7 @@ import {join} from 'node:path';
 import type {Duplex} from 'node:stream';
 import {afterEach,expect,it} from 'vitest';
 import {registerDesktops} from '../src/desktop.js';
-import {SandboxDesktopHost,validateDesktop} from '../src/desktop-host.js';
+import {SandboxDesktopHost,maximizeRule,openboxConfig,validateDesktop} from '../src/desktop-host.js';
 const dispose:Array<()=>Promise<void>>=[];afterEach(async()=>{for(const close of dispose.splice(0))await close();});
 const target={display:':1234',authority:'/private/authority',owner:{pid:42,start:'100'},displayOwner:{pid:43,start:'101'}};
 it('binds a desktop grant to the requesting thread host and withdraws only its port on release',async()=>{
@@ -29,19 +29,23 @@ it('opens one shared desktop per thread for the panel, the directive and the age
  const view=await fake.harness.behavior.callRpc('openSandboxDesktop',{threadId:'thr_fixture',viewOnly:false});
  expect(view).toMatchObject({kind:'open',viewOnly:false,url:expect.stringMatching(/^https:\/\/sandbox-fixture--42000.getbb.app\/#[-\w]{43}$/)});
  expect(calls[0]).toMatchObject({method:'openSharedDesktop',input:{viewOnly:false,threadTitle:'Desk'}});expect(calls[0]?.input).not.toHaveProperty('target');
- expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toEqual(view);
+ expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toEqual(view);expect(view).not.toHaveProperty('agent');
  expect(fake.harness.inspection.realtimeSignals.filter(signal=>signal.channel==='sandbox-desktop:thr_fixture')).toHaveLength(1);
  expect(await fake.harness.behavior.callAgentTool('sandbox_desktop',{action:'open'},{threadId:'thr_fixture'})).toContain('::sandbox-desktop{}');
  // A switch starts the new stream before the old one stops, so the viewer never shows a black gap.
  expect(calls.map(call=>call.method)).toEqual(['openSharedDesktop','openSharedDesktop']);
  const sessions=calls.map(call=>(call.input as {id:string}).id);expect(sessions[0]).not.toEqual(sessions[1]);
  // The agent tool opens view only unless asked; switching mode restarts the session.
- expect(calls[1]).toMatchObject({input:{viewOnly:true}});expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toMatchObject({kind:'open',viewOnly:true});
+ expect(calls[1]).toMatchObject({input:{viewOnly:true}});expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toMatchObject({kind:'open',viewOnly:true,agent:true});
  await fake.harness.behavior.callAgentTool('sandbox_desktop',{action:'close'},{threadId:'thr_fixture'});
  // Closing the view also stops the stream it replaced.
  expect(calls.slice(2).map(call=>(call.input as {id:string}).id).sort()).toEqual([...sessions].sort());
  expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toEqual({kind:'closed'});
  expect(fake.harness.inspection.sharedPortDeclarations.at(-1)).toMatchObject({hostId:'host_fixture',ports:[]});
+});
+it('maximizes desktop windows on top of the system openbox config',()=>{
+ expect(openboxConfig('<openbox_config><applications><application class="x"/></applications></openbox_config>')).toBe('<openbox_config><applications><application class="x"/>'+maximizeRule+'</applications></openbox_config>');
+ expect(openboxConfig(null)).toContain('<applications>'+maximizeRule+'</applications>');
 });
 it('rejects stale or non-owned displays before launching voxl',async()=>{
  await expect(validateDesktop(target)).rejects.toThrow('no longer running');

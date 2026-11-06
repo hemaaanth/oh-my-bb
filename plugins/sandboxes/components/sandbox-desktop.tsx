@@ -1,5 +1,5 @@
-import {useCallback,useEffect,useRef,useState,type Ref} from 'react';
-import {experimental_Icon as Icon,useRealtime,useRpc,type ExperimentalThreadActionTabProps,type PluginMessageDirectiveProps} from '@get-bb/plugin-sdk/app';
+import {useCallback,useEffect,useRef,useState,useSyncExternalStore,type Ref,type RefObject} from 'react';
+import {experimental_Icon as Icon,useRealtime,useRpc,type ExperimentalThreadActionTabProps,type PluginMessageDirectiveProps,type PluginThreadHeaderActionProps,useBbNavigate} from '@get-bb/plugin-sdk/app';
 import type {sandboxDesktopRpcContract,SandboxDesktopView} from '../src/desktop-contract.js';
 
 const focusRing='focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -25,6 +25,22 @@ const remembered=(threadId:string):SandboxDesktopView|null=>{
 };
 const remember=(threadId:string,view:SandboxDesktopView)=>{try{sessionStorage.setItem('sandbox-desktop:'+threadId,JSON.stringify(view));}catch{}};
 
+// Which desktop views are on screen, per thread. The header opens the side panel only when no
+// inline card is visible, and an inline card yields its stream to a visible side panel.
+const visible=new Map<string,number>(),listeners=new Set<()=>void>();
+const subscribe=(listener:()=>void)=>{listeners.add(listener);return()=>{listeners.delete(listener);};};
+const shown=(key:string)=>(visible.get(key)??0)>0;
+const bump=(key:string,by:number)=>{visible.set(key,(visible.get(key)??0)+by);for(const listener of listeners)listener();};
+function useOnScreen(ref:RefObject<HTMLElement|null>,key:string){
+  useEffect(()=>{
+    const element=ref.current;if(!element||typeof IntersectionObserver==='undefined')return;
+    let on=false;const set=(next:boolean)=>{if(next!==on){on=next;bump(key,next?1:-1);}};
+    const observer=new IntersectionObserver(entries=>set(entries.some(entry=>entry.isIntersecting)));observer.observe(element);
+    return()=>{observer.disconnect();set(false);};
+  },[ref,key]);
+}
+const useShown=(key:string)=>useSyncExternalStore(subscribe,()=>shown(key),()=>false);
+
 type Frame={url:string;ready:boolean};
 /** Stacks voxl frames. A new stream loads hidden under the old one and replaces it once it is drawing. */
 function DesktopFrames({url,control,panel,frameRef,onPending}:{url:string|null;control:boolean;panel:boolean;frameRef:Ref<HTMLDivElement>;onPending:(pending:boolean)=>void}){
@@ -47,7 +63,9 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
   const rpc=useRpc<typeof sandboxDesktopRpcContract>();
   const [view,setViewState]=useState<SandboxDesktopView|null>(()=>remembered(threadId)),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[pending,setPending]=useState(false);
   const setView=useCallback((next:SandboxDesktopView)=>{remember(threadId,next);setViewState(next);},[threadId]);
-  const frame=useRef<HTMLDivElement>(null);
+  const frame=useRef<HTMLDivElement>(null),root=useRef<HTMLDivElement>(null);
+  useOnScreen(root,(panel?'panel:':'inline:')+threadId);
+  const panelShown=useShown('panel:'+threadId),yielded=!panel&&panelShown;
   const refresh=useCallback(()=>{void rpc.call('getSandboxDesktop',{threadId}).then(setView).catch(()=>setView({kind:'closed'}));},[rpc,threadId,setView]);
   useEffect(refresh,[refresh]);useRealtime('sandbox-desktop:'+threadId,refresh);
   // Opening always starts in watch mode. Control is a separate, explicit step.
@@ -61,6 +79,7 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
   const status=error?<span role="alert" className="min-w-0 truncate text-destructive" title={error}>{error}</span>
     :view===null?<span className="text-muted-foreground">Loading…</span>
     :busy||pending?<span className="text-muted-foreground">{open?'Switching…':'Opening…'}</span>
+    :open&&yielded?<span className="min-w-0 truncate text-muted-foreground">Showing in the side panel</span>
     :open?.viewOnly?<span className="min-w-0 truncate tabular-nums text-muted-foreground">Watching{until}</span>
     :open?<span className="min-w-0 truncate tabular-nums font-medium text-foreground">You’re in control{until}</span>
     :<span className="text-muted-foreground">Closed</span>;
@@ -72,7 +91,7 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
     <IconButton label="Open in new tab" icon="ExternalLink" onClick={()=>window.open(open.url,'_blank','noopener,noreferrer')}/>
     <IconButton label="Close view" icon="X" disabled={busy} onClick={()=>void change(false)}/>
   </>:view===null?null:<IconButton label="Show desktop" icon="Play" disabled={busy} onClick={()=>void change(true)}/>;
-  const header=<div className={`flex h-8 shrink-0 items-center gap-1.5 pl-3 pr-1 text-xs ${open?'border-b border-border':''}`}>
+  const header=<div className={`flex h-8 shrink-0 items-center gap-1.5 pl-3 pr-1 text-xs ${open&&!yielded?'border-b border-border':''}`}>
     <Icon name="ComputerCloud" aria-hidden className="size-3.5 shrink-0 text-muted-foreground"/>
     <span className="shrink-0 font-medium text-foreground">Sandbox desktop</span>
     <span className="flex min-w-0 flex-1 items-center">{status}</span>
@@ -80,10 +99,34 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
   </div>;
   // The desktop keeps a fixed 16:9 size; voxl scales it to fit and centers it.
   // The header owns fullscreen. Without the fullscreen permission voxl hides its own button.
-  const body=<DesktopFrames url={open?.url??null} control={!!open&&!open.viewOnly} panel={panel} frameRef={frame} onPending={setPending}/>;
+  const body=<DesktopFrames url={yielded?null:open?.url??null} control={!!open&&!open.viewOnly} panel={panel} frameRef={frame} onPending={setPending}/>;
   return panel
-    ?<div className="flex h-full flex-col text-sm">{header}{body}</div>
-    :<div className="my-2 overflow-hidden rounded-lg border border-border bg-background text-sm">{header}{body}</div>;
+    ?<div ref={root} className="flex h-full flex-col text-sm">{header}{body}</div>
+    :<div ref={root} className="my-2 overflow-hidden rounded-lg border border-border bg-background text-sm">{header}{body}</div>;
+}
+
+// The agent's view must show even when its reply leaves out the directive, so a view the
+// agent opens also opens the side panel once, unless an inline card is already on screen.
+const seenKey=(threadId:string)=>'sandbox-desktop-seen:'+threadId;
+export function SandboxDesktopHeaderAction({threadId,isCompactViewport}:PluginThreadHeaderActionProps){
+  const rpc=useRpc<typeof sandboxDesktopRpcContract>(),navigate=useBbNavigate();
+  const openPanel=useCallback(()=>navigate.openThreadPanel({actionId:'desktop'}),[navigate]);
+  const [view,setView]=useState<SandboxDesktopView|null>(null);
+  const refresh=useCallback(()=>{void rpc.call('getSandboxDesktop',{threadId}).then(setView).catch(()=>setView(null));},[rpc,threadId]);
+  useEffect(refresh,[refresh]);useRealtime('sandbox-desktop:'+threadId,refresh);
+  const open=view?.kind==='open'&&validUrl(view.url)?view:null;
+  useEffect(()=>{
+    if(!open?.agent)return;
+    let seen:string|null=null;try{seen=sessionStorage.getItem(seenKey(threadId));}catch{}
+    if(seen===open.url)return;
+    try{sessionStorage.setItem(seenKey(threadId),open.url);}catch{}
+    if(!shown('inline:'+threadId)&&!shown('panel:'+threadId))openPanel();
+  },[open?.agent,open?.url,threadId,openPanel]);
+  if(!open)return null;
+  return <button type="button" title="Show the sandbox desktop" aria-label="Show the sandbox desktop" onClick={()=>openPanel()} className={`inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground ${focusRing}`}>
+    <Icon name="ComputerCloud" aria-hidden className="size-3.5"/>
+    {isCompactViewport?null:<span>{open.viewOnly?'Desktop':'Desktop · You’re in control'}</span>}
+  </button>;
 }
 
 export function SandboxDesktopDirective({message}:PluginMessageDirectiveProps){return <SandboxDesktop threadId={message.threadId} panel={false}/>;}

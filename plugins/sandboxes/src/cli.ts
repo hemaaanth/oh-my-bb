@@ -519,7 +519,7 @@ export function registerSandboxCli(
           await deps.desktops.close(context.threadId);
           return wantsJson ? json({ kind: "closed" }) : { exitCode: 0, stdout: "Sandbox desktop closed.\n" };
         }
-        const view = await deps.desktops.open(context.threadId, args.includes("--view-only"));
+        const view = await deps.desktops.open(context.threadId, args.includes("--view-only"), true);
         if (wantsJson) return json(view);
         if (view.kind !== "open") throw new Error("The sandbox desktop closed while opening");
         return {
