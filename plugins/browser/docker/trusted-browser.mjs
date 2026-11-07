@@ -1319,8 +1319,9 @@ function startNativeBrowser(identity, children, placement = "desktop") {
         ];
       // On the private display Brave draws only on X. It keeps the login
       // session bus: its cookie key is in that session's unlocked keyring.
+      // It draws at 1x: the desktop's HiDPI GDK_SCALE would halve the page.
       const env = display
-        ? { ...agentBrowserEnv(), DISPLAY: display.name, XAUTHORITY: display.authority, WAYLAND_DISPLAY: "", GTK_USE_PORTAL: "0", GDK_BACKEND: "x11" }
+        ? { ...agentBrowserEnv(), DISPLAY: display.name, XAUTHORITY: display.authority, WAYLAND_DISPLAY: "", GTK_USE_PORTAL: "0", GDK_BACKEND: "x11", GDK_SCALE: "1", GDK_DPI_SCALE: "1" }
         : agentBrowserEnv();
       child = spawn(identity.brave.path, flags, { detached: true, stdio: ["ignore", log, log], env });
       child.unref();
