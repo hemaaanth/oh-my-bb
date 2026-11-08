@@ -1067,7 +1067,7 @@ export class AccountPoolHub {
             const fitted =
               kind === "chatgpt-oauth" && fitResponses
                 ? fitForChatGpt(replay, candidate.model)
-                : isKey && candidate.model !== model
+                : isKey && candidate.model !== requestedModel
                   ? { ...replay, model: candidate.model }
                   : replay !== json
                     ? replay

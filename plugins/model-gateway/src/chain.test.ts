@@ -1910,6 +1910,11 @@ describe("chain failover in the hub", () => {
     expect(JSON.parse(gw.upstream.requests[0]!.body)).toMatchObject(body);
     expect(await gw.route("thr_pinned")).toMatchObject({ model, entryIndex: 0, chain: ["responses-compatible-key:wafer"] });
 
+    // omp sends the same model as `gw-<model>`; the key must get the bare id.
+    const ompToken = await valueOf(gw.env("acp-omp", "thr_pinned_omp"), "MODEL_GATEWAY_TOKEN") as string;
+    expect((await gw.send(ompToken, { ...body, model: `gw-${model}` }, "/v1/responses")).status).toBe(200);
+    expect(JSON.parse(gw.upstream.requests.at(-1)!.body)).toMatchObject(body);
+
     gw.upstream.attempts.length = 0;
     expect((await gw.send(token, { ...body, model: "gpt-6-sol" }, "/v1/responses")).status).toBe(200);
     expect(gw.upstream.attempts).toEqual(["pro-token"]);
