@@ -12,14 +12,40 @@
  * A per-host timer starts when a thread goes idle and is cancelled when it becomes
  * active again. Suspension is skipped entirely when idle-sleep is disabled
  * (`idleMs()` returns null).
+ *
+ * A thread whose turn ended can still be working: background agents, background
+ * commands, workflows (Ultracode) and goals keep running on the host. Core counts
+ * them in `thread.activity`. A thread with any of those counters above zero keeps
+ * its host awake. Plan mode is a state, not work, so it does not.
+ *
+ * Counters can get stuck when a provider never reports a task's end. A thread
+ * whose counters are above zero but which wrote no event for `STALE_ACTIVITY_MS`
+ * no longer keeps its host awake. Otherwise one stuck counter would keep a
+ * sandbox running, and billing, forever.
  */
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
 const NATIVE_PROVIDER_PREFIX = "sandbox-";
+/** Background counters with no thread event for this long are treated as stuck. */
+export const STALE_ACTIVITY_MS = 2 * 60 * 60_000;
 
 interface ThreadLike {
   id: string;
   environmentId: string | null;
+}
+
+type ThreadRow = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["list"]>>[number];
+
+/** Background work that runs after a turn ends. Plan mode is not work. */
+function backgroundWorkCount(thread: ThreadRow): number {
+  const activity = thread.activity as Partial<ThreadRow["activity"]> | undefined;
+  if (activity === undefined) return 0;
+  return (
+    (activity.activeWorkflowCount ?? 0) +
+    (activity.activeBackgroundAgentCount ?? 0) +
+    (activity.activeBackgroundCommandCount ?? 0) +
+    (activity.activeGoalCount ?? 0)
+  );
 }
 
 function wait(ms: number, signal: AbortSignal): Promise<void> {
@@ -55,6 +81,46 @@ export function registerNativeIdleSuspend(
   // phase so a suspended -> active transition restarts the idle clock.
   const observed = new Map<string, { active: boolean; since: number }>();
   const held = new Map<string, Set<string>>();
+  // When reconcile last saw each host doing work. Background work can finish
+  // long after the thread's updatedAt, so idle time starts from here.
+  const lastBusy = new Map<string, number>();
+  // Threads already reported as having stuck counters, so we warn once.
+  const staleWarned = new Set<string>();
+
+  const latestEventAt = async (threadId: string): Promise<number | null> => {
+    const [latest] = await bb.sdk.threads.events.list({
+      threadId,
+      order: "desc",
+      limit: "1",
+    });
+    return latest?.createdAt ?? null;
+  };
+
+  /** True while the thread runs a turn or background work on its host. */
+  const threadBusy = async (thread: ThreadRow): Promise<boolean> => {
+    if (thread.status !== "idle" && thread.status !== "error") return true;
+    if (backgroundWorkCount(thread) === 0) {
+      staleWarned.delete(thread.id);
+      return false;
+    }
+    let lastEventAt: number | null;
+    try {
+      lastEventAt = await latestEventAt(thread.id);
+    } catch {
+      return true; // Cannot tell: keep the host awake.
+    }
+    const quietFor = Date.now() - Math.max(lastEventAt ?? 0, thread.updatedAt);
+    if (quietFor < STALE_ACTIVITY_MS) return true;
+    if (!staleWarned.has(thread.id)) {
+      staleWarned.add(thread.id);
+      bb.log.warn(
+        `Thread ${thread.id} reports background work but wrote no event for ${Math.round(
+          quietFor / 60_000,
+        )} minutes; it no longer keeps its sandbox awake.`,
+      );
+    }
+    return false;
+  };
 
   const cancel = (hostId: string): void => {
     const timer = timers.get(hostId);
@@ -108,7 +174,7 @@ export function registerNativeIdleSuspend(
       for (const thread of threads) {
         if (thread.environmentHostId !== hostId) continue;
         found = true;
-        if (thread.status !== "idle" && thread.status !== "error") return false;
+        if (await threadBusy(thread)) return false;
       }
       if (threads.length < limit) return found;
     }
@@ -166,22 +232,26 @@ export function registerNativeIdleSuspend(
       for (const thread of threads) {
         if (thread.environmentHostId === null) continue;
         const hostId = thread.environmentHostId;
-        if (thread.status !== "idle" && thread.status !== "error") {
+        if (activeHosts.has(hostId)) continue;
+        if (await threadBusy(thread)) {
           activeHosts.add(hostId);
           idleHosts.delete(hostId);
           continue;
         }
-        if (!activeHosts.has(hostId)) {
-          idleHosts.set(
-            hostId,
-            Math.max(idleHosts.get(hostId) ?? 0, thread.updatedAt),
-          );
-        }
+        idleHosts.set(
+          hostId,
+          Math.max(idleHosts.get(hostId) ?? 0, thread.updatedAt),
+        );
       }
       if (threads.length < limit) break;
     }
-    for (const hostId of activeHosts) cancel(hostId);
-    for (const [hostId, idleSince] of idleHosts) {
+    const now = Date.now();
+    for (const hostId of activeHosts) {
+      lastBusy.set(hostId, now);
+      cancel(hostId);
+    }
+    for (const [hostId, threadIdleSince] of idleHosts) {
+      const idleSince = Math.max(threadIdleSince, lastBusy.get(hostId) ?? 0);
       if (deps.alwaysOn?.(hostId)) {
         cancel(hostId);
         continue;

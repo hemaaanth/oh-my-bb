@@ -26,6 +26,7 @@
 
 ## Unreleased — Foundations 2C
 
+- Keep a sandbox awake while an idle thread still runs background work: workflows, background agents, background commands or goals. Plan mode does not count. Counters with no thread event for two hours are treated as stuck and stop holding the sandbox awake.
 - Native cleanup reports failure when removal is unknown, a resource cannot be identified, or key reconciliation is unsupported. BB retains its native resource/checkpoint for retry. Daytona no longer swallows provider delete errors.
 - Legacy cleanup retains the checkpoint and BB host until provider removal is confirmed.
 - Optional Credentials, Catalog, Agents and Projects call paths default off. An explicit one-generation owner import preserves inventoried existing effective behavior without inventing prior consent. Saved destination false wins. Browser retains its own opt-in; Model Gateway remains a required managed-model runtime with pre-allocation readiness checks and fail-closed setup.

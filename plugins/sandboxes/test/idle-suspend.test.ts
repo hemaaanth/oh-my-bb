@@ -1,6 +1,9 @@
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { registerNativeIdleSuspend } from "../src/provider/idle-suspend.js";
+import {
+  STALE_ACTIVITY_MS,
+  registerNativeIdleSuspend,
+} from "../src/provider/idle-suspend.js";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -253,4 +256,124 @@ it('keeps independent desktop and maintenance holds until both release',async()=
  await vi.advanceTimersByTimeAsync(60000);expect(suspend).not.toHaveBeenCalled();
  holds.release('host_fixture','desktop:fixture');await vi.advanceTimersByTimeAsync(60001);expect(suspend).toHaveBeenCalledWith({hostId:'host_fixture'});
  service.controller.abort();await service.done;await fake.harness.dispose();
+});
+
+describe("native idle suspend with background work", () => {
+  const noWork = {
+    activeWorkflowCount: 0,
+    activeBackgroundAgentCount: 0,
+    activeBackgroundCommandCount: 0,
+    activeGoalCount: 0,
+    activePlanModeCount: 0,
+  };
+
+  function setup(
+    thread: { activity: typeof noWork; updatedAt: number },
+    lastEventAt: () => number,
+  ) {
+    const suspend = vi.fn(async () => ({ id: "host_1" }));
+    const eventsList = vi.fn(async () => [{ createdAt: lastEventAt() }]);
+    const fake = createFakePluginHost({
+      pluginId: "sandboxes",
+      sdk: {
+        threads: {
+          list: vi.fn(async () => [
+            {
+              id: "thread_1",
+              environmentId: "environment_1",
+              environmentHostId: "host_1",
+              archivedAt: null,
+              status: "idle",
+              ...thread,
+            },
+          ]) as never,
+          events: { list: eventsList } as never,
+        },
+        hosts: {
+          get: vi.fn(async () => ({
+            id: "host_1",
+            status: "connected",
+            machineProviderId: "sandbox-daytona",
+            lifecycle: { phase: "active" },
+          })) as never,
+          experimental_listProviders: vi.fn(async () => [
+            { id: "sandbox-daytona", supportsSuspend: true },
+          ]) as never,
+          experimental_suspend: suspend,
+        },
+      },
+    });
+    registerNativeIdleSuspend(fake.bb, { idleMs: () => 15_000 });
+    const service = fake.harness.runService("native-idle-suspend-reconcile");
+    const stop = async () => {
+      service.controller.abort();
+      await service.done;
+      await fake.harness.dispose();
+    };
+    return { suspend, eventsList, stop };
+  }
+
+  for (const counter of [
+    "activeWorkflowCount",
+    "activeBackgroundAgentCount",
+    "activeBackgroundCommandCount",
+    "activeGoalCount",
+  ] as const) {
+    it(`keeps an idle thread's host awake while ${counter} is above zero`, async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-11-08T12:00:00Z"));
+      const thread = {
+        activity: { ...noWork, [counter]: 1 },
+        updatedAt: Date.now() - 20_000,
+      };
+      const { suspend, stop } = setup(thread, () => Date.now());
+
+      await vi.advanceTimersByTimeAsync(30 * 60_000);
+      expect(suspend).not.toHaveBeenCalled();
+
+      // The work finishes. Idle time counts from then, not from updatedAt.
+      thread.activity = { ...noWork };
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(suspend).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(suspend).toHaveBeenCalledWith({ hostId: "host_1" });
+      await stop();
+    });
+  }
+
+  it("suspends a host whose idle thread is only in plan mode", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-08T12:00:00Z"));
+    const { suspend, eventsList, stop } = setup(
+      {
+        activity: { ...noWork, activePlanModeCount: 1 },
+        updatedAt: Date.now() - 20_000,
+      },
+      () => Date.now(),
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(suspend).toHaveBeenCalledWith({ hostId: "host_1" });
+    expect(eventsList).not.toHaveBeenCalled();
+    await stop();
+  });
+
+  it("stops holding a host awake for counters stuck with no events", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-08T12:00:00Z"));
+    const quietSince = Date.now() - STALE_ACTIVITY_MS + 5 * 60_000;
+    const { suspend, stop } = setup(
+      {
+        activity: { ...noWork, activeWorkflowCount: 1 },
+        updatedAt: quietSince,
+      },
+      () => quietSince,
+    );
+
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+    expect(suspend).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    expect(suspend).toHaveBeenCalledWith({ hostId: "host_1" });
+    await stop();
+  });
 });
