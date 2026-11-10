@@ -49,7 +49,7 @@ it('opens one shared desktop per thread for the panel, the directive and the age
  expect(await fake.harness.behavior.callAgentTool('sandbox_desktop',{action:'open'},{threadId:'thr_fixture'})).toContain('::sandbox-desktop{}');
  // Mode replacement closes the old grant before opening the next one.
  expect(calls.map(call=>call.method)).toEqual(['openSharedDesktop','closeDesktop','openSharedDesktop']);
- const sessions=[calls[0],calls[2]].map(call=>(call!.input as {id:string}).id);expect(sessions[0]).not.toEqual(sessions[1]);
+ const sessions=[calls[0],calls[2]].map(call=>(call!.input as {id:string}).id);expect(sessions[0]).toEqual(sessions[1]);
  expect(calls[2]).toMatchObject({input:{viewOnly:true}});expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toMatchObject({kind:'open',viewOnly:true,agent:true});
  await fake.harness.behavior.callAgentTool('sandbox_desktop',{action:'close'},{threadId:'thr_fixture'});
  expect(calls.map(call=>call.method)).toEqual(['openSharedDesktop','closeDesktop','openSharedDesktop','closeDesktop']);
@@ -197,4 +197,22 @@ it('drains a pending open before close and never overlaps mode replacements',asy
  finish();await Promise.all([first,replacement,closed]);
  expect(methods).toEqual(['openSharedDesktop','closeDesktop','openSharedDesktop','closeDesktop']);
  expect(max).toBe(1);expect(count).toBe(0);expect(desktop.view('thr_fixture')).toEqual({kind:'closed'});
+});
+
+it.each([false,true])('retains an unconfirmed %s pending/live owner and hold until close succeeds',async(failOpen)=>{
+ let rejectClose=true,count=0;
+ const holds=new Set<string>(),sessions=new Set<string>();
+ const fake=createFakePluginHost({pluginId:'sandboxes',experimental_hostEntry:true,sharedPortTunnelIdentities:{host_fixture:{label:'fixture',baseDomain:'getbb.app'}},experimental_callHostRpc:async({method,input})=>{
+  const id=(input as {id:string}).id;sessions.add(id);
+  if(method==='openSharedDesktop'){count++;if(failOpen)throw Error('Open acknowledgement lost');return {port:42000,expires:Date.now()+900000};}
+  if(method==='closeDesktop'){if(rejectClose)throw Error('Close acknowledgement lost');count--;}
+  return null;
+ },sdk:{threads:{get:async()=>makeThreadResponse({id:'thr_fixture',environmentId:'env_fixture'})},environments:{get:async()=>({hostId:'host_fixture'}) as never},hosts:{get:async()=>makeHostResponse({id:'host_fixture',machineProviderId:'sandbox-daytona'})}}});
+ dispose.push(async()=>{rejectClose=false;await fake.harness.lifecycle.dispose();});
+ const desktop=registerDesktops(fake.bb,()=>({hold:(_host:string,key:string)=>holds.add(key),release:(_host:string,key:string)=>holds.delete(key)}) as never);
+ if(failOpen)await expect(desktop.open('thr_fixture',true)).rejects.toThrow();else await desktop.open('thr_fixture',true);
+ await expect(desktop.close('thr_fixture')).rejects.toThrow();expect(count).toBe(1);expect(holds.size).toBe(1);
+ await expect(desktop.open('thr_fixture',false)).rejects.toThrow();expect(count).toBe(1);expect(sessions.size).toBe(1);
+ rejectClose=false;await desktop.close('thr_fixture');
+ expect(count).toBe(0);expect(holds.size).toBe(0);expect(desktop.view('thr_fixture')).toEqual({kind:'closed'});
 });
