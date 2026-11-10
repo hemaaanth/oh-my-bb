@@ -26,7 +26,7 @@ Browser checks the calling plugin and asks Sandboxes to validate a sandbox host 
 
 The extension popup shows relay connectivity, cookie-export status and the last successful sync. It includes Sync now and Settings controls. Its settings and popup use the Pages palette, local Inter font and BB mark.
 
-Managed native windows, including startup windows, open silently on the configured workspace (8 by default). `bb-browser layout tile` also moves legacy `special:bb-browser` windows there without changing desktop focus. Windows moved elsewhere by the user are preserved.
+Native BB threads each get a persistent private profile, Brave process and authenticated X display. The configured native profile name is a namespace, not a shared live profile. Their desktops stay at 1920×1080 and normal windows maximize there; dialogs keep their natural size. They never draw on the user's desktop. No-thread native and explicit existing/relay behavior remain unchanged. Verified native idle processes stay running after close to avoid the observed Brave shutdown crash; each idle thread therefore retains a browser and display until explicit managed recovery.
 
 Pair in Settings → Browser → More → Browser connection. The extension supports the regular-profile relay and optional cookie export. New pairings leave cookie export off. Existing paired installations retain legacy export and project permissions. New isolated sessions never subscribe to later source changes. Explicit refresh requires a paused session and named seed domains. Saving a seed is explicit and private.
 
@@ -39,9 +39,15 @@ extension in that managed profile. The native doctor's live check verifies the
 browser identity and state through its diagnostic session; it does not prove this
 thread-group extension prerequisite. Thread cleanup does not require grouping.
 
-Headed sandbox handoffs use Sandboxes' shared voxl desktop service for the existing private display. The authenticated, expiring viewer streams the desktop as H.264 and accepts direct mouse and keyboard input, explicit paste, and full screen. Browser chrome, popup windows and native file dialogs remain in the same session. A private session bus keeps activated dialogs off the user's desktop; file-chooser interception is released before handoff. Raw VNC uses an owner-only Unix socket with TCP disabled. The private desktop follows the viewer size and Brave starts maximized. Done, Cancel and expiry revoke access before resume/discard. An unconfirmed revocation discards the browser instead of resuming it. Viewer disconnect does not complete a handoff.
+Headed isolated and native handoffs use the optional Sandboxes voxl service for the existing private display. The authenticated viewer streams H.264 and accepts mouse, keyboard and paste. Browser chrome, popups and native dialogs stay in the same session. File-chooser interception is released before handoff. Raw VNC has an owner-only Unix socket and no TCP listener. Geometry stays 1920×1080 in watch and control modes. The whole desktop scales up or down with contain fitting and letterboxing; it is never cropped or resized to the card.
 
-Regular-profile/native and scratch headless sessions retain page-only viewing; they never expose a personal desktop. ImageMagick/xdotool private-display commands remain diagnostic plumbing, rather than the streaming sandbox handoff transport.
+Each desktop grant has one server-enforced viewer lease, including direct links. A second page cannot automatically take over. Pop-out transfers ownership with a short-lived, single-use ticket; the inline viewer becomes a non-streaming **Viewing elsewhere** placeholder. Use **View here** to return explicitly, including after closing the pop-out. A blocked popup leaves ownership unchanged. Fullscreen keeps the same frame and connection. Revoked workers are removed rather than left reconnecting. Done, Reply, Cancel and expiry close the viewer before resume/discard. Lost unload or polling requests never imply completion or automatic return.
+
+Without desktop integration, handoff offers page-only controls and explains that browser chrome and OS dialogs are unavailable. Native private windows are not on the user's workspace. Regular-profile/relay and scratch headless viewers stay page-only; they never expose a personal desktop. Browser does not install, probe or enable Sandboxes at startup.
+
+New native thread profiles may import the configured default state once. A durable initialized marker prevents later source revisions, missing seeds or process recovery from replacing thread sign-ins. No seed means manual login; successful login stays private to that thread. Existing legacy profile files remain untouched. No cookies, SQLite databases, Local State or keyring data are copied from the live legacy profile. `state save` and the richer explicit `identity seed` workflow remain isolated-session features, not a native export promise. Portable cookies can help, but passkeys, device-bound state and every old login cannot be transferred. Imported state is not account verification.
+
+Migration requires draining legacy native thread records and pending handoffs with their original runtime. New commands reject live legacy records instead of attaching, killing or resizing them. Old nonconforming private/shared desktops require an explicit drained restart. Preserve old profiles and runtime artifacts for rollback. Regenerate Sandboxes' Browser runtime only from the reviewed, committed Browser source.
 
 ## Routing and no-focus behavior
 
@@ -71,9 +77,34 @@ and synthetic loopback sites, not your regular profile, login state or tailnet.
 Native/paired-extension and production BB shell checks are separate acceptance
 steps; a headless pass does not cover them.
 
+Native desktop isolation has a separate disposable Linux/Hyprland fixture:
+
+```sh
+BB_TEST_REAL_NATIVE=1 npm test -- test/native-desktop-live.test.ts
+```
+
+It requires this package's `bb-browser` CLI, Python and libX11. It uses temporary
+profiles and loopback cookies. It checks distinct native identities, first-use
+and missing-seed behavior, close/reopen continuity, fresh extension grouping,
+and physical X root/maximized-window geometry. DOM `screen` and `outerWidth`
+metrics are not physical-display proof. When `BB_THREAD_STORAGE` is set, the
+fixture writes a JSON receipt and page screenshot there.
+
+Real voxl fixtures cover 320×180 through 3840×2160 viewers and a narrow 360×640
+container, with a fixed 1920×1080 stream and full corner visibility. The narrow
+container letterboxes. Tiny standalone wrapper tools can overlap its upper-right
+corner; embedded wrappers hide those tools. Arbitrary one-pixel containers are
+not a supported scaling promise. These fixtures do not prove the deployed BB
+card/panel or a real-site login.
+
 Before deployment, run a real provider image with two simultaneous headed sessions and different fixture accounts. Verify manual OAuth/bot-check handoff through the remote BB URL, viewer expiry/reconnect/cancel, sandbox hold/release, process crash recovery and resource cleanup. Verify home public IP, DNS and WebRTC behavior on the approved Tailscale exit node, then stop its route and prove Brave fails closed. These require provider allocation, tailnet policy and approved credentials. Local fixture success is not evidence for those external gates.
 
 ## Changelog
+
+### 0.3.1
+
+- Give native threads separate persistent profiles/processes/displays and seed default authentication only once. Preserve legacy profiles and reject live legacy thread attachment.
+- Use one exclusive viewer lease, explicit pop-out/return and fixed 1920×1080 contain scaling. Remove overlapping mode-replacement streams. Keep desktop integration optional with an honest page-only handoff fallback.
 
 ### Public package 0.3.0
 

@@ -47,9 +47,11 @@ it("uses a short retry message, allows cancellation and never displays raw error
   await waitFor(() => expect(submit).toHaveBeenLastCalledWith({done:false}));
 });
 
-it('embeds only sandbox handoffs and retains external opening',()=>{
+it('keeps the inline viewer mounted when pop-out is blocked',async()=>{
  const {slot}=render('Sign in.',undefined,{inlineViewer:true,viewerUrl:'https://sandbox--1234.getbb.app/#grant'});
- const frame=slot.getByTitle('Browser session');expect(frame.getAttribute('src')).toBe('https://sandbox--1234.getbb.app/#grant');expect(frame.getAttribute('allow')).toBe('fullscreen');expect(slot.getByRole('link',{name:'Open session'})).toBeTruthy();
+ const frame=slot.getByTitle('Browser session'),open=vi.spyOn(window,'open').mockReturnValue(null);
+ fireEvent.click(slot.getByRole('button',{name:'Open session'}));await slot.findByRole('alert');
+ expect(slot.getByTitle('Browser session')).toBe(frame);open.mockRestore();
 });
 it('does not embed local handoff viewers',()=>{
  const {slot}=render('Sign in.',undefined,{inlineViewer:false,viewerUrl:'https://server.getbb.app/viewer'});expect(slot.queryByTitle('Browser session')).toBeNull();

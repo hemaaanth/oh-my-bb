@@ -90,10 +90,14 @@ it('opens live sandbox viewing without pausing and keeps idle sessions until the
  await harness.behavior.callRpc('closeBrowserView',{threadId:thread.id});expect(closeDesktop).toHaveBeenCalledWith(thread.id);expect(actions()).toEqual(['close']);
  expect(await harness.behavior.callRpc('getBrowserView',{threadId:thread.id})).toEqual({kind:'closed'});
 });
-it('uses attention on a local desktop browser that has no private display',async()=>{
- const openDesktop=vi.fn(async()=>null),closeDesktop=vi.fn(async()=>{});const {harness,thread,start}=setup({openDesktop,closeDesktop});
- expect(await harness.behavior.callAgentTool('browser_live',{action:'open'},{threadId:thread.id})).toContain('local desktop');expect(openDesktop).toHaveBeenCalledWith('host_browser',thread.id,true);
- const done=start();await vi.waitFor(()=>expect(harness.pendingInteractions).toHaveLength(1));expect(harness.pendingInteractions[0].payload).toMatchObject({inlineViewer:false});expect(harness.pendingInteractions[0].payload).not.toHaveProperty('viewerUrl');harness.behavior.submitInteraction(harness.pendingInteractions[0].id,{done:true});await done;
+it('offers page-only handoff without probing Sandboxes when desktop integration is unavailable',async()=>{
+ const {harness,thread,start}=setup();
+ await harness.behavior.callAgentTool('browser_live',{action:'open'},{threadId:thread.id});
+ expect(harness.experimental_hostRpcCalls).toEqual([]);
+ const done=start();await vi.waitFor(()=>expect(harness.pendingInteractions).toHaveLength(1));
+ expect(harness.pendingInteractions[0].payload).toMatchObject({inlineViewer:false,viewerUrl:expect.stringContaining('/http/viewer?token=')});
+ expect(harness.inspection.sdk.callsTo('plugins.callRpc')).toEqual([]);
+ harness.behavior.submitInteraction(harness.pendingInteractions[0].id,{done:true});await done;
 });
 it('streams a local browser that moved to a private display for a remote viewer',async()=>{
  const openDesktop=vi.fn(async()=>'https://hemarchy--1234.getbb.app/#grant'),closeDesktop=vi.fn(async()=>{});const {harness,thread,start}=setup({openDesktop,closeDesktop});

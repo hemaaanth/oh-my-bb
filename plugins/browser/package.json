@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-browser",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Automate Brave with isolated logins, live viewing and manual handoff.",
   "type": "module",
   "bin": {
