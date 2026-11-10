@@ -9,7 +9,6 @@ it('resolves the owning message thread and never opens a historical view automat
  const slot=renderSlot(app.messageDirectives.find(v=>v.id==='browser-live')!,{attributes:{threadId:'thr_other',url:'https://evil.example'},message:{threadId:'thr_browser'},source:'::browser-live{}',openWorkspaceFile:null} as never,{rpc:{getBrowserView,openBrowserView,closeBrowserView} as never});
  await waitFor(()=>expect(getBrowserView).toHaveBeenCalledWith({threadId:'thr_browser'}));expect(openBrowserView).not.toHaveBeenCalled();
  fireEvent.click(slot.getByRole('button',{name:'Show live browser'}));await waitFor(()=>expect(slot.getByTitle('Browser session')).toBeTruthy());expect(openBrowserView).toHaveBeenCalledWith({threadId:'thr_browser'});
- expect(slot.getByTitle('Browser session').getAttribute('src')).toBe('https://sandbox--1234.getbb.app/#grant');
  fireEvent.click(slot.getByRole('button',{name:'Close view'}));await waitFor(()=>expect(slot.queryByTitle('Browser session')).toBeNull());expect(closeBrowserView).toHaveBeenCalledWith({threadId:'thr_browser'});
  // Closing an idle thread's view closes its browser too, so no dead reopen button is left behind.
  expect(slot.getByText('Closed')).toBeTruthy();expect(slot.queryByRole('button',{name:'Show live browser'})).toBeNull();

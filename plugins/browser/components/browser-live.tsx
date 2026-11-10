@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useRef,useState,type Ref} from 'react';
 import {experimental_Icon as Icon,useRealtime,useRpc,type PluginMessageDirectiveProps} from '@get-bb/plugin-sdk/app';
 import type {browserHandoffRpcContract, BrowserLiveState} from '../src/browser-handoff-contract';
-import {popoutViewer} from './viewer-controls';
+import {popoutViewer,embeddedViewerUrl} from './viewer-controls';
 
 const focusRing='focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
@@ -10,7 +10,7 @@ export function BrowserFrame({url,frameRef,fill=false}:{url:string;frameRef?:Ref
   let valid=false;
   try{const parsed=new URL(url,location.href);valid=parsed.protocol==='https:'||parsed.origin===location.origin;}catch{}
   if(!valid)return null;
-  return <><style>{'.bb-browser-frame:fullscreen{width:100%;height:100%;aspect-ratio:auto!important}'}</style><iframe ref={frameRef} title="Browser session" src={url} allow="fullscreen; clipboard-read; clipboard-write" allowFullScreen referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin" className="bb-browser-frame block w-full border-0 bg-black" style={fill?{height:'100%',minHeight:0}:{aspectRatio:'16 / 9'}}/></>;
+  return <><style>{'.bb-browser-frame:fullscreen{width:100%;height:100%;aspect-ratio:auto!important}'}</style><iframe ref={frameRef} title="Browser session" src={embeddedViewerUrl(url)} allow="fullscreen; clipboard-read; clipboard-write" allowFullScreen referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin" className="bb-browser-frame block w-full border-0 bg-black" style={fill?{height:'100%',minHeight:0}:{aspectRatio:'16 / 9'}}/></>;
 }
 /** A 24px icon button. The label is both the accessible name and the tooltip. */
 function IconButton({label,icon,onClick,disabled}:{label:string;icon:string;onClick:()=>void;disabled?:boolean}){

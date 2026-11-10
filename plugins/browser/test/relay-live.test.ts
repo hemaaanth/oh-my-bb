@@ -31,7 +31,7 @@ it.runIf(process.env.BB_TEST_REAL_BROWSER === '1')('drives the actual paired ext
  }));
  await new Promise<void>(done=>server.listen(0,'127.0.0.1',done));const address=server.address();if(!address||typeof address==='string')throw Error('No fixture listener');const base=`http://127.0.0.1:${address.port}`;
  const fake=createFakePluginHost({pluginId:'browser',appUrl:base,experimental_hostEntry:true,experimental_callHostRpc:async({input})=>{const request=input as {threadId:string,action:unknown};if(viewerOffline)return {ok:false,data:''};try{return {ok:true,data:await run(['thread','viewer',JSON.stringify(request.action)],request.threadId,'')};}catch{return {ok:false,data:''};}},sdk:{threads:{get:async({threadId})=>({title:'Fixture '+threadId}) as never}}});
- const viewer=registerViewer(fake.bb);
+ const viewer=registerViewer(fake.bb,async()=>JSON.stringify({state:'disconnected',url:null}));
  const settings=fake.bb.settings.define(browserSettingDescriptors),cookies=new BrowserCookieConnection(fake.bb,join(root,'cookies'));await cookies.register();
  vi.spyOn(fake.bb.http,'experimental_websocket').mockImplementation((_path,callback)=>{handler=callback;});registerRelay(fake.bb,cookies,()=>settings.get());
  const shim=join(root,'bb');await writeFile(shim,`#!${process.execPath}\nconst q=JSON.parse(Buffer.from(process.argv.at(-1),'base64url').toString());fetch(${JSON.stringify(base+'/command')},{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({argv:q.argv,threadId:process.env.BB_THREAD_ID})}).then(r=>r.json()).then(r=>{if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr);process.exitCode=r.exitCode}).catch(e=>{console.error(e.message);process.exitCode=1});\n`,{mode:0o700});
@@ -46,7 +46,7 @@ it.runIf(process.env.BB_TEST_REAL_BROWSER === '1')('drives the actual paired ext
   const doctor=JSON.parse(await run(['doctor'],'thr_a'));expect(doctor.targetWindow).toBe(doctor.ownedWindow);
   await expect(run(['observe'],'thr_a','native')).rejects.toThrow('different browser backend');
   const point=JSON.parse(await run(['eval','(()=>{const r=document.querySelector("#name").getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};})()'],'thr_a'));await run(['thread','pause'],'thr_a','');
-  const viewerUrl=new URL(viewer.issue('thr_a','fixture-host'));await view(['open',base+viewerUrl.pathname+viewerUrl.search]);
+  const viewerUrl=new URL(await viewer.issue('thr_a','fixture-host'),base);await view(['open',viewerUrl.href]);
   await expect.poll(()=>view(['eval','document.querySelector("#status").textContent']),{timeout:15000}).toContain('Connected');
   await expect.poll(()=>view(['eval','document.querySelector("#screen").naturalWidth>0'])).toContain('true');
   await view(['eval',`(async()=>{const s=document.querySelector('#screen'),r=s.getBoundingClientRect(),p=${JSON.stringify(point)};for(const type of ['mousedown','mouseup'])s.dispatchEvent(new MouseEvent(type,{bubbles:true,clientX:r.left+p.x*r.width/s.naturalWidth,clientY:r.top+p.y*r.height/s.naturalHeight}));await chain;return true;})()`]);

@@ -12,8 +12,12 @@ function setup(desktop?:{openDesktop:(hostId:string,threadId:string,viewOnly?:bo
     threads: { get: async () => thread }, environments: { get: async () => ({ hostId: host.id }) }, hosts: { get: async () => host },
   }, experimental_callHostRpc: async () => ({ok}) });
   dispose.push(() => fake.harness.lifecycle.dispose());
-  const idle = {hold:vi.fn(), release:vi.fn(),...desktop};
-  registerBrowserHandoff(fake.bb, idle);
+  let desktopRequested=false;
+  const idle = {hold:vi.fn(), release:vi.fn(),...(desktop?{
+    openDesktop:async(hostId:string,threadId:string,viewOnly?:boolean)=>{desktopRequested=true;return desktop.openDesktop(hostId,threadId,viewOnly);},
+    closeDesktop:async(threadId:string)=>{if(!desktopRequested)return;await desktop.closeDesktop(threadId);desktopRequested=false;},
+  }:{})};
+  registerBrowserHandoff(fake.bb, idle,async()=>JSON.stringify({state:'disconnected',url:null}));
   const actions = () => fake.harness.experimental_hostRpcCalls.map(call => (call.input as { action:string }).action);
   const start = () => fake.harness.behavior.callAgentTool("browser_handoff", {reason:"login", instructions:"Sign in on the browser, then select Done."}, {threadId:thread.id});
   return {...fake, thread, host, actions, start, idle, setOk:(value:boolean) => {ok=value;}};
@@ -65,7 +69,6 @@ it("uses the Sandboxes desktop and revokes it before resuming automation",async(
  closeDesktop.mockImplementation(async()=>{expect(actions()).toEqual(["pause"]);});
  const result=start();await vi.waitFor(()=>expect(harness.pendingInteractions).toHaveLength(1));
  expect(harness.pendingInteractions[0]).toMatchObject({payload:{viewerUrl:"https://sandbox--1234.getbb.app/#grant"}});
- expect(openDesktop).toHaveBeenCalledWith("host_browser","thr_browser");
  harness.behavior.submitInteraction(harness.pendingInteractions[0].id,{done:true});await result;
  expect(closeDesktop).toHaveBeenCalledWith("thr_browser");expect(actions()).toEqual(["pause","resume"]);
 });

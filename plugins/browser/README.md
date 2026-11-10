@@ -45,6 +45,20 @@ Each desktop grant has one server-enforced viewer lease, including direct links.
 
 Without desktop integration, handoff offers page-only controls and explains that browser chrome and OS dialogs are unavailable. Native private windows are not on the user's workspace. Regular-profile/relay and scratch headless viewers stay page-only; they never expose a personal desktop. Browser does not install, probe or enable Sandboxes at startup.
 
+Viewer origin policy includes this server's loopback URL, configured `BB_APP_URL`
+and its own connected public URL from the supported `bb connect status --json`
+command. This is read only when issuing a viewer, not at startup. It does not
+probe optional plugins or trust the sandbox's port-tunnel origin. Embedded
+viewers declare their actual parent in the fragment; the host allowlist and
+exact parent window/origin checks must both match. Page-only links are
+app-relative, so local and Connect clients keep their current BB origin.
+
+Browser records desktop cleanup ownership before calling Sandboxes. An
+uncertain open is an error, not permission to offer page-only fallback.
+Unconfirmed revocation keeps cleanup ownership and blocks resume; the existing
+discard path stops the browser task. Explicit close and disposal retry retained
+cleanup. A later successful acknowledgement releases the hold.
+
 New native thread profiles may import the configured default state once. A durable initialized marker prevents later source revisions, missing seeds or process recovery from replacing thread sign-ins. No seed means manual login; successful login stays private to that thread. Existing legacy profile files remain untouched. No cookies, SQLite databases, Local State or keyring data are copied from the live legacy profile. `state save` and the richer explicit `identity seed` workflow remain isolated-session features, not a native export promise. Portable cookies can help, but passkeys, device-bound state and every old login cannot be transferred. Imported state is not account verification.
 
 Migration requires draining legacy native thread records and pending handoffs with their original runtime. New commands reject live legacy records instead of attaching, killing or resizing them. Old nonconforming private/shared desktops require an explicit drained restart. Preserve old profiles and runtime artifacts for rollback. Regenerate Sandboxes' Browser runtime only from the reviewed, committed Browser source.
@@ -90,6 +104,19 @@ and physical X root/maximized-window geometry. DOM `screen` and `outerWidth`
 metrics are not physical-display proof. When `BB_THREAD_STORAGE` is set, the
 fixture writes a JSON receipt and page screenshot there.
 
+The optional consumer-composition regression runs actual Browser and Sandboxes
+implementations in separate package-local processes, connected by their RPC
+contracts. Neither package imports the other or adds a dependency:
+
+```sh
+BB_TEST_SANDBOXES_SOURCE=/path/to/plugins/sandboxes npm test -- test/desktop-composition.test.ts
+```
+
+It uses only SDK/host fixtures, not provider allocation or real credentials.
+Open/close acknowledgement loss must not offer fallback or resume, and cleanup
+ownership must survive until a confirmed close. The default standalone suite
+skips this explicitly opted-in cross-package check.
+
 Real voxl fixtures cover 320×180 through 3840×2160 viewers and a narrow 360×640
 container, with a fixed 1920×1080 stream and full corner visibility. The narrow
 container letterboxes. Tiny standalone wrapper tools can overlap its upper-right
@@ -105,6 +132,7 @@ Before deployment, run a real provider image with two simultaneous headed sessio
 
 - Give native threads separate persistent profiles/processes/displays and seed default authentication only once. Preserve legacy profiles and reject live legacy thread attachment.
 - Use one exclusive viewer lease, explicit pop-out/return and fixed 1920×1080 contain scaling. Remove overlapping mode-replacement streams. Keep desktop integration optional with an honest page-only handoff fallback.
+- Accept this server's exact local/configured/Connect origins without trusting unrelated Connect users. Keep page-only links app-relative. Retain Browser cleanup ownership before desktop opens and reject fallback/resume after uncertain cleanup.
 
 ### Public package 0.3.0
 

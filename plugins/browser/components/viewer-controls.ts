@@ -1,4 +1,9 @@
 // BB Desktop Viewer v1 is a wire protocol, not a dependency on Sandboxes.
+export function embeddedViewerUrl(url:string){
+ const value=new URL(url,location.href),[token,...fields]=value.hash.slice(1).split('&'),parameters=new URLSearchParams(fields.join('&'));
+ parameters.set('parentOrigin',location.origin);value.hash=token+'&'+parameters;
+ return value.href;
+}
 export async function viewerRequest(frame:HTMLIFrameElement,action:'transfer'|'takeover'|'release',timeout=5000){
  const origin=new URL(frame.src,location.href).origin,id=crypto.randomUUID();
  const {promise,resolve,reject}=Promise.withResolvers<{url?:string}>();

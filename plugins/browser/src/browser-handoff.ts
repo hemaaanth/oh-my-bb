@@ -4,6 +4,7 @@ import { z } from "zod";
 import { browserHandoffAnswer, browserHandoffHostContract, browserHandoffRpcContract, type BrowserLiveState } from "./browser-handoff-contract.js";
 import { BROWSER_HANDOFF_RENDERER } from "./browser-handoff-renderer.js";
 import { registerViewer } from "./viewer.js";
+import type {ConnectStatus} from "./viewer-origins.js";
 export { browserHandoffHostContract } from "./browser-handoff-contract.js";
 
 /** Fixed argv only. The caller cannot choose a command, backend, or profile. */
@@ -21,8 +22,8 @@ export function browserThreadControl(input: { threadId: string; action: "pause" 
 
 export const BROWSER_AGENT_INSTRUCTIONS = 'Use bb-browser for browser work. BB_THREAD_ID gives native and isolated sessions a private profile and fixed private desktop. Use browser_handoff when login, OAuth, a bot check, or another manual browser action needs the user. It pauses automation until Done, Reply or Cancel. With the optional Sandboxes integration enabled, browser_handoff and browser_live embed the private desktop. Without desktop streaming, handoff offers page-only controls; browser chrome and OS dialogs require explicit desktop integration setup. Native thread windows are not on the user workspace. Never activate windows, change workspaces, or capture the user desktop. Relay/existing keep their supported page-only behavior. If the user asks to watch live, use browser_live and emit ::browser-live{} on its own line. Close owned browser sessions with bb-browser close --all when finished unless the user is still watching.';
 
-export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: string, threadId: string): void | Promise<void>; release(hostId: string, threadId: string): void | Promise<void>;openDesktop?(hostId:string,threadId:string,viewOnly?:boolean):Promise<string|null>;closeDesktop?(threadId:string):Promise<void> }) {
-  const viewer = registerViewer(bb);
+export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: string, threadId: string): void | Promise<void>; release(hostId: string, threadId: string): void | Promise<void>;openDesktop?(hostId:string,threadId:string,viewOnly?:boolean):Promise<string|null>;closeDesktop?(threadId:string):Promise<void> },connect?:ConnectStatus) {
+  const viewer = registerViewer(bb,connect);
   const client = bb.hosts.experimental_client({ contract: browserHandoffHostContract });
   const controller = new AbortController();
   const pending = new Set<string>();
@@ -43,8 +44,8 @@ export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: st
   const state=(id:string):BrowserLiveState=>pending.has(id)?{kind:'handoff'}:live.has(id)?{kind:'watch',url:live.get(id)!.url}:{kind:'closed'};
   const stopLive=async(id:string)=>{
     await opening.get(id)?.catch(()=>{});
-    if(!live.has(id))return;
-    await idle?.closeDesktop?.(id);live.delete(id);changed(id);
+    await idle?.closeDesktop?.(id);
+    if(live.delete(id))changed(id);
   };
   const startLive=(id:string):Promise<BrowserLiveState>=>{
     if(pending.has(id)||live.has(id))return Promise.resolve(state(id));
@@ -101,7 +102,7 @@ export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: st
         const desktopUrl=await idle?.openDesktop?.(hostId,context.threadId);
         const result = await bb.ui.requestInput({
           threadId: context.threadId, rendererId: BROWSER_HANDOFF_RENDERER,
-          title: "Browser needs your attention", payload: { ...input, host: host.name, inlineViewer:!!desktopUrl,viewerUrl:desktopUrl??viewer.issue(context.threadId,hostId),...(!desktopUrl?{viewerNotice:"Page-only controls. Browser chrome and OS dialogs are not exposed. Private native windows are not on your workspace; enable the optional Sandboxes desktop integration when full desktop access is needed."}:{}) }, timeoutMs: 15 * 60_000,
+          title: "Browser needs your attention", payload: { ...input, host: host.name, inlineViewer:!!desktopUrl,viewerUrl:desktopUrl??await viewer.issue(context.threadId,hostId),...(!desktopUrl?{viewerNotice:"Page-only controls. Browser chrome and OS dialogs are not exposed. Private native windows are not on your workspace; enable the optional Sandboxes desktop integration when full desktop access is needed."}:{}) }, timeoutMs: 15 * 60_000,
           presentation: { label: { pending: "Waiting for your browser action", completed: "Browser action answered" }, icon: { glyph: "Globe" } },
           describeSubmission: value => { const parsed = browserHandoffAnswer.safeParse(value); return { title: parsed.success && "reply" in parsed.data ? "Replied to browser request" : parsed.success && "done" in parsed.data && parsed.data.done ? "Finished browser action" : "Cancelled browser action" }; },
         }, { signal: context.signal });

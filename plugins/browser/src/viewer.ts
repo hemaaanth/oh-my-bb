@@ -2,24 +2,27 @@ import { randomBytes, createHash } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { viewerAction, browserViewerHostContract } from "./viewer-contract.js";
 import {z} from "zod";
+import {viewerOrigins,type ConnectStatus} from "./viewer-origins.js";
 
-export function registerViewer(bb: BbPluginApi) {
+export function registerViewer(bb: BbPluginApi,connect?:ConnectStatus) {
   const client = bb.hosts.experimental_client({ contract: browserViewerHostContract });
-  const grants = new Map<string, { threadId: string; hostId: string; expires: number; busy: boolean; owner: string|null }>();
+  const grants = new Map<string, { threadId: string; hostId: string; expires: number; busy: boolean; owner: string|null;origins:string[] }>();
   const hash = (token: string) => createHash("sha256").update(token).digest("hex");
   const revoke = (threadId: string) => { for (const [key, grant] of grants) if (grant.threadId === threadId) grants.delete(key); };
-  const issue = (threadId: string, hostId: string) => {
+  const issue = async(threadId: string, hostId: string) => {
+    const origins=await viewerOrigins(bb,connect);
     revoke(threadId); const token = randomBytes(32).toString("base64url");
-    grants.set(hash(token), { threadId, hostId, expires: Date.now() + 15 * 60_000, busy: false, owner:null });
-    return `${bb.server.experimental_appUrl || bb.server.loopbackBaseUrl}/api/v1/plugins/browser/http/viewer?token=${token}`;
+    grants.set(hash(token), { threadId, hostId, expires: Date.now() + 15 * 60_000, busy: false, owner:null,origins });
+    return `/api/v1/plugins/browser/http/viewer?token=${token}`;
   };
   const grantFor = (token: string) => { const key = hash(token); const grant = grants.get(key); if (!grant || grant.expires < Date.now()) { grants.delete(key); return null; } return grant; };
   bb.onDispose(() => grants.clear());
   bb.http.route("GET", "/viewer", c => {
     const token = c.req.query("token") || "";
-    if (!grantFor(token)) return c.text("Browser handoff viewer expired. Reopen it from the waiting BB card.", 403);
+    const grant=grantFor(token);
+    if (!grant) return c.text("Browser handoff viewer expired. Reopen it from the waiting BB card.", 403);
     c.header("Cache-Control", "no-store"); c.header("Referrer-Policy", "no-referrer");
-    c.header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; frame-ancestors 'self'");
+    c.header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; frame-ancestors 'self' "+grant.origins.join(" "));
     return c.html(`<!doctype html><meta name="viewport" content="width=device-width"><title>Private Browser handoff</title><style>body{margin:0;background:#171717;color:#eee;font:14px system-ui}header{padding:12px}img{display:block;max-width:100%;outline:none}input{width:70%;margin:8px}button{padding:6px}</style><header>Private session. Automation is paused. Finish with Done or Cancel in BB. <span id="status"></span><label> Page <select id="tabs" aria-label="Session page"></select></label><span id="dialog" hidden><span id="dialog-message"></span><input id="prompt" aria-label="Dialog prompt response" autocomplete="off"><button id="accept">Accept</button><button id="dismiss">Dismiss</button></span><small>Page and JavaScript-dialog controls only. OS file pickers and browser-chrome challenges need a host desktop; no foreground fallback.</small></header><img id="screen" tabindex="0" alt="Browser session"><form id="input"><input id="text" autocomplete="off" type="password" aria-label="Type into focused browser field"><button>Type</button></form><script>
 const token=${JSON.stringify(token)},screen=document.querySelector('#screen'),status=document.querySelector('#status');let owner=null,stopped=true,chain=Promise.resolve();history.replaceState(null,'',location.pathname);
 const reconnect=document.createElement('button');reconnect.textContent='View here';document.querySelector('header').append(reconnect);reconnect.onclick=()=>acquire(true);
@@ -32,10 +35,9 @@ document.querySelector('#tabs').onchange=e=>input({type:'tab',target:e.target.va
 screen.addEventListener('keydown',e=>{e.preventDefault();const modifiers=['Control','Alt','Shift','Meta'].filter(key=>e.getModifierState(key));input(e.key.length===1&&!e.ctrlKey&&!e.altKey&&!e.metaKey?{type:'text',text:e.key}:{type:'key',key:e.key,modifiers})});document.querySelector('#input').onsubmit=e=>{e.preventDefault();const t=document.querySelector('#text');input({type:'text',text:t.value});t.value=''};acquire();
 </script>`);
   });
-  const sameOrigin=(origin:string|undefined)=>origin===new URL(bb.server.experimental_appUrl||bb.server.loopbackBaseUrl).origin;
   bb.http.route("POST","/viewer-lease",async c=>{
     c.header("Cache-Control","no-store");
-    if(!sameOrigin(c.req.header("origin"))||c.req.header("content-type")!=="application/json")return c.json({error:"Invalid origin"},403);
+    if(c.req.header("content-type")!=="application/json")return c.json({error:"Invalid viewer request"},403);
     const reader=c.req.raw.body?.getReader(),chunks:Uint8Array[]=[];let size=0;
     if(reader)for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>2048){await reader.cancel();return c.json({error:"Invalid lease request"},413);}chunks.push(value);}
     let json;try{json=JSON.parse(Buffer.concat(chunks).toString("utf8"));}catch{return c.json({error:"Invalid lease request"},400);}
@@ -43,13 +45,14 @@ screen.addEventListener('keydown',e=>{e.preventDefault();const modifiers=['Contr
     if(!parsed.success)return c.json({error:"Invalid lease request"},400);
     const body=parsed.data,grant=grantFor(body.token);
     if(!grant)return c.json({error:"Viewer expired"},403);
+    if(!grant.origins.includes(c.req.header("origin")||""))return c.json({error:"Invalid origin"},403);
     if(grant.owner&&body.takeover!==true)return c.json({owner:null});
     grant.owner=randomBytes(32).toString("base64url");
     return c.json({owner:grant.owner});
   });
   bb.http.route("POST", "/viewer-control", async c => {
     c.header("Cache-Control","no-store");
-    if(!sameOrigin(c.req.header("origin"))||c.req.header("content-type")!=="application/json")return c.json({error:"Invalid origin"},403);
+    if(c.req.header("content-type")!=="application/json")return c.json({error:"Invalid viewer request"},403);
     const length = Number(c.req.header("content-length") || 0);
     if(length > 8192)return c.json({error:"Viewer input too large"},413);
     const reader=c.req.raw.body?.getReader();const chunks:Uint8Array[]=[];let size=0;
@@ -58,6 +61,7 @@ screen.addEventListener('keydown',e=>{e.preventDefault();const modifiers=['Contr
     const grant = typeof body?.token === "string" ? grantFor(body.token) : null;
     const action = viewerAction.safeParse(body?.action);
     if (!grant) return c.json({ error: "Viewer expired" }, 403);
+    if(!grant.origins.includes(c.req.header("origin")||""))return c.json({error:"Invalid origin"},403);
     if (!action.success) return c.json({ error: "Invalid viewer action" }, 400);
     if(typeof body.owner!=="string"||body.owner!==grant.owner)return c.json({error:"Viewing elsewhere"},409);
     if (grant.busy) return c.json({ error: "Viewer input busy" }, 409);

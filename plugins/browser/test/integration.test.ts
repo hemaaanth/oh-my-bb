@@ -37,7 +37,7 @@ it("Browser loads without Sandboxes and does not enable fast credentials",async(
 });
 it("viewer grants isolate threads and expire on revoke without exposing a desktop listener",async()=>{
  const fake=createFakePluginHost({pluginId:'browser',appUrl:'https://app.example',experimental_hostEntry:true,experimental_callHostRpc:async({input})=>({ok:true,data:JSON.stringify({data:Buffer.from(z.object({threadId:z.string()}).parse(input).threadId).toString('base64')})})});dispose.push(()=>fake.harness.lifecycle.dispose());
- const viewer=registerViewer(fake.bb),a=new URL(viewer.issue('thr_a','host_a')).searchParams.get('token')!,b=new URL(viewer.issue('thr_b','host_b')).searchParams.get('token')!;
+ const viewer=registerViewer(fake.bb,async()=>JSON.stringify({state:'disconnected',url:null})),a=new URL(await viewer.issue('thr_a','host_a'),fake.bb.server.loopbackBaseUrl).searchParams.get('token')!,b=new URL(await viewer.issue('thr_b','host_b'),fake.bb.server.loopbackBaseUrl).searchParams.get('token')!;
  const headers={'content-type':'application/json',origin:'https://app.example'};
  const acquire=async(token:string,takeover=false)=>z.object({owner:z.string().nullable()}).parse(await(await fake.harness.behavior.fetchHttp('POST','/viewer-lease',{headers,body:JSON.stringify({token,takeover})})).json()).owner;
  const post=(token:string,owner:string|null)=>fake.harness.behavior.fetchHttp('POST','/viewer-control',{headers,body:JSON.stringify({token,owner,action:{type:'frame'}})});
