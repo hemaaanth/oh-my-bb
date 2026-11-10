@@ -1,14 +1,20 @@
-Browser gives each BB thread its own tabs. Sandbox sessions also have separate
-profiles, so two threads can sign in to different accounts on the same site.
+Browser gives native and isolated BB threads separate persistent profiles,
+processes and private desktops, so threads can use different accounts on one site.
 An optional extension can relay an explicitly paired regular profile, or export
 cookies while that browser stays open. A toolbar popup shows connection and sync
 health. Authentication sharing is off until enabled.
 
-Watch a sandbox browser live inside chat. When a login, OAuth approval or bot
-check needs you, the agent pauses and opens the same private desktop for direct
-mouse and keyboard input. Finish with Done to resume. Browser chrome, dialogs
-and popups stay in that session. Local handoffs ask for attention; they do not
-switch your workspace or focus a window.
+Watch a private browser desktop inside chat with the optional Sandboxes
+integration. Login, OAuth and bot-check handoffs pause automation and open the
+same desktop for mouse and keyboard input. Its fixed 1920×1080 screen scales
+without cropping. Only one viewer streams at once. Pop-out transfers ownership;
+**View here** returns it. Fullscreen keeps the same connection.
+
+Without desktop integration, handoff offers page-only controls. Browser chrome
+and OS dialogs are unavailable there. Native thread windows stay private, not on
+the user's workspace. Existing native profiles are preserved, not copied.
+Default authentication seeds apply once; new sign-ins stay private to the thread.
+Some sites require manual login. A copied seed does not verify the account.
 
 ## Getting started
 
@@ -34,9 +40,9 @@ behavior. Connection controls and the collapsed setup guide are under More.
 
 ## Support and integrations
 
-The managed native backend requires Linux, Brave, and Hyprland's Lua window-rule
-API. Isolated headed sessions require Linux, TigerVNC or Xvfb, and Openbox; the
-Sandboxes image supplies them. The regular-profile extension supports Chromium
+The managed native backend requires Linux, Brave, Hyprland, TigerVNC, xauth
+and Openbox. Isolated headed sessions also need a private session bus; the
+Sandboxes image supplies these tools. The regular-profile extension supports Chromium
 browsers, not Firefox. Native process ownership checks are Linux-specific.
 There is no claim of full macOS or Windows automation support.
 

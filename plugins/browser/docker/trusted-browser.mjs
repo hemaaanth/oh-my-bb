@@ -32,10 +32,10 @@
 // Linux desktop running Hyprland, the native backend instead launches Brave itself, headed,
 // on a dedicated persistent profile with a loopback-only debugging port, and
 // agent-browser attaches over CDP. Some bot checks refuse any browser that
-// agent-browser launched, but accept this one. A temporary Hyprland window rule
-// opens new thread windows silently on the configured workspace.
-// It never takes the configured user agent or --state; the default state is
-// loaded into its profile over CDP instead, once per revision.
+// agent-browser launched, but accept this one. BB threads use private displays;
+// no-thread legacy windows retain their Hyprland workspace rule.
+// Default state loads over CDP, once per thread profile (per revision only for
+// no-thread legacy use). Brave never receives --state.
 
 import { settlePage } from '../browser-extension/page-operations.js';
 import { spawn, spawnSync } from "node:child_process";
@@ -104,7 +104,7 @@ const PORT_PROBE =
 const NATIVE_LAUNCH_ATTEMPTS = 3;
 const NATIVE_LIFECYCLE_LOG_LIMIT = 256 * 1024;
 // Initial browser size only. Hyprland's normal tiling determines visible bounds.
-const NATIVE_WINDOW = { width: 1440, height: 1000 };
+const NATIVE_WINDOW = { width: 1920, height: 1080 };
 // bb-browser's own session for loading the trusted state; callers cannot use it.
 const NATIVE_STATE_SESSION = "bb-browser-state";
 
@@ -714,7 +714,7 @@ function nativeProfile() {
 // The native backend loads only bb-browser's own default state, the one the
 // weekly refresh imports, never a state a caller names. A required state must
 // be that one, and must be imported.
-function nativeTrustedState() {
+function nativeTrustedState(initialized=false) {
   const required = setting("BB_BROWSER_REQUIRED_STATE", "required-state").trim();
   if (required && required !== "default") {
     fail(
@@ -722,6 +722,7 @@ function nativeTrustedState() {
         'the default state; set BB_BROWSER_BACKEND=agent to use it',
     );
   }
+  if(initialized)return null;
   const path = statePath("default");
   let file = null;
   try {
@@ -751,18 +752,27 @@ function nativeIdentity(stateName) {
   }
   const exitNode = configuredExitNode();
   const mode = egressMode(exitNode);
-  const profile = nativeProfile();
-  const id = createHash("sha256").update(profile).digest("hex").slice(0, 12);
+  const legacyProfile = nativeProfile(), thread=threadOwner();
+  const legacyId=createHash("sha256").update(legacyProfile).digest("hex").slice(0,12);
+  if(thread){
+    const legacy={profile:legacyProfile,dir:join(nativeDir,legacyId),windowClass:`bb-browser-${legacyId}`,namespace:`bb-trusted-native-${legacyId}`};
+    if(readThreadRecord(legacy)&&(existsSync(threadHoldPath())||liveNativeBrowser(legacy))){
+      fail("Legacy browser thread is still live. Finish or cancel its handoff and drain its owned windows with the old runtime before using this runtime. The legacy profile and process were not changed.");
+    }
+  }
+  const id = thread?createHash("sha256").update(legacyProfile+"\0"+thread).digest("hex").slice(0,12):legacyId;
+  const dir=join(nativeDir,id),profile=thread?join(dir,"profile"):legacyProfile;
   return {
     backend: "native",
     userAgent: "",
     expectedUserAgent: configuredUserAgent(),
     exitNode,
     mode,
-    state: nativeTrustedState(),
+    state: nativeTrustedState(!!thread&&existsSync(join(dir,"seed-initialized"))),
     proxy: null,
     profile,
-    dir: join(nativeDir, id),
+    dir,
+    thread,
     windowClass: `bb-browser-${id}`,
     namespace: `bb-trusted-native-${id}`,
     // agent-browser's socket directory. It keeps each session's pinned tab id
@@ -1099,10 +1109,9 @@ function liveNativeBrowser(identity) {
 }
 
 function terminate(pid) {
-  // This is only recovery for an invalid or failed native browser. Normal
-  // session close leaves the verified managed Brave running because this Brave
-  // Origin build crashes during every tested graceful shutdown path. SIGKILL
-  // avoids another core dump and the next launch reloads trusted state.
+  // Recovery only. The old shared desktop-native Brave crashed on graceful
+  // shutdown, so its recovery path remains unchanged. Fully closed private
+  // thread browsers use the verified clean-close path below instead.
   try {
     process.kill(-pid, "SIGKILL");
   } catch {
@@ -1148,8 +1157,10 @@ function stopNativeBrowser(identity) {
   if (holder && !holder.elsewhere && ownsNativeProcess(holder.pid, identity)) {
     terminate(holder.pid);
   }
-  rmSync(stateMarkerPath(identity), { force: true });
-  rmSync(`${stateMarkerPath(identity)}.cookies`, { force: true });
+  if(!identity.thread){
+    rmSync(stateMarkerPath(identity), { force: true });
+    rmSync(`${stateMarkerPath(identity)}.cookies`, { force: true });
+  }
   stopPrivateDisplay(recorded?.display);
   removeWindowRule(identity.windowClass);
   rmSync(recordPath(identity), { force: true });
@@ -1232,13 +1243,15 @@ function startPrivateDisplay(identity, children) {
   const vncSocket = `/tmp/bb-vnc-${randomBytes(16).toString("hex")}.sock`;
   const log = openSync(join(identity.dir, "display.log"), "a", 0o600);
   try {
-    const x = spawn(server, [name, "-geometry", `${NATIVE_WINDOW.width}x${NATIVE_WINDOW.height}`, "-depth", "24", "-rfbport", "-1", "-rfbunixpath", vncSocket, "-rfbunixmode", "0600", "-SecurityTypes", "None", "-AcceptSetDesktopSize", "1", "-AlwaysShared", "-nolisten", "tcp", "-auth", authority], { detached: true, stdio: ["ignore", log, log] });
+    const x = spawn(server, [name, "-geometry", `${NATIVE_WINDOW.width}x${NATIVE_WINDOW.height}`, "-depth", "24", "-rfbport", "-1", "-rfbunixpath", vncSocket, "-rfbunixmode", "0600", "-SecurityTypes", "None", "-AcceptSetDesktopSize", "0", "-AlwaysShared", "-nolisten", "tcp", "-auth", authority], { detached: true, stdio: ["ignore", log, log] });
     x.on("error", () => {});
     x.unref();
     if (x.pid) children.push(x.pid);
     if (!waitFor(() => existsSync(`/tmp/.X11-unix/X${number}`) && existsSync(vncSocket), 10_000)) fail(`the private browser display did not start; see ${join(identity.dir, "display.log")}`);
-    const display = { name, authority, vncSocket, pid: x.pid, start: processStart(x.pid) };
-    const manager = spawn("openbox", [], { detached: true, stdio: ["ignore", log, log], env: { ...agentBrowserEnv(), DISPLAY: name, XAUTHORITY: authority, WAYLAND_DISPLAY: "" } });
+    const display = { name, authority, vncSocket, pid: x.pid, start: processStart(x.pid), geometry:"1920x1080" };
+    const config=join(identity.dir,"openbox.xml");
+    writePrivate(config,'<?xml version="1.0"?><openbox_config xmlns="http://openbox.org/3.4/rc"><applications><application type="normal"><maximized>yes</maximized></application></applications></openbox_config>');
+    const manager = spawn("openbox", ["--sm-disable","--config-file",config], { detached: true, stdio: ["ignore", log, log], env: { ...agentBrowserEnv(), DISPLAY: name, XAUTHORITY: authority, WAYLAND_DISPLAY: "" } });
     manager.on("error", () => {});
     manager.unref();
     if (manager.pid) children.push(manager.pid);
@@ -1400,6 +1413,28 @@ function otherLeases(identity) {
   return live;
 }
 
+// Only a fully closed thread can retire its private process. Call under the
+// native and thread locks, after releasing this command's lease. The last
+// finishing command also checks, so a close racing a command cannot leak it.
+function retireThreadNativeBrowser(identity) {
+  if (!identity.thread || existsSync(threadHoldPath()) || otherLeases(identity) || readThreadRecord(identity) || sessionList(identity).length) return;
+  const recorded = readNativeBrowser(identity);
+  if (!recorded) return;
+  const browser = liveNativeBrowser(identity);
+  if (recorded.placement !== "private" || recorded.display?.geometry !== "1920x1080") fail("This closed native desktop uses an old placement or geometry; it was preserved for an explicit drain");
+  if (alive(recorded.pid) && !browser) fail("Cannot verify the closed thread's native process; it was preserved");
+  if (browser) {
+    logNativeLifecycle(identity, "shutdown-requested", browser, { method: "Browser.close" });
+    threadCdp(identity, browser, "shutdown");
+    if (!waitFor(() => !alive(browser.pid), 15_000)) fail("The closed thread's native browser did not exit; its profile and display were preserved");
+  }
+  if (profileHolder(identity.profile)) fail("The thread profile is still in use; its display was preserved");
+  stopPrivateDisplay(recorded.display);
+  clearNativeRuntime(identity);
+  rmSync(recordPath(identity), { force: true });
+  logNativeLifecycle(identity, "retired", recorded, { method: "Browser.close" });
+}
+
 // Under the profile's lock: checks the recorded browser again (pid, profile,
 // class, loopback port), adds the window rule again, and checks its windows.
 // A browser that fails a compositor check is preserved and the command fails. Without a
@@ -1411,9 +1446,11 @@ function withNativeBrowser(identity, launch, action) {
   const browser = withNativeLock(identity, () => {
     let running = liveNativeBrowser(identity);
     let launched = false;
-    const placement = launch ? wantedPlacement() : null;
+    const placement = launch ? (identity.thread?"private":wantedPlacement()) : null;
+    const handoff=()=>identity.thread?existsSync(threadHoldPath()):anyThreadHandoff();
+    if(running&&identity.thread&&running.display?.geometry!=="1920x1080")fail("This private browser desktop uses an old geometry. Drain and explicitly close it with its original runtime before reopening; it was not resized.");
     // Move Brave only while nobody drives it or holds it for manual work.
-    if (running && launch && (running.placement || "desktop") !== placement && !anyThreadHandoff() && !otherLeases(identity)) {
+    if (running && launch && (running.placement || "desktop") !== placement && !handoff() && !otherLeases(identity)) {
       logNativeLifecycle(identity, "placement-change", running, { from: running.placement || "desktop", to: placement });
       running = null;
     }
@@ -1422,7 +1459,7 @@ function withNativeBrowser(identity, launch, action) {
       addWindowRule(identity.windowClass);
       checkNativeWindows(running);
     } else if (!running && launch) {
-      if (anyThreadHandoff()) fail("a browser handoff is pending; finish or cancel it before restarting Brave");
+      if (handoff()) fail("a browser handoff is pending; finish or cancel it before restarting Brave");
       resetNativeSessions(identity);
       stopNativeBrowser(identity);
       running = launchNativeBrowser(identity, placement);
@@ -1430,8 +1467,13 @@ function withNativeBrowser(identity, launch, action) {
     }
     if (running && launch) {
       try {
-        if (!anyThreadHandoff()) applyNativeState(identity, running);
+        if (!handoff()) {
+          applyNativeState(identity, running);
+          if(identity.thread&&!existsSync(join(identity.dir,"seed-initialized")))writePrivate(join(identity.dir,"seed-initialized"),identity.state?"Default seed applied once; account not verified\n":"No default seed available; manual login required\n");
+          if(identity.thread)rmSync(join(identity.dir,"seed-error"),{force:true});
+        }
       } catch (error) {
+        if(identity.thread)writePrivate(join(identity.dir,"seed-error"),"Default seed import failed; no account verification. Repair the configured seed before retrying.\n");
         // A browser started only for this command is not left running.
         if (launched) stopNativeBrowser(identity);
         throw error;
@@ -1446,7 +1488,11 @@ function withNativeBrowser(identity, launch, action) {
   try {
     return action(browser);
   } finally {
-    if (browser) rmSync(leasePath(identity), { force: true });
+    if (identity.thread) withNativeLock(identity, () => {
+      rmSync(leasePath(identity), { force: true });
+      if (!otherLeases(identity) && !existsSync(threadHoldPath())) withThreadLock(identity, () => retireThreadNativeBrowser(identity));
+    });
+    else if (browser) rmSync(leasePath(identity), { force: true });
   }
 }
 
@@ -1461,6 +1507,7 @@ function stateRevision(path) {
 }
 
 function nativeStateCurrent(identity) {
+  if(identity.thread&&existsSync(join(identity.dir,"seed-initialized")))return true;
   if (!identity.state) return true;
   try {
     return readFileSync(stateMarkerPath(identity), "utf8").trim() === stateRevision(identity.state);
@@ -1469,14 +1516,10 @@ function nativeStateCurrent(identity) {
   }
 }
 
-// Loads the trusted state into the native profile through the running
-// browser, once per revision; Brave never gets --state. The cookies and
-// storage then persist in the profile. The marker advances only after a load
-// succeeds, so a failed load, or a state the weekly refresh changed, loads on
-// the next command. The revision is read before the load: a state replaced in
-// between only loads once more. Nothing about the state is printed: an
-// agent-browser error can name its cookies. Call it under the profile's lock.
+// Import under the profile lock. Thread profiles seed once, even if the source
+// later changes; no-thread legacy use still tracks revisions. Never print state.
 function applyNativeState(identity, browser) {
+  if(identity.thread&&existsSync(join(identity.dir,"seed-initialized")))return;
   if (!identity.state) return;
   let revision;
   try {
@@ -1545,12 +1588,9 @@ function nativeFlags(identity, browser) {
   return browser ? [...flags, "--cdp", String(browser.port), "--pin-tab"] : flags;
 }
 
-// Each named session pins its own tab in the one native browser. Closing a
-// session closes its tab and detaches. The verified managed Brave stays running
-// even after the last close: this Brave Origin build has crashed during both
-// CDP Browser.close and normal compositor window close. Listing sessions never
-// launches Brave. A failed identity/window check still discards it with
-// SIGKILL, drops the state marker, and relaunches on the next command.
+// No-thread legacy native sessions retain their shared browser. Its desktop
+// shutdown crashed on this host; thread-private X11 retirement is separate.
+// Each named session closes only its tab and detaches. Listing never launches.
 function closeNative(identity, args, command, inherit) {
   if (command === "session") return runAgentBrowser([...nativeFlags(identity, null), ...args], { identity, inherit }).status ?? 1;
   const all = args.includes("--all");
@@ -2036,8 +2076,8 @@ function doctor(argv) {
       return "agent: agent-browser launches Brave with the identity below" +
         (nativePossible ? " (a configured user agent or state keeps the native backend off; BB_BROWSER_BACKEND=native chooses it)" : "");
     }
-    return "native: bb-browser launches one persistent Brave on a dedicated profile and attaches over loopback CDP; " +
-      `a Hyprland rule keeps its window on ${nativeWorkspace()} and unfocused; session close detaches without terminating Brave`;
+    return threadOwner()?"native: one persistent profile and fixed 1920x1080 private desktop per thread; never the user desktop":
+      "native: one persistent legacy profile over loopback CDP; "+`a Hyprland rule keeps its window on ${nativeWorkspace()}; session close detaches without terminating Brave`;
   });
   record("identity", () => {
     planned = plannedIdentity();
@@ -2061,6 +2101,7 @@ function doctor(argv) {
     record("state", () => {
       if (planned.backend === "existing") return "regular Brave keeps its own sign-ins; no state is imported";
       if (planned.backend === "native") {
+        if(planned.thread&&existsSync(join(planned.dir,"seed-initialized")))return readFileSync(join(planned.dir,"seed-initialized"),"utf8").trim()+"; later source changes never replace thread authentication";
         if (!planned.state) return "no trusted state; the native profile keeps its own sign-ins";
         // The live check loads a changed state and then requires it current.
         return nativeStateCurrent(planned)
@@ -2285,6 +2326,10 @@ let step = 'connect';
    catch (error) { if (!/session.*not found|no session|target.*closed/i.test(error.message)) throw error; }
    finally { step = operation; }
  };
+ if (input.op === 'shutdown') {
+   await call('Browser.close', {}, undefined, 5000);
+   ws.close(); process.stdout.write('{}'); return;
+ }
  if (input.op === 'syncCookies') {
    const current = (await call('Storage.getCookies')).cookies;
    const key = cookie => JSON.stringify([cookie.name, cookie.domain, cookie.path || '/', cookie.partitionKey || null]);
@@ -2411,6 +2456,7 @@ let step = 'connect';
        if (!targetId) { step = 'open owned tab'; throw Error('no owned tab'); }
      } else targetId = (await call('Target.createTarget', {url:'about:blank', newWindow:true, background:true})).targetId;
      const window = await call('Browser.getWindowForTarget', {targetId});
+     if(input.privateDisplay)await call('Browser.setWindowBounds',{windowId:window.windowId,bounds:{windowState:'maximized'}});
      if (record && window.windowId !== record.windowId) { await call('Target.closeTarget', {targetId}); step = 'owned-window mismatch'; throw Error('browser cannot create tabs in the owned window'); }
      record = {...record, windowId:window.windowId, sessions:{...record?.sessions, [input.session]:targetId}};
    }
@@ -2423,6 +2469,13 @@ let step = 'connect';
  } else if (input.op === 'show') {
    if (!owned.length) throw Error('thread window is no longer open');
    output = {ok:true}; // Attention requests never activate a desktop window.
+ } else if (input.op === 'prepare') {
+   if(!owned.length)throw Error('thread window is no longer open');
+   for(const target of owned){
+     const {sessionId}=await call('Target.attachToTarget',{targetId:target.targetId,flatten:true});
+     try{await call('Page.setInterceptFileChooserDialog',{enabled:false},sessionId);}finally{await detach(sessionId);}
+   }
+   if(input.privateDisplay)await call('Browser.setWindowBounds',{windowId:record.windowId,bounds:{windowState:'maximized'}});
  } else if (input.op === 'close') {
    for (const target of [...owned].reverse()) { try { await call('Target.closeTarget', {targetId:target.targetId}); } catch {} }
    const ids = new Set(owned.map(t => t.targetId));
@@ -2442,7 +2495,7 @@ let step = 'connect';
 `;
 function threadCdp(identity, browser, op, extra = {}) {
   const result = spawnSync(nodeRuntime(), ["-e", THREAD_CDP], {
-    input: JSON.stringify({ port: browser.port, op, record: readThreadRecord(identity), ...extra }),
+    input: JSON.stringify({ port: browser.port, op, record: readThreadRecord(identity), privateDisplay:browser.placement==="private", ...extra }),
     encoding: "utf8", timeout: 20_000, maxBuffer: 1024 * 1024,
   });
   if (result.status !== 0) fail(`could not manage this thread's browser window (${firstLine(result.stderr) || "timed out"}); no other window was selected`);
@@ -2533,19 +2586,25 @@ function threadTabCommand(identity, browser, session, args) {
     if (runAgentBrowser([...flags, "tab", targetId], {identity, timeoutMs:30_000}).status !== 0) fail("could not select the owned tab");
     if (op === "new" && args[1]) return runAgentBrowser([...flags, "open", args[1]], {identity, inherit:true}).status ?? 1;
   } else {
-    runAgentBrowser([...flags, "close"], {identity, timeoutMs:30_000});
+    if (identity.backend === "native") closeThreadSessions(identity, browser, [session]);
+    else runAgentBrowser([...flags, "close"], {identity, timeoutMs:30_000});
     rmSync(threadRecordPath(identity), {force:true});
   }
   console.log(JSON.stringify({success:true})); return 0;
+}
+function closeThreadSessions(identity, browser, sessions) {
+  for (const session of sessions) {
+    const flags = identity.backend === "native" ? nativeFlags(identity, browser) : identity.backend === "existing" ? existingFlags(identity, false) : launchFlags(identity, [], false);
+    const result = runAgentBrowser([...flags, "--session", session, "close"], {identity, timeoutMs:30_000});
+    if (identity.backend === "native" && result.status !== 0) fail("Could not detach the thread's native browser session; its process was preserved");
+  }
+  if (identity.backend === "native" && sessions.length && !waitFor(() => !sessionList(identity).some(name => sessions.includes(name)), 5_000)) fail("Native browser sessions are still active; the process was preserved");
 }
 function closeThreadBrowser(identity, session = null) {
   const close = (browser) => {
     if (existsSync(threadHoldPath())) return 0;
     const sessions = sessionList(identity).filter(name => name.startsWith(threadPrefix()) && (!session || name === session));
-    for (const session of sessions) {
-      const flags = identity.backend === "native" ? nativeFlags(identity, browser) : identity.backend === "existing" ? existingFlags(identity, false) : launchFlags(identity, [], false);
-      runAgentBrowser([...flags, "--session", session, "close"], {identity, timeoutMs:30_000});
-    }
+    closeThreadSessions(identity, browser, sessions);
     const record = readThreadRecord(identity);
     if (browser && record && session && Object.keys(record.sessions).some(name => name !== session)) {
       const targetId = record.sessions[session];
@@ -2589,11 +2648,11 @@ function threadCommand(args) {
   if (op === "pause") {
     const identity = plannedIdentity();
     const pause = () => { writePrivate(threadHoldPath(), "manual\n"); return 0; };
-    if (identity.backend === "native") withNativeLock(identity, () => withThreadLock(identity, pause));
+    if (identity.backend === "native") withNativeBrowser(identity,false,browser=>withNativeLock(identity, () => withThreadLock(identity, () => {if(browser)threadCdp(identity,browser,"prepare");return pause();})));
     else withThreadLock(identity, pause);
     console.log(JSON.stringify({ok:true, workspace:nativeWorkspace()})); return 0;
   }
-  if (op === "resume") { rmSync(threadHoldPath(), {force:true}); return 0; }
+  if (op === "resume") { plannedIdentity();rmSync(threadHoldPath(), {force:true}); return 0; }
   if (op === "desktop") {
     // The private display a remote viewer streams. Never the Hyprland desktop.
     if (args.length > 2 || (args[1] && args[1] !== "--watch")) fail("usage: bb-browser thread desktop [--watch]");
@@ -2601,7 +2660,7 @@ function threadCommand(args) {
     if (identity.backend !== "native") fail("thread desktop is for the native browser on a private display");
     return withNativeBrowser(identity, false, browser => {
       const display = privateDisplayLive(browser);
-      if (!display) fail("the browser runs on this host's own desktop; open the browser workspace there");
+      if (!display) fail(identity.thread?"Thread private desktop unavailable; open this browser first":"the browser runs on this host's own desktop; open the browser workspace there");
       if (!existsSync(threadHoldPath()) && args[1] !== "--watch") fail("pause this thread's browser for interactive access, or pass --watch");
       console.log(JSON.stringify({display:display.name, authority:display.authority, vncSocket:display.vncSocket, owner:{pid:browser.pid, start:processStart(browser.pid)}, displayOwner:{pid:display.pid, start:display.start}}));
       return 0;
@@ -2609,8 +2668,8 @@ function threadCommand(args) {
   }
   if (!['show', 'close', 'discard', 'viewer'].includes(op)) fail("usage: bb-browser thread pause|resume|show|close|discard|desktop|viewer");
   if (op === "close" && existsSync(threadHoldPath())) return 0;
-  if (op === "discard") rmSync(threadHoldPath(), {force:true});
   const identity = plannedIdentity();
+  if (op === "discard") rmSync(threadHoldPath(), {force:true});
   if(op === 'viewer') {
     if(!existsSync(threadHoldPath()))fail('Viewer expired; this thread is not paused');
     const view=browser=>withThreadLock(identity,()=>{

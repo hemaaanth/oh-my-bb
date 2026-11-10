@@ -12,8 +12,12 @@ function setup(desktop?:{openDesktop:(hostId:string,threadId:string,viewOnly?:bo
     threads: { get: async () => thread }, environments: { get: async () => ({ hostId: host.id }) }, hosts: { get: async () => host },
   }, experimental_callHostRpc: async () => ({ok}) });
   dispose.push(() => fake.harness.lifecycle.dispose());
-  const idle = {hold:vi.fn(), release:vi.fn(),...desktop};
-  registerBrowserHandoff(fake.bb, idle);
+  let desktopRequested=false;
+  const idle = {hold:vi.fn(), release:vi.fn(),...(desktop?{
+    openDesktop:async(hostId:string,threadId:string,viewOnly?:boolean)=>{desktopRequested=true;return desktop.openDesktop(hostId,threadId,viewOnly);},
+    closeDesktop:async(threadId:string)=>{if(!desktopRequested)return;await desktop.closeDesktop(threadId);desktopRequested=false;},
+  }:{})};
+  registerBrowserHandoff(fake.bb, idle,async()=>JSON.stringify({state:'disconnected',url:null}));
   const actions = () => fake.harness.experimental_hostRpcCalls.map(call => (call.input as { action:string }).action);
   const start = () => fake.harness.behavior.callAgentTool("browser_handoff", {reason:"login", instructions:"Sign in on the browser, then select Done."}, {threadId:thread.id});
   return {...fake, thread, host, actions, start, idle, setOk:(value:boolean) => {ok=value;}};
@@ -65,7 +69,6 @@ it("uses the Sandboxes desktop and revokes it before resuming automation",async(
  closeDesktop.mockImplementation(async()=>{expect(actions()).toEqual(["pause"]);});
  const result=start();await vi.waitFor(()=>expect(harness.pendingInteractions).toHaveLength(1));
  expect(harness.pendingInteractions[0]).toMatchObject({payload:{viewerUrl:"https://sandbox--1234.getbb.app/#grant"}});
- expect(openDesktop).toHaveBeenCalledWith("host_browser","thr_browser");
  harness.behavior.submitInteraction(harness.pendingInteractions[0].id,{done:true});await result;
  expect(closeDesktop).toHaveBeenCalledWith("thr_browser");expect(actions()).toEqual(["pause","resume"]);
 });
@@ -90,10 +93,14 @@ it('opens live sandbox viewing without pausing and keeps idle sessions until the
  await harness.behavior.callRpc('closeBrowserView',{threadId:thread.id});expect(closeDesktop).toHaveBeenCalledWith(thread.id);expect(actions()).toEqual(['close']);
  expect(await harness.behavior.callRpc('getBrowserView',{threadId:thread.id})).toEqual({kind:'closed'});
 });
-it('uses attention on a local desktop browser that has no private display',async()=>{
- const openDesktop=vi.fn(async()=>null),closeDesktop=vi.fn(async()=>{});const {harness,thread,start}=setup({openDesktop,closeDesktop});
- expect(await harness.behavior.callAgentTool('browser_live',{action:'open'},{threadId:thread.id})).toContain('local desktop');expect(openDesktop).toHaveBeenCalledWith('host_browser',thread.id,true);
- const done=start();await vi.waitFor(()=>expect(harness.pendingInteractions).toHaveLength(1));expect(harness.pendingInteractions[0].payload).toMatchObject({inlineViewer:false});expect(harness.pendingInteractions[0].payload).not.toHaveProperty('viewerUrl');harness.behavior.submitInteraction(harness.pendingInteractions[0].id,{done:true});await done;
+it('offers page-only handoff without probing Sandboxes when desktop integration is unavailable',async()=>{
+ const {harness,thread,start}=setup();
+ await harness.behavior.callAgentTool('browser_live',{action:'open'},{threadId:thread.id});
+ expect(harness.experimental_hostRpcCalls).toEqual([]);
+ const done=start();await vi.waitFor(()=>expect(harness.pendingInteractions).toHaveLength(1));
+ expect(harness.pendingInteractions[0].payload).toMatchObject({inlineViewer:false,viewerUrl:expect.stringContaining('/http/viewer?token=')});
+ expect(harness.inspection.sdk.callsTo('plugins.callRpc')).toEqual([]);
+ harness.behavior.submitInteraction(harness.pendingInteractions[0].id,{done:true});await done;
 });
 it('streams a local browser that moved to a private display for a remote viewer',async()=>{
  const openDesktop=vi.fn(async()=>'https://hemarchy--1234.getbb.app/#grant'),closeDesktop=vi.fn(async()=>{});const {harness,thread,start}=setup({openDesktop,closeDesktop});

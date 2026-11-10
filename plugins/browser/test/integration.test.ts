@@ -36,13 +36,18 @@ it("Browser loads without Sandboxes and does not enable fast credentials",async(
  expect(result.exitCode).toBe(1);expect(result.stderr).toContain('off');
 });
 it("viewer grants isolate threads and expire on revoke without exposing a desktop listener",async()=>{
- const fake=createFakePluginHost({pluginId:'browser',experimental_hostEntry:true,experimental_callHostRpc:async({input})=>({ok:true,data:JSON.stringify({data:Buffer.from(z.object({threadId:z.string()}).parse(input).threadId).toString('base64')})})});dispose.push(()=>fake.harness.lifecycle.dispose());
- const viewer=registerViewer(fake.bb),a=new URL(viewer.issue('thr_a','host_a')),b=new URL(viewer.issue('thr_b','host_b'));
- const post=(token:string)=>fake.harness.behavior.fetchHttp('POST','/viewer-control',{headers:{'content-type':'application/json'},body:JSON.stringify({token,action:{type:'frame'}})});
- expect((await post('bad-token')).status).toBe(403);
- const first=await post(a.searchParams.get('token')!);expect(first.status).toBe(200);expect(await first.json()).toEqual({data:Buffer.from('thr_a').toString('base64')});
- viewer.revoke('thr_a');expect((await post(a.searchParams.get('token')!)).status).toBe(403);expect((await post(b.searchParams.get('token')!)).status).toBe(200);
- expect(fake.harness.experimental_hostRpcCalls.map(call=>call.hostId)).toEqual(['host_a','host_b']);
+ const fake=createFakePluginHost({pluginId:'browser',appUrl:'https://app.example',experimental_hostEntry:true,experimental_callHostRpc:async({input})=>({ok:true,data:JSON.stringify({data:Buffer.from(z.object({threadId:z.string()}).parse(input).threadId).toString('base64')})})});dispose.push(()=>fake.harness.lifecycle.dispose());
+ const viewer=registerViewer(fake.bb,async()=>JSON.stringify({state:'disconnected',url:null})),a=new URL(await viewer.issue('thr_a','host_a'),fake.bb.server.loopbackBaseUrl).searchParams.get('token')!,b=new URL(await viewer.issue('thr_b','host_b'),fake.bb.server.loopbackBaseUrl).searchParams.get('token')!;
+ const headers={'content-type':'application/json',origin:'https://app.example'};
+ const acquire=async(token:string,takeover=false)=>z.object({owner:z.string().nullable()}).parse(await(await fake.harness.behavior.fetchHttp('POST','/viewer-lease',{headers,body:JSON.stringify({token,takeover})})).json()).owner;
+ const post=(token:string,owner:string|null)=>fake.harness.behavior.fetchHttp('POST','/viewer-control',{headers,body:JSON.stringify({token,owner,action:{type:'frame'}})});
+ expect((await post('bad-token',null)).status).toBe(403);
+ const firstOwner=await acquire(a),otherOwner=await acquire(b);expect(await acquire(a)).toBeNull();
+ const first=await post(a,firstOwner);expect(first.status).toBe(200);expect(await first.json()).toEqual({data:Buffer.from('thr_a').toString('base64')});
+ const nextOwner=await acquire(a,true);expect((await post(a,firstOwner)).status).toBe(409);expect((await post(a,null)).status).toBe(409);
+ expect((await post(a,nextOwner)).status).toBe(200);
+ viewer.revoke('thr_a');expect((await post(a,nextOwner)).status).toBe(403);expect((await post(b,otherOwner)).status).toBe(200);
+ expect(fake.harness.experimental_hostRpcCalls.map(call=>call.hostId)).toEqual(['host_a','host_a','host_b']);
 });
 it('does not let delayed legacy migration replace a new Browser pairing or authentication seed',async()=>{
  let legacyAvailable=false;const oldToken='l'.repeat(43);

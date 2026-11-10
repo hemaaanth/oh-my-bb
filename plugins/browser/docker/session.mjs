@@ -63,11 +63,13 @@ try {
   if (seeding && !existsSync(holdFile)) throw Error('Pause this session before explicitly replacing its authentication seed');
   if (control && args[0] === 'pause') {
     if (!await alive(record)) throw Error('Open this session before handing it off');
+    if(record.display?.geometry!=='1920x1080'&&record.display)throw Error('This desktop uses an old geometry. Drain it with its original runtime before reopening; it was not resized.');
     if(record.display)await prepareDesktop(record);
     await mkdir(dirname(holdFile), { recursive: true, mode: 0o700 }); await writeFile(holdFile, 'manual\n', { mode: 0o600 });
     console.log(JSON.stringify({ ok: true, session: record.session, host: record.host }));
   } else if (control && args[0] === 'resume') { await rm(holdFile, { force: true }); console.log('{"ok":true}'); }
   else if(control&&args[0]==='desktop'){
+    if(record?.display&&record.display.geometry!=='1920x1080')throw Error('This desktop uses an old geometry. Drain it with its original runtime before reopening; it was not resized.');
     if((!existsSync(holdFile)&&args[1]!=='--watch')||!await alive(record)||!await alive(record.display))throw Error('A running headed isolated session is required; pause it for interactive access');
     console.log(JSON.stringify({display:record.display.name,authority:record.display.authority,vncSocket:record.display.vncSocket,owner:{pid:record.pid,start:record.start},displayOwner:{pid:record.display.pid,start:record.display.start}}));
   }
@@ -122,14 +124,14 @@ try {
         const auth = spawnSync('xauth', ['-f', authority, 'add', name, '.', randomBytes(16).toString('hex')], { stdio: 'ignore', timeout: 5000 });
         if (auth.status !== 0) throw Error('Headed isolated sessions need xauth and TigerVNC on this host');
         const vncSocket='/tmp/bb-vnc-'+randomBytes(16).toString('hex')+'.sock';
-        const displayServer = spawn('Xtigervnc', [name, '-geometry', '1440x1000', '-depth', '24', '-rfbport', '-1', '-rfbunixpath', vncSocket, '-rfbunixmode', '0600', '-SecurityTypes', 'None', '-AcceptSetDesktopSize', '1', '-AlwaysShared', '-nolisten', 'tcp', '-auth', authority], { detached: true, stdio: ['ignore', log, log] });
+        const displayServer = spawn('Xtigervnc', [name, '-geometry', '1920x1080', '-depth', '24', '-rfbport', '-1', '-rfbunixpath', vncSocket, '-rfbunixmode', '0600', '-SecurityTypes', 'None', '-AcceptSetDesktopSize', '0', '-AlwaysShared', '-nolisten', 'tcp', '-auth', authority], { detached: true, stdio: ['ignore', log, log] });
         displayServer.on('error', () => {}); displayServer.unref();
         for (let i = 0; i < 100 && !existsSync('/tmp/.X11-unix/X' + number); i++) await new Promise(resolve => setTimeout(resolve, 30));
-        if (!existsSync('/tmp/.X11-unix/X' + number)) throw Error('Private resizable display failed; install tigervnc-standalone-server on this host');
-        display = { pid: displayServer.pid, start: await processStart(displayServer.pid), name, authority, vncSocket };
+        if (!existsSync('/tmp/.X11-unix/X' + number)) throw Error('Private fixed-size display failed; install tigervnc-standalone-server on this host');
+        display = { pid: displayServer.pid, start: await processStart(displayServer.pid), name, authority, vncSocket, geometry:'1920x1080' };
         const manager=spawn('openbox',[],{detached:true,stdio:['ignore',log,log],env:{...process.env,DISPLAY:name,XAUTHORITY:authority,WAYLAND_DISPLAY:''}});try{await new Promise((resolve,reject)=>{manager.once('spawn',resolve);manager.once('error',reject);});}catch{await stop(display);closeSync(log);throw Error('Private session window manager unavailable; install Openbox on this host');}manager.unref();display.manager={pid:manager.pid,start:await processStart(manager.pid)};
       }
-      const flags = [`--user-data-dir=${profile}`, '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-quic', '--disable-blink-features=AutomationControlled', '--window-size=1440,1000', ...(headless?[]:['--start-maximized']), ...(headless ? ['--headless=new'] : ['--ozone-platform=x11']), ...(process.getuid?.() === 0 ? ['--no-sandbox'] : [])];
+      const flags = [`--user-data-dir=${profile}`, '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-quic', '--disable-blink-features=AutomationControlled', '--window-size=1920,1080', ...(headless?[]:['--start-maximized']), ...(headless ? ['--headless=new'] : ['--ozone-platform=x11']), ...(process.getuid?.() === 0 ? ['--no-sandbox'] : [])];
       if (identity.proxy) flags.push(`--proxy-server=${identity.proxy}`, '--proxy-bypass-list=<-loopback>', '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1', '--force-webrtc-ip-handling-policy=disable_non_proxied_udp');
       if (identity.userAgent) flags.push('--user-agent=' + identity.userAgent);
       await rm(join(profile, 'DevToolsActivePort'), { force: true });

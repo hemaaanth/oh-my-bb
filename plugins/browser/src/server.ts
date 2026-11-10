@@ -10,8 +10,9 @@ import { registerBrowserProvisioning } from "./browser-sync.js";
 import { trustedBrowserPayload } from "./trusted-browser.js";
 import {browserViewerHostContract} from "./viewer-contract.js";
 import { registerRelay } from "./relay.js";
+import type {ConnectStatus} from "./viewer-origins.js";
 
-export default async function plugin(bb: BbPluginApi) {
+export default async function plugin(bb: BbPluginApi,connect?:ConnectStatus) {
   const settings = await loadBrowserSettings(bb);
   const requireSandboxes = async () => {
     if (!(await settings.get()).sandboxesIntegration) throw new Error("Enable Sandboxes integration in Browser settings first");
@@ -59,16 +60,16 @@ export default async function plugin(bb: BbPluginApi) {
   const closeDesktop=async(threadId:string)=>{if(!desktopSessions.has(threadId))return;await bb.sdk.plugins.callRpc({pluginId:'sandboxes',method:'desktopCloseV1',input:{threadId},outputSchema:z.null()});desktopSessions.delete(threadId);};
   bb.onDispose(async()=>{await Promise.allSettled([...desktopSessions].map(closeDesktop));});
   registerBrowserHandoff(bb, { openDesktop:async(hostId,threadId,viewOnly=false)=>{
+    await closeDesktop(threadId);
     const host=await bb.sdk.hosts.get({hostId}),sandbox=!!host.machineProviderId?.startsWith('sandbox-');
-    // A local host streams only when bb-browser moved Brave to a private display
-    // for a remote viewer. Otherwise the user opens the browser workspace there.
+    // Only explicitly opted-in, owned private displays use desktop streaming.
     if(sandbox)await requireSandboxes();else if(host.status!=='connected'||!(await settings.get()).sandboxesIntegration)return null;
     const target=await desktopClient.call('browserDesktopTarget',{threadId,watch:viewOnly},{hostId,timeoutMs:30000});
     if(!target)return null; // Paired regular profiles, scratch headless sessions, and desktop-placed browsers remain page-only.
-    const open=()=>bb.sdk.plugins.callRpc({pluginId:'sandboxes',method:'desktopOpenV1',input:{threadId,target,viewOnly},outputSchema:z.object({url:z.string(),expires:z.number()})});
-    const result=sandbox?await open():await open().catch(error=>{bb.log.warn('Local desktop viewer unavailable: '+(error instanceof Error?error.message:String(error)));return null;});
-    if(!result)return null;desktopSessions.add(threadId);return result.url;
-  },closeDesktop,hold, release: (hostId, threadId) => hold(hostId, threadId, false) });
+    desktopSessions.add(threadId);
+    const result=await bb.sdk.plugins.callRpc({pluginId:'sandboxes',method:'desktopOpenV1',input:{threadId,target,viewOnly},outputSchema:z.object({url:z.string(),expires:z.number()})});
+    return result.url;
+  },closeDesktop,hold, release: (hostId, threadId) => hold(hostId, threadId, false) },connect);
   registerRelay(bb, cookies, () => settings.get(),async(threadId,held,generation)=>{
     const thread=await bb.sdk.threads.get({threadId});if(!thread.environmentId)throw Error('This thread has no sandbox network host');
     return network((await bb.sdk.environments.get({environmentId:thread.environmentId})).hostId,threadId,held,generation);

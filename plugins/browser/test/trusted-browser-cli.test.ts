@@ -974,6 +974,24 @@ console.log(argv[1].includes("hl.window_rule") ? "bb-browser-rule:true" : argv[1
     expect(await calls("agent-browser")).toEqual([]);
   });
 
+  it("gives native thread identities separate persistent profile locations and leaves legacy handoffs intact",async()=>{
+    const a=runNative(["doctor","--offline"],{BB_THREAD_ID:"thr_native_a"}),b=runNative(["doctor","--offline"],{BB_THREAD_ID:"thr_native_b"});
+    const aDir=join(home,"native",createHash("sha256").update(profile+"\0thr_native_a").digest("hex").slice(0,12));
+    const bDir=join(home,"native",createHash("sha256").update(profile+"\0thr_native_b").digest("hex").slice(0,12));
+    expect(a.stdout).toContain(join(aDir,"profile"));expect(b.stdout).toContain(join(bDir,"profile"));expect(aDir).not.toBe(bDir);
+    expect(runNative(["open","about:blank"]).status).toBe(0);
+    const old=await browserRecord(),before=await readFile(recordFile(),"utf8"),legacyId=createHash("sha256").update(profile).digest("hex").slice(0,12);
+    await mkdir(join(home,"threads"),{recursive:true});
+    const record=join(home,"threads",`thr_legacy-bb-trusted-native-${legacyId}.json`),hold=join(home,"threads","thr_legacy.hold");
+    await writeFile(record,JSON.stringify({backend:"native",browserKey:"legacy",windowId:1}));await writeFile(hold,"manual\n");
+    for(const args of [["snapshot"],["thread","resume"],["thread","discard"]]){
+      const rejected=runNative(args,{BB_THREAD_ID:"thr_legacy"});expect(rejected.status).toBe(1);
+    }
+    expect(await readFile(hold,"utf8")).toBe("manual\n");expect(await readFile(recordFile(),"utf8")).toBe(before);expect(isAlive(old.pid)).toBe(true);
+    await rm(hold);expect(runNative(["snapshot"],{BB_THREAD_ID:"thr_legacy"}).status).toBe(1);
+    expect(await readFile(recordFile(),"utf8")).toBe(before);expect(isAlive(old.pid)).toBe(true);
+  });
+
   it("launches the dedicated profile once and reuses it over loopback CDP without UA or state flags", async () => {
     // Explicit native launches without the configured user agent; doctor only
     // checks it.

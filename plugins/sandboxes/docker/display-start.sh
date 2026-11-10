@@ -9,7 +9,7 @@ usage() {
   cat <<'EOF'
 Usage: bb-sandbox-display [start|stop|status] [options]
 
-  --size <WxH>      screen geometry (default 1920x1080)
+  --size <WxH>      fixed screen geometry (1920x1080 only)
   --display <:N>    X display to use (default :99)
 
 Start prints the DISPLAY value to export. The display number is also recorded
@@ -63,6 +63,14 @@ case "$action" in
     exit 0
     ;;
 esac
+if [ "$size" != 1920x1080 ]; then
+  echo "bb-sandbox-display: desktops require fixed 1920x1080 geometry" >&2
+  exit 2
+fi
+if display_ready && [ "$(DISPLAY="$display" xdpyinfo | awk '/dimensions:/ { print $2 }')" != "$size" ]; then
+  echo "bb-sandbox-display: existing desktop has old geometry; drain and restart it explicitly. It was not resized." >&2
+  exit 1
+fi
 
 if ! display_ready; then
   rm -f "/tmp/.X${display#:}-lock"

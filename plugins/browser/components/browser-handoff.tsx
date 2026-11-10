@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { experimental_useQuestionFormHost, type PluginPendingInteractionProps } from "@get-bb/plugin-sdk/app";
 import { BrowserFrame } from "./browser-live";
 import { Button } from "./ui/button";
+import {popoutViewer} from "./viewer-controls";
 
 function ActionIcon({ name }: { name: "done" | "reply" | "cancel" | "send" | "external" | "note" }) {
   const paths = {
@@ -21,7 +22,9 @@ export function BrowserHandoff({ interaction, submit }: PluginPendingInteraction
   const [error, setError] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
   const [reply, setReply] = useState("");
-  const payload = interaction.payload as { instructions?: unknown; host?: unknown; viewerUrl?: unknown; inlineViewer?: unknown } | null;
+  const frame=useRef<HTMLIFrameElement>(null);
+  const [viewerError,setViewerError]=useState<string|null>(null);
+  const payload = interaction.payload as { instructions?: unknown; host?: unknown; viewerUrl?: unknown; inlineViewer?: unknown; viewerNotice?:unknown } | null;
   const instructions = typeof payload?.instructions === "string" && payload.instructions.trim() ? payload.instructions.trim() : "Complete the browser action.";
   const firstSentence = instructions.replace(/\s+/g, " ").split(/(?<=[.!?])\s+/u, 1)[0];
   const summary = firstSentence.length > 100 ? `${firstSentence.slice(0, 97).trimEnd()}…` : firstSentence;
@@ -40,7 +43,9 @@ export function BrowserHandoff({ interaction, submit }: PluginPendingInteraction
     <div className="flex min-w-0 flex-wrap items-start gap-2">
       <p className="min-w-0 flex-[1_1_16rem] truncate py-1.5 leading-5" title={firstSentence}>{summary}</p>
       <div className="flex shrink-0 items-center gap-1">
-        {typeof payload?.viewerUrl === "string" && <a className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-state-hover" href={payload.viewerUrl} target="_blank" rel="noreferrer" aria-label="Open session" title="Open browser session"><ActionIcon name="external" /></a>}
+        {typeof payload?.viewerUrl === "string" && (payload.inlineViewer===true
+          ?<button type="button" className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-state-hover" aria-label="Open session" title="Open browser session" onClick={()=>{if(frame.current)void popoutViewer(frame.current).catch(cause=>setViewerError(cause.message));}}><ActionIcon name="external"/></button>
+          :<a className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-state-hover" href={payload.viewerUrl} target="_blank" rel="noreferrer" aria-label="Open session" title="Open browser session"><ActionIcon name="external" /></a>)}
         <span title="Done — action completed"><Button size="icon" className="size-8" disabled={busy} aria-label="Done" onClick={() => answer({ done: true })}><ActionIcon name="done" /></Button></span>
         <span title="Reply to agent"><Button size="icon" className="size-8" variant="ghost" disabled={busy} aria-label="Reply to agent" aria-expanded={replyOpen} onClick={() => setReplyOpen(!replyOpen)}><ActionIcon name="reply" /></Button></span>
         <span title="Cancel browser task"><Button size="icon" className="size-8" variant="ghost" disabled={busy} aria-label="Cancel" onClick={() => answer({ done: false })}><ActionIcon name="cancel" /></Button></span>
@@ -50,6 +55,7 @@ export function BrowserHandoff({ interaction, submit }: PluginPendingInteraction
       <summary className="w-fit cursor-pointer select-none"><span className="ml-1 inline-flex items-center gap-1.5 align-middle"><ActionIcon name="note" />Details</span></summary>
       <div className="space-y-1.5 pt-2"><p className="whitespace-pre-wrap break-words">{instructions}</p><p>Browser paused{typeof payload?.host === "string" ? ` · ${payload.host}` : ""}. Keep passwords and codes in the browser.</p></div>
     </details>
+    {typeof payload?.viewerNotice==="string"&&<p className="text-xs text-muted-foreground">{payload.viewerNotice}</p>}
     {replyOpen && <form className="flex min-w-0 items-end gap-2" onSubmit={event => { event.preventDefault(); sendReply(); }}>
       <textarea autoFocus aria-label="Reply to agent" placeholder="Add context or give the agent a different direction…" maxLength={4000} rows={2} disabled={busy} className="min-w-0 flex-1 resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50" value={reply} onChange={event => setReply(event.target.value)} onKeyDown={event => {
         if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); sendReply(); }
@@ -57,7 +63,8 @@ export function BrowserHandoff({ interaction, submit }: PluginPendingInteraction
       }} />
       <span title="Send reply (Ctrl/⌘ Enter)"><Button size="icon" className="size-8 shrink-0" type="submit" disabled={busy || !reply.trim()} aria-label="Send reply"><ActionIcon name="send" /></Button></span>
     </form>}
-    {payload?.inlineViewer === true && typeof payload.viewerUrl === "string" && <BrowserFrame url={payload.viewerUrl} />}
+    {payload?.inlineViewer === true && typeof payload.viewerUrl === "string" && <BrowserFrame url={payload.viewerUrl} frameRef={frame}/>}
+    {viewerError&&<p role="alert" className="text-xs text-destructive">{viewerError}</p>}
     {error && <p role="alert" className="text-xs text-destructive">Couldn’t save your answer. Try again.</p>}
   </div>;
 }

@@ -1,15 +1,16 @@
 import {useCallback,useEffect,useRef,useState,type Ref} from 'react';
 import {experimental_Icon as Icon,useRealtime,useRpc,type PluginMessageDirectiveProps} from '@get-bb/plugin-sdk/app';
 import type {browserHandoffRpcContract, BrowserLiveState} from '../src/browser-handoff-contract';
+import {popoutViewer,embeddedViewerUrl} from './viewer-controls';
 
 const focusRing='focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
-/** Pass frameRef when the caller has its own fullscreen button; voxl then hides its inner one. */
-export function BrowserFrame({url,frameRef}:{url:string;frameRef?:Ref<HTMLIFrameElement>}){
+/** Fullscreen keeps this iframe and its current viewer lease mounted. */
+export function BrowserFrame({url,frameRef,fill=false}:{url:string;frameRef?:Ref<HTMLIFrameElement>;fill?:boolean}){
   let valid=false;
   try{const parsed=new URL(url,location.href);valid=parsed.protocol==='https:'||parsed.origin===location.origin;}catch{}
   if(!valid)return null;
-  return <iframe ref={frameRef} title="Browser session" src={url} {...frameRef?{}:{allow:'fullscreen',allowFullScreen:true}} referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin" className="block w-full border-0 bg-black" style={{aspectRatio:'16 / 9',maxHeight:'70vh',minHeight:280}}/>;
+  return <><style>{'.bb-browser-frame:fullscreen{width:100%;height:100%;aspect-ratio:auto!important}'}</style><iframe ref={frameRef} title="Browser session" src={embeddedViewerUrl(url)} allow="fullscreen; clipboard-read; clipboard-write" allowFullScreen referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin" className="bb-browser-frame block w-full border-0 bg-black" style={fill?{height:'100%',minHeight:0}:{aspectRatio:'16 / 9'}}/></>;
 }
 /** A 24px icon button. The label is both the accessible name and the tooltip. */
 function IconButton({label,icon,onClick,disabled}:{label:string;icon:string;onClick:()=>void;disabled?:boolean}){
@@ -35,12 +36,12 @@ export function BrowserLive({message}:PluginMessageDirectiveProps){
   const status=error?<span role="alert" className="min-w-0 truncate text-destructive" title={error}>{error}</span>
     :view===null?<span className="text-muted-foreground">Loading…</span>
     :watching?<span className="text-muted-foreground">View only</span>
-    :view.kind==='local'?<span className="min-w-0 truncate text-muted-foreground">This browser is local. Browser handoffs will notify you here.</span>
+    :view.kind==='local'?<span className="min-w-0 text-muted-foreground">Desktop streaming unavailable. Use a handoff for page controls or enable the optional Sandboxes desktop integration.</span>
     :view.kind==='handoff'?<span className="min-w-0 truncate text-muted-foreground">Use the browser handoff in this chat.</span>
     :busy?<span className="text-muted-foreground">Opening…</span>:<span className="text-muted-foreground">Closed</span>;
   const actions=watching?<>
     <IconButton label="Fullscreen" icon="Maximize2" onClick={()=>void frame.current?.requestFullscreen?.().catch(()=>{})}/>
-    <IconButton label="Open in new tab" icon="ExternalLink" onClick={()=>window.open(watching,'_blank','noopener,noreferrer')}/>
+    <IconButton label="Open in new tab" icon="ExternalLink" onClick={()=>{if(frame.current)void popoutViewer(frame.current).catch(cause=>setError(cause.message));}}/>
     <IconButton label="Close view" icon="X" disabled={busy} onClick={()=>void change(false)}/>
   </>:view?.kind==='closed'&&!closedHere?<IconButton label="Show live browser" icon="Eye" disabled={busy} onClick={()=>void change(true)}/>:null;
   return <div className="my-2 overflow-hidden rounded-lg border border-border bg-background text-sm">

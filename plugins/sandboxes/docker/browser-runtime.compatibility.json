@@ -16,6 +16,11 @@
       "sourceCommit": "cdbb32476daeef130bfbf7f01547ef2124a3bbe1",
       "inputsSha256": "2797d4586c41195841853ca8556a00d97062821f5741f79e849373794e544f96",
       "archiveSha256": "2a01f7cc4df833dc7b92e373693be65f77fb5282c30cd8c7cb06c75d646d1cbf"
+    },
+    {
+      "sourceCommit": "e73eb7f9028dcdcbe93319dae1faafbceaa0f02c",
+      "inputsSha256": "1a938edc3a3248da5d26d9bac0d65ec94357ecb181c2e226f8b5fef670a600b1",
+      "archiveSha256": "989b9279af4460dd9936369cfbaa71e714d710fa8daec9932eb95f954385a184"
     }
   ]
 }
