@@ -1,5 +1,10 @@
 # Unreleased
 
+- Prepare one grant-bounded pop-out ticket per viewer generation. Open through
+  BB's public navigation API synchronously, without blank windows or window
+  handles. Preserve inline ownership until consumption and clear cached URLs
+  on ownership loss, expiry or session replacement. Standalone viewers use
+  prepared `noopener` links.
 - Enforce one viewer lease per desktop grant, including direct links. Transfer
   pop-out ownership with single-use tickets; return explicitly with View here.
   Fullscreen keeps the same frame and connection.

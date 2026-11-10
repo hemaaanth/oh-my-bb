@@ -1328,6 +1328,8 @@ function startNativeBrowser(identity, children, placement = "desktop") {
           `--load-extension=${join(runtimeDirectory, "../browser-extension")}`,
           `--window-size=${NATIVE_WINDOW.width},${NATIVE_WINDOW.height}`,
           ...(display ? ["--start-maximized"] : []),
+          // Xvnc's GLX clock can report 1 Hz despite a 60 Hz private screen.
+          ...(display && identity.thread ? ["--disable-gpu-vsync"] : []),
           "about:blank",
         ];
       // On the private display Brave draws only on X. It keeps the login

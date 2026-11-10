@@ -5,6 +5,7 @@ import {mkdir,mkdtemp,readFile,writeFile,rm,chmod} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {expect,it} from 'vitest';
+import {setTimeout as delay} from 'node:timers/promises';
 import {createFakePluginHost,makeThreadResponse,makeHostResponse} from '@get-bb/plugin-sdk/testing';
 import {registerBrowserHandoff} from '../src/browser-handoff.js';
 // Read-only X11 diagnostics. Brave Shields can mask DOM screen/outer-window dimensions.
@@ -42,6 +43,7 @@ child.once('exit',(code,signal)=>{appendFileSync(process.env.BB_TEST_ENGINE_EXIT
  const gateReached=Promise.withResolvers<void>();let releaseGate=()=>{};
  const server=createServer((req,res)=>{
   if(req.url==='/gate'){releaseGate=()=>res.end('released');gateReached.resolve();return;}
+  if(req.url==='/motion'){res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Native motion fixture</title><style>body{margin:0;background:#121212;color:white}#box{position:absolute;top:200px;width:40px;height:350px;background:rgb(255,0,0);animation:move 3s linear infinite}@keyframes move{from{transform:translateX(100px)}to{transform:translateX(1700px)}}</style><span id="counter"></span><div id="box"></div><script>let n=0;function tick(){document.querySelector("#counter").textContent=++n;requestAnimationFrame(tick)}requestAnimationFrame(tick)</script>');return;}
   const account=new URL(req.url!,'http://fixture').searchParams.get('account');
   if(account)res.setHeader('Set-Cookie',`fixture=${account}; Path=/; SameSite=Lax; Max-Age=3600`);
   res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Native desktop fixture</title><h1>Native fixture</h1><label>Name<input id="name"></label><button onclick="document.querySelector(\'h1\').textContent=\'Saved \'+document.querySelector(\'#name\').value">Save</button>');
@@ -88,6 +90,10 @@ child.once('exit',(code,signal)=>{appendFileSync(process.env.BB_TEST_ENGINE_EXIT
  const threads=['thr_native_fixture_a','thr_native_fixture_b','thr_native_fixture_missing'];let receipt:Record<string,unknown>={};
  try{
   await seed('seed-one');await run(threads[0]!,['open',url]);expect(await value(threads[0]!,'document.cookie')).toBe('fixture=seed-one');
+  // System-managed extensions may open first-install tabs. Settle only this
+  // disposable profile before visual proof, without changing policy or flags.
+  const initial=await record(threads[0]!);await delay(12000);
+  await run(threads[0]!,['close','--all']);await retired(threads[0]!,initial,'first-install fixture profile settled');
   await run(threads[0]!,['open',url+'/?account=A']);await run(threads[1]!,['open',url+'/?account=B']);
   const a=await record(threads[0]!),b=await record(threads[1]!),initialMarkers=await markers(threads[0]!);
   for(const key of ['profile','pid','windowClass'])expect(a[key]).not.toBe(b[key]);
@@ -107,6 +113,21 @@ child.once('exit',(code,signal)=>{appendFileSync(process.env.BB_TEST_ENGINE_EXIT
   const query=spawnSync('python',['-c',displayGeometry],{env:{...process.env,DISPLAY:reopened.display.name,XAUTHORITY:reopened.display.authority},encoding:'utf8'});
   if(query.status!==0)throw Error('Owned X11 geometry query failed: '+query.stderr);const geometry=JSON.parse(query.stdout);
   expect(geometry).toMatchObject({width:1920,height:1080});expect(geometry.windows).toContainEqual({width:1920,height:1080,x:0,y:0});
+  await run(threads[0]!,['open',url+'/motion']);await delay(5000);
+  // No eval/read/screenshot during measurement: those commands emulate focus.
+  const started=Date.now(),capture=spawnSync('ffmpeg',['-hide_banner','-loglevel','error','-f','x11grab','-framerate','60','-video_size','1920x1080','-i',reopened.display.name,'-t','4','-filter_threads','1','-vf','format=rgb24,crop=1920:2:0:400','-threads','1','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],{env:{...process.env,XAUTHORITY:reopened.display.authority},timeout:15000,maxBuffer:16*1024*1024});
+  if(capture.status!==0)throw Error('Independent root motion capture failed: '+capture.stderr);
+  const positions:Array<number|null>=[],bytesPerFrame=1920*2*3;
+  for(let offset=0;offset+bytesPerFrame<=capture.stdout.length;offset+=bytesPerFrame){
+   let red:number|null=null;for(let x=0;x<1920;x++){const i=offset+x*3;if(capture.stdout[i]!>200&&capture.stdout[i+1]!<80&&capture.stdout[i+2]!<80){red=x;break;}}positions.push(red);
+  }
+  let changes=0,freeze=0,longest=0,prior=positions[0];
+  for(const position of positions){if(position===prior)freeze++;else{changes++;longest=Math.max(longest,freeze/60);freeze=1;prior=position;}}
+  longest=Math.max(longest,freeze/60);
+  const motion={rootFrames:positions.length,positionChanges:changes,motionHz:changes/((Date.now()-started)/1000),longestFreezeSeconds:longest,missingBoxFrames:positions.filter(value=>value===null).length};
+  receipt.motion=motion;
+  if(storage&&motion.missingBoxFrames)spawnSync('ffmpeg',['-y','-hide_banner','-loglevel','error','-f','x11grab','-video_size','1920x1080','-i',reopened.display.name,'-frames:v','1',join(storage,'native-motion-failure.png')],{env:{...process.env,XAUTHORITY:reopened.display.authority},timeout:10000});
+  expect(motion.rootFrames).toBe(240);expect(motion.missingBoxFrames).toBe(0);expect(changes).toBeGreaterThan(160);expect(longest).toBeLessThan(0.25);
   if(storage)await run(threads[0]!,['screenshot',join(storage,'native-fixture-page.png')]);
   const leaseCommand=start(threads[0]!,['--json','eval',`fetch(${JSON.stringify(url+'/gate')}).then(()=>({leaseFinished:true}))`]);
   await Promise.race([gateReached.promise,leaseCommand.result.then(()=>{throw Error('Lease command finished before reaching the fixture gate');})]);
@@ -136,7 +157,7 @@ child.once('exit',(code,signal)=>{appendFileSync(process.env.BB_TEST_ENGINE_EXIT
   await seed('seed-three');await run(threads[2]!,['thread','close']);await retired(threads[2]!,missing,'thread close with no initial seed');
   await run(threads[2]!,['open',url]);expect(await value(threads[2]!,'document.cookie')).toBe('');expect(await markers(threads[2]!)).toEqual(missingMarkers);
   const last=await record(threads[2]!);await run(threads[2]!,['thread','discard']);await retired(threads[2]!,last,'explicit thread discard');
-  receipt={nativeA:a,nativeB:b,reopened,geometry,pageMetrics,cookiesAfterActualReplacement:cookies,seedMarkersPreserved:true,missingSeedNotReplaced:true,retirements,legacy:'sentinel unchanged',proof:'Actual bb-browser, Brave, Xvnc and Openbox. SDK lifecycle host RPCs execute the real CLI. Watch/hold checks cover lifecycle ownership, not a rendered BB viewer.'};
+  receipt={nativeA:a,nativeB:b,reopened,geometry,pageMetrics,motion,cookiesAfterActualReplacement:cookies,seedMarkersPreserved:true,missingSeedNotReplaced:true,retirements,legacy:'sentinel unchanged',proof:'Actual bb-browser, Brave, Xvnc and Openbox. Physical motion uses independent FFmpeg after CLI detachment. SDK lifecycle host RPCs execute the real CLI. Watch/hold checks cover lifecycle ownership, not a rendered BB viewer.'};
  }catch(error){receipt.error=String(error);throw error;}finally{
   releaseGate();for(const dispose of disposers)await dispose();
   // Emergency fixture cleanup only. Successful proof must leave no process

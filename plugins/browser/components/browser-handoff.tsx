@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { experimental_useQuestionFormHost, type PluginPendingInteractionProps } from "@get-bb/plugin-sdk/app";
 import { BrowserFrame } from "./browser-live";
 import { Button } from "./ui/button";
-import {popoutViewer} from "./viewer-controls";
+import {useViewerPopout} from "./viewer-controls";
 
 function ActionIcon({ name }: { name: "done" | "reply" | "cancel" | "send" | "external" | "note" }) {
   const paths = {
@@ -25,6 +25,7 @@ export function BrowserHandoff({ interaction, submit }: PluginPendingInteraction
   const frame=useRef<HTMLIFrameElement>(null);
   const [viewerError,setViewerError]=useState<string|null>(null);
   const payload = interaction.payload as { instructions?: unknown; host?: unknown; viewerUrl?: unknown; inlineViewer?: unknown; viewerNotice?:unknown } | null;
+  const popout=useViewerPopout(frame,payload?.inlineViewer===true&&typeof payload.viewerUrl==="string"?payload.viewerUrl:null);
   const instructions = typeof payload?.instructions === "string" && payload.instructions.trim() ? payload.instructions.trim() : "Complete the browser action.";
   const firstSentence = instructions.replace(/\s+/g, " ").split(/(?<=[.!?])\s+/u, 1)[0];
   const summary = firstSentence.length > 100 ? `${firstSentence.slice(0, 97).trimEnd()}…` : firstSentence;
@@ -44,7 +45,7 @@ export function BrowserHandoff({ interaction, submit }: PluginPendingInteraction
       <p className="min-w-0 flex-[1_1_16rem] truncate py-1.5 leading-5" title={firstSentence}>{summary}</p>
       <div className="flex shrink-0 items-center gap-1">
         {typeof payload?.viewerUrl === "string" && (payload.inlineViewer===true
-          ?<button type="button" className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-state-hover" aria-label="Open session" title="Open browser session" onClick={()=>{if(frame.current)void popoutViewer(frame.current).catch(cause=>setViewerError(cause.message));}}><ActionIcon name="external"/></button>
+          ?<button type="button" disabled={!popout.ready} className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-state-hover disabled:opacity-50" aria-label="Open session" title={popout.ready?"Open browser session":"Preparing session link; use View here if viewing elsewhere"} onClick={()=>{try{popout.open();}catch(cause){setViewerError(cause instanceof Error?cause.message:'Couldn’t open the session.');}}}><ActionIcon name="external"/></button>
           :<a className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-state-hover" href={payload.viewerUrl} target="_blank" rel="noreferrer" aria-label="Open session" title="Open browser session"><ActionIcon name="external" /></a>)}
         <span title="Done — action completed"><Button size="icon" className="size-8" disabled={busy} aria-label="Done" onClick={() => answer({ done: true })}><ActionIcon name="done" /></Button></span>
         <span title="Reply to agent"><Button size="icon" className="size-8" variant="ghost" disabled={busy} aria-label="Reply to agent" aria-expanded={replyOpen} onClick={() => setReplyOpen(!replyOpen)}><ActionIcon name="reply" /></Button></span>

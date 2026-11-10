@@ -92,13 +92,20 @@ window and declared origin; replies target that origin, never `*`. The first
 message cannot establish trust. CSP lists the same exact origins, not all
 `*.getbb.app` sites.
 
-BB Desktop Viewer v1 messages use `protocol: "bb-desktop-v1"` and a request `id`.
-Both packages validate exact origin and frame source. `transfer` returns a URL
-with a single-use, 30-second ticket. `accept` consumes a placement ticket;
-`takeover` is an explicit return; `release` ends ownership. State notifications
-contain `viewing` or `elsewhere`, not credentials. Reserve a blank popup
-synchronously, then navigate it only after ticket issuance and detach its opener.
-Issuance does not revoke the current viewer. Consumption does.
+BB Desktop Viewer v1 requests use `protocol: "bb-desktop-v1"` and a request `id`.
+Both packages validate exact origin, frame source and the current grant fragment.
+`transfer` returns `url` and absolute `expires`. The same unconsumed ticket is
+reused for the current generation until the outer fifteen-minute grant expires.
+`accept` consumes a placement ticket; `takeover` explicitly returns ownership;
+`release` ends it. `viewing` and `elsewhere` notifications clear client readiness.
+A `ready` notification carries the prepared URL and expiry only to the exact
+trusted declared parent. Components retain it only in memory and clear it on
+expiry, ownership loss or session replacement. The user's click synchronously
+calls public SDK `useBbNavigate().openUrl(url)`, respecting browser preference
+without requiring a `WindowProxy`. The standalone wrapper uses a prepared
+`target="_blank" rel="noopener noreferrer"` link. Never reserve `about:blank`
+or await a transfer before opening. SDK acceptance alone is not delivery proof.
+Issuance does not revoke the current viewer. Destination consumption does.
 
 The wrapper removes revoked frames and their workers. It never automatically
 reacquires after revocation or poll failure. **View here** explicitly returns

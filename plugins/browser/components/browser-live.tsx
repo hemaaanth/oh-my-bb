@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useRef,useState,type Ref} from 'react';
 import {experimental_Icon as Icon,useRealtime,useRpc,type PluginMessageDirectiveProps} from '@get-bb/plugin-sdk/app';
 import type {browserHandoffRpcContract, BrowserLiveState} from '../src/browser-handoff-contract';
-import {popoutViewer,embeddedViewerUrl} from './viewer-controls';
+import {useViewerPopout,embeddedViewerUrl} from './viewer-controls';
 
 const focusRing='focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
@@ -33,6 +33,7 @@ export function BrowserLive({message}:PluginMessageDirectiveProps){
     catch{setError(open?'The browser isn’t running. Ask the agent to open it again.':'Couldn’t close the view.');}finally{setBusy(false);}
   };
   const watching=view?.kind==='watch'&&view.url?view.url:null;
+  const popout=useViewerPopout(frame,watching);
   const status=error?<span role="alert" className="min-w-0 truncate text-destructive" title={error}>{error}</span>
     :view===null?<span className="text-muted-foreground">Loading…</span>
     :watching?<span className="text-muted-foreground">View only</span>
@@ -41,7 +42,7 @@ export function BrowserLive({message}:PluginMessageDirectiveProps){
     :busy?<span className="text-muted-foreground">Opening…</span>:<span className="text-muted-foreground">Closed</span>;
   const actions=watching?<>
     <IconButton label="Fullscreen" icon="Maximize2" onClick={()=>void frame.current?.requestFullscreen?.().catch(()=>{})}/>
-    <IconButton label="Open in new tab" icon="ExternalLink" onClick={()=>{if(frame.current)void popoutViewer(frame.current).catch(cause=>setError(cause.message));}}/>
+    <IconButton label="Open in new tab" icon="ExternalLink" disabled={!popout.ready} onClick={()=>{try{popout.open();}catch(cause){setError(cause instanceof Error?cause.message:'Couldn’t open the session.');}}}/>
     <IconButton label="Close view" icon="X" disabled={busy} onClick={()=>void change(false)}/>
   </>:view?.kind==='closed'&&!closedHere?<IconButton label="Show live browser" icon="Eye" disabled={busy} onClick={()=>void change(true)}/>:null;
   return <div className="my-2 overflow-hidden rounded-lg border border-border bg-background text-sm">

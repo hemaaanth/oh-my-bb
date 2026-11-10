@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 const app = await loadPluginApp(() => import("../app"));
@@ -47,11 +47,13 @@ it("uses a short retry message, allows cancellation and never displays raw error
   await waitFor(() => expect(submit).toHaveBeenLastCalledWith({done:false}));
 });
 
-it('keeps the inline viewer mounted when pop-out is blocked',async()=>{
+it('keeps the inline viewer mounted when the SDK cannot launch the prepared session',async()=>{
  const {slot}=render('Sign in.',undefined,{inlineViewer:true,viewerUrl:'https://sandbox--1234.getbb.app/#grant'});
- const frame=slot.getByTitle('Browser session'),open=vi.spyOn(window,'open').mockReturnValue(null);
+ const frame=slot.getByTitle('Browser session') as HTMLIFrameElement;
+ act(()=>{window.dispatchEvent(new MessageEvent('message',{origin:'https://sandbox--1234.getbb.app',source:frame.contentWindow,data:{protocol:'bb-desktop-v1',state:'ready',url:'https://sandbox--1234.getbb.app/#grant&ticket=one-use',expires:Date.now()+60000}}));});
  fireEvent.click(slot.getByRole('button',{name:'Open session'}));await slot.findByRole('alert');
- expect(slot.getByTitle('Browser session')).toBe(frame);open.mockRestore();
+ expect(slot.getByTitle('Browser session')).toBe(frame);
+ expect(slot.inspection.navigateCalls).toContainEqual({method:'openUrl',url:'https://sandbox--1234.getbb.app/#grant&ticket=one-use'});
 });
 it('does not embed local handoff viewers',()=>{
  const {slot}=render('Sign in.',undefined,{inlineViewer:false,viewerUrl:'https://server.getbb.app/viewer'});expect(slot.queryByTitle('Browser session')).toBeNull();

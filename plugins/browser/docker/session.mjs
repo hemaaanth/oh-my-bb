@@ -132,6 +132,8 @@ try {
         const manager=spawn('openbox',[],{detached:true,stdio:['ignore',log,log],env:{...process.env,DISPLAY:name,XAUTHORITY:authority,WAYLAND_DISPLAY:''}});try{await new Promise((resolve,reject)=>{manager.once('spawn',resolve);manager.once('error',reject);});}catch{await stop(display);closeSync(log);throw Error('Private session window manager unavailable; install Openbox on this host');}manager.unref();display.manager={pid:manager.pid,start:await processStart(manager.pid)};
       }
       const flags = [`--user-data-dir=${profile}`, '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-quic', '--disable-blink-features=AutomationControlled', '--window-size=1920,1080', ...(headless?[]:['--start-maximized']), ...(headless ? ['--headless=new'] : ['--ozone-platform=x11']), ...(process.getuid?.() === 0 ? ['--no-sandbox'] : [])];
+      // Xvnc's GLX refresh estimate can stall an otherwise active page at 1 Hz.
+      if (display) flags.push('--disable-gpu-vsync');
       if (identity.proxy) flags.push(`--proxy-server=${identity.proxy}`, '--proxy-bypass-list=<-loopback>', '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1', '--force-webrtc-ip-handling-policy=disable_non_proxied_udp');
       if (identity.userAgent) flags.push('--user-agent=' + identity.userAgent);
       await rm(join(profile, 'DevToolsActivePort'), { force: true });
