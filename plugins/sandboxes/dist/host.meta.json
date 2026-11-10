@@ -3,10 +3,10 @@
   "sdkVersion": "0.6.104",
   "artifactFormatVersion": 1,
   "pluginId": "sandboxes",
-  "pluginVersion": "0.3.0",
+  "pluginVersion": "0.3.1",
   "builtWith": {
     "bbVersion": "0.48.1",
     "pluginSdkVersion": "0.6.104"
   },
-  "artifactDigest": "626b83abbceb90464760d4cbae7d2bdfc4780d3602305cf0276da3227c92f389"
+  "artifactDigest": "c48a53c807141d054bf084fe456e7b82c6548179361837b25eda5ec05544581f"
 }

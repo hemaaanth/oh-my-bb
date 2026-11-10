@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
   "packageName": "bb-plugin-browser",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "sourceRepository": "https://github.com/hemaaanth/oh-my-bb",
-  "sourceCommit": "cdbb32476daeef130bfbf7f01547ef2124a3bbe1",
-  "sourcePackageTree": "098a1e4fb89c8f8e2edc87c4ceaeeba6e6cd4ab1",
+  "sourceCommit": "e89e1e63dd8720c871cd9659f4f84452c6bf0e76",
+  "sourcePackageTree": "2aba223e4e862b87802ef5f7a8ecba42dace4ba4",
   "buildRecipe": "gnu-tar-sort-name-mtime-0-owner-0-v1",
-  "inputsSha256": "2797d4586c41195841853ca8556a00d97062821f5741f79e849373794e544f96",
-  "archiveSha256": "2a01f7cc4df833dc7b92e373693be65f77fb5282c30cd8c7cb06c75d646d1cbf",
+  "inputsSha256": "7391756870141945060d3d06f8adf2a14d9d0fe1a869f04344f474ac452d8fda",
+  "archiveSha256": "9ba63aa71245244350aa545a7b9c5b5eeaba92072e0b64d3d8401bfb2d7499ec",
   "inputs": {
     "package.json": {
       "mode": 420,
-      "sha256": "774e7ad0ee146c275b876e2546bd7c0b326c78dfd0dac33fb8d84bb1286f2183"
+      "sha256": "cf087c40ba411eb541663f345cc36b7b71e284d7a36f8a9b7f89da6cf8c707ab"
     },
     "docker/auth-state.mjs": {
       "mode": 420,
@@ -31,11 +31,11 @@
     },
     "docker/session.mjs": {
       "mode": 420,
-      "sha256": "49f85ede3fa4d51f3d1282064a9330c52800866a6ba81fc7f7b7be4c0a2577b7"
+      "sha256": "0a6177d91f9b594243f016487222a4e88732d2550977f55cf5fdf8905f9acde7"
     },
     "docker/trusted-browser.mjs": {
       "mode": 493,
-      "sha256": "83a500ae19ffc2f8ec5c151ed69a16ed5b53d442b1cf7749a4c801d018b52b73"
+      "sha256": "98cb44733cf008d9b83d8e4b31fbc218362e81cc1010e518a3b20a99b20f3d13"
     },
     "browser-extension/Inter-OFL.txt": {
       "mode": 420,

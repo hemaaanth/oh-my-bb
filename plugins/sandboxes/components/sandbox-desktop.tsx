@@ -1,6 +1,7 @@
-import {useCallback,useEffect,useRef,useState,useSyncExternalStore,type Ref,type RefObject} from 'react';
+import {useCallback,useEffect,useRef,useState,useSyncExternalStore,type RefObject} from 'react';
 import {experimental_Icon as Icon,useRealtime,useRpc,type ExperimentalThreadActionTabProps,type PluginMessageDirectiveProps,type PluginThreadHeaderActionProps,useBbNavigate} from '@get-bb/plugin-sdk/app';
 import type {sandboxDesktopRpcContract,SandboxDesktopView} from '../src/desktop-contract.js';
+import {popoutViewer,viewerRequest} from './viewer-controls';
 
 const focusRing='focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
@@ -41,29 +42,42 @@ function useOnScreen(ref:RefObject<HTMLElement|null>,key:string){
 }
 const useShown=(key:string)=>useSyncExternalStore(subscribe,()=>shown(key),()=>false);
 
-type Frame={url:string;ready:boolean};
-/** Stacks voxl frames. A new stream loads hidden under the old one and replaces it once it is drawing. */
-function DesktopFrames({url,control,panel,frameRef,onPending}:{url:string|null;control:boolean;panel:boolean;frameRef:Ref<HTMLDivElement>;onPending:(pending:boolean)=>void}){
-  const [frames,setFrames]=useState<Frame[]>(()=>url?[{url,ready:true}]:[]);
-  useEffect(()=>{setFrames(list=>!url?[]:list.at(-1)?.url===url?list:[...list.filter(frame=>frame.ready).slice(-1),{url,ready:!list.some(frame=>frame.ready)}]);},[url]);
-  const reveal=useCallback((url:string)=>setFrames(list=>list.some(frame=>frame.url===url)?[{url,ready:true}]:list),[]);
-  const pending=frames.find(frame=>!frame.ready)?.url??null;
-  // voxl has no cross-origin ready signal. Its page connects about a second after it loads.
-  useEffect(()=>{onPending(!!pending);if(!pending)return;const timer=setTimeout(()=>reveal(pending),6000);return()=>clearTimeout(timer);},[pending,reveal,onPending]);
-  if(!frames.length)return null;
-  return <div ref={frameRef} className={`relative bg-black ${control?'outline outline-2 -outline-offset-2 outline-foreground/60':''}`} style={panel?{flex:1,minHeight:0}:{aspectRatio:'16 / 9',maxHeight:'70vh'}}>
-    {frames.map(frame=><iframe key={frame.url} title="Sandbox desktop" src={frame.url} allow="clipboard-read; clipboard-write" referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin"
-      onLoad={frame.ready?undefined:()=>setTimeout(()=>reveal(frame.url),2000)}
-      className={`absolute inset-0 block size-full border-0 bg-black ${frame.ready?'':'pointer-events-none opacity-0'}`}/>)}
+// Placement coordinates only this document. The server lease remains authoritative across tabs.
+const frames=new Map<string,Set<{panel:boolean;frame:HTMLIFrameElement}>>();
+function DesktopFrame({url,control,panel,threadId,yielded,frameRef,viewerRef}:{url:string|null;control:boolean;panel:boolean;threadId:string;yielded:boolean;frameRef:RefObject<HTMLDivElement|null>;viewerRef:RefObject<HTMLIFrameElement|null>}){
+  const [loaded,setLoaded]=useState(false);
+  useEffect(()=>{setLoaded(false);},[url]);
+  useEffect(()=>{
+    const frame=viewerRef.current;if(!frame||!url)return;
+    const entry={panel,frame},set=frames.get(threadId)??new Set();set.add(entry);frames.set(threadId,set);
+    return()=>{set.delete(entry);if(!set.size)frames.delete(threadId);};
+  },[threadId,panel,url,viewerRef]);
+  useEffect(()=>{
+    if(!loaded||yielded||!viewerRef.current)return;
+    const destination=viewerRef.current,source=[...(frames.get(threadId)??[])].find(value=>value.panel!==panel)?.frame;
+    if(!source)return;
+    let cancelled=false;
+    // A revoked inline wrapper cannot issue a ticket, so placement never steals from a pop-out.
+    void viewerRequest(source,'transfer').then(async({url})=>{
+      if(cancelled||!url)return;
+      const ticket=new URLSearchParams(new URL(url).hash.slice(1).split('&').slice(1).join('&')).get('ticket');
+      if(ticket)await viewerRequest(destination,'accept',ticket);
+    }).catch(()=>{});
+    return()=>{cancelled=true;};
+  },[loaded,yielded,panel,threadId,viewerRef]);
+  if(!url)return null;
+  return <div ref={frameRef} hidden={yielded} className={`bb-desktop-container relative bg-black ${control?'outline outline-2 -outline-offset-2 outline-foreground/60':''}`} style={yielded?{display:'none'}:panel?{flex:1,minHeight:0}:{aspectRatio:'16 / 9'}}>
+    <style>{'.bb-desktop-container:fullscreen{width:100%;height:100%;aspect-ratio:auto!important}'}</style>
+    <iframe ref={viewerRef} title="Sandbox desktop" src={url} allow="clipboard-read; clipboard-write; fullscreen" allowFullScreen referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin" onLoad={()=>setLoaded(true)} className="bb-desktop-frame absolute inset-0 block size-full border-0 bg-black"/>
   </div>;
 }
 
 /** The sandbox's own display. The same view backs the inline directive and the side panel. */
 function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
   const rpc=useRpc<typeof sandboxDesktopRpcContract>();
-  const [view,setViewState]=useState<SandboxDesktopView|null>(()=>remembered(threadId)),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[pending,setPending]=useState(false);
+  const [view,setViewState]=useState<SandboxDesktopView|null>(()=>remembered(threadId)),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
   const setView=useCallback((next:SandboxDesktopView)=>{remember(threadId,next);setViewState(next);},[threadId]);
-  const frame=useRef<HTMLDivElement>(null),root=useRef<HTMLDivElement>(null);
+  const frame=useRef<HTMLDivElement>(null),viewer=useRef<HTMLIFrameElement>(null),root=useRef<HTMLDivElement>(null);
   useOnScreen(root,(panel?'panel:':'inline:')+threadId);
   const panelShown=useShown('panel:'+threadId),yielded=!panel&&panelShown;
   const refresh=useCallback(()=>{void rpc.call('getSandboxDesktop',{threadId}).then(setView).catch(()=>setView({kind:'closed'}));},[rpc,threadId,setView]);
@@ -78,7 +92,7 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
   const until=open?' · until '+new Date(open.expires).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'';
   const status=error?<span role="alert" className="min-w-0 truncate text-destructive" title={error}>{error}</span>
     :view===null?<span className="text-muted-foreground">Loading…</span>
-    :busy||pending?<span className="text-muted-foreground">{open?'Switching…':'Opening…'}</span>
+    :busy?<span className="text-muted-foreground">{open?'Switching…':'Opening…'}</span>
     :open&&yielded?<span className="min-w-0 truncate text-muted-foreground">Showing in the side panel</span>
     :open?.viewOnly?<span className="min-w-0 truncate tabular-nums text-muted-foreground">Watching{until}</span>
     :open?<span className="min-w-0 truncate tabular-nums font-medium text-foreground">You’re in control{until}</span>
@@ -88,7 +102,7 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
       ?<ModeButton label="Take control" disabled={busy} onClick={()=>void change(true,false)}/>
       :<ModeButton label="Stop control" active disabled={busy} onClick={()=>void change(true,true)}/>}
     <IconButton label="Fullscreen" icon="Maximize2" onClick={()=>void frame.current?.requestFullscreen?.().catch(()=>{})}/>
-    <IconButton label="Open in new tab" icon="ExternalLink" onClick={()=>window.open(open.url,'_blank','noopener,noreferrer')}/>
+    <IconButton label="Open in new tab" icon="ExternalLink" onClick={()=>{if(viewer.current)void popoutViewer(viewer.current).catch(cause=>setError(cause.message));}}/>
     <IconButton label="Close view" icon="X" disabled={busy} onClick={()=>void change(false)}/>
   </>:view===null?null:<IconButton label="Show desktop" icon="Play" disabled={busy} onClick={()=>void change(true)}/>;
   const header=<div className={`flex h-8 shrink-0 items-center gap-1.5 pl-3 pr-1 text-xs ${open&&!yielded?'border-b border-border':''}`}>
@@ -97,9 +111,8 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
     <span className="flex min-w-0 flex-1 items-center">{status}</span>
     <span className="ml-1 flex shrink-0 items-center gap-0.5">{actions}</span>
   </div>;
-  // The desktop keeps a fixed 16:9 size; voxl scales it to fit and centers it.
-  // The header owns fullscreen. Without the fullscreen permission voxl hides its own button.
-  const body=<DesktopFrames url={yielded?null:open?.url??null} control={!!open&&!open.viewOnly} panel={panel} frameRef={frame} onPending={setPending}/>;
+  // The wrapper and voxl preserve contain scaling; fullscreen never swaps the frame.
+  const body=<DesktopFrame url={open?.url??null} control={!!open&&!open.viewOnly} panel={panel} threadId={threadId} yielded={yielded} frameRef={frame} viewerRef={viewer}/>;
   return panel
     ?<div ref={root} className="flex h-full flex-col text-sm">{header}{body}</div>
     :<div ref={root} className="my-2 overflow-hidden rounded-lg border border-border bg-background text-sm">{header}{body}</div>;

@@ -1,5 +1,15 @@
 # Unreleased
 
+- Enforce one viewer lease per desktop grant, including direct links. Transfer
+  pop-out ownership with single-use tickets; return explicitly with View here.
+  Fullscreen keeps the same frame and connection.
+- Remove retiring streams and stacked frames. Serialize mode replacement and
+  close so a pending open cannot survive cleanup.
+- Keep desktop geometry at 1920×1080, disable remote resize and preserve contain
+  scaling. Refuse nonconforming live displays without changing their coordinates.
+- Keep Browser desktop RPC optional and unchanged. Browser runtime archive and
+  provenance must be regenerated from committed Browser source before release.
+
 - Show the sandbox's own desktop inline in chat, in a thread **Desktop** side panel, or as a link from `bb sandbox desktop [--view-only|--close]`. The agent opens it with the `sandbox_desktop` tool. All three share one fifteen-minute voxl grant per thread. The host finds or starts the shared display itself.
 
 - Stream sandbox desktops with voxl (H.264 over WebSocket) instead of x11vnc and noVNC. The image builds voxl 0.3.3 from source and no longer installs x11vnc; `bb-sandbox-display` starts Xvfb with `-shmem` and drops `--vnc`. There is no fallback: rebuild older images to view their desktops. The `desktopOpenV1` RPC and its URL are unchanged.

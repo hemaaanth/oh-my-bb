@@ -325,6 +325,16 @@ browser implementation. Build Browser before building the sandbox image.
 Do not expose raw VNC for browser handoff. The Browser attention card opens its
 authenticated private viewer without switching desktop focus or workspaces.
 
+Each desktop grant permits one viewer, including direct links. Pop-out transfers
+the lease instead of opening a second stream. The card becomes a non-streaming
+placeholder; use **View here** to return. Fullscreen keeps the existing frame
+and connection. Mode changes close the old stream before starting the new one.
+The screen stays at 1920×1080 and scales up/down with contain fitting and
+letterboxing. Old live displays with another geometry require an explicit
+drained restart. No automatic resize or capture of the user's desktop occurs.
+See [the viewer contract](CONTRACTS.md#exclusive-desktop-viewer) for the wire
+protocol and release boundary.
+
 ### Attaching captures
 
 
