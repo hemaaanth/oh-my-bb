@@ -26,7 +26,9 @@ Browser checks the calling plugin and asks Sandboxes to validate a sandbox host 
 
 The extension popup shows relay connectivity, cookie-export status and the last successful sync. It includes Sync now and Settings controls. Its settings and popup use the Pages palette, local Inter font and BB mark.
 
-Native BB threads each get a persistent private profile, Brave process and authenticated X display. The configured native profile name is a namespace, not a shared live profile. Their desktops stay at 1920×1080 and normal windows maximize there; dialogs keep their natural size. They never draw on the user's desktop. No-thread native and explicit existing/relay behavior remain unchanged. Verified native idle processes stay running after close to avoid the observed Brave shutdown crash; each idle thread therefore retains a browser and display until explicit managed recovery.
+Native BB threads each get a persistent private profile, Brave process and authenticated X display. The configured native profile name is a namespace, not a shared live profile. Their desktops stay at 1920×1080 and normal windows maximize there; dialogs keep their natural size. They never draw on the user's desktop. No-thread native and explicit existing/relay behavior remain unchanged.
+
+Closing the last native thread session cleanly stops its owned Brave, Openbox and Xvnc. A partial session close leaves the other sessions running. Active command leases and manual holds prevent teardown. Automatic idle cleanup leaves live views and pending handoffs alone. Archive/delete and closing an idle view also retire its native processes. Profiles and first-use seed markers remain. Persistent cookies survive a clean restart; browser-session cookies may not. Normal thread shutdown does not force-kill Brave. If clean shutdown cannot be confirmed, the command fails and preserves the runtime record for cleanup.
 
 Pair in Settings → Browser → More → Browser connection. The extension supports the regular-profile relay and optional cookie export. New pairings leave cookie export off. Existing paired installations retain legacy export and project permissions. New isolated sessions never subscribe to later source changes. Explicit refresh requires a paused session and named seed domains. Saving a seed is explicit and private.
 
@@ -91,18 +93,28 @@ and synthetic loopback sites, not your regular profile, login state or tailnet.
 Native/paired-extension and production BB shell checks are separate acceptance
 steps; a headless pass does not cover them.
 
-Native desktop isolation has a separate disposable Linux/Hyprland fixture:
+Native desktop isolation and terminal cleanup have a separate disposable Linux fixture:
 
 ```sh
 BB_TEST_REAL_NATIVE=1 npm test -- test/native-desktop-live.test.ts
 ```
 
-It requires this package's `bb-browser` CLI, Python and libX11. It uses temporary
-profiles and loopback cookies. It checks distinct native identities, first-use
-and missing-seed behavior, close/reopen continuity, fresh extension grouping,
-and physical X root/maximized-window geometry. DOM `screen` and `outerWidth`
-metrics are not physical-display proof. When `BB_THREAD_STORAGE` is set, the
-fixture writes a JSON receipt and page screenshot there.
+It requires this package's `bb-browser` CLI, the actual Brave engine, Xvnc,
+Openbox, xauth, Python/libX11 and `prlimit`. Its default engine is
+`/opt/brave-origin-bin/brave`; set `BB_TEST_BRAVE_EXECUTABLE` for another engine
+and `BB_TEST_CHROME_WRAPPER` for its launcher environment. Do not supply a
+wrapper that masks the engine's exit status.
+
+The fixture uses temporary profiles and synthetic loopback cookies. It proves
+normal engine exit, old Brave/Xvnc/Openbox PIDs gone, new PIDs on reopen, and
+immediately added/changed persistent cookies retained. It also checks partial
+sessions, active command leases, manual holds, lifecycle watch/archive/delete
+cleanup, first-use/missing seed behavior, fresh extension grouping and physical
+1920×1080 X geometry. SDK host fixtures drive the actual CLI for lifecycle
+checks; they are not rendered BB viewer proof. DOM `screen` and `outerWidth`
+metrics are not physical-display proof. With `BB_THREAD_STORAGE`, it writes a
+JSON receipt and page screenshot there. Successful proof uses no emergency
+process cleanup.
 
 The optional consumer-composition regression runs actual Browser and Sandboxes
 implementations in separate package-local processes, connected by their RPC
@@ -133,6 +145,7 @@ Before deployment, run a real provider image with two simultaneous headed sessio
 - Give native threads separate persistent profiles/processes/displays and seed default authentication only once. Preserve legacy profiles and reject live legacy thread attachment.
 - Use one exclusive viewer lease, explicit pop-out/return and fixed 1920×1080 contain scaling. Remove overlapping mode-replacement streams. Keep desktop integration optional with an honest page-only handoff fallback.
 - Accept this server's exact local/configured/Connect origins without trusting unrelated Connect users. Keep page-only links app-relative. Retain Browser cleanup ownership before desktop opens and reject fallback/resume after uncertain cleanup.
+- Cleanly retire fully closed thread-native Brave, Openbox and Xvnc processes under their existing locks and leases. Preserve profiles, first-use seed markers and persistent cookies. Keep active commands, manual holds and live-view idle protection. Leave no-thread legacy/existing/relay lifecycle unchanged.
 
 ### Public package 0.3.0
 

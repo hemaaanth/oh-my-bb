@@ -1109,10 +1109,9 @@ function liveNativeBrowser(identity) {
 }
 
 function terminate(pid) {
-  // This is only recovery for an invalid or failed native browser. Normal
-  // session close leaves the verified managed Brave running because this Brave
-  // Origin build crashes during every tested graceful shutdown path. SIGKILL
-  // avoids another core dump and the next launch reloads trusted state.
+  // Recovery only. The old shared desktop-native Brave crashed on graceful
+  // shutdown, so its recovery path remains unchanged. Fully closed private
+  // thread browsers use the verified clean-close path below instead.
   try {
     process.kill(-pid, "SIGKILL");
   } catch {
@@ -1414,6 +1413,28 @@ function otherLeases(identity) {
   return live;
 }
 
+// Only a fully closed thread can retire its private process. Call under the
+// native and thread locks, after releasing this command's lease. The last
+// finishing command also checks, so a close racing a command cannot leak it.
+function retireThreadNativeBrowser(identity) {
+  if (!identity.thread || existsSync(threadHoldPath()) || otherLeases(identity) || readThreadRecord(identity) || sessionList(identity).length) return;
+  const recorded = readNativeBrowser(identity);
+  if (!recorded) return;
+  const browser = liveNativeBrowser(identity);
+  if (recorded.placement !== "private" || recorded.display?.geometry !== "1920x1080") fail("This closed native desktop uses an old placement or geometry; it was preserved for an explicit drain");
+  if (alive(recorded.pid) && !browser) fail("Cannot verify the closed thread's native process; it was preserved");
+  if (browser) {
+    logNativeLifecycle(identity, "shutdown-requested", browser, { method: "Browser.close" });
+    threadCdp(identity, browser, "shutdown");
+    if (!waitFor(() => !alive(browser.pid), 15_000)) fail("The closed thread's native browser did not exit; its profile and display were preserved");
+  }
+  if (profileHolder(identity.profile)) fail("The thread profile is still in use; its display was preserved");
+  stopPrivateDisplay(recorded.display);
+  clearNativeRuntime(identity);
+  rmSync(recordPath(identity), { force: true });
+  logNativeLifecycle(identity, "retired", recorded, { method: "Browser.close" });
+}
+
 // Under the profile's lock: checks the recorded browser again (pid, profile,
 // class, loopback port), adds the window rule again, and checks its windows.
 // A browser that fails a compositor check is preserved and the command fails. Without a
@@ -1467,7 +1488,11 @@ function withNativeBrowser(identity, launch, action) {
   try {
     return action(browser);
   } finally {
-    if (browser) rmSync(leasePath(identity), { force: true });
+    if (identity.thread) withNativeLock(identity, () => {
+      rmSync(leasePath(identity), { force: true });
+      if (!otherLeases(identity) && !existsSync(threadHoldPath())) withThreadLock(identity, () => retireThreadNativeBrowser(identity));
+    });
+    else if (browser) rmSync(leasePath(identity), { force: true });
   }
 }
 
@@ -1563,12 +1588,9 @@ function nativeFlags(identity, browser) {
   return browser ? [...flags, "--cdp", String(browser.port), "--pin-tab"] : flags;
 }
 
-// Each named session pins its own tab in the one native browser. Closing a
-// session closes its tab and detaches. The verified managed Brave stays running
-// even after the last close: this Brave Origin build has crashed during both
-// CDP Browser.close and normal compositor window close. Listing sessions never
-// launches Brave. A failed identity/window check still discards it with
-// SIGKILL, drops the state marker, and relaunches on the next command.
+// No-thread legacy native sessions retain their shared browser. Its desktop
+// shutdown crashed on this host; thread-private X11 retirement is separate.
+// Each named session closes only its tab and detaches. Listing never launches.
 function closeNative(identity, args, command, inherit) {
   if (command === "session") return runAgentBrowser([...nativeFlags(identity, null), ...args], { identity, inherit }).status ?? 1;
   const all = args.includes("--all");
@@ -2304,6 +2326,10 @@ let step = 'connect';
    catch (error) { if (!/session.*not found|no session|target.*closed/i.test(error.message)) throw error; }
    finally { step = operation; }
  };
+ if (input.op === 'shutdown') {
+   await call('Browser.close', {}, undefined, 5000);
+   ws.close(); process.stdout.write('{}'); return;
+ }
  if (input.op === 'syncCookies') {
    const current = (await call('Storage.getCookies')).cookies;
    const key = cookie => JSON.stringify([cookie.name, cookie.domain, cookie.path || '/', cookie.partitionKey || null]);
@@ -2560,19 +2586,25 @@ function threadTabCommand(identity, browser, session, args) {
     if (runAgentBrowser([...flags, "tab", targetId], {identity, timeoutMs:30_000}).status !== 0) fail("could not select the owned tab");
     if (op === "new" && args[1]) return runAgentBrowser([...flags, "open", args[1]], {identity, inherit:true}).status ?? 1;
   } else {
-    runAgentBrowser([...flags, "close"], {identity, timeoutMs:30_000});
+    if (identity.backend === "native") closeThreadSessions(identity, browser, [session]);
+    else runAgentBrowser([...flags, "close"], {identity, timeoutMs:30_000});
     rmSync(threadRecordPath(identity), {force:true});
   }
   console.log(JSON.stringify({success:true})); return 0;
+}
+function closeThreadSessions(identity, browser, sessions) {
+  for (const session of sessions) {
+    const flags = identity.backend === "native" ? nativeFlags(identity, browser) : identity.backend === "existing" ? existingFlags(identity, false) : launchFlags(identity, [], false);
+    const result = runAgentBrowser([...flags, "--session", session, "close"], {identity, timeoutMs:30_000});
+    if (identity.backend === "native" && result.status !== 0) fail("Could not detach the thread's native browser session; its process was preserved");
+  }
+  if (identity.backend === "native" && sessions.length && !waitFor(() => !sessionList(identity).some(name => sessions.includes(name)), 5_000)) fail("Native browser sessions are still active; the process was preserved");
 }
 function closeThreadBrowser(identity, session = null) {
   const close = (browser) => {
     if (existsSync(threadHoldPath())) return 0;
     const sessions = sessionList(identity).filter(name => name.startsWith(threadPrefix()) && (!session || name === session));
-    for (const session of sessions) {
-      const flags = identity.backend === "native" ? nativeFlags(identity, browser) : identity.backend === "existing" ? existingFlags(identity, false) : launchFlags(identity, [], false);
-      runAgentBrowser([...flags, "--session", session, "close"], {identity, timeoutMs:30_000});
-    }
+    closeThreadSessions(identity, browser, sessions);
     const record = readThreadRecord(identity);
     if (browser && record && session && Object.keys(record.sessions).some(name => name !== session)) {
       const targetId = record.sessions[session];
