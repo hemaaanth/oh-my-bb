@@ -201,6 +201,10 @@ To let the user see or use the sandbox's own display, call the `sandbox_desktop`
 Only one viewer streams per desktop grant. Pop-out transfers ownership; use
 **View here** for explicit return, even after closing the pop-out. A blocked
 popup leaves the old viewer unchanged. Fullscreen keeps the same connection.
+Open session uses a prepared HTTPS link through this client's BB browser
+preference. It does not require a popup window handle. Preparing or launching
+the link does not transfer the lease; destination consumption does. A disabled
+control means the link is not ready or the frame no longer owns viewing.
 Do not open competing frames to improve connectivity. The fixed 1920×1080
 desktop scales up/down with letterboxing. Watch/control changes briefly stop
 the old stream before opening the next. Nonconforming live displays require a

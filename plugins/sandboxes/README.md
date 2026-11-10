@@ -329,6 +329,12 @@ Each desktop grant permits one viewer, including direct links. Pop-out transfers
 the lease instead of opening a second stream. The card becomes a non-streaming
 placeholder; use **View here** to return. Fullscreen keeps the existing frame
 and connection. Mode changes close the old stream before starting the new one.
+The wrapper prepares one grant-bounded ticket per ownership generation. The
+button opens its HTTPS URL through BB's public navigation API in the click,
+using the client's browser preference without a popup window handle. Preparation
+and launch retain the current stream until the destination consumes the ticket.
+Expired or revoked links are cleared. Standalone viewers use a prepared
+`noopener` link. A failed launch leaves the old viewer intact.
 The screen stays at 1920×1080 and scales up/down with contain fitting and
 letterboxing. Old live displays with another geometry require an explicit
 drained restart. No automatic resize or capture of the user's desktop occurs.

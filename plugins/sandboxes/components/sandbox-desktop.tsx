@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useRef,useState,useSyncExternalStore,type RefObject} from 'react';
 import {experimental_Icon as Icon,useRealtime,useRpc,type ExperimentalThreadActionTabProps,type PluginMessageDirectiveProps,type PluginThreadHeaderActionProps,useBbNavigate} from '@get-bb/plugin-sdk/app';
 import type {sandboxDesktopRpcContract,SandboxDesktopView} from '../src/desktop-contract.js';
-import {popoutViewer,viewerRequest,embeddedViewerUrl} from './viewer-controls';
+import {useViewerPopout,viewerRequest,embeddedViewerUrl} from './viewer-controls';
 
 const focusRing='focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
@@ -89,6 +89,7 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
     catch(cause){setError(cause instanceof Error&&cause.message?cause.message:'Couldn’t open the desktop.');}finally{setBusy(false);}
   };
   const open=view?.kind==='open'&&validUrl(view.url)?view:null;
+  const popout=useViewerPopout(viewer,open?.url??null);
   const until=open?' · until '+new Date(open.expires).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'';
   const status=error?<span role="alert" className="min-w-0 truncate text-destructive" title={error}>{error}</span>
     :view===null?<span className="text-muted-foreground">Loading…</span>
@@ -102,7 +103,7 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
       ?<ModeButton label="Take control" disabled={busy} onClick={()=>void change(true,false)}/>
       :<ModeButton label="Stop control" active disabled={busy} onClick={()=>void change(true,true)}/>}
     <IconButton label="Fullscreen" icon="Maximize2" onClick={()=>void frame.current?.requestFullscreen?.().catch(()=>{})}/>
-    <IconButton label="Open in new tab" icon="ExternalLink" onClick={()=>{if(viewer.current)void popoutViewer(viewer.current).catch(cause=>setError(cause.message));}}/>
+    <IconButton label="Open in new tab" icon="ExternalLink" disabled={!popout.ready} onClick={()=>{try{popout.open();}catch(cause){setError(cause instanceof Error?cause.message:'Couldn’t open the session.');}}}/>
     <IconButton label="Close view" icon="X" disabled={busy} onClick={()=>void change(false)}/>
   </>:view===null?null:<IconButton label="Show desktop" icon="Play" disabled={busy} onClick={()=>void change(true)}/>;
   const header=<div className={`flex h-8 shrink-0 items-center gap-1.5 pl-3 pr-1 text-xs ${open&&!yielded?'border-b border-border':''}`}>

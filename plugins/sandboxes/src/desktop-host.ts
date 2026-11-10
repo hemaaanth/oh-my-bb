@@ -166,7 +166,7 @@ export class SandboxDesktopHost{
       let result;
       if(body.action==='acquire')result={lease:lease.acquire(body.takeover===true,body.ticket)};
       else if(body.action==='status')result={current:lease.owns(body.lease)};
-      else if(body.action==='transfer')result={ticket:lease.transfer(body.lease)};
+      else if(body.action==='transfer')result={ticket:lease.transfer(body.lease,expires),expires};
       else if(body.action==='release'){lease.release(body.lease);result={ok:true};}
       else throw Error('Invalid lease action');
       res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));

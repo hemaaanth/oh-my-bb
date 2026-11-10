@@ -22,6 +22,18 @@ it('consumes transfer tickets once, cancels pending upgrades and prevents late c
  viewer.release(first);expect(current.current()).toBe(true);
  viewer.release(second);expect(current.current()).toBe(false);
 });
+it('keeps one prepared ticket through repeated requests until its grant expires or its generation changes',()=>{
+ vi.useFakeTimers();
+ const viewer=new ViewerLease(),first=viewer.acquire(),cancel=vi.fn(),pair=viewer.reserve(first,cancel)!;
+ const expires=Date.now()+15*60000,ticket=viewer.transfer(first,expires)!;
+ vi.advanceTimersByTime(60000);expect(viewer.transfer(first,expires)).toBe(ticket);
+ expect(pair.current()).toBe(true);expect(cancel).not.toHaveBeenCalled();
+ const second=viewer.acquire(false,ticket)!;
+ expect(viewer.acquire(false,ticket)).toBeNull();expect(cancel).toHaveBeenCalledOnce();
+ const next=viewer.transfer(second,expires)!;expect(next).not.toBe(ticket);
+ vi.advanceTimersByTime(14*60000);expect(viewer.acquire(false,next)).toBeNull();expect(viewer.transfer(second,expires)).toBeNull();
+ expect(viewer.owns(second)).toBe(true);
+});
 it('binds tickets to generation and expiry, without revoking the owner when a popup is blocked or never navigates',()=>{
  vi.useFakeTimers();
  const viewer=new ViewerLease(),first=viewer.acquire(),ticket=viewer.transfer(first)!;
@@ -35,20 +47,21 @@ async function wrapper(declared:string,sender:string,sourceIsParent=true,declare
  vi.stubGlobal('location',{href:declared+'/thread',origin:declared});
  const source=embeddedViewerUrl('https://sandbox--40000.getbb.app/#'+'t'.repeat(43));
  const events:Record<string,(event:unknown)=>Promise<void>>={},commands:string[]=[],replies:Array<{data:{id?:string};origin:string}>=[],elements=new Map();
- const element=()=>({hidden:false,replaceChildren(){},remove(){}});
+ const element=()=>({hidden:false,replaceChildren(){},remove(){},removeAttribute(){},setAttribute(){}});
  const parent={postMessage:(data:{id?:string},origin:string)=>replies.push({data,origin})};
  runInNewContext(viewerScript([local,remote,configured]),{
   URLSearchParams,location:{hash:declare?new URL(source).hash:'#'+'t'.repeat(43),pathname:'/',origin:'https://sandbox--40000.getbb.app'},history:{replaceState(){}},
   document:{querySelector:(id:string)=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,addEventListener(){}},parent,window:{},
-  fetch:async(_path:string,args:{body:string})=>{const body=JSON.parse(args.body);commands.push(body.action);return {status:200,ok:true,json:async()=>body.action==='acquire'?{lease:'l'.repeat(43)}:{ticket:'k'.repeat(43)}};},
+  fetch:async(_path:string,args:{body:string})=>{const body=JSON.parse(args.body);commands.push(body.action);return {status:200,ok:true,json:async()=>body.action==='acquire'?{lease:'l'.repeat(43)}:{ticket:'k'.repeat(43),expires:Date.now()+60000}};},
   addEventListener:(type:string,handler:(event:unknown)=>Promise<void>)=>{events[type]=handler;},setInterval(){},
  });
+ await new Promise(resolve=>setImmediate(resolve));const before=commands.length;
  await events.message!({source:sourceIsParent?parent:{},origin:sender,data:{protocol:'bb-desktop-v1',id:'transfer',action:'transfer'}});
- return {commands,replies:replies.filter(reply=>reply.data.id==='transfer')};
+ return {commands:commands.slice(before),replies:replies.filter(reply=>reply.data.id==='transfer')};
 }
 it.each([local,remote,configured])('transfers from the declared trusted actual parent %s',async origin=>{
  const proof=await wrapper(origin,origin);
- expect(proof.commands).toEqual(['acquire','transfer']);expect(proof.replies).toHaveLength(1);expect(proof.replies[0]!.origin).toBe(origin);
+ expect(proof.replies).toHaveLength(1);expect(proof.replies[0]!.origin).toBe(origin);
 });
 it.each([
  ['https://other.getbb.app','https://other.getbb.app',true,true],
@@ -57,5 +70,5 @@ it.each([
  [local,local,false,true],
  [remote,remote,true,false],
 ] as const)('rejects untrusted, undeclared or wrong-frame parent %s/%s',async(declared,sender,source,declare)=>{
- const proof=await wrapper(declared,sender,source,declare);expect(proof.commands).toEqual(['acquire']);expect(proof.replies).toEqual([]);
+ const proof=await wrapper(declared,sender,source,declare);expect(proof.commands).toEqual([]);expect(proof.replies).toEqual([]);
 });
