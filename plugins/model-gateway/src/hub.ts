@@ -79,6 +79,8 @@ import {
   upstreamKind,
   type AutoSettings,
   type Chains,
+  type ThreadChains,
+  chainFor,
   type Harness,
   type ModelMap,
   type ThreadIdentity,
@@ -150,6 +152,7 @@ export interface HubSettings {
   codexUpstreamBaseUrl: string;
   switchThreshold: number;
   chains: Chains;
+  threadChains?: ThreadChains;
   modelMap: ModelMap;
   modelRoutes?: ModelRoutes;
   auto: AutoSettings;
@@ -547,7 +550,7 @@ export class AccountPoolHub {
     const now = this.options.now();
     // Chain entries stay in operator order; each entry keeps its own priority pool.
     const entries = expandChain(
-      this.options.getSettings().chains[identity.harness],
+      chainFor(this.options.getSettings(), identity.harness, identity.threadId),
       await this.options.accounts.list(),
     ).map((entry) => entry.filter((account) => upstreamKind(account) === "chatgpt-oauth" && account.codexAccountId !== undefined))
       .filter((entry) => entry.length > 0);
@@ -656,7 +659,7 @@ export class AccountPoolHub {
     const harness = harnessSchema.parse(route.harness);
     const accounts = await this.options.accounts.list();
     const settings = this.options.getSettings();
-    const chain = modelChain(harness, settings.chains[harness], accounts, route.requestedModel ?? null, settings.modelRoutes);
+    const chain = modelChain(harness, chainFor(settings, harness, threadId), accounts, route.requestedModel ?? null, settings.modelRoutes);
     const entryIndex = expandChain(chain, accounts).findIndex((entry) =>
       entry.some((account) => account.id === route.upstreamId),
     );
@@ -928,7 +931,8 @@ export class AccountPoolHub {
     let apiKeyOnly: string | null = null;
     const allAccounts = await this.options.accounts.list();
     let json = parseJson(body);
-    let entries = expandChain(settings.chains[harness], allAccounts).map(
+    const threadChain = chainFor(settings, harness, identity?.threadId);
+    let entries = expandChain(threadChain, allAccounts).map(
       (accounts) =>
         accounts.filter((account) =>
           isLegalUpstream(upstreamKind(account), identity?.harness ?? null, path, settings.allowClaudeOAuthAcrossHarnesses),
@@ -954,7 +958,7 @@ export class AccountPoolHub {
     const requestedModel = requestModel(json);
     const model = requestedModel?.replace(/^gw-/u, "") ?? null;
     const family = modelFamily(model);
-    const chain = modelChain(harness, settings.chains[harness], allAccounts, model, settings.modelRoutes);
+    const chain = modelChain(harness, threadChain, allAccounts, model, settings.modelRoutes);
     entries = expandChain(chain, allAccounts).map((accounts) => accounts.filter((account) =>
       isLegalUpstream(upstreamKind(account), identity?.harness ?? null, path, settings.allowClaudeOAuthAcrossHarnesses),
     ));

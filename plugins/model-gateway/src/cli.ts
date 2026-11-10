@@ -28,6 +28,7 @@ import {
 import {
   setAuto,
   setChain,
+  setThreadChain,
   setModelMapEntry,
   type PoolOperations,
 } from "./operations.js";
@@ -86,6 +87,8 @@ const HELP = [
   "  bb gateway status --thread <id> [--json]",
   "  bb gateway chain show [--json]",
   "  bb gateway chain set <harness> <entry>...   entry: <kind>:*, <kind>:<label>, or an account id",
+  "  bb gateway chain set --thread <id> <harness> <entry>...   One thread's own chain",
+  "  bb gateway chain clear --thread <id>   Back to the harness chain",
   "      kinds: claude-oauth, claude-key, chatgpt-oauth, anthropic-compatible-key, responses-compatible-key",
   "  bb gateway model-map show [--json]",
   "  bb gateway model-route show",
@@ -342,20 +345,26 @@ function parseUntil(value: string, now: number): number {
   return parsed;
 }
 
+function formatChain(title: string, entries: readonly string[], accounts: readonly AccountSummary[]): string {
+  const expanded = expandChain(entries, accounts);
+  return [
+    title,
+    ...entries.map((entry, index) => {
+      const labels = (expanded[index] ?? []).map((account) => account.label);
+      return `  ${index}  ${entry}\t${labels.length === 0 ? "-" : labels.join(", ")}`;
+    }),
+  ].join("\n");
+}
+
 function formatChains(
-  chains: AccountPoolConfig["chains"],
+  config: Pick<AccountPoolConfig, "chains" | "threadChains">,
   accounts: readonly AccountSummary[],
 ): string {
-  return HARNESSES.map((harness) => {
-    const expanded = expandChain(chains[harness], accounts);
-    return [
-      harness,
-      ...chains[harness].map((entry, index) => {
-        const labels = (expanded[index] ?? []).map((account) => account.label);
-        return `  ${index}  ${entry}\t${labels.length === 0 ? "-" : labels.join(", ")}`;
-      }),
-    ].join("\n");
-  }).join("\n");
+  return [
+    ...HARNESSES.map((harness) => formatChain(harness, config.chains[harness], accounts)),
+    ...Object.entries(config.threadChains).map(([threadId, { harness, entries }]) =>
+      formatChain(`thread ${threadId} (${harness})`, entries, accounts)),
+  ].join("\n");
 }
 
 function formatModelMap(modelMap: ModelMap): string {
@@ -476,7 +485,12 @@ export function registerPoolCli(
       {
         name: "chain-set",
         summary: "Set one harness's failover chain",
-        usage: "bb gateway chain set <harness> <entry>...",
+        usage: "bb gateway chain set [--thread <id>] <harness> <entry>...",
+      },
+      {
+        name: "chain-clear",
+        summary: "Remove one thread's own chain",
+        usage: "bb gateway chain clear --thread <id>",
       },
       {
         name: "model-map-show",
@@ -834,24 +848,35 @@ export function registerPoolCli(
         }
         if (argv[0] === "chain" && argv[1] === "show") {
           const flags = parseFlags(argv.slice(2), ["json"], []);
-          const { chains } = config.get();
+          const current = config.get();
           return {
             exitCode: 0,
             stdout: flags.booleans.has("json")
-              ? json(chains)
-              : `${formatChains(chains, await operations.list())}\n`,
+              ? json({ ...current.chains, threads: current.threadChains })
+              : `${formatChains(current, await operations.list())}\n`,
           };
         }
         if (argv[0] === "chain" && argv[1] === "set") {
-          const next = await setChain(
-            config,
-            harnessSchema.parse(argv[2]),
-            argv.slice(3),
-          );
+          const threadId = argv[2] === "--thread" ? argv[3] : undefined;
+          if (argv[2] === "--thread" && (threadId === undefined || threadId.startsWith("--")))
+            throw new Error("--thread requires a thread id.");
+          const rest = argv.slice(threadId === undefined ? 2 : 4);
+          const harness = harnessSchema.parse(rest[0]);
+          const next = threadId === undefined
+            ? await setChain(config, harness, rest.slice(1))
+            : await setThreadChain(config, threadId, { harness, entries: rest.slice(1) });
           return {
             exitCode: 0,
-            stdout: `${formatChains(next.chains, await operations.list())}\n`,
+            stdout: `${formatChains(next, await operations.list())}\n`,
           };
+        }
+        if (argv[0] === "chain" && argv[1] === "clear") {
+          const threadId = parseFlags(argv.slice(2), [], ["thread"]).values.get("thread");
+          if (threadId === undefined) throw new Error("Usage: bb gateway chain clear --thread <id>");
+          if (config.get().threadChains[threadId] === undefined)
+            return { exitCode: 0, stdout: `Thread ${threadId} has no chain of its own.\n` };
+          await setThreadChain(config, threadId, null);
+          return { exitCode: 0, stdout: `Thread ${threadId} uses its harness chain again.\n` };
         }
         if (argv[0] === "model-route" && argv[1] === "show") {
           return { exitCode: 0, stdout: json(config.get().modelRoutes) };

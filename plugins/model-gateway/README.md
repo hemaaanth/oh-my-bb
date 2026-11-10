@@ -131,10 +131,14 @@ printf '%s\n' "$KIMI_KEY" | bb gateway key add anthropic-compatible-key --label 
 printf '%s\n' "$OR_KEY" | bb gateway key add responses-compatible-key --label openrouter --base-url https://openrouter.ai/api/v1 --key-stdin
 bb gateway chain set codex chatgpt-oauth:* anthropic-compatible-key:kimi
 bb gateway chain set claude-code claude-oauth:* anthropic-compatible-key:kimi
+bb gateway chain set --thread <id> claude-code claude-oauth:* anthropic-compatible-key:kimi
 bb gateway model-map set anthropic-compatible-key:kimi 'claude-opus-*' kimi-k3
 bb gateway model-map set anthropic-compatible-key:kimi 'gpt-6-*' kimi-k3
 ```
 
+- `chain set --thread <id>` gives one thread its own chain. It replaces the
+  harness chain for that thread only, while the thread runs that harness.
+  `bb gateway chain clear --thread <id>` removes it.
 - The key is read from stdin only (the bb CLI turns `--key-stdin` into one
   line). It is stored like the account secrets (`0600` file) and never
   printed, logged or returned by the CLI or RPC.

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add per-thread chains. `bb gateway chain set --thread <id> <harness> <entry>...` gives one thread its own chain; `bb gateway chain clear --thread <id>` removes it. The thread's own chain applies only while that thread runs the named harness. The legal guard checks it like a harness chain. `chain show` lists thread chains, and `chain show --json` adds them under `threads`.
+
 - Add Reconnect to subscription account menus, details, and footer errors. Reauthorize the same account in place, preserving its ID, priority, enabled state, and routes. Show account errors in the usage popup instead of stale bars, and recheck account status on each open.
 
 - Handle BB 0.47 model discovery with null thread and project IDs. Threadless provider environment resolution returns no thread credentials instead of failing validation; routed inference is unchanged.

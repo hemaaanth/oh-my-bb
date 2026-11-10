@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   autoSchema,
   chainsSchema,
+  threadChainsSchema,
   DEFAULT_AUTO,
   DEFAULT_CHAINS,
   DEFAULT_MODEL_MAP,
@@ -43,6 +44,7 @@ export const accountPoolConfigSchema = z
     ),
     allowClaudeOAuthAcrossHarnesses: z.boolean().default(false),
     chains: chainsSchema.default(DEFAULT_CHAINS),
+    threadChains: threadChainsSchema.default({}),
     modelMap: modelMapSchema.default(DEFAULT_MODEL_MAP),
     modelRoutes: modelRoutesSchema.default({}),
     auto: autoSchema.default(DEFAULT_AUTO),
@@ -58,6 +60,7 @@ export const accountPoolConfigSetInputSchema = z
     switchThreshold: switchThresholdSchema.optional(),
     allowClaudeOAuthAcrossHarnesses: z.boolean().optional(),
     chains: chainsSchema.optional(),
+    threadChains: threadChainsSchema.optional(),
     modelMap: modelMapSchema.optional(),
     modelRoutes: modelRoutesSchema.optional(),
     auto: autoSchema.optional(),

@@ -49,6 +49,7 @@ import {
 } from "./upstreams/store.js";
 import {
   assertLegalChains,
+  chainFor,
   expandChain,
   isLegalUpstream,
   upstreamKind,
@@ -108,7 +109,7 @@ export function createAccountPoolPlugin(
           for (const kind of ["claude-oauth", "claude-key"])
             next.modelMap[kind] ??= defaults[kind]!;
         }
-        assertLegalChains(next.chains, await accounts.list(), next.allowClaudeOAuthAcrossHarnesses);
+        assertLegalChains(next.chains, await accounts.list(), next.allowClaudeOAuthAcrossHarnesses, next.threadChains);
         await bb.storage.kv.set("config", next);
         currentSettings = next;
         bb.realtime.publish(MODEL_GATEWAY_CONFIG_CHANGED, {});
@@ -254,7 +255,7 @@ export function createAccountPoolPlugin(
         harness: "claude-code",
       });
       const hasResponsesFallback = expandChain(
-        currentSettings.chains["claude-code"],
+        chainFor(currentSettings, "claude-code", context.threadId),
         await accounts.list(),
       ).some((entry) => entry.some((account) => account.provider === "codex"));
       await routing.recordRouted(context.threadId, context.hostId);

@@ -17,6 +17,7 @@ import type {
 } from "./contracts.js";
 import {
   chainsSchema,
+  threadChainsSchema,
   modelMapKeySchema,
   upstreamKind,
   type Harness,
@@ -56,6 +57,18 @@ export function setChain(
   const current = config.get().chains;
   return config.set({
     chains: chainsSchema.parse({ ...current, [harness]: entries }),
+  });
+}
+
+/** `bb gateway chain set --thread`: one thread's own chain; null removes it. */
+export function setThreadChain(
+  config: AccountPoolConfigController,
+  threadId: string,
+  chain: { harness: Harness; entries: readonly string[] } | null,
+): Promise<AccountPoolConfig> {
+  const { [threadId]: _removed, ...kept } = config.get().threadChains;
+  return config.set({
+    threadChains: threadChainsSchema.parse(chain === null ? kept : { ...kept, [threadId]: chain }),
   });
 }
 

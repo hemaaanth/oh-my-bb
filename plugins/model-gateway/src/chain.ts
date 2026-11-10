@@ -66,6 +66,23 @@ export const chainsSchema = z
   .strict();
 export type Chains = z.infer<typeof chainsSchema>;
 
+/** Per-thread chain overrides. One applies only while the thread runs its harness. */
+export const threadChainsSchema = z.record(
+  z.string().min(1),
+  z.object({ harness: harnessSchema, entries: chainSchema }).strict(),
+);
+export type ThreadChains = z.infer<typeof threadChainsSchema>;
+
+/** The thread's own chain when it has one for this harness, else the harness chain. */
+export function chainFor(
+  settings: { chains: Chains; threadChains?: ThreadChains },
+  harness: Harness,
+  threadId: string | null | undefined,
+): string[] {
+  const own = threadId == null ? undefined : settings.threadChains?.[threadId];
+  return own !== undefined && own.harness === harness ? own.entries : settings.chains[harness];
+}
+
 const CLAUDE_FALLBACK_MAP = {
   "gpt-6-astra": "claude-fable-5-1",
   "gpt-6-luna": "claude-sonnet-5-5",
@@ -197,16 +214,18 @@ export function assertLegalChains(
   chains: Chains,
   accounts: readonly Account[],
   allowAcrossHarnesses = false,
+  threadChains: ThreadChains = {},
 ): void {
-  for (const harness of HARNESSES) {
-    for (const entry of chains[harness]) {
+  const named: Array<[Harness, readonly string[], string]> = [
+    ...HARNESSES.map((harness): [Harness, readonly string[], string] => [harness, chains[harness], `the ${harness} chain`]),
+    ...Object.entries(threadChains).map(([threadId, { harness, entries }]): [Harness, readonly string[], string] =>
+      [harness, entries, `the ${harness} chain of thread ${threadId}`]),
+  ];
+  for (const [harness, entries, where] of named) {
+    for (const entry of entries) {
       const block = chainEntryBlock(entry, harness, accounts, allowAcrossHarnesses);
       if (block === null) continue;
-      throw new Error(
-        block.endsWith(".")
-          ? block
-          : `${block}; remove ${entry} from the ${harness} chain.`,
-      );
+      throw new Error(block.endsWith(".") ? block : `${block}; remove ${entry} from ${where}.`);
     }
   }
 }

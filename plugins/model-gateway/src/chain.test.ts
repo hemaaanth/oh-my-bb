@@ -10,6 +10,7 @@ import { Response as UndiciResponse } from "undici";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertLegalChains,
+  chainFor,
   chainsSchema,
   contextWindow,
   expandChain,
@@ -191,6 +192,17 @@ describe("chain config", () => {
       assertLegalChains(chains({ pi: [crypto.randomUUID()] }), [max]),
     ).toThrow(/not a known account/u);
     expect(chainsSchema.safeParse({ codex: ["openai:*"] }).success).toBe(false);
+  });
+
+  it("prefers a thread's own chain only for its harness", () => {
+    const settings = {
+      chains: chainsSchema.parse({}),
+      threadChains: { thr_a: { harness: "claude-code" as const, entries: ["chatgpt-oauth:*"] } },
+    };
+    expect(chainFor(settings, "claude-code", "thr_a")).toEqual(["chatgpt-oauth:*"]);
+    expect(chainFor(settings, "codex", "thr_a")).toEqual(settings.chains.codex);
+    expect(chainFor(settings, "claude-code", "thr_b")).toEqual(settings.chains["claude-code"]);
+    expect(chainFor(settings, "claude-code", null)).toEqual(settings.chains["claude-code"]);
   });
 
   it("keeps Claude OAuth away from omp, FX and nanocodex", () => {
@@ -787,6 +799,35 @@ describe("chain failover in the hub", () => {
       stickyUntil: null,
       reason: "primary",
     });
+  });
+
+  it("uses a thread's own chain only for that thread and harness", async () => {
+    const gw = await gateway();
+    await gw.cli("chain", "set", "claude-code", gw.max.id);
+    const set = await gw.cli("chain", "set", "--thread", "thr_own", "claude-code", gw.max.id, "claude-key:*");
+    expect(set.exitCode).toBe(0);
+    expect(set.stdout).toContain("thread thr_own (claude-code)");
+    const own = await gw.token("claude-code", "thr_own");
+    const other = await gw.token("claude-code", "thr_other");
+    gw.upstream.maxExhausted = true;
+
+    expect((await gw.send(own, userTurn)).text).toBe('{"served":"key-token"}');
+    expect(await gw.route("thr_own")).toMatchObject({ entryIndex: 1, chain: [gw.max.id, "claude-key:*"] });
+    gw.upstream.attempts.length = 0;
+    expect((await gw.send(other, userTurn)).text).not.toBe('{"served":"key-token"}');
+    expect(gw.upstream.attempts).not.toContain("key-token");
+
+    expect((await gw.cli("chain", "clear", "--thread", "thr_own")).exitCode).toBe(0);
+    gw.upstream.attempts.length = 0;
+    await gw.send(own, userTurn);
+    expect(gw.upstream.attempts).not.toContain("key-token");
+  });
+
+  it("checks a thread's own chain with the legal guard", async () => {
+    const gw = await gateway({ withCodex: true });
+    const rejected = await gw.cli("chain", "set", "--thread", "thr_x", "codex", "claude-oauth:*");
+    expect(rejected.exitCode).not.toBe(0);
+    expect(rejected.stderr).toMatch(/chain of thread thr_x/u);
   });
 
   it("retries a transient Claude failure once before crossing providers and records the cause", async () => {

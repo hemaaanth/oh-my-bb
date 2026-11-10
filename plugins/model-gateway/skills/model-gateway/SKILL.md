@@ -28,6 +28,12 @@ Examples:
 - `bb gateway chain set claude-code claude-oauth:* anthropic-compatible-key:kimi`
 - `bb gateway chain set acp-omp chatgpt-oauth:* responses-compatible-key:openrouter`
 
+One thread can have its own chain. It replaces the harness chain for that
+thread only, while the thread runs that harness:
+
+- `bb gateway chain set --thread <id> claude-code claude-oauth:* anthropic-compatible-key:credits chatgpt-oauth:*`
+- `bb gateway chain clear --thread <id>` goes back to the harness chain.
+
 Sticky rules:
 
 - A thread that fails over stays on the fallback while the primary is
@@ -276,7 +282,8 @@ contribution, and threads are no longer routed.
 bb gateway status [--json]
 bb gateway status --thread <id> [--json]
 bb gateway chain show [--json]
-bb gateway chain set <harness> <entry>...
+bb gateway chain set [--thread <id>] <harness> <entry>...
+bb gateway chain clear --thread <id>
 bb gateway model-map show [--json]
 bb gateway model-map set <kind>[:<label>] <pattern> <model>
 bb gateway auto [<harness> [--key <label>] [--model <id>] [--off]]
