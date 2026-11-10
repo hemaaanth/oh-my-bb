@@ -9,6 +9,9 @@
   scaling. Refuse nonconforming live displays without changing their coordinates.
 - Keep Browser desktop RPC optional and unchanged. Browser runtime archive and
   provenance must be regenerated from committed Browser source before release.
+- Carry exact trusted local/configured/own-Connect parent origins through the
+  host contract and bind messages to the declared parent window. Remove the
+  broad Connect-domain CSP allowance.
 
 - Show the sandbox's own desktop inline in chat, in a thread **Desktop** side panel, or as a link from `bb sandbox desktop [--view-only|--close]`. The agent opens it with the `sandbox_desktop` tool. All three share one fifteen-minute voxl grant per thread. The host finds or starts the shared display itself.
 

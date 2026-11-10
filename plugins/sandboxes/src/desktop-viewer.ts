@@ -36,8 +36,8 @@ export class ViewerLease {
 export const viewerPage=`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Remote desktop</title><link rel="license" href="/licenses"><style>html,body,#desktop{margin:0;width:100%;height:100%;overflow:hidden;background:#09090b;color:#ddd;font:14px system-ui}#desktop{display:grid;place-items:center}iframe{width:100%;height:100%;border:0}#placeholder{text-align:center}button{padding:8px;margin:6px;cursor:pointer}#tools{position:fixed;right:8px;top:8px}#tools[hidden]{display:none}</style><div id="desktop"><div id="placeholder"><p id="status" role="status">Connecting…</p><button id="return" hidden>View here</button></div></div><div id="tools" hidden><button id="popout">Pop out</button><button id="fullscreen">Fullscreen</button></div><script src="/bb-desktop-start.js"></script></html>`;
 
 /** BB Desktop Viewer v1: exact parent origin/source, request id, no credentials in notifications. */
-export function viewerScript(appOrigin?:string){return `
-const parentOrigin=${JSON.stringify(appOrigin??null)},fragment=location.hash.slice(1),parts=fragment.split('&'),token=parts[0],ticket=new URLSearchParams(parts.slice(1).join('&')).get('ticket');
+export function viewerScript(appOrigins:readonly string[]){return `
+const allowedParentOrigins=${JSON.stringify(appOrigins)},fragment=location.hash.slice(1),parts=fragment.split('&'),token=parts[0],parameters=new URLSearchParams(parts.slice(1).join('&')),ticket=parameters.get('ticket'),declaredParentOrigin=parameters.get('parentOrigin'),parentOrigin=allowedParentOrigins.includes(declaredParentOrigin)?declaredParentOrigin:null;
 history.replaceState(null,'',location.pathname);
 const desktop=document.querySelector('#desktop'),placeholder=document.querySelector('#placeholder'),status=document.querySelector('#status'),returnButton=document.querySelector('#return');
 let lease=null,child=null,ended=false,busy=false,initialized;

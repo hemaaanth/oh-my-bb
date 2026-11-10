@@ -10,11 +10,13 @@ import type {Duplex} from 'node:stream';
 import {afterEach,expect,it} from 'vitest';
 import {registerDesktops} from '../src/desktop.js';
 import {SandboxDesktopHost,maximizeRule,openboxConfig,validateDesktop} from '../src/desktop-host.js';
+import {desktopHostContract} from '../src/desktop-contract.js';
+const connectStatus=async()=>JSON.stringify({state:'connected',url:'https://owner.getbb.app'});
 const dispose:Array<()=>Promise<void>>=[];afterEach(async()=>{for(const close of dispose.splice(0))await close();});
 const target={display:':1234',authority:'/private/authority',owner:{pid:42,start:'100'},displayOwner:{pid:43,start:'101'}};
 it('binds a desktop grant to the requesting thread host and withdraws only its port on release',async()=>{
  const calls:Array<{method:string;input:unknown}>=[];
- const fake=createFakePluginHost({pluginId:'sandboxes',experimental_hostEntry:true,sharedPortTunnelIdentities:{host_fixture:{label:'sandbox-fixture',baseDomain:'getbb.app'}},experimental_callHostRpc:async call=>{calls.push(call);return call.method==='openDesktop'?{port:41234,expires:Date.now()+900000}:null;},sdk:{threads:{get:async()=>makeThreadResponse({id:'thr_fixture',title:'Browser <upgrade> & handoff',environmentId:'env_fixture'})},environments:{get:async()=>({hostId:'host_fixture'}) as never},hosts:{get:async()=>makeHostResponse({id:'host_fixture',machineProviderId:'sandbox-daytona'})}}});dispose.push(()=>fake.harness.lifecycle.dispose());registerDesktops(fake.bb);
+ const fake=createFakePluginHost({pluginId:'sandboxes',experimental_hostEntry:true,sharedPortTunnelIdentities:{host_fixture:{label:'sandbox-fixture',baseDomain:'getbb.app'}},experimental_callHostRpc:async call=>{calls.push(call);return call.method==='openDesktop'?{port:41234,expires:Date.now()+900000}:null;},sdk:{threads:{get:async()=>makeThreadResponse({id:'thr_fixture',title:'Browser <upgrade> & handoff',environmentId:'env_fixture'})},environments:{get:async()=>({hostId:'host_fixture'}) as never},hosts:{get:async()=>makeHostResponse({id:'host_fixture',machineProviderId:'sandbox-daytona'})}}});dispose.push(()=>fake.harness.lifecycle.dispose());registerDesktops(fake.bb,undefined,connectStatus);
  const caller={experimental_caller:{kind:'plugin' as const,pluginId:'browser'}};
  await expect(fake.harness.behavior.callRpc('desktopOpenV1',{threadId:'thr_fixture',target})).rejects.toThrow('installed plugin');
  const result=await fake.harness.behavior.callRpc('desktopOpenV1',{threadId:'thr_fixture',target},caller) as {url:string};expect(result.url).toMatch(/^https:\/\/sandbox-fixture--41234.getbb.app\/#[-\w]{43}$/);
@@ -39,7 +41,7 @@ it('shares a consumer private display on the server machine through bb connect b
 });
 it('opens one shared desktop per thread for the panel, the directive and the agent tool',async()=>{
  const calls:Array<{method:string;input:unknown}>=[];
- const fake=createFakePluginHost({pluginId:'sandboxes',experimental_hostEntry:true,sharedPortTunnelIdentities:{host_fixture:{label:'sandbox-fixture',baseDomain:'getbb.app'}},experimental_callHostRpc:async call=>{calls.push(call);return call.method==='openSharedDesktop'?{port:42000,expires:Date.now()+900000}:null;},sdk:{threads:{get:async()=>makeThreadResponse({id:'thr_fixture',title:'Desk',environmentId:'env_fixture'})},environments:{get:async()=>({hostId:'host_fixture'}) as never},hosts:{get:async()=>makeHostResponse({id:'host_fixture',machineProviderId:'sandbox-daytona'})}}});dispose.push(()=>fake.harness.lifecycle.dispose());registerDesktops(fake.bb);
+ const fake=createFakePluginHost({pluginId:'sandboxes',experimental_hostEntry:true,sharedPortTunnelIdentities:{host_fixture:{label:'sandbox-fixture',baseDomain:'getbb.app'}},experimental_callHostRpc:async call=>{calls.push(call);return call.method==='openSharedDesktop'?{port:42000,expires:Date.now()+900000}:null;},sdk:{threads:{get:async()=>makeThreadResponse({id:'thr_fixture',title:'Desk',environmentId:'env_fixture'})},environments:{get:async()=>({hostId:'host_fixture'}) as never},hosts:{get:async()=>makeHostResponse({id:'host_fixture',machineProviderId:'sandbox-daytona'})}}});dispose.push(()=>fake.harness.lifecycle.dispose());registerDesktops(fake.bb,undefined,connectStatus);
  expect(await fake.harness.behavior.callRpc('getSandboxDesktop',{threadId:'thr_fixture'})).toEqual({kind:'closed'});
  const view=await fake.harness.behavior.callRpc('openSandboxDesktop',{threadId:'thr_fixture',viewOnly:false});
  expect(view).toMatchObject({kind:'open',viewOnly:false,url:expect.stringMatching(/^https:\/\/sandbox-fixture--42000.getbb.app\/#[-\w]{43}$/)});
@@ -92,7 +94,7 @@ it.skipIf(process.platform!=='linux')('proxies an owned display through voxl wit
  const path=process.env.PATH;dispose.push(async()=>{process.env.PATH=path;});
  const host=new SandboxDesktopHost();dispose.push(()=>host.dispose());
  const token=randomBytes(32).toString('base64url');
- const input={id:'desk',target,threadTitle:'Thread',token,notices:'NOTICES',tunnel:{label:'sbx',baseDomain:'getbb.app'}};
+ const input={id:'desk',target,appOrigins:['http://127.0.0.1:38886','https://owner.getbb.app','https://configured.example'],threadTitle:'Thread',token,notices:'NOTICES',tunnel:{label:'sbx',baseDomain:'getbb.app'}};
  const home=process.env.HOME;dispose.push(async()=>{process.env.HOME=home;});
  process.env.PATH='/nonexistent';process.env.HOME=directory;
  await expect(host.open(input,AbortSignal.timeout(5000))).rejects.toThrow('no voxl');
@@ -112,7 +114,7 @@ it.skipIf(process.platform!=='linux')('proxies an owned display through voxl wit
  expect(seen).toMatchObject({url:'/?x=1',host:expect.stringMatching(/^127\.0\.0\.1:\d+$/),origin:null,cookie:null,display:':77'});
  expect(seen.auth).toBe('Bearer '+seen.password);expect(seen.password).not.toContain(token);
  expect(seen.args).toContain('--enable-resize=false');
- expect(page.policy).toBe("frame-ancestors 'self' https://*.getbb.app");
+ expect(page.policy).toBe("frame-ancestors 'self' http://127.0.0.1:38886 https://owner.getbb.app https://configured.example");
  expect((await get('/client.js')).status).toBe(200);
  for(const route of ['/stats','/?token='+'x'.repeat(43),`/files/a?token=${token}&lease=${lease}`])if(!route.startsWith('/?'))expect((await get(route)).status).toBe(403);
  expect((await get(`/stats?token=${token}&lease=${lease}`)).status).toBe(200);
@@ -191,7 +193,7 @@ it('drains a pending open before close and never overlaps mode replacements',asy
   if(method==='closeDesktop')count--;
   return null;
  },sdk:{threads:{get:async()=>makeThreadResponse({id:'thr_fixture',environmentId:'env_fixture'})},environments:{get:async()=>({hostId:'host_fixture'}) as never},hosts:{get:async()=>makeHostResponse({id:'host_fixture',machineProviderId:'sandbox-daytona'})}}});
- dispose.push(()=>fake.harness.lifecycle.dispose());const desktop=registerDesktops(fake.bb);
+ dispose.push(()=>fake.harness.lifecycle.dispose());const desktop=registerDesktops(fake.bb,undefined,connectStatus);
  const first=desktop.open('thr_fixture',true);await began;
  const replacement=desktop.open('thr_fixture',false),closed=desktop.close('thr_fixture');
  finish();await Promise.all([first,replacement,closed]);
@@ -209,10 +211,22 @@ it.each([false,true])('retains an unconfirmed %s pending/live owner and hold unt
   return null;
  },sdk:{threads:{get:async()=>makeThreadResponse({id:'thr_fixture',environmentId:'env_fixture'})},environments:{get:async()=>({hostId:'host_fixture'}) as never},hosts:{get:async()=>makeHostResponse({id:'host_fixture',machineProviderId:'sandbox-daytona'})}}});
  dispose.push(async()=>{rejectClose=false;await fake.harness.lifecycle.dispose();});
- const desktop=registerDesktops(fake.bb,()=>({hold:(_host:string,key:string)=>holds.add(key),release:(_host:string,key:string)=>holds.delete(key)}) as never);
+ const desktop=registerDesktops(fake.bb,()=>({hold:(_host:string,key:string)=>holds.add(key),release:(_host:string,key:string)=>holds.delete(key)}) as never,connectStatus);
  if(failOpen)await expect(desktop.open('thr_fixture',true)).rejects.toThrow();else await desktop.open('thr_fixture',true);
  await expect(desktop.close('thr_fixture')).rejects.toThrow();expect(count).toBe(1);expect(holds.size).toBe(1);
  await expect(desktop.open('thr_fixture',false)).rejects.toThrow();expect(count).toBe(1);expect(sessions.size).toBe(1);
  rejectClose=false;await desktop.close('thr_fixture');
  expect(count).toBe(0);expect(holds.size).toBe(0);expect(desktop.view('thr_fixture')).toEqual({kind:'closed'});
+});
+
+it.each([null,'https://configured.example'])('carries only this server origins through the desktop host parser with app URL %s',async(appUrl)=>{
+ let payload:unknown;
+ const fake=createFakePluginHost({pluginId:'sandboxes',appUrl,loopbackBaseUrl:'http://127.0.0.1:38886',experimental_hostEntry:true,sharedPortTunnelIdentities:{host_fixture:{label:'remote-sandbox',baseDomain:'getbb.app'}},experimental_callHostRpc:async({method,input})=>{if(method==='openDesktop'){payload=input;return {port:41234,expires:Date.now()+900000};}return null;},sdk:{threads:{get:async()=>makeThreadResponse({id:'thr_fixture',environmentId:'env_fixture'})},environments:{get:async()=>({hostId:'host_fixture'}) as never},hosts:{get:async()=>makeHostResponse({id:'host_fixture',machineProviderId:'sandbox-daytona'})}}});
+ dispose.push(()=>fake.harness.lifecycle.dispose());registerDesktops(fake.bb,undefined,connectStatus);
+ const caller={experimental_caller:{kind:'plugin' as const,pluginId:'browser'}};
+ await fake.harness.behavior.callRpc('desktopOpenV1',{threadId:'thr_fixture',target},caller);
+ const parsed=desktopHostContract.openDesktop.input.parse(JSON.parse(JSON.stringify(payload)));
+ expect(parsed.appOrigins).toEqual(['http://127.0.0.1:38886',...appUrl?[appUrl]:[],'https://owner.getbb.app']);
+ expect(parsed.appOrigins).not.toContain('https://remote-sandbox.getbb.app');
+ await expect(fake.harness.behavior.callRpc('desktopOpenV1',{threadId:'thr_fixture',target,appOrigins:['https://other.getbb.app']},caller)).rejects.toThrow();
 });

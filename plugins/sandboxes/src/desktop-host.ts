@@ -87,9 +87,9 @@ async function listen(server:TcpServer){await new Promise<void>((resolve,reject)
 export async function findVoxl(){for(const directory of [...(process.env.PATH||'/usr/local/bin:/usr/bin').split(':'),join(homedir(),'.cargo','bin')]){const file=join(directory||'.','voxl');try{await access(file,constants.X_OK);return file;}catch{}}return null;}
 // voxl's page loads these before it presents a token.
 const voxlPublic=new Set(['/client.js','/worker.js','/audio.js','/mic.js','/favicon.ico','/inter.woff2']);
-type SharedDesktopOpen={id:string;viewOnly?:boolean;appOrigin?:string;threadTitle:string;token:string;notices:string;tunnel:{label:string;baseDomain:string}};
+type SharedDesktopOpen={id:string;viewOnly?:boolean;appOrigin?:string;appOrigins?:string[];threadTitle:string;token:string;notices:string;tunnel:{label:string;baseDomain:string}};
 type DesktopOpen=SharedDesktopOpen&{target:DesktopTarget};
-const frameAncestors=(appOrigin?:string)=>"frame-ancestors 'self' https://*.getbb.app"+(appOrigin?" "+appOrigin:"");
+const frameAncestors=(origins:readonly string[])=>"frame-ancestors 'self'"+origins.map(origin=>" "+origin).join('');
 function secure(res:ServerResponse,policy:string){res.setHeader('Cache-Control','no-store');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Security-Policy',policy);}
 async function stop(child:ChildProcess|undefined){
  if(child?.pid&&child.exitCode===null&&child.signalCode===null){child.kill('SIGTERM');await Promise.race([new Promise(resolve=>child.once('exit',resolve)),delay(1000)]);if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');}
@@ -121,6 +121,7 @@ export class SandboxDesktopHost{
  });}
  private async stream(input:SharedDesktopOpen,screen:Screen,signal:AbortSignal){
   const binary=await findVoxl();if(!binary)throw Error('This host has no voxl desktop viewer; rebuild the sandbox image, or run cargo install voxl on a local host');
+  const appOrigins=input.appOrigins??(input.appOrigin?[input.appOrigin]:[]);
   const password=randomBytes(24).toString('base64url'),reservation=tcpServer(),voxlPort=await listen(reservation);await new Promise<void>(resolve=>reservation.close(()=>resolve()));
   let child:ChildProcess|undefined,server:ReturnType<typeof httpServer>|undefined,timer:ReturnType<typeof setInterval>|undefined,closed=false,closing:Promise<void>|undefined;
   const sockets=new Set<Duplex>();
@@ -147,10 +148,10 @@ export class SandboxDesktopHost{
    // voxl checks Host and Origin itself; this server already checked both, so it speaks as a local program.
    const upstream=(headers:IncomingHttpHeaders)=>{const out={...headers};for(const name of ['host','origin','referer','cookie','authorization'])delete out[name];return {...out,host:'127.0.0.1:'+voxlPort,authorization:'Bearer '+password};};
    server=httpServer(async(req,res)=>{
-    const url=new URL(req.url||'/','http://desktop'),page="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; frame-src 'self'; "+frameAncestors(input.appOrigin);
+    const url=new URL(req.url||'/','http://desktop'),page="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; frame-src 'self'; "+frameAncestors(appOrigins);
     secure(res,page);
     if(req.method==='GET'&&url.pathname==='/licenses'){res.setHeader('Content-Type','text/plain; charset=utf-8');res.end(input.notices);return;}
-    if(req.method==='GET'&&url.pathname==='/bb-desktop-start.js'){res.setHeader('Content-Type','text/javascript');res.end(viewerScript(input.appOrigin));return;}
+    if(req.method==='GET'&&url.pathname==='/bb-desktop-start.js'){res.setHeader('Content-Type','text/javascript');res.end(viewerScript(appOrigins));return;}
     if(req.method==='GET'&&url.pathname==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end(viewerPage);return;}
     const token=url.searchParams.get('token')??req.headers.authorization?.replace(/^Bearer /,'');
     if(url.pathname==='/viewer-lease'){
@@ -174,7 +175,7 @@ export class SandboxDesktopHost{
     }
     if(req.method!=='GET'||url.pathname.startsWith('/files/')||!(voxlPublic.has(url.pathname)||valid(token)&&lease.owns(url.searchParams.get('lease')))){res.writeHead(403);res.end('Session ended');return;}
     if(url.pathname==='/view')url.pathname='/';
-    url.searchParams.delete('token');url.searchParams.delete('lease');secure(res,frameAncestors(input.appOrigin));
+    url.searchParams.delete('token');url.searchParams.delete('lease');secure(res,frameAncestors(appOrigins));
     const forward=httpRequest({host:'127.0.0.1',port:voxlPort,method:'GET',path:url.pathname+url.search,headers:upstream(req.headers)},reply=>{const headers={...reply.headers};delete headers.connection;delete headers['keep-alive'];res.writeHead(reply.statusCode||502,headers);reply.pipe(res);});
     forward.once('error',()=>{if(!res.headersSent)res.writeHead(502);res.end();});req.pipe(forward);
    });

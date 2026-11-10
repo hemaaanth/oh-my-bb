@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useRef,useState,useSyncExternalStore,type RefObject} from 'react';
 import {experimental_Icon as Icon,useRealtime,useRpc,type ExperimentalThreadActionTabProps,type PluginMessageDirectiveProps,type PluginThreadHeaderActionProps,useBbNavigate} from '@get-bb/plugin-sdk/app';
 import type {sandboxDesktopRpcContract,SandboxDesktopView} from '../src/desktop-contract.js';
-import {popoutViewer,viewerRequest} from './viewer-controls';
+import {popoutViewer,viewerRequest,embeddedViewerUrl} from './viewer-controls';
 
 const focusRing='focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
@@ -68,7 +68,7 @@ function DesktopFrame({url,control,panel,threadId,yielded,frameRef,viewerRef}:{u
   if(!url)return null;
   return <div ref={frameRef} hidden={yielded} className={`bb-desktop-container relative bg-black ${control?'outline outline-2 -outline-offset-2 outline-foreground/60':''}`} style={yielded?{display:'none'}:panel?{flex:1,minHeight:0}:{aspectRatio:'16 / 9'}}>
     <style>{'.bb-desktop-container:fullscreen{width:100%;height:100%;aspect-ratio:auto!important}'}</style>
-    <iframe ref={viewerRef} title="Sandbox desktop" src={url} allow="clipboard-read; clipboard-write; fullscreen" allowFullScreen referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin" onLoad={()=>setLoaded(true)} className="bb-desktop-frame absolute inset-0 block size-full border-0 bg-black"/>
+    <iframe ref={viewerRef} title="Sandbox desktop" src={embeddedViewerUrl(url)} allow="clipboard-read; clipboard-write; fullscreen" allowFullScreen referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin" onLoad={()=>setLoaded(true)} className="bb-desktop-frame absolute inset-0 block size-full border-0 bg-black"/>
   </div>;
 }
 

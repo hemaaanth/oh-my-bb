@@ -79,6 +79,19 @@ same-origin JSON POSTs to `/viewer-lease` for acquire, status, transfer and rele
 before upstream forwarding. File transfers remain denied and watch mode remains
 server-enforced. Status never discloses the current owner's secret.
 
+The producer reads its own BB server's `bb connect status --json` only during
+explicit viewer opening. Optional `appOrigins` carries the exact loopback,
+configured app and own connected public origins through the host contract and
+parser. The sandbox port tunnel is not a parent-app origin. `appOrigin` remains
+an optional single-origin input for older producers. New UI/host code must be
+deployed together to use the complete list.
+
+Embedded frames declare `parentOrigin` in their fragment. It must belong to the
+server-supplied allowlist. Message handling also requires the exact parent
+window and declared origin; replies target that origin, never `*`. The first
+message cannot establish trust. CSP lists the same exact origins, not all
+`*.getbb.app` sites.
+
 BB Desktop Viewer v1 messages use `protocol: "bb-desktop-v1"` and a request `id`.
 Both packages validate exact origin and frame source. `transfer` returns a URL
 with a single-use, 30-second ticket. `accept` consumes a placement ticket;
@@ -94,6 +107,11 @@ same wrapper, lease, child frame and socket. Inline/panel placement uses tickets
 not a visibility-timer takeover; another app tab or direct link still follows
 the server lease. Mode replacement closes the old grant before opening the next,
 and close drains pending opens. No retiring streams or stacked frames remain.
+
+Browser consumers retain cleanup ownership before the open RPC can have side
+effects. A missing acknowledgement cannot become page-only fallback or a
+successful resume. Unconfirmed close retains both consumer cleanup and the
+Sandboxes owner/hold until a later acknowledged close.
 
 Private and shared displays require fixed 1920×1080 geometry. TigerVNC rejects
 remote size changes; voxl resize is disabled. Contain scaling includes upscaling
