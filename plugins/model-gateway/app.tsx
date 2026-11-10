@@ -592,7 +592,7 @@ function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
       {accounts === null ? <p className="px-4 py-5 text-xs text-muted-foreground">Loading accounts…</p> :
         accounts.length === 0 ? <p className="px-4 py-5 text-xs text-muted-foreground">No subscription accounts connected.</p> :
         <div className="divide-y divide-border">
-          {distinctAccounts(accounts).map((account) => <GatewayAccountPanel key={accountIdentity(account)} account={account} reconnect={() => setReconnectAccount(account)} />)}
+          {distinctAccounts(accounts).sort((left, right) => left.provider.localeCompare(right.provider)).map((account) => <GatewayAccountPanel key={accountIdentity(account)} account={account} reconnect={() => setReconnectAccount(account)} />)}
         </div>}
       {reconnectAccount === null ? null : <ReconnectAccountDialog account={reconnectAccount} close={() => { setReconnectAccount(null); void load(); }} />}
     </section>

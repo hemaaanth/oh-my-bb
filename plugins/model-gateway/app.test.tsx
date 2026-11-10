@@ -509,7 +509,7 @@ describe("Model usage footer", () => {
     expect(slot.getByText("1 reset available")).toBeTruthy();
   });
 
-  it("shows all accounts and their limits together", async () => {
+  it("groups Claude accounts before Codex accounts while preserving their order and limits", async () => {
     const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
     if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
     const codex = account({
@@ -518,13 +518,21 @@ describe("Model usage footer", () => {
         { slot: "primary", windowMinutes: 10_080, utilization: 0.76, resetAt: null, status: null, observedAt: 1, source: "usage" },
       ],
     });
+    const secondClaude = account({
+      id: "33333333-3333-4333-8333-333333333333", email: "second-claude@example.com", label: "second-claude",
+    });
+    const secondCodex = account({
+      ...codex, id: "44444444-4444-4444-8444-444444444444", email: "second-codex@example.com", label: "second-codex",
+    });
     const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: {
-      "account.list": () => [account(), codex],
+      "account.list": () => [codex, account(), secondCodex, secondClaude],
     } as never });
     await slot.findByText("other@example.com");
     expect(slot.getByText("person@example.com")).toBeTruthy();
     expect(slot.getByRole("progressbar", { name: "pro 7d usage" }).getAttribute("aria-valuenow")).toBe("76");
-    expect(slot.getAllByRole("progressbar")).toHaveLength(2);
+    expect(slot.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-label"))).toEqual([
+      "max 5h usage", "second-claude 5h usage", "pro 7d usage", "second-codex 7d usage",
+    ]);
     expect(slot.getByRole("button", { name: "Refresh Gateway usage" }).querySelector('[data-icon="RotateCcw"]')).toBeTruthy();
     expect(slot.container.querySelector(".overflow-y-auto")).toBeNull();
   });
