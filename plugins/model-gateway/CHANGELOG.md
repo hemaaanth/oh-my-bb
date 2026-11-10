@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Advertise a routed model's own limits, and clamp a harness reasoning effort the routed model rejects. `COMPATIBLE_KEY_MODELS` now carries the context window, output ceiling and accepted `reasoning.effort` values for models that a `responses-compatible-key` serves verbatim; `GET /v1/models`, the OMP block and the Pi extension all read it. A level outside a model's documented list (`medium` or `minimal` where the vendor accepts only `none`, `low`, `high`, `xhigh` and `max`) is clamped to the nearest documented level, tie upward, instead of failing every request with a 400. Models without a list keep the client's effort unchanged.
+
+- Use picker-style names for routed models, as 0.3.1 did for catalog models. `COMPATIBLE_KEY_MODELS` entries take an optional `displayName`, and `GET /v1/models` returns it as `name`; OMP labels a discovered model by that field, so a routed model showed its raw vendor ID in the picker. Transport IDs and routes are unchanged.
+
 - Compact subscription API credits into one API usage row with the same percentage-used bar and day countdown as limit rows. Read the remaining subscription grant from the linked Console organization, excluding purchased and other promotional credits. Keep exact dollar amounts and grant holds in the tooltip. The optional Console balance session can be connected or removed separately.
 
 - Show the subscription API credit benefit from Claude Billing: linked organization, monthly USD credit, next credit date, and grant holds. Connect an optional account-verified web session with `account billing-connect <id> --key-stdin`; remove it with `account billing-disconnect <id>`. Billing does not accept subscription OAuth tokens. Quotas and routing remain independent of Billing refresh failures.

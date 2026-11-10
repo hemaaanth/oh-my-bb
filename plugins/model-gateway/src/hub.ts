@@ -528,6 +528,8 @@ export class AccountPoolHub {
           id,
           object: "model",
           owned_by: "model-gateway",
+          // omp labels a discovered model by `name`, so the friendly label must travel here.
+          name: gatewayModelDetails(id).name,
           context_length: gatewayModelDetails(id).contextWindow,
           max_output_tokens: gatewayModelDetails(id).maxTokens,
           input: gatewayModelDetails(id).input,
@@ -1041,7 +1043,7 @@ export class AccountPoolHub {
           // Same protocol: thinking and reasoning go only to the upstream that minted them.
           let replay = cross ? json : fitReplay(json, candidate.replay);
           if (kind === "responses-compatible-key" && isRecord(replay))
-            replay = fitForCompatibleResponses(replay);
+            replay = fitForCompatibleResponses(replay, candidate.model ?? model);
           let entryParsed = parsed;
           if (countTokens && (cross || first.baseUrl !== undefined)) {
             // Only Anthropic counts tokens; answer the other vendors locally.

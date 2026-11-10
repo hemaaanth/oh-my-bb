@@ -135,6 +135,16 @@ describe("chain config", () => {
     expect(fitForCompatibleResponses({ input: "hello" })).toEqual({ input: "hello" });
   });
 
+  it("clamps a harness reasoning effort the routed model does not accept", () => {
+    const model = "deepseek-v4.1-flash-1017-abliterated";
+    expect(fitForCompatibleResponses({ input: "hi", reasoning: { effort: "medium" } }, model).reasoning).toEqual({ effort: "high" });
+    expect(fitForCompatibleResponses({ input: "hi", reasoning: { effort: "minimal" } }, model).reasoning).toEqual({ effort: "low" });
+    expect(fitForCompatibleResponses({ input: "hi", reasoning: { effort: "max" } }, model).reasoning).toEqual({ effort: "max" });
+    // A model with no published effort list, and a request without one, pass through.
+    expect(fitForCompatibleResponses({ input: "hi", reasoning: { effort: "medium" } }, "DeepSeek-V4.1-Flash-1017")).toEqual({ input: "hi", reasoning: { effort: "medium" } });
+    expect(fitForCompatibleResponses({ input: "hi" }, model)).toEqual({ input: "hi" });
+  });
+
   it("maps automatic Claude fallbacks to the configured cost tiers", () => {
     expect(mapModel(DEFAULT_MODEL_MAP, "chatgpt-oauth", "claude-opus-4-7")).toBe(
       "gpt-6-sol",
@@ -1435,7 +1445,11 @@ describe("chain failover in the hub", () => {
     const models = await gw.host.harness.behavior.fetchHttp("GET", "/v1/models", {
       headers: { authorization: `Bearer ${key}` },
     });
-    const catalog = await models.json() as { data: Array<{ id: string }> };
+    const catalog = await models.json() as { data: Array<{ id: string; name: string }> };
+    // omp labels a discovered model by `name`, so every entry must carry one.
+    const labels = Object.fromEntries(catalog.data.map(({ id, name }) => [id, name]));
+    expect(labels["gw-gpt-6.1-sol"]).toBe("6.1-Sol");
+    expect(Object.values(labels).every((name) => typeof name === "string" && name !== "")).toBe(true);
     expect(catalog.data.map(({ id }) => id)).toContain("gw-gpt-6.1-sol");
     expect(catalog.data.every(({ id }) => id.startsWith("gw-"))).toBe(true);
     expect(gw.upstream.attempts).toEqual([]);

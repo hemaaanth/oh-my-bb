@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
-import { modelDisplayName } from "./model-catalog.js";
+import { gatewayModelDetails, modelDisplayName } from "./model-catalog.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { contextWindow, gatewayModels, ompModels, DEFAULT_MODEL_MAP } from "./chain.js";
 import { piExtension, writePiStandalone } from "./setup.js";
@@ -14,6 +14,9 @@ it.each([
   ["gpt-5.3-codex-spark", "5.3-Spark"], ["gpt-5.5", "5.5"],
   ["claude-opus-5-5", "Opus 5.5"], ["claude-sonnet-4-5-20250929", "Sonnet 4.5"],
   ["kimi-k3", "kimi-k3"],
+  ["DeepSeek-V4.1-Flash-1017", "DSF4.1"],
+  ["gw-deepseek-v4.1-flash-1017-abliterated", "DSF4.1-A"],
+  ["model-gateway/deepseek-v4.1-flash-1017-abliterated", "DSF4.1-A"],
 ])("labels %s as %s without changing custom IDs", (id, label) => {
   expect(modelDisplayName(id)).toBe(label);
 });
@@ -62,6 +65,14 @@ describe("Codex discovery", () => {
     expect(contextWindow("gpt-5.3-codex-spark", new Headers())).toBe(128000);
     expect(contextWindow("gpt-6-sol", new Headers())).toBe(272000);
     expect(ompModels(DEFAULT_MODEL_MAP)).toContain("gw-gpt-6.1-sol");
+  });
+
+  it("advertises a route's own limits instead of the generic fallback", () => {
+    expect(gatewayModelDetails("gw-deepseek-v4.1-flash-1017-abliterated")).toMatchObject({
+      id: "gw-deepseek-v4.1-flash-1017-abliterated",
+      contextWindow: 1048576, maxTokens: 126976, input: ["text"],
+    });
+    expect(gatewayModelDetails("gw-unrouted-model")).toMatchObject({ contextWindow: 200000, maxTokens: 64000 });
   });
 });
 

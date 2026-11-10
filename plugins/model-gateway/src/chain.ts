@@ -7,7 +7,7 @@ import type { Account, AccountQuota, ModelFamily } from "./contracts.js";
 import type { ProviderAdapter } from "./upstreams/provider-adapter.js";
 import { isQuotaExhausted } from "./upstreams/quota.js";
 import { ANTHROPIC_REPLAY, CHATGPT_REPLAY } from "./translate/reasoning-envelope.js";
-import { CODEX_MODELS, GATEWAY_MODELS } from "./model-catalog.js";
+import { CODEX_MODELS, GATEWAY_MODELS, compatibleReasoningEffort } from "./model-catalog.js";
 import {
   HARNESSES,
   KEY_LABEL,
@@ -420,13 +420,27 @@ const CHATGPT_REJECTED_FIELDS = [
   "user",
 ];
 
-/** Compatible Responses APIs may require the explicit message type OpenAI permits clients to omit. */
-export function fitForCompatibleResponses(body: Record<string, unknown>): Record<string, unknown> {
-  if (!Array.isArray(body.input) || !body.input.some((item) => isRecord(item) && item.type === undefined && typeof item.role === "string")) return body;
-  return { ...body, input: body.input.map((item) =>
-    isRecord(item) && item.type === undefined && typeof item.role === "string"
-      ? { ...item, type: "message" } : item,
-  ) };
+/**
+ * Compatible Responses APIs may require the explicit message type OpenAI permits
+ * clients to omit, and a routed model may accept only some reasoning efforts.
+ * Clamp the effort so a harness default is not a hard 400 on every request.
+ */
+export function fitForCompatibleResponses(
+  body: Record<string, unknown>,
+  model: string | null = null,
+): Record<string, unknown> {
+  const fitted: Record<string, unknown> = { ...body };
+  if (Array.isArray(body.input) && body.input.some((item) => isRecord(item) && item.type === undefined && typeof item.role === "string"))
+    fitted.input = body.input.map((item) =>
+      isRecord(item) && item.type === undefined && typeof item.role === "string"
+        ? { ...item, type: "message" } : item,
+    );
+  const effort = isRecord(body.reasoning) ? body.reasoning.effort : undefined;
+  if (model !== null && typeof effort === "string") {
+    const clamped = compatibleReasoningEffort(model, effort);
+    if (clamped !== effort) fitted.reasoning = { ...body.reasoning as Record<string, unknown>, effort: clamped };
+  }
+  return fitted;
 }
 
 /**
