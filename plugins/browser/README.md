@@ -43,7 +43,7 @@ thread-group extension prerequisite. Thread cleanup does not require grouping.
 
 Headed isolated and native handoffs use the optional Sandboxes voxl service for the existing private display. The authenticated viewer streams H.264 and accepts mouse, keyboard and paste. Browser chrome, popups and native dialogs stay in the same session. File-chooser interception is released before handoff. Raw VNC has an owner-only Unix socket and no TCP listener. Geometry stays 1920×1080 in watch and control modes. The whole desktop scales up or down with contain fitting and letterboxing; it is never cropped or resized to the card.
 
-Each desktop grant has one server-enforced viewer lease, including direct links. A second page cannot automatically take over. Pop-out transfers ownership with a short-lived, single-use ticket; the inline viewer becomes a non-streaming **Viewing elsewhere** placeholder. Use **View here** to return explicitly, including after closing the pop-out. A blocked popup leaves ownership unchanged. Fullscreen keeps the same frame and connection. Revoked workers are removed rather than left reconnecting. Done, Reply, Cancel and expiry close the viewer before resume/discard. Lost unload or polling requests never imply completion or automatic return.
+Each desktop grant has one server-enforced viewer lease, including direct links. A second page cannot automatically take over. The wrapper prepares one single-use transfer ticket per ownership generation, valid no longer than the grant. Open session calls BB's public navigation API synchronously with that prepared HTTPS URL. It respects the client's browser preference and does not require a popup window handle. Standalone viewers use a prepared `noopener` link. Issuing or opening the link does not revoke inline viewing; destination ticket consumption does. The inline viewer then becomes a non-streaming **Viewing elsewhere** placeholder. Use **View here** to return explicitly, including after closing the pop-out. A failed launch leaves ownership unchanged. Fullscreen keeps the same frame and connection. Revoked workers are removed rather than left reconnecting. Done, Reply, Cancel and expiry close the viewer before resume/discard. Lost unload or polling requests never imply completion or automatic return.
 
 Without desktop integration, handoff offers page-only controls and explains that browser chrome and OS dialogs are unavailable. Native private windows are not on the user's workspace. Regular-profile/relay and scratch headless viewers stay page-only; they never expose a personal desktop. Browser does not install, probe or enable Sandboxes at startup.
 
@@ -100,7 +100,7 @@ BB_TEST_REAL_NATIVE=1 npm test -- test/native-desktop-live.test.ts
 ```
 
 It requires this package's `bb-browser` CLI, the actual Brave engine, Xvnc,
-Openbox, xauth, Python/libX11 and `prlimit`. Its default engine is
+Openbox, xauth, Python/libX11, FFmpeg and `prlimit`. Its default engine is
 `/opt/brave-origin-bin/brave`; set `BB_TEST_BRAVE_EXECUTABLE` for another engine
 and `BB_TEST_CHROME_WRAPPER` for its launcher environment. Do not supply a
 wrapper that masks the engine's exit status.
@@ -110,7 +110,9 @@ normal engine exit, old Brave/Xvnc/Openbox PIDs gone, new PIDs on reopen, and
 immediately added/changed persistent cookies retained. It also checks partial
 sessions, active command leases, manual holds, lifecycle watch/archive/delete
 cleanup, first-use/missing seed behavior, fresh extension grouping and physical
-1920×1080 X geometry. SDK host fixtures drive the actual CLI for lifecycle
+1920×1080 X geometry. A detached four-second FFmpeg root-pixel guard rejects
+1 Hz presentation and missing fixture content before any screenshot is taken.
+SDK host fixtures drive the actual CLI for lifecycle
 checks; they are not rendered BB viewer proof. DOM `screen` and `outerWidth`
 metrics are not physical-display proof. With `BB_THREAD_STORAGE`, it writes a
 JSON receipt and page screenshot there. Successful proof uses no emergency
@@ -139,6 +141,11 @@ card/panel or a real-site login.
 Before deployment, run a real provider image with two simultaneous headed sessions and different fixture accounts. Verify manual OAuth/bot-check handoff through the remote BB URL, viewer expiry/reconnect/cancel, sandbox hold/release, process crash recovery and resource cleanup. Verify home public IP, DNS and WebRTC behavior on the approved Tailscale exit node, then stop its route and prove Brave fails closed. These require provider allocation, tailnet policy and approved credentials. Local fixture success is not evidence for those external gates.
 
 ## Changelog
+
+### 0.3.2
+
+- Prepare grant-bounded pop-out links before the click. Use the public BB navigation API without `about:blank` reservations or `WindowProxy` assumptions. Keep the old stream until consumption and clear cached links on ownership loss, expiry and session replacement.
+- Avoid the bogus 1 Hz GLX refresh clock on owned native/isolated Xvnc displays with a private-only GPU VSync flag. Leave desktop-native, existing, relay and scratch headless launches unchanged. Measure animation after command detachment; focus emulation during eval is not passive motion evidence.
 
 ### 0.3.1
 
