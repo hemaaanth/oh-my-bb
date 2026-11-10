@@ -461,24 +461,24 @@ function footerWindows(account: AccountSummary): Array<{ label: string; utilizat
   ].filter((window): window is { label: string; utilization: number; resetAt: number | null } => window.utilization !== null);
 }
 
-function FooterUsageBar({ label, utilization, resetAt, account }: {
-  label: string; utilization: number; resetAt: number | null; account: string;
+function FooterUsageBar({ label, utilization, resetAt, account, title }: {
+  label: string; utilization: number | null; resetAt: number | null; account: string; title?: string;
 }) {
-  const used = Math.min(100, Math.max(0, Math.round(utilization * 100)));
+  const used = utilization === null ? null : Math.min(100, Math.max(0, Math.round(utilization * 100)));
   const remaining = resetAt === null || resetAt <= Date.now() ? "" : (() => {
     const minutes = Math.max(1, Math.ceil((resetAt - Date.now()) / 60_000));
     if (minutes >= 1_440) return `${Math.ceil(minutes / 1_440)}d`;
     return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`;
   })();
   return (
-    <div className="flex items-center gap-2 text-2xs tabular-nums">
+    <div className="flex items-center gap-2 text-2xs tabular-nums" title={title}>
       <span className="w-12 shrink-0 text-muted-foreground">{label}</span>
-      <div role="progressbar" aria-label={`${account} ${label} usage`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={used}
+      <div role="progressbar" aria-label={`${account} ${label} usage`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={used ?? undefined}
         className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
-        <div className={cn("h-full rounded-full", used >= 98 ? "bg-destructive" : "bg-warning")}
-          style={{ width: `${used}%` }} />
+        <div className={cn("h-full rounded-full", used !== null && used >= 98 ? "bg-destructive" : "bg-warning")}
+          style={{ width: `${used ?? 0}%` }} />
       </div>
-      <span className="w-8 shrink-0 text-right font-medium text-foreground">{used}%</span>
+      <span className="w-8 shrink-0 text-right font-medium text-foreground">{used === null ? "—" : `${used}%`}</span>
       <span className="w-12 shrink-0 text-right text-muted-foreground" title={resetAt === null || resetAt <= 0 ? undefined : `Resets ${new Date(resetAt).toLocaleString()}`}>
         {remaining}
       </span>
@@ -492,6 +492,7 @@ function resetCreditsLabel({ available }: ResetCredits): string {
 
 function GatewayAccountPanel({ account, reconnect }: { account: AccountSummary; reconnect: () => void }) {
   const windows = footerWindows(account);
+  const apiCredits = account.provider === "claude" ? account.apiCreditBenefit : null;
   // Snapshots cached before reset credits existed have no such field.
   const resetCredits = account.resetCredits ?? null;
   return (
@@ -506,10 +507,15 @@ function GatewayAccountPanel({ account, reconnect }: { account: AccountSummary; 
           Account needs attention. Usage is unavailable. {account.error}
         </p>
         <Button size="sm" variant="outline" onClick={reconnect}>Reconnect</Button>
-      </div> : windows.length === 0 ? <p className="mt-2 text-xs text-muted-foreground">
+      </div> : windows.length === 0 && apiCredits == null ? <p className="mt-2 text-xs text-muted-foreground">
         Usage unavailable
       </p> : <div className="mt-1.5 space-y-1">
         {windows.map((window) => <FooterUsageBar key={window.label} {...window} account={account.label} />)}
+        {apiCredits == null ? null : <FooterUsageBar label="API" account={account.label}
+          utilization={apiCredits.remainingUsd == null || apiCredits.monthlyUsd <= 0 ? null : 1 - apiCredits.remainingUsd / apiCredits.monthlyUsd}
+          resetAt={apiCredits.nextGrantAt}
+          title={`${apiCredits.organizationName}: ${apiCredits.remainingUsd == null ? "Balance unavailable" : `$${apiCredits.remainingUsd.toFixed(2)} of $${apiCredits.monthlyUsd.toFixed(2)} remaining`}${apiCredits.heldReason === null ? "" : ` · Credits on hold: ${apiCredits.heldReason}`}`} />}
+
       </div>}
       {account.observedAt === null && resetCredits === null ? null : <div className="mt-1.5 flex justify-between gap-2 text-2xs text-muted-foreground">
         <span title={resetCredits === null ? undefined : "One-off resets that set a usage limit back to zero"}>

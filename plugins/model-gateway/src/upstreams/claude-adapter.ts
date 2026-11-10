@@ -1,4 +1,5 @@
 // Ported from the core Account Pooler (account-pool), MIT, Michael Yong 2026.
+import { fetchApiCreditBenefit, fetchSubscriptionCreditRemaining } from "./api-credit-benefit.js";
 import { z } from "zod";
 import type { AccountSecret } from "../contracts.js";
 import {
@@ -132,6 +133,8 @@ export function createClaudeAdapter(options: {
           rawExpiresAt < 1_000_000_000_000
             ? Math.round(rawExpiresAt * 1_000)
             : Math.round(rawExpiresAt),
+        ...(secret.billingConsoleSessionKey === undefined ? {} : { billingConsoleSessionKey: secret.billingConsoleSessionKey }),
+        ...(secret.billingSessionKey === undefined ? {} : { billingSessionKey: secret.billingSessionKey }),
         ...(secret.idToken === undefined ? {} : { idToken: secret.idToken }),
       };
       await context.accounts.writeSecret(context.account.id, refreshed);
@@ -162,6 +165,13 @@ export function createClaudeAdapter(options: {
         }
       } else {
         await response.body?.cancel();
+      }
+      if (secret.billingSessionKey !== undefined) {
+        const benefit = await fetchApiCreditBenefit(context.fetch, secret.accessToken, secret.billingSessionKey).catch(() => null);
+        if (benefit !== null && secret.billingConsoleSessionKey !== undefined) {
+          benefit.remainingUsd = await fetchSubscriptionCreditRemaining(context.fetch, secret.billingConsoleSessionKey, benefit.organizationId).catch(() => null);
+        }
+        context.quotas.put({ ...context.quotas.get(context.account.id), apiCreditBenefit: benefit });
       }
       if (context.account.accountUuid !== null) return;
       const profile = await context.fetch(options.profileUrl, {

@@ -64,6 +64,38 @@ Automatic Claude Code failover maps Fable to `gpt-6-astra`, Opus to
   current provider usage. The host owns Hide and Customize footer actions.
   It opens from a short-lived cache and refreshes limits on demand. Codex
   accounts also show how many one-off reset credits they have.
+  Claude accounts can show the subscription API credit benefit from Billing:
+  one API row with percentage used and a countdown to the next grant. Hover
+  to see the remaining subscription credit against the monthly allowance.
+  Purchased credits and other promotions are excluded.
+
+### Connect subscription API credits
+
+Claude's Billing endpoint rejects OAuth tokens. This optional feature needs a
+Claude web `sessionKey` for the same account. Gateway checks its account UUID
+against the existing OAuth login before storing it in that account's private
+secret file. It never reads browser stores or requires another package.
+
+Pipe the session key from a signed-in Claude Billing request through stdin:
+
+```sh
+bb gateway account billing-connect <account-id> --key-stdin
+```
+
+For the remaining subscription grant, also pipe the linked Console's web
+`sessionKey` into `bb gateway account billing-balance-connect <account-id> --key-stdin`.
+This credential can only read the organization linked by Claude Billing; no
+organization ID is accepted from the caller. Remove it with
+`account billing-balance-disconnect <account-id>`. Removing the Billing session
+also removes this Console session. Neither key is returned in account data.
+
+Then use Refresh in Gateway usage to fetch the latest benefit and balance. Renew an expired
+web session with the same command. Remove it with
+`bb gateway account billing-disconnect <account-id>`. A failed Billing refresh
+clears its displayed benefit and leaves subscription routing and usage intact.
+The undocumented Billing endpoints may change. An unavailable balance shows a
+dash rather than a fabricated percentage. The API row uses the same percentage
+used convention and countdown as subscription limit rows.
 
 ## Failover rules
 

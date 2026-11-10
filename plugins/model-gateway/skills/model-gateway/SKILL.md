@@ -245,6 +245,17 @@ Sandboxes use the same setup manifest during create, heal and resume. Custom
   to fetch current limits from the providers. Codex accounts also show their
   one-off reset credits ("3 resets available"); `bb gateway account list`
   has the same count in its `Resets` column. Claude does not report these.
+  Claude's subscription API credit benefit is optional: connect a Claude web
+  session with `bb gateway account billing-connect <id> --key-stdin`. Billing
+  rejects OAuth tokens. Gateway verifies the web session's account UUID against
+  the account's OAuth profile, then stores it in the account's private secret
+  file. The footer shows one API row, with percentage used and a countdown to
+  the next grant. Connect the linked Console session using
+  `account billing-balance-connect <id> --key-stdin` to read the unexpired
+  subscription grant balance. Purchased credits and other promotions are excluded.
+  Hover shows remaining USD against the monthly allowance. Unknown balances show
+  a dash. `account billing-balance-disconnect <id>` removes the Console session. Refresh clears unavailable Billing data without affecting routing.
+  Renew with the same command or remove with `account billing-disconnect <id>`.
 - `bb gateway status --thread <id>` shows the upstream, model, chain entry,
   sticky time, and the Jev pick with its reason.
 

@@ -1,3 +1,4 @@
+import { fetchApiCreditBenefit, fetchSubscriptionCreditRemaining } from "./upstreams/api-credit-benefit.js";
 import { randomUUID } from "node:crypto";
 // Ported from the core Account Pooler (account-pool), MIT, Michael Yong 2026.
 import type {
@@ -314,6 +315,39 @@ export class PoolOperations {
 
   async reorder(provider: PoolProvider, accountIds: string[]): Promise<void> {
     await this.accounts.reorder(provider, accountIds);
+    this.onAccountsChanged();
+  }
+
+  async connectBilling(id: string, sessionKey: string | null): Promise<void> {
+    const account = await this.accounts.get(id);
+    if (account?.provider !== "claude" || account.kind !== "oauth") throw new Error("Billing requires a Claude subscription account.");
+    if (sessionKey !== null && !/^[^;\s]+$/u.test(sessionKey)) throw new Error("Invalid Billing session key.");
+    await this.hub.refreshUsage(id, true);
+    const secret = await this.accounts.readSecret(id);
+    if (secret.kind !== "oauth") throw new Error("Billing requires a Claude subscription account.");
+    const benefit = sessionKey === null ? null : await fetchApiCreditBenefit(fetch, secret.accessToken, sessionKey);
+    if (sessionKey !== null && benefit === null) throw new Error("No linked subscription API credit benefit found.");
+    const latest = await this.accounts.readSecret(id);
+    if (latest.kind !== "oauth") throw new Error("Account changed during Billing connection.");
+    const { billingSessionKey: _, billingConsoleSessionKey: _console, ...withoutBilling } = latest;
+    await this.accounts.writeSecret(id, sessionKey === null ? withoutBilling : { ...latest, billingSessionKey: sessionKey });
+    this.quotas.put({ ...this.quotas.get(id), apiCreditBenefit: benefit });
+    this.onAccountsChanged();
+  }
+
+  async connectBillingBalance(id: string, sessionKey: string | null): Promise<void> {
+    const account = await this.accounts.get(id);
+    if (account?.provider !== "claude" || account.kind !== "oauth") throw new Error("Billing requires a Claude subscription account.");
+    if (sessionKey !== null && !/^[^;\s]+$/u.test(sessionKey)) throw new Error("Invalid Console session key.");
+    const benefit = this.quotas.get(id).apiCreditBenefit;
+    if (benefit === null) throw new Error("Connect the Claude Billing benefit first.");
+    const remainingUsd = sessionKey === null ? null : await fetchSubscriptionCreditRemaining(fetch, sessionKey, benefit.organizationId);
+    if (sessionKey !== null && remainingUsd === null) throw new Error("Subscription credit balance unavailable.");
+    const latest = await this.accounts.readSecret(id);
+    if (latest.kind !== "oauth") throw new Error("Account changed during Billing connection.");
+    const { billingConsoleSessionKey: _, ...withoutConsole } = latest;
+    await this.accounts.writeSecret(id, sessionKey === null ? withoutConsole : { ...latest, billingConsoleSessionKey: sessionKey });
+    this.quotas.put({ ...this.quotas.get(id), apiCreditBenefit: { ...benefit, remainingUsd } });
     this.onAccountsChanged();
   }
 

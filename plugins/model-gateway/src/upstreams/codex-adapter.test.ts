@@ -25,6 +25,7 @@ function emptyQuota(): AccountQuota {
     },
     limitWindows: [],
     resetCredits: null,
+    apiCreditBenefit: null,
     observedAt: null,
     heldUntil: null,
     error: null,

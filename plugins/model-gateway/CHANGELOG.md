@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Compact subscription API credits into one API usage row with the same percentage-used bar and day countdown as limit rows. Read the remaining subscription grant from the linked Console organization, excluding purchased and other promotional credits. Keep exact dollar amounts and grant holds in the tooltip. The optional Console balance session can be connected or removed separately.
+
+- Show the subscription API credit benefit from Claude Billing: linked organization, monthly USD credit, next credit date, and grant holds. Connect an optional account-verified web session with `account billing-connect <id> --key-stdin`; remove it with `account billing-disconnect <id>`. Billing does not accept subscription OAuth tokens. Quotas and routing remain independent of Billing refresh failures.
+
 - Add per-thread chains. `bb gateway chain set --thread <id> <harness> <entry>...` gives one thread its own chain; `bb gateway chain clear --thread <id>` removes it. The thread's own chain applies only while that thread runs the named harness. The legal guard checks it like a harness chain. `chain show` lists thread chains, and `chain show --json` adds them under `threads`.
 
 - Add Reconnect to subscription account menus, details, and footer errors. Reauthorize the same account in place, preserving its ID, priority, enabled state, and routes. Show account errors in the usage popup instead of stale bars, and recheck account status on each open.

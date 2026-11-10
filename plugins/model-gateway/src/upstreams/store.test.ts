@@ -129,12 +129,17 @@ describe("QuotaStore", () => {
     database.exec(familyMigration);
     database.exec(windowMigration);
     database.exec(QUOTA_MIGRATIONS.find((sql) => sql.includes("ADD COLUMN reset_credits_json")) ?? "");
+    database.exec(QUOTA_MIGRATIONS.find((sql) => sql.includes("ADD COLUMN api_credit_benefit_json")) ?? "");
     const quotas = new QuotaStore(database);
 
     const migrated = quotas.get("11111111-1111-4111-8111-111111111111");
     expect(migrated.sevenDayUtilization).toBe(0.5);
     expect(migrated.limitWindows).toEqual([]);
     expect(migrated.resetCredits).toBeNull();
+    expect(migrated.apiCreditBenefit).toBeNull();
+    const apiCreditBenefit = { organizationId: migrated.accountId, organizationName: "Example", monthlyUsd: 200, remainingUsd: 198.21, nextGrantAt: 1, heldReason: null };
+    quotas.put({ ...migrated, apiCreditBenefit });
+    expect(quotas.get(migrated.accountId).apiCreditBenefit).toEqual(apiCreditBenefit);
     quotas.put({ ...migrated, resetCredits: { available: 3, usable: 1 } });
     expect(
       quotas.get("11111111-1111-4111-8111-111111111111").resetCredits,

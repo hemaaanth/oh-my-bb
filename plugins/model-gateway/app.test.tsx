@@ -53,6 +53,7 @@ function account(overrides: Partial<AccountSummary> = {}): AccountSummary {
     },
     limitWindows: [],
     resetCredits: null,
+    apiCreditBenefit: null,
     observedAt: null,
     heldUntil: null,
     error: null,
@@ -473,6 +474,25 @@ describe("Model usage footer", () => {
       "account.list": () => [legacy],
     } as never });
     await slot.findByText("person@example.com");
+  });
+
+  it.each([
+    { remainingUsd: 198.21, used: 1 }, { remainingUsd: 0, used: 100 }, { remainingUsd: null, used: undefined },
+  ])("shows API credits as one usage row: $remainingUsd remaining", async ({ remainingUsd, used }) => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: {
+      "account.list": () => [account({ apiCreditBenefit: {
+        organizationId: "22222222-2222-4222-8222-222222222222", organizationName: "Example",
+        monthlyUsd: 200, remainingUsd, nextGrantAt: Date.now() + 2 * 86400_000, heldReason: null,
+      } })],
+    } as never });
+    await slot.findByText("API");
+    const bar = slot.getByRole("progressbar", { name: / API usage/u });
+    expect(bar.getAttribute("aria-valuenow")).toBe(used === undefined ? null : String(used));
+    expect(bar.parentElement?.textContent).toContain("2d");
+    expect(bar.parentElement?.title).toContain(remainingUsd === null ? "Balance unavailable" : `$${remainingUsd.toFixed(2)} of $200.00 remaining`);
+    expect(slot.queryByText("Next credit")).toBeNull();
   });
 
   it("shows Codex one-off reset credits", async () => {

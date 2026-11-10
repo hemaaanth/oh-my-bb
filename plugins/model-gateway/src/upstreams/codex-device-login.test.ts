@@ -91,6 +91,7 @@ function summary(account: CodexDeviceAccount): AccountSummary {
     },
     limitWindows: [],
     resetCredits: null,
+    apiCreditBenefit: null,
     observedAt: null,
     heldUntil: null,
     error: null,

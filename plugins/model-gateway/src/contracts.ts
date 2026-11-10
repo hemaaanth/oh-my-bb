@@ -145,6 +145,13 @@ export const resetCreditsSchema = z
 
 export type ResetCredits = z.infer<typeof resetCreditsSchema>;
 
+export const apiCreditBenefitSchema = z.object({
+  organizationId: z.string().uuid(), organizationName: z.string().min(1),
+  monthlyUsd: z.number().nonnegative(), remainingUsd: z.number().nonnegative().nullable().default(null), nextGrantAt: z.number().int().nullable(),
+  heldReason: z.string().nullable(),
+}).strict();
+export type ApiCreditBenefit = z.infer<typeof apiCreditBenefitSchema>;
+
 export const accountSchema = z
   .object({
     id: z.string().uuid(),
@@ -172,6 +179,8 @@ export const oauthSecretSchema = z
   .object({
     kind: z.literal("oauth"),
     accessToken: z.string().min(1),
+    billingConsoleSessionKey: z.string().min(1).regex(/^[^;\s]+$/u).optional(),
+    billingSessionKey: z.string().min(1).regex(/^[^;\s]+$/u).optional(),
     refreshToken: z.string().min(1),
     expiresAt: z.number().int().positive().nullable(),
     idToken: z.string().min(1).optional(),
@@ -205,6 +214,7 @@ export const quotaSchema = z
     familyWeekly: familyWeeklySchema,
     limitWindows: z.array(limitWindowSchema),
     resetCredits: resetCreditsSchema.nullable(),
+    apiCreditBenefit: apiCreditBenefitSchema.nullable().default(null),
     observedAt: z.number().int().nullable(),
     heldUntil: z.number().int().nullable(),
     error: z.string().nullable(),
@@ -225,6 +235,7 @@ export const accountSummarySchema = accountSchema.extend({
   familyWeekly: familyWeeklySchema,
   limitWindows: z.array(limitWindowSchema),
   resetCredits: resetCreditsSchema.nullable(),
+    apiCreditBenefit: apiCreditBenefitSchema.nullable().default(null),
   observedAt: z.number().int().nullable(),
   heldUntil: z.number().int().nullable(),
   error: z.string().nullable(),

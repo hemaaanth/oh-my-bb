@@ -127,6 +127,7 @@ export function quotaFromHeaders(
     familyWeekly,
     limitWindows: previous.limitWindows,
     resetCredits: previous.resetCredits,
+    apiCreditBenefit: previous.apiCreditBenefit,
     observedAt: observed ? now : previous.observedAt,
     heldUntil: previous.heldUntil,
     error: previous.error,

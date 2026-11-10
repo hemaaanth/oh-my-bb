@@ -78,6 +78,7 @@ const HELP = [
   "  bb gateway account add --provider claude --api-key <key> [--label <text>] [--priority <n>]  Unsafe: exposes the key in process arguments.",
   "  printf '%s\\n' \"$KEY\" | bb gateway key add <claude-key|anthropic-compatible-key|responses-compatible-key> --label <label> [--base-url <url>] [--priority <n>] --key-stdin",
   "  bb gateway account list [--json]",
+  "  bb gateway account billing-connect <id> --key-stdin | billing-disconnect <id>",
   "  bb gateway account remove <id>",
   "  bb gateway account enable <id>",
   "  bb gateway account disable <id>",
@@ -221,6 +222,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
       "7d reset",
       "Windows",
       "Resets",
+      "Subscription API credit",
       ...families.map(familyLabel),
       "Status",
     ].join("\t"),
@@ -241,6 +243,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
         formatReset(account.sevenDayResetAt),
         formatLimitWindows(account.limitWindows),
         formatResetCredits(account.resetCredits),
+        account.apiCreditBenefit == null ? "-" : `${account.apiCreditBenefit.organizationName}: USD ${account.apiCreditBenefit.remainingUsd ?? "?"} remaining / ${account.apiCreditBenefit.monthlyUsd}/month; next ${formatReset(account.apiCreditBenefit.nextGrantAt)}`,
         ...families.map((family) =>
           formatFamilyQuota(account.familyWeekly[family]),
         ),
@@ -443,6 +446,14 @@ export function registerPoolCli(
           "printf '%s\\n' \"$CLAUDE_AUTH_CODE\" | bb gateway account login-complete --session <id> --code-stdin",
       },
       {
+        name: "account-billing-connect",
+        summary: "Connect a Claude Billing session to read subscription API credits",
+        usage: "bb gateway account billing-connect <id> --key-stdin",
+      },
+      { name: "account-billing-balance-connect", summary: "Connect a Console session to read the linked subscription grant balance", usage: "bb gateway account billing-balance-connect <id> --key-stdin" },
+      { name: "account-billing-balance-disconnect", summary: "Forget the Console balance session", usage: "bb gateway account billing-balance-disconnect <id>" },
+      { name: "account-billing-disconnect", summary: "Forget a Claude Billing session", usage: "bb gateway account billing-disconnect <id>" },
+      {
         name: "account-list",
         summary: "List pool accounts and observed quota",
         usage: "bb gateway account list [--json]",
@@ -568,6 +579,16 @@ export function registerPoolCli(
       try {
         if (argv.includes("--help") || argv.includes("-h")) {
           return { exitCode: 0, stdout: `${HELP}\n` };
+        }
+        if (argv[0] === "account" && ["billing-connect", "billing-disconnect", "billing-balance-connect", "billing-balance-disconnect"].includes(argv[1] ?? "")) {
+          const { id: accountId } = accountIdInputSchema.parse({ id: argv[2] });
+          const disconnect = argv[1]!.endsWith("disconnect");
+          const flags = parseFlags(argv.slice(3), ["key-stdin"], ["key"]);
+          const key = flags.values.get("key");
+          if (!disconnect && (key === undefined || flags.booleans.has("key-stdin"))) throw new Error("Pipe the Claude sessionKey through --key-stdin using the bb CLI.");
+          if (argv[1]!.startsWith("billing-balance")) await operations.connectBillingBalance(accountId, disconnect ? null : key!);
+          else await operations.connectBilling(accountId, disconnect ? null : key!);
+          return { exitCode: 0, stdout: disconnect ? "Billing session removed.\n" : "Subscription API credits connected.\n" };
         }
         if (argv[0] === "account" && argv[1] === "priority") {
           if (argv.length !== 4 || argv[3]?.trim() === "")

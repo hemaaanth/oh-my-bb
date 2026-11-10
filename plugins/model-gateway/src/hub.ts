@@ -903,6 +903,7 @@ export class AccountPoolHub {
           familyWeekly: quota.familyWeekly,
           limitWindows: quota.limitWindows,
           resetCredits: quota.resetCredits,
+          apiCreditBenefit: quota.apiCreditBenefit,
           observedAt: quota.observedAt,
           heldUntil: quota.heldUntil,
           error: quota.error,
