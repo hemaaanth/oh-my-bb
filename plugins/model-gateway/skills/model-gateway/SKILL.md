@@ -100,6 +100,19 @@ It fails closed when its key is unavailable; it never falls back to another
 account. Other models keep their existing chains. Run `bb gateway setup host`
 on each execution host after adding a model route so Pi and OMP discover it.
 
+A routed model's context window, output ceiling and reasoning efforts come
+from `COMPATIBLE_KEY_MODELS` in `src/model-catalog.ts`, not the harness
+catalog. Add an entry there when a route needs limits the generic fallback
+would understate. `reasoningEfforts` lists the vendor's documented
+`reasoning.effort` values; the gateway clamps any other level a harness sends
+to the nearest listed one, tie upward, instead of forwarding a 400. A model
+without the list passes the client's effort through unchanged.
+
+`displayName` sets the picker label, since a routed model's vendor ID is too
+long for the harness lists. It travels in `GET /v1/models` as `name`, so OMP
+and Pi show the short label while the transport keeps the exact vendor ID.
+
+
 HTML 401/403 error pages cause a temporary account hold of at least 60 seconds,
 with `Retry-After`, rather than a permanent login error. Older saved HTML errors
 are released on startup. JSON authentication failures keep credential recovery.
