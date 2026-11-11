@@ -11,6 +11,8 @@ has_script() {
   (cd "$dir" && node -e 'process.exit(require("./package.json").scripts?.[process.argv[1]] ? 0 : 1)' "$1")
 }
 
+node "$root/scripts/check-icons.mjs" "$package"
+
 echo "==> $package"
 cd "$dir"
 npm ci

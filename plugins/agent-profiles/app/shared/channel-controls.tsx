@@ -2,8 +2,6 @@ import { useState, type ReactNode } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
-import { SmilePlusIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import type { ChannelAgent } from "../../server/channels/contract";
 import { Button } from "@/components/ui/button";
 import {
@@ -225,8 +223,8 @@ export function ReactionPicker({
           className={triggerClassName ?? "inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground"}
           aria-label={label}
         >
-          {/* The host icon set has no smiley; unknown names fall back to another glyph. */}
-          <HugeiconsIcon icon={SmilePlusIcon} className="size-3" aria-hidden />
+          {/* Use the manifest asset through the host so icon overrides also apply here. */}
+          <Icon name="agent-profiles/smile-plus" className="size-3" aria-hidden />
         </button>
       }
     >

@@ -1,16 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type SyntheticEvent } from "react";
-import {
-  Airplane01Icon,
-  BulbIcon,
-  Clock01Icon,
-  Coffee01Icon,
-  Flag01Icon,
-  FootballIcon,
-  HashtagIcon,
-  Leaf01Icon,
-  SmileIcon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -27,16 +16,16 @@ import {
 
 const recentCategory = "recent";
 
-const categoryIcons: Record<string, IconSvgElement> = {
-  [recentCategory]: Clock01Icon,
-  smileys_people: SmileIcon,
-  animals_nature: Leaf01Icon,
-  food_drink: Coffee01Icon,
-  travel_places: Airplane01Icon,
-  activities: FootballIcon,
-  objects: BulbIcon,
-  symbols: HashtagIcon,
-  flags: Flag01Icon,
+const categoryIcons: Record<string, string> = {
+  [recentCategory]: "Clock",
+  smileys_people: "agent-profiles/smile",
+  animals_nature: "agent-profiles/leaf01",
+  food_drink: "Coffee",
+  travel_places: "agent-profiles/airplane01",
+  activities: "agent-profiles/football",
+  objects: "agent-profiles/bulb",
+  symbols: "agent-profiles/hashtag",
+  flags: "agent-profiles/flag01",
 };
 
 const skinTones: { tone: SkinTone; label: string; color: string }[] = [
@@ -263,7 +252,7 @@ export function EmojiReactionPicker({ onPick }: { onPick: (emoji: string) => voi
               className="inline-flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent aria-pressed:text-foreground"
               onClick={() => jumpTo(category.id)}
             >
-              <HugeiconsIcon icon={categoryIcons[category.id] ?? SmileIcon} className="size-4" aria-hidden />
+              <Icon name={categoryIcons[category.id] ?? categoryIcons.smileys_people} className="size-4" aria-hidden />
             </button>
           ))}
         </nav>

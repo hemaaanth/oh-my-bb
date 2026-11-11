@@ -40,3 +40,9 @@
 - Install locked dependencies in the plugin directory before builds. Cleanup must exclude installed local plugin roots and their node_modules.
 - Report commit, changed paths, installed source, validation, remaining uncommitted work, and the branch if one was already in use.
 - Do not remove existing unfinished branches or worktrees until their work is backed up and integration is verified.
+
+## UI icons
+
+- Use `experimental_Icon` from the Plugin SDK for app UI icons. Typed local wrappers must delegate to that renderer so app-wide overrides apply. Do not bundle a separate UI icon library.
+- Declare missing artwork as SVG assets in `bb.branding.experimental_icons`, then use the namespaced name through the shared renderer. Keep artwork attribution with the assets.
+- Standalone guest pages may use a local icon adapter because they run outside BB. Keep it separate from the BB app bundle.

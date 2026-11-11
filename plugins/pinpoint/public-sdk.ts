@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { createElement, useEffect, type CSSProperties } from "react";
+import publicIcons from "./public-icons.json";
 import { GUEST_PREVIEW_ISOLATION_VERSION } from "./lib/protocol";
 import { guestRowSchema, type GuestPermissions } from "./lib/guest-review";
 
@@ -257,4 +258,26 @@ export function useRealtime(
 
 export function definePluginApp<T>(registration: T): T {
   return registration;
+}
+
+// Guest shares run outside BB and have no host icon registry. Keep their artwork local.
+export function experimental_Icon({ name, fallback, ...props }: {
+  name: string;
+  fallback?: string;
+  className?: string;
+  style?: CSSProperties;
+  "aria-hidden"?: boolean | "true" | "false";
+  "aria-label"?: string;
+}) {
+  const icons: Readonly<Record<string, string>> = publicIcons;
+  return createElement("svg", {
+    ...props,
+    xmlns: "http://www.w3.org/2000/svg",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.5,
+    "data-icon": name,
+    dangerouslySetInnerHTML: { __html: icons[name] ?? icons[fallback ?? ""] ?? "" },
+  });
 }

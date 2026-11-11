@@ -4,6 +4,8 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+node --test "$root/scripts/check-icons.test.mjs"
+
 packages="$("$root/scripts/list-packages.sh")"
 if [ "$#" -gt 0 ]; then
   packages="$(printf '%s\n' "$@")"
