@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
 
 - Person-read threads receive proactive component guidance for status, plans,
   verification and code-work reports. Agent handoffs stay plain text; tools remain available.
