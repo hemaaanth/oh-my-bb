@@ -135,6 +135,22 @@ describe("chain config", () => {
     expect(fitForCompatibleResponses({ input: "hello" })).toEqual({ input: "hello" });
   });
 
+  it("moves reasoning that trails its assistant message back before it", () => {
+    const reasoning = { type: "reasoning", summary: [], encrypted_content: "x" };
+    const answer = { type: "message", role: "assistant", content: [{ type: "output_text", text: "Done." }] };
+    const user = { type: "message", role: "user", content: "next" };
+    const call = { type: "function_call", call_id: "c1", name: "bash", arguments: "{}" };
+    const result = { type: "function_call_output", call_id: "c1", output: "ok" };
+    // The lyber history that 400s: message, then reasoning, then the next user turn.
+    expect(fitForCompatibleResponses({ input: [user, answer, reasoning, user] }).input).toEqual([user, reasoning, answer, user]);
+    // Reasoning with no assistant message to precede is dropped.
+    expect(fitForCompatibleResponses({ input: [user, reasoning] }).input).toEqual([user]);
+    expect(fitForCompatibleResponses({ input: [call, result, reasoning, user] }).input).toEqual([call, result, user]);
+    // Reasoning before a tool call or an assistant message is left alone.
+    const ok = [user, reasoning, call, result, reasoning, answer, user];
+    expect(fitForCompatibleResponses({ input: ok }).input).toBe(ok);
+  });
+
   it("clamps a harness reasoning effort the routed model does not accept", () => {
     const model = "deepseek-v4.1-flash-1017-abliterated";
     expect(fitForCompatibleResponses({ input: "hi", reasoning: { effort: "medium" } }, model).reasoning).toEqual({ effort: "high" });

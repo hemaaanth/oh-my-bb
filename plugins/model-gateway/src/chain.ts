@@ -420,6 +420,39 @@ const CHATGPT_REJECTED_FIELDS = [
   "user",
 ];
 
+const isReasoning = (item: unknown): boolean => isRecord(item) && item.type === "reasoning";
+const isAssistantMessage = (item: unknown): boolean =>
+  isRecord(item) && (item.type === "message" || item.type === undefined) && item.role === "assistant";
+/** End of input, a non-assistant message, or a tool result: no assistant output follows. */
+const endsTurn = (item: unknown): boolean =>
+  item === undefined ||
+  (isRecord(item) && typeof item.role === "string" && item.role !== "assistant") ||
+  (isRecord(item) && typeof item.type === "string" && item.type.endsWith("_output"));
+
+/**
+ * Some compatible upstreams (lyber) stream a turn's reasoning after its message, then
+ * reject that same history: a reasoning item must precede assistant output. Move such
+ * stranded reasoning before the assistant message it trails, or drop it when there is
+ * none. Returns null when nothing is stranded.
+ */
+function fitStrandedReasoning(input: unknown[]): unknown[] | null {
+  const out: unknown[] = [];
+  let changed = false;
+  for (let i = 0; i < input.length; i++) {
+    if (!isReasoning(input[i])) { out.push(input[i]); continue; }
+    let end = i;
+    while (isReasoning(input[end + 1])) end++;
+    const run = input.slice(i, end + 1);
+    i = end;
+    if (!endsTurn(input[end + 1])) { out.push(...run); continue; }
+    changed = true;
+    let at = out.length;
+    while (at > 0 && isAssistantMessage(out[at - 1])) at--;
+    if (at < out.length) out.splice(at, 0, ...run);
+  }
+  return changed ? out : null;
+}
+
 /**
  * Compatible Responses APIs may require the explicit message type OpenAI permits
  * clients to omit, and a routed model may accept only some reasoning efforts.
@@ -435,6 +468,10 @@ export function fitForCompatibleResponses(
       isRecord(item) && item.type === undefined && typeof item.role === "string"
         ? { ...item, type: "message" } : item,
     );
+  if (Array.isArray(fitted.input)) {
+    const reordered = fitStrandedReasoning(fitted.input);
+    if (reordered !== null) fitted.input = reordered;
+  }
   const effort = isRecord(body.reasoning) ? body.reasoning.effort : undefined;
   if (model !== null && typeof effort === "string") {
     const clamped = compatibleReasoningEffort(model, effort);
