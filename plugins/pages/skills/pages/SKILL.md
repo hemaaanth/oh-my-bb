@@ -5,8 +5,9 @@ description: "Use when a visual would make an answer easier to understand: metri
 
 # Pages
 
-Choose the surface and components before writing. Do this proactively; the user
-should not need to ask for Pages, OpenUI, or a particular component.
+Replies render in BB, not a terminal. When a component fits, use it instead of
+markdown tables, numbered status/step lists, pasted output or ASCII diagrams.
+Choose the surface and components before writing. Honor explicit output formats.
 
 ## Choose the surface
 
@@ -18,7 +19,7 @@ should not need to ask for Pages, OpenUI, or a particular component.
   that opens the full document; it is not a borderless inline view.
 - **Compact published visual:** pass `display: "inline"` to `page_publish`.
   This is separate from a direct reply fence and still creates a saved page.
-- **Simple prose answer:** write it in chat. Do not add UI without a useful reason.
+- **No structured information:** skip UI only for a one-line answer or plain conversation.
 - Files that belong in the repo, such as source, docs, and config, stay in the repo.
   PR review pages come from the PR Review plugin.
 
@@ -26,27 +27,35 @@ should not need to ask for Pages, OpenUI, or a particular component.
 
 Use the library for content it already covers. Use semantic HTML for the document
 structure and custom content that has no suitable component.
+For status/readiness with two or more checks, use one fence with `Status` and
+`Acceptance`; next actions go in `Status.next`. “No tools” still allows a fence:
+it is not a tool call. Bullets-only is incomplete unless explicitly requested.
+Use `Acceptance`, not `Table`, for pass/fail or before/after checks.
+Use `Provenance` for build/run identity, `Steps` for setup with a current step,
+`Chart`/`Sparkline` for a trend, `Timeline` for event sequences, `Roadmap` for
+phases across lanes/quarters, and `Quiz` for learning checks.
+Inline supplied data. `Query("file")` is only for existing workspace files.
 
 | Output | Components |
 | --- | --- |
-| Headline numbers | `Stats`, `Stat` |
-| History or events | `Timeline` |
-| Proposed code or text edits | `Diff` |
-| Alternatives and tradeoffs | `Compare`, `Decision` |
-| System or flow | `Diagram` |
-| Work steps | `Plan`, `Steps` |
-| Verification and evidence | `Acceptance`, `Provenance` |
-| Chart | `Chart`, `Series`, `SegmentedBar` |
-| Data | `Table` |
-| Choices or answers | `Form`, `Choice`, `OptionCards` |
+| Status / checks / evidence | `Status`, `Acceptance`, `Provenance` |
+| Plans / steps / phases / tasks / effort | `Plan`, `Steps`, `Roadmap`, `Board`, `Estimate` |
+| Options / comparisons / decisions | `Compare`, `Decision`, `Table` |
+| Metrics / series / proportions / limits / daily counts | `Stats`, `Stat`, `Chart`, `Series`, `SegmentedBar`, `Gauge`, `CalendarHeatmap` |
+| Events / dates / flows / locations | `Timeline`, `Calendar`, `Diagram`, `Map` |
+| Code / edits / files / JSON | `FileCode`, `Code`, `Diff`, `Tree`, `Json`, `KeyValue` |
+| Tests / review / logs / timings / coverage / CI | `Tests`, `Findings`, `Logs`, `Benchmark`, `Coverage`, `Pipeline`, `StackTrace` |
+| Changes / commits / PRs / threads | `Changes`, `Commits`, `PullRequest`, `Threads`, `Environments` |
+| Sources / pictures / learning | `Sources`, `Gallery`, `Hotspots`, `Walkthrough`, `Quiz`, `Flashcards` |
+| Questions / choices / what-if | `Form`, `Choice`, `Radio`, `OptionCards`, `Slider`, `Toggle`, `EditableTable` |
 
-1. Call `page_examples` with the component names to get exact signatures and
-   examples. The CLI equivalent is `bb pages examples <component>`.
-2. Read `references/openui.md` for syntax and actions. Read a group reference
-   only when you need more detail than the examples provide.
-3. Check the program with `page_check` before sending it. For HTML pages, the
-   `app` check also checks embedded `text/openui-lang` blocks. Static checks
-   do not prove browser rendering.
+Use `page_examples` when unsure of a signature or data shape.
+The CLI equivalent is `bb pages examples <component>`.
+Read `references/openui.md` for syntax and actions, and a group reference for detail.
+Use `page_check` when unsure of validity, for complex inputs/data reads and author
+HTML/CSS. Neither tool is mandatory for every known-valid fence.
+The `app` check also checks embedded `text/openui-lang` blocks.
+Static checks do not prove browser rendering or security.
 
 For example, a small metrics reply needs only this fence:
 
@@ -381,9 +390,8 @@ drop the form, so the user does not answer twice.
 ## The theme
 
 The theme is hem.so: Inter, quiet colour, weight 500 instead of bold, hairlines
-instead of boxes. Every rule is inside `:where()`, so any selector you write
-wins. **The theme is a floor, not a cage.** Use it for the ordinary parts. Style
-what makes this page itself.
+instead of boxes. Use the theme for reports. Zero specificity is an implementation
+detail, not permission to restyle it. Keep inherited typography and page widths.
 
 **Light and dark.** Put `class="auto"` on `<body>`. The page then follows the
 BB theme in the preview, with BB's own colours, fonts, and smaller type, and
@@ -391,7 +399,7 @@ the reader's system with the full theme when shared. `class="dark"`
 forces dark. With no class the page is light. If you set a colour, use a token
 so both themes keep working.
 
-**Tokens** (on `:root`; override them on `:root`, never on `body`):
+**Tokens** (use the existing values; do not reset root tokens for ordinary reports):
 
 | Token | Use |
 | --- | --- |
@@ -404,6 +412,39 @@ so both themes keep working.
 | `--bb-measure`, `--bb-wide`, `--bb-dashboard` | 46rem, 62rem, and 80rem page widths |
 | `--bb-space-tight`, `-group`, `-block`, `-section` | 0.5, 1, 1.5, 3 rem |
 | `--bb-font-sans`, `--bb-font-mono` | font stacks |
+
+### Author style checks
+
+`page_check` and `bb pages check` fail for base-element resets, custom font families
+and shorthand fonts, page-frame width resets, raw hex/rgb/hsl colours, numeric
+weights at least 600 or bold, left accent rails, gradients and uppercase tracked
+eyebrows. Findings include locations and theme replacements.
+File publication still succeeds, with style warnings even for unchanged bytes.
+Warnings do not create versions or change the public RPC/storage schema.
+JSON publication results cap `styleIssues` at 50 and report `styleIssuesTotal`
+and `styleIssuesOmitted`. Inherited font-family values and the two theme font
+tokens (`var(--bb-font-sans)` / `var(--bb-font-mono)`) are allowed.
+For a quiet separator, use `border-left:1px solid var(--bb-rule)` or
+`border-inline-start:thin solid var(--bb-rule)`.
+
+For art/mockups only, use `data-pages-style="custom"` on each custom `<style>`
+block or inline-styled element. Scope CSS selectors to the mockup root.
+The marker is exact and not inherited. A marker on `body` does not waive its
+descendants. It waives only style lint, not script/resource/sandbox checks,
+theme injection or rendering.
+
+```html
+<style data-pages-style="custom">
+  .icon-mockup .tile { background:#1c1c1e; color:#fff }
+</style>
+<figure class="icon-mockup">
+  <div class="tile" data-pages-style="custom" style="background:#1c1c1e">Icon study</div>
+</figure>
+```
+
+Checks read original author `<style>` blocks and `style` attributes, including
+folder HTML. They do not follow linked CSS, CSS loaded by JavaScript, or compute
+the cascade. Markdown raw HTML stays escaped. No code is executed by style lint.
 
 **Optional classes**:
 

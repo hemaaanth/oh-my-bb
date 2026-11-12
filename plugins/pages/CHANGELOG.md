@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Person-read threads receive proactive component guidance for status, plans,
+  verification and code-work reports. Agent handoffs stay plain text; tools remain available.
+- Broader worked examples and quick signatures make signature lookup and static
+  checking optional when the program is already known valid.
+- Author checks reject theme-conflicting inline CSS with located replacements.
+  File publication keeps working and reports warnings, even for unchanged pages.
+  Art/mockups can waive style lint per exact style block/element, without disabling sandbox checks.
+- Added an opt-in 27-case baseline/new guidance eval with deterministic scoring
+  and dry-run fixtures, including no-tools release readiness. It is not part of tests, builds or startup.
+- Publish JSON warnings are capped at 50 with total/omitted counts, preserving
+  successful publication identity for large warning-heavy pages.
+- Eval rejects forbidden endpoint hosts, including `api.x.ai`, before child work.
+- Style checks accept inherited/theme font values and thin theme-rule separators,
+  distinguish positive selectors from :not/:has conditions, scope eyebrow merging
+  to enclosing at-rules, and deduplicate identical findings with element-specific remedies.
+- Style checks reject direct rebinding of theme font tokens, carry unconditional
+  eyebrow declarations into nested scopes, and inspect final targets within each
+  positive :is/:where branch without mistaking ancestors for styled elements.
 - The share confirmation in chat is rebuilt. It sits flat inside BB's request card
   instead of a second card, and it no longer repeats the page title. One sentence says
   who can open the page; Link, Version, and any earlier access follow as short facts.

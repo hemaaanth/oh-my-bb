@@ -10,18 +10,20 @@ const intro = `# Live UI in a reply (openui-lang)
 
 Write a fenced \`openui-lang\` block in a reply. BB renders it in place, live, while it streams. Text outside the fence stays chat.
 
-Use it for UI that belongs to this reply: numbers, a table or chart, tabs, code or a diff, a map, a plan, or a choice or form for the user to answer. Use \`page_publish\` for anything long, anything to keep or share. For a small custom HTML/JavaScript app in a reply, read \`references/openui/apps.md\` and use a \`pages-app\` fence.
+Replies render in BB, not a terminal. Use a fitting component instead of markdown tables, numbered status/step lists, pasted output or ASCII diagrams. Skip UI only for a one-line answer or plain conversation without structured information. Honor explicit output formats. Use \`page_publish\` for long documents to keep or share. For a custom HTML/JavaScript app in a reply, read \`references/openui/apps.md\` and use a \`pages-app\` fence.
 
 ## Pages rules
 
 - Each fence is a whole program. To change a UI, write a new full fence. Fences do not merge.
 - Start with the content. Do not open with a Heading that repeats the reply.
-- Choose a component from the task: Stats for metrics, Timeline for history, Diff for edits, Compare/Decision for options, Diagram for systems, Plan for steps, Acceptance for verification. Call \`page_examples\` with those names for exact arguments. Group files in \`references/openui/\` have more detail.
+- Choose by content: Status for status; Acceptance/Provenance for checks and receipts; Plan/Steps/Roadmap/Board/Estimate for work; Compare/Decision/Table for options; Stats/Stat/Chart/Series/SegmentedBar/Gauge/CalendarHeatmap for numbers; Timeline/Calendar/Diagram/Map for events and places; FileCode/Code/Diff/Tree/Json/KeyValue for code/data; Tests/Findings/Logs/Benchmark/Coverage/Pipeline/StackTrace for code-work reports; Changes/Commits/PullRequest/Threads/Environments for project state; Sources/Gallery/Hotspots/Walkthrough/Quiz/Flashcards for sources and learning; Form/Choice/Radio/OptionCards/Slider/Toggle/EditableTable for input. Group references have exact arguments.
+- Status/readiness with two or more checks needs one fence with Status + Acceptance; next actions go in Status.next. “No tools” does not prohibit a fence: it is not a tool call. Bullets-only is incomplete unless explicitly requested. Pass/fail or before/after checks use Acceptance, not Table; build/run identity uses Provenance; setup with a current step uses Steps; trends use Chart/Sparkline; event sequences use Timeline; phases across lanes/quarters use Roadmap; learning checks use Quiz. Inline supplied data; Query("file") requires an existing workspace file.
 - A Button with no action sends its label to the thread, plus its Form's answers as \`- name: value\` lines. Wrap fields in a Form when you need the answers. A sent Form locks, so the reader sends it once.
 - Only http(s) links open.
 ${specTools.length ? "- Query reads data with the tools listed below. Mutation is not available. Otherwise put the data in the program." : "- There are no tools, Query, or Mutation. Put the data in the program."}
-- A fence that does not parse shows as code, so check it before you send.
-- Use \`page_examples\` or \`bb pages examples <component>\` for signatures and examples. \`page_check\` and \`bb pages check <file>\` check programs and app HTML without publishing. Checks are static, not browser or security proofs.
+- Use \`page_examples\` or \`bb pages examples <component>\` when unsure of signatures/data shapes. Use \`page_check\` or \`bb pages check <file>\` when unsure of validity, for complex inputs/data reads and author HTML/CSS, not before every known-valid fence. Checks are static, not browser or security proofs.
+- Keep reports on body.auto/main.page with theme classes and --bb-* tokens. Do not reset base elements, fonts, weight, colours or page widths. Author style conflicts fail checks but only warn at publish. Only art/mockups may waive style lint: put data-pages-style="custom" on each exact style block or inline-styled element, never just an ancestor. Scope selectors to the mockup root. Sandbox checks still apply. Linked CSS and computed cascade are not checked.
+- Inherited font-family values and var(--bb-font-sans)/var(--bb-font-mono) are allowed, as are 1px/thin solid var(--bb-rule) left separators. Publish JSON diagnostics are capped at 50 with total/omitted counts.
 - App answers are selected for review, not sent automatically. Existing Buttons and Forms keep their direct-send behavior. App frames block fetch and remote resource loads, but self-navigation can still make a network request. Never put secrets in an app.
 - The same programs work on a published page: a fence in a Markdown page, or \`<script type="text/openui-lang">\` in an HTML page. Buttons and Forms there are read-only. Query and map answers are saved when you publish, so publish again to refresh them.
 

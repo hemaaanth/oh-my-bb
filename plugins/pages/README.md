@@ -2,7 +2,7 @@
 
 Pages draws small visuals directly in a reply and publishes longer HTML or
 Markdown documents as durable BB artifacts. Agents choose library components
-for metrics, timelines, diffs, comparisons, and charts before writing custom HTML.
+for status, plans, verification, metrics, timelines, diffs, comparisons, and charts before writing custom HTML.
 A reply fence needs no file or publish. Published documents show as cards by
 default; `display: "inline"` makes a compact saved visual borderless in chat.
 Pages keeps version history, project folders, and a searchable library.
@@ -175,6 +175,27 @@ also installed. Pages does not install or require PR Review.
 Here.now sharing is also optional. Unconfigured installations still support
 publishing, folders, browsing, versioning, and local previews.
 
+## Author checks
+
+Use `bb pages check <file>` (or `page_check`) for author HTML/CSS and uncertain
+OpenUI programs. `page_examples` is available when a signature is unclear;
+neither tool is mandatory for every known-valid reply fence.
+Checks report located style errors for base-element/font/page-width resets,
+raw colours, heavy weights, left rails, gradients and uppercase tracked labels.
+Use `body.auto`, `main.page` (or `.wide`/`.dashboard`), theme classes and `--bb-*` tokens.
+
+Publication succeeds with style warnings, including unchanged republish.
+CLI JSON caps `styleIssues` at 50 and includes `styleIssuesTotal` / `styleIssuesOmitted`.
+RPC and stored page schemas are unchanged. Inherited font-family values and
+`var(--bb-font-sans)` / `var(--bb-font-mono)` are allowed. A quiet left separator
+may use `1px solid var(--bb-rule)` or `thin solid var(--bb-rule)`; other accent rails still warn.
+For art/mockups only, put `data-pages-style="custom"` on each exact `<style>`
+or inline-styled element and scope selectors to the mockup root.
+The waiver does not inherit or disable sandbox checks.
+Style lint scans original inline author CSS, including nested folder HTML.
+It does not crawl external CSS, compute the cascade or execute JavaScript.
+It does not treat escaped Markdown HTML or generated PR Review output as author CSS.
+
 ## Develop
 
 ```sh
@@ -188,6 +209,29 @@ Run `npm run build:icons` after changing the glyph table in
 `render/icons/generate.mjs` or upgrading `mingcute_icon`. Run `npm run build:charts` only after changing the chart runtime. The generated
 bundle is committed because installed Git plugins build with production
 dependencies only.
+
+Generate catalog contracts before checks after changing reference sources:
+`npm run build:contracts`. The repository's full package check is
+`scripts/check-package.sh plugins/pages` from the repository root.
+
+The opt-in tool-free guidance eval is separate from tests, builds and startup:
+
+```sh
+npm run eval:guidance -- --dry-run --model haiku --baseline-ref ae4efec0 --variant both --out /tmp/pages-guidance-dry
+npm run eval:guidance -- --model sonnet --approved-route subscription --baseline-ref ae4efec0 --variant both --out /tmp/pages-guidance-live
+```
+
+Live runs require the coordinator to verify an approved subscription/Gateway route,
+then pass `--approved-route subscription` or `--approved-route gateway`.
+The runner never falls back to another provider. OpenRouter and xAI/Grok model,
+provider and endpoint hosts are rejected before parsing or child processes.
+An arbitrary private Gateway's upstream still needs caller verification.
+It uses `claude -p` serially, with no tools/MCP or session persistence.
+Optional `--case <id>`, `--repeats <n>` and `--variant baseline|new|both` bound the run.
+Dry-run uses deterministic fixtures; it does not claim model compliance.
+Reports retain prompts, counts, answers, failures, category totals and deltas.
+Component fit is a structural heuristic, not semantic correctness, provider
+delivery, tool-discovery, rendering or workflow proof. Review raw answers.
 
 ## License
 

@@ -10,10 +10,11 @@ import { readSourceFile, readSourceFolder, relativeFile, resolveRoot, sourceKeyO
 import { inlineLocalImages } from "./images.js";
 import type { SpecBaker } from "./spec/index.js";
 import { HTTP_BASE, StaleVersionError, type PageStore } from "./store.js";
+import { lintPageStyles, MAX_STYLE_ISSUES, type PageStyleIssue } from "./spec/style-lint.js";
 
 export type MutationResult = z.infer<typeof mutationResultSchema>;
 /** `changed` is false when the bytes matched the current version and nothing was stored. */
-export type PublishResult = { result: MutationResult; changed: boolean };
+export type PublishResult = { result: MutationResult; changed: boolean; styleIssues?: PageStyleIssue[]; styleIssuesTotal?: number; styleIssuesOmitted?: number };
 export type PublishDocumentInput = z.input<typeof publishDocumentInputSchema>;
 export type PageRef = { pageId?: string; producerKey?: string; key?: string };
 
@@ -159,15 +160,20 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
   async function readContent(input: PublishFileInput) {
     if (input.dir) {
       const folder = await readSourceFolder(sdk, input.threadId, input.dir, input.source);
+      const styleIssues = [
+        ...lintPageStyles(folder.index).map(issue => ({ ...issue, file: "index.html" })),
+        ...folder.files.filter(file => /^text\/html\b/i.test(file.contentType)).flatMap(file => lintPageStyles(Buffer.from(file.bytes).toString("utf8")).map(issue => ({ ...issue, file: file.path }))),
+      ];
       const index = await baked(folder.index, input);
       const manifest = folder.files.map((file) => `${file.path}\0${file.contentType}\0${createHash("sha256").update(file.bytes).digest("hex")}`);
-      return { html: index, files: folder.files, sourceKey: folder.sourceKey, sourcePath: folder.dir, digest: sha256([index, ...manifest].join("\0\0")) };
+      return { html: index, files: folder.files, sourceKey: folder.sourceKey, sourcePath: folder.dir, digest: sha256([index, ...manifest].join("\0\0")), styleIssues };
     }
     if (!input.file) throw new PageInputError("Pass file or dir.");
     const source = await readSourceFile(sdk, input.threadId, input.file, input.source);
+    const styleIssues = source.kind === "html" ? lintPageStyles(source.content).map(issue => ({ ...issue, file: source.file })) : [];
     // Stored and compared with local images inlined, so an image change adds a version. Folders store their images as files.
     const html = await baked(await inlineLocalImages(sdk, input.threadId, source, sourceHtml(source, input.title), { strict: true }), input);
-    return { html, files: [], sourceKey: source.sourceKey, sourcePath: source.file, digest: sha256(html) };
+    return { html, files: [], sourceKey: source.sourceKey, sourcePath: source.file, digest: sha256(html), styleIssues };
   }
 
   /** Publishes a file, or a folder with index.html (`dir`), as a version of a file page. */
@@ -176,6 +182,11 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
     if (Boolean(input.file) === Boolean(input.dir)) throw new PageInputError("Pass exactly one of file or dir.");
     const content = await readContent(input);
     const { html, digest } = content;
+    const withStyles = (published: PublishResult): PublishResult => ({
+      ...published, styleIssues: content.styleIssues.slice(0, MAX_STYLE_ISSUES),
+      styleIssuesTotal: content.styleIssues.length,
+      styleIssuesOmitted: Math.max(0, content.styleIssues.length - MAX_STYLE_ISSUES),
+    });
     const hasCharts = checkedHtml(html);
     const title = deriveTitle(html, content.sourcePath, input.title);
     const folderPath = input.folder ? normalizeFolderPath(input.folder) : undefined;
@@ -196,17 +207,17 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
     if (pageId) {
       const existing = store.rawPage(pageId)!;
       if (existing.page.kind !== "file") throw new PageInputError(`The key ${sourceKey} belongs to a document page.`);
-      if (!existing.deleted && store.currentSha(pageId) === digest && (folderPath === undefined || folderPath === existing.page.folderPath)) return result(pageId, existing.page.currentVersionId, false, false);
+      if (!existing.deleted && store.currentSha(pageId) === digest && (folderPath === undefined || folderPath === existing.page.folderPath)) return withStyles(result(pageId, existing.page.currentVersionId, false, false));
       const added = store.appendVersion(pageId, existing.page.currentVersionId, version, { ...(input.title ? { title } : {}), ...(folderPath === undefined ? {} : { folderPath }) });
       changed(added.pageId, added.versionId);
       versionCreated(added.pageId, added.versionId);
-      return result(added.pageId, added.versionId, false, true);
+      return withStyles(result(added.pageId, added.versionId, false, true));
     }
     const thread = await sdk.threads.get({ threadId: input.threadId });
     const created = store.createPage({ title, kind: "file", projectId: thread.projectId, folderPath: folderPath ?? null, sourceKey, producer: null, producerKey: null }, version);
     changed(created.pageId, created.versionId);
     versionCreated(created.pageId, created.versionId);
-    return result(created.pageId, created.versionId, true, true);
+    return withStyles(result(created.pageId, created.versionId, true, true));
   }
 
   function publishDocument(input: z.output<typeof publishDocumentInputSchema>): PublishResult {

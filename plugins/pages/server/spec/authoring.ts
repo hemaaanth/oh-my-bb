@@ -11,9 +11,11 @@ import examples from "./examples.json";
 import { sourcedQuery } from "../../app/spec/source-metadata.js";
 import { exportMarkdown } from "./export.js";
 import { specBlocks } from "../../render/spec-baked.js";
+import { CODE_WORK_INSTRUCTIONS, EXAMPLES_INSTRUCTIONS } from "../guidance.js";
+import type { Diagnostic } from "./diagnostics.js";
 
 type Language = "openui-lang" | "app";
-export type AuthorCheck = ({ language: "openui-lang" } & SpecCheck) | { language: "app"; ok: boolean; report: string };
+export type AuthorCheck = ({ language: "openui-lang" } & SpecCheck) | { language: "app"; ok: boolean; report: string; issues: Diagnostic[] };
 const queryTools = new Set(specTools.map(({ name }) => name));
 const MAX_QUERIES = 16;
 const languageSchema = z.enum(["openui-lang", "app"]);
@@ -32,7 +34,7 @@ export async function checkSource(bb: BbPluginApi, threadId: string | undefined,
     ok = ok && result.ok;
     reports.push(`OpenUI block ${index + 1}:\n${textReport({ language: "openui-lang", ...result })}`);
   }
-  return { language, ok, report: reports.join("\n\n") };
+  return { language, ok, report: reports.join("\n\n"), issues: app.issues };
 }
 
 async function checkProgram(bb: BbPluginApi, threadId: string | undefined, code: string, budget: { loaded: number }): Promise<SpecCheck> {
@@ -78,7 +80,8 @@ function textReport(result: AuthorCheck): string {
 export function registerAuthoring(bb: BbPluginApi): PagesCliCommands {
   bb.agents.registerTool({
     name: "page_check",
-    description: "Check an openui-lang program or HTML before replying, including every embedded text/openui-lang block. Checks OpenUI parse/evaluation, independent input boundaries, scenes, GLSL, and app script syntax and sandbox mistakes. Reads at most 16 literal Query sources across all blocks in the calling thread. Does not execute app JavaScript, render a browser, publish, or send answers. Not a security proof or exhaustive interaction test.",
+    description: "Check an openui-lang program or HTML when unsure, including embedded text/openui-lang blocks and author style conflicts. Checks parse/evaluation, independent input boundaries, scenes, GLSL, script syntax and sandbox mistakes. Reads at most 16 literal Query sources across all blocks. Does not execute JavaScript, render a browser, publish, or send answers. Not a security proof or exhaustive interaction test.",
+    instructions: CODE_WORK_INSTRUCTIONS,
     presentation: { label: { pending: "Checking UI", completed: "Checked UI" }, icon: { glyph: "FileText" } },
     parameters: z.object({ code: z.string().max(Math.max(MAX_APP_CHARS, MAX_SPEC_CHARS)), language: languageSchema.default("openui-lang") }).strict(),
     async execute({ code, language }, { threadId }) { return JSON.stringify(await checkSource(bb, threadId, code, language)); },
@@ -86,6 +89,7 @@ export function registerAuthoring(bb: BbPluginApi): PagesCliCommands {
   bb.agents.registerTool({
     name: "page_examples",
     description: "Get Pages component signatures and working OpenUI examples by component or group name. With no names, list the catalog. Examples use illustrative data; replace Query paths with files that exist in the calling thread. App HTML runs only after its fence closes. Its opaque sandbox blocks fetch and remote resources, but same-frame navigation can still make a network request.",
+    instructions: EXAMPLES_INSTRUCTIONS,
     presentation: { label: { pending: "Reading UI examples", completed: "Read UI examples" }, icon: { glyph: "FileText" } },
     parameters: z.object({ names: z.array(z.string().min(1).max(80)).max(16).default([]) }).strict(),
     execute({ names }) {
