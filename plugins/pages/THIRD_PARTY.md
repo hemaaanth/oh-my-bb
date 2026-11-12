@@ -61,10 +61,19 @@ geometry, map tours, app documents and previews in `app/apps/`, source/excerpt
 helpers, and `server/spec/` including credited Wikipedia-photo extraction.
 The feature ports use upstream 0.3.1, commit
 `c9700a34a9cc24961d17771590274e0703dc481c`.
-The project has no NOTICE file.
+No NOTICE file is present at that revision.
 
 - Source: https://github.com/ComicBit/bb-plugin-genui
 - License: `licenses/GenUI-Apache-2.0.txt`
+
+Agent guidance and its checker-backed tests in `server/guidance.ts` and
+`server/guidance.test.ts` adapt the behavior/examples and audience structure from
+[`instructions.ts`](https://github.com/ComicBit/bb-plugin-genui/blob/d8cac8d1781bac336214cc38981aba4a58d9c1c0/instructions.ts),
+[`instructions.test.ts`](https://github.com/ComicBit/bb-plugin-genui/blob/d8cac8d1781bac336214cc38981aba4a58d9c1c0/instructions.test.ts)
+and [`server.ts`](https://github.com/ComicBit/bb-plugin-genui/blob/d8cac8d1781bac336214cc38981aba4a58d9c1c0/server.ts)
+at `d8cac8d1781bac336214cc38981aba4a58d9c1c0`, under Apache-2.0.
+The local adaptation uses Pages signatures, Query data and scoped style policy.
+The pinned root tree and LICENSE were checked: Apache-2.0, no NOTICE file.
 
 ## Three.js
 

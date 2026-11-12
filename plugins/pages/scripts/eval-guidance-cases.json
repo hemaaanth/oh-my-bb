@@ -1,0 +1,344 @@
+[
+  {
+    "id": "01-release",
+    "category": "status",
+    "request": "Give the release status and next action.",
+    "evidence": "{\"shipped\": [\"API checks\", \"Docs\"], \"blocker\": \"Rollback untested\", \"next\": \"Run rollback rehearsal\"}",
+    "families": [
+      [
+        "Status"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Status(\"at-risk\", \"Rollback untested\", [\"API checks\", \"Docs\"], [\"Rollback untested\"], [\"Run rollback rehearsal\"])\n```"
+  },
+  {
+    "id": "02-verification",
+    "category": "evidence",
+    "request": "Compare verification before and after. Keep unknown checks distinct.",
+    "evidence": "[{\"criterion\": \"Desktop\", \"before\": \"fail\", \"status\": \"pass\", \"evidence\": \"Run 12\"}, {\"criterion\": \"Mobile\", \"status\": \"unknown\", \"note\": \"Device not tested\"}]",
+    "families": [
+      [
+        "Acceptance"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Acceptance([{\"criterion\": \"Desktop\", \"before\": \"fail\", \"status\": \"pass\", \"evidence\": \"Run 12\"}, {\"criterion\": \"Mobile\", \"status\": \"unknown\", \"note\": \"Device not tested\"}])\n```"
+  },
+  {
+    "id": "03-identity",
+    "category": "evidence",
+    "request": "Show checkout, build and install identity. Explain the mismatch.",
+    "evidence": "[{\"step\": \"Checkout\", \"value\": \"abc1234\", \"source\": \"git rev-parse HEAD\"}, {\"step\": \"Build\", \"value\": \"abc1234\", \"source\": \"build receipt\"}, {\"step\": \"Install\", \"value\": \"def5678\", \"source\": \"install receipt\", \"detail\": \"Mismatch; launch not verified\"}]",
+    "families": [
+      [
+        "Provenance"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Provenance(\"Identity mismatch\", [{\"step\": \"Checkout\", \"value\": \"abc1234\", \"source\": \"git rev-parse HEAD\"}, {\"step\": \"Build\", \"value\": \"abc1234\", \"source\": \"build receipt\"}, {\"step\": \"Install\", \"value\": \"def5678\", \"source\": \"install receipt\", \"detail\": \"Mismatch; launch not verified\"}])\n```"
+  },
+  {
+    "id": "04-migration",
+    "category": "planning",
+    "request": "Give the migration plan, dependencies and rollback.",
+    "evidence": "[{\"step\": \"Back up database\", \"status\": \"todo\", \"detail\": \"Prerequisite: access approved\"}, {\"step\": \"Migrate schema\", \"status\": \"blocked\", \"detail\": \"Wait for backup\"}, {\"step\": \"Rollback rehearsal\", \"status\": \"todo\", \"detail\": \"Restore backup on failure\"}]",
+    "families": [
+      [
+        "Plan",
+        "Steps"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Plan([{\"step\": \"Back up database\", \"status\": \"todo\", \"detail\": \"Prerequisite: access approved\"}, {\"step\": \"Migrate schema\", \"status\": \"blocked\", \"detail\": \"Wait for backup\"}, {\"step\": \"Rollback rehearsal\", \"status\": \"todo\", \"detail\": \"Restore backup on failure\"}])\n```"
+  },
+  {
+    "id": "05-setup",
+    "category": "planning",
+    "request": "Explain the current setup steps and blocker.",
+    "evidence": "[{\"title\": \"Install locked dependencies\", \"status\": \"done\"}, {\"title\": \"Configure key\", \"status\": \"current\"}, {\"title\": \"Run integration check\", \"status\": \"blocked\", \"detail\": \"Needs key\"}]",
+    "families": [
+      [
+        "Steps",
+        "Walkthrough"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Steps([{\"title\": \"Install locked dependencies\", \"status\": \"done\"}, {\"title\": \"Configure key\", \"status\": \"current\"}, {\"title\": \"Run integration check\", \"status\": \"blocked\", \"detail\": \"Needs key\"}])\n```"
+  },
+  {
+    "id": "06-queue",
+    "category": "comparison",
+    "request": "Recommend where our job queue should run. We prefer fewer services.",
+    "evidence": "[{\"name\": \"Postgres\", \"pros\": [\"Already operated\", \"$20/month\"], \"cons\": [\"Shares database capacity\"]}, {\"name\": \"Redis\", \"pros\": [\"Separate capacity\"], \"cons\": [\"$45/month\", \"Another service\"]}]",
+    "families": [
+      [
+        "Decision",
+        "Compare"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Decision(\"Queue host\", [{\"name\": \"Postgres\", \"pros\": [\"Already operated\", \"$20/month\"], \"cons\": [\"Shares database capacity\"]}, {\"name\": \"Redis\", \"pros\": [\"Separate capacity\"], \"cons\": [\"$45/month\", \"Another service\"]}], \"Postgres\")\n```"
+  },
+  {
+    "id": "07-tools",
+    "category": "comparison",
+    "request": "Compare tools Cedar and Willow on the supplied attributes.",
+    "evidence": "[{\"criterion\": \"License\", \"values\": [\"MIT\", \"Apache-2.0\"]}, {\"criterion\": \"Price/month\", \"values\": [0, 20]}, {\"criterion\": \"Offline\", \"values\": [\"Yes\", \"No\"]}]",
+    "families": [
+      [
+        "Compare",
+        "Table"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Compare([\"Cedar\", \"Willow\"], [{\"criterion\": \"License\", \"values\": [\"MIT\", \"Apache-2.0\"]}, {\"criterion\": \"Price/month\", \"values\": [0, 20]}, {\"criterion\": \"Offline\", \"values\": [\"Yes\", \"No\"]}])\n```"
+  },
+  {
+    "id": "08-benchmark",
+    "category": "code-work",
+    "request": "Report measured build time and output size before and after.",
+    "evidence": "[{\"name\": \"Build\", \"before\": 12, \"after\": 8, \"unit\": \"s\"}, {\"name\": \"Output\", \"before\": 400, \"after\": 350, \"unit\": \"KB\"}]",
+    "families": [
+      [
+        "Benchmark",
+        "Chart"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Benchmark([{\"name\": \"Build\", \"before\": 12, \"after\": 8, \"unit\": \"s\"}, {\"name\": \"Output\", \"before\": 400, \"after\": 350, \"unit\": \"KB\"}])\n```"
+  },
+  {
+    "id": "09-noise",
+    "category": "code-work",
+    "request": "Explain these timings. Do not claim a speedup from overlapping noise or changed conditions.",
+    "evidence": "[{\"name\": \"Build\", \"before\": 10, \"after\": 9.9, \"unit\": \"s\", \"noise\": 0.4, \"conditions\": \"Before: cold; after: warm; not comparable\"}]",
+    "families": [
+      [
+        "Benchmark"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Benchmark([{\"name\": \"Build\", \"before\": 10, \"after\": 9.9, \"unit\": \"s\", \"noise\": 0.4, \"conditions\": \"Before: cold; after: warm; not comparable\"}], \"Conditions differ; no speedup claim\")\n```"
+  },
+  {
+    "id": "10-review",
+    "category": "code-work",
+    "request": "Present the two observed review defects and their locations.",
+    "evidence": "[{\"severity\": \"high\", \"title\": \"Retry loses payload\", \"file\": \"src/queue.ts\", \"line\": 88, \"detail\": \"Only id is requeued\"}, {\"severity\": \"medium\", \"title\": \"Connection leak\", \"file\": \"src/db.ts\", \"line\": 23, \"detail\": \"Failure path omits release\"}]",
+    "families": [
+      [
+        "Findings"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Findings([{\"severity\": \"high\", \"title\": \"Retry loses payload\", \"file\": \"src/queue.ts\", \"line\": 88, \"detail\": \"Only id is requeued\"}, {\"severity\": \"medium\", \"title\": \"Connection leak\", \"file\": \"src/db.ts\", \"line\": 23, \"detail\": \"Failure path omits release\"}])\n```"
+  },
+  {
+    "id": "11-compiler",
+    "category": "code-work",
+    "request": "Explain the compiler failure and location.",
+    "evidence": "src/main.ts(12,5): error TS2322: Type string is not assignable to type number.",
+    "families": [
+      [
+        "Findings"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Findings(\"src/main.ts(12,5): error TS2322: Type string is not assignable to type number.\")\n```"
+  },
+  {
+    "id": "12-vitest",
+    "category": "code-work",
+    "request": "Report the test run, including pass, fail and skipped cases.",
+    "evidence": "{\"numPassedTests\": 1, \"numFailedTests\": 1, \"numPendingTests\": 1, \"testResults\": [{\"name\": \"cart.test.ts\", \"assertionResults\": [{\"title\": \"adds\", \"status\": \"passed\"}, {\"title\": \"totals\", \"status\": \"failed\", \"failureMessages\": [\"expected 0, received NaN\"]}, {\"title\": \"refunds\", \"status\": \"pending\"}]}]}",
+    "families": [
+      [
+        "Tests"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Tests({\"numPassedTests\": 1, \"numFailedTests\": 1, \"numPendingTests\": 1, \"testResults\": [{\"name\": \"cart.test.ts\", \"assertionResults\": [{\"title\": \"adds\", \"status\": \"passed\"}, {\"title\": \"totals\", \"status\": \"failed\", \"failureMessages\": [\"expected 0, received NaN\"]}, {\"title\": \"refunds\", \"status\": \"pending\"}]}]})\n```"
+  },
+  {
+    "id": "13-junit",
+    "category": "code-work",
+    "request": "Summarize this JUnit report and captured failure.",
+    "evidence": "<testsuites><testsuite name=\"cart\" tests=\"2\" failures=\"1\"><testcase name=\"adds\"/><testcase name=\"totals\"><failure message=\"expected 0\">received NaN</failure><system-out>empty cart</system-out></testcase></testsuite></testsuites>",
+    "families": [
+      [
+        "Tests"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Tests(\"<testsuites><testsuite name=\\\"cart\\\" tests=\\\"2\\\" failures=\\\"1\\\"><testcase name=\\\"adds\\\"/><testcase name=\\\"totals\\\"><failure message=\\\"expected 0\\\">received NaN</failure><system-out>empty cart</system-out></testcase></testsuite></testsuites>\")\n```"
+  },
+  {
+    "id": "14-build-log",
+    "category": "code-work",
+    "request": "Show the build output. Keep warnings and repeated errors visible.",
+    "evidence": "[info] build started\n[warn] deprecated input\n[error] missing export build\n[error] missing export build\n[info] exit 1",
+    "families": [
+      [
+        "Logs"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Logs(\"[info] build started\\n[warn] deprecated input\\n[error] missing export build\\n[error] missing export build\\n[info] exit 1\", \"Build\")\n```"
+  },
+  {
+    "id": "15-exception",
+    "category": "code-work",
+    "request": "Show the exception and separate our frame from the dependency frame.",
+    "evidence": "TypeError: missing payload\n    at retry (src/queue.ts:88:3)\n    at Worker.run (node_modules/worker/index.js:42:8)",
+    "families": [
+      [
+        "StackTrace"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = StackTrace(\"TypeError: missing payload\\n    at retry (src/queue.ts:88:3)\\n    at Worker.run (node_modules/worker/index.js:42:8)\")\n```"
+  },
+  {
+    "id": "16-coverage",
+    "category": "code-work",
+    "request": "Report coverage and the uncovered file. The supplied fixture is readable.",
+    "evidence": "{\"total\": {\"lines\": {\"total\": 10, \"covered\": 7, \"skipped\": 0, \"pct\": 70}}, \"src/unused.ts\": {\"lines\": {\"total\": 3, \"covered\": 0, \"skipped\": 0, \"pct\": 0}}}",
+    "families": [
+      [
+        "Coverage"
+      ]
+    ],
+    "dryReply": "```openui-lang\ndata = Query(\"file\", {path: \"/eval/coverage.json\"}, {data: null})\nroot = Coverage(data.data)\n```",
+    "fixtures": {
+      "/eval/coverage.json": "{\"total\": {\"lines\": {\"total\": 10, \"covered\": 7, \"skipped\": 0, \"pct\": 70}}, \"src/unused.ts\": {\"lines\": {\"total\": 3, \"covered\": 0, \"skipped\": 0, \"pct\": 0}}}"
+    }
+  },
+  {
+    "id": "17-ci",
+    "category": "code-work",
+    "request": "Report CI state and the queued follow-on job.",
+    "evidence": "{\"jobs\": [{\"name\": \"lint\", \"status\": \"success\", \"stage\": \"check\"}, {\"name\": \"unit\", \"status\": \"failure\", \"stage\": \"test\", \"steps\": [{\"name\": \"vitest\", \"status\": \"failure\"}]}, {\"name\": \"deploy\", \"status\": \"queued\", \"stage\": \"release\"}]}",
+    "families": [
+      [
+        "Pipeline"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Pipeline([{\"name\": \"lint\", \"status\": \"success\", \"stage\": \"check\"}, {\"name\": \"unit\", \"status\": \"failure\", \"stage\": \"test\", \"steps\": [{\"name\": \"vitest\", \"status\": \"failure\"}]}, {\"name\": \"deploy\", \"status\": \"queued\", \"stage\": \"release\"}])\n```"
+  },
+  {
+    "id": "18-changes",
+    "category": "project",
+    "request": "Show changed files and the supplied patch.",
+    "evidence": "[{\"path\": \"src/count.ts\", \"status\": \"modified\", \"additions\": 1, \"deletions\": 1, \"patch\": \"--- a/src/count.ts\\n+++ b/src/count.ts\\n@@ -1 +1 @@\\n-export const count = 1;\\n+export const count = 2;\\n\"}]",
+    "families": [
+      [
+        "Changes",
+        "Diff"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Changes([{\"path\": \"src/count.ts\", \"status\": \"modified\", \"additions\": 1, \"deletions\": 1, \"patch\": \"--- a/src/count.ts\\n+++ b/src/count.ts\\n@@ -1 +1 @@\\n-export const count = 1;\\n+export const count = 2;\\n\"}])\n```"
+  },
+  {
+    "id": "19-branch",
+    "category": "project",
+    "request": "Show branch commits and pull request checks.",
+    "evidence": "{\"commits\": [{\"subject\": \"Fix retry payload\", \"sha\": \"abc1234\", \"author\": \"Dev\"}, {\"subject\": \"Add regression check\", \"sha\": \"def5678\", \"author\": \"Dev\"}], \"pullRequest\": {\"number\": 42, \"title\": \"Fix retry\", \"state\": \"open\", \"head\": \"fix/retry\", \"base\": \"main\", \"checks\": {\"state\": \"pending\", \"passed\": 2, \"failed\": 0, \"pending\": 1, \"total\": 3}}}",
+    "families": [
+      [
+        "Commits"
+      ],
+      [
+        "PullRequest"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Stack([Commits([{\"subject\": \"Fix retry payload\", \"sha\": \"abc1234\", \"author\": \"Dev\"}, {\"subject\": \"Add regression check\", \"sha\": \"def5678\", \"author\": \"Dev\"}]), PullRequest({\"number\": 42, \"title\": \"Fix retry\", \"state\": \"open\", \"head\": \"fix/retry\", \"base\": \"main\", \"checks\": {\"state\": \"pending\", \"passed\": 2, \"failed\": 0, \"pending\": 1, \"total\": 3}})])\n```"
+  },
+  {
+    "id": "20-metrics",
+    "category": "metrics",
+    "request": "Report headline signups, churn and the three-day signup trend.",
+    "evidence": "{\"signups\": 19, \"churn\": 4, \"days\": [\"Mon\", \"Tue\", \"Wed\"], \"trend\": [4, 9, 6]}",
+    "families": [
+      [
+        "Stats",
+        "Stat"
+      ],
+      [
+        "Chart",
+        "Sparkline"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Stack([Stats([Stat(\"Signups\", 19), Stat(\"Churn\", 4)]), Chart(\"line\", [\"Mon\", \"Tue\", \"Wed\"], [Series(\"Signups\", [4,9,6])])])\n```"
+  },
+  {
+    "id": "21-incident",
+    "category": "timeline",
+    "request": "Explain the incident sequence and recovery times.",
+    "evidence": "[{\"time\": \"09:42\", \"title\": \"Alert fired\", \"tone\": \"danger\"}, {\"time\": \"09:50\", \"title\": \"Rollback\", \"tone\": \"warning\"}, {\"time\": \"10:05\", \"title\": \"Resolved\", \"tone\": \"success\"}]",
+    "families": [
+      [
+        "Timeline"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Timeline([{\"time\": \"09:42\", \"title\": \"Alert fired\", \"tone\": \"danger\"}, {\"time\": \"09:50\", \"title\": \"Rollback\", \"tone\": \"warning\"}, {\"time\": \"10:05\", \"title\": \"Resolved\", \"tone\": \"success\"}])\n```"
+  },
+  {
+    "id": "22-quarter",
+    "category": "planning",
+    "request": "Show quarterly phases in both workstreams.",
+    "evidence": "[{\"title\": \"API\", \"lane\": \"Platform\", \"start\": \"2027-01-01\", \"end\": \"2027-02-15\", \"status\": \"planned\"}, {\"title\": \"Rollout\", \"lane\": \"Platform\", \"start\": \"2027-02-16\", \"end\": \"2027-03-31\", \"status\": \"planned\"}, {\"title\": \"Design\", \"lane\": \"Product\", \"start\": \"2027-01-01\", \"end\": \"2027-01-31\", \"status\": \"planned\"}, {\"title\": \"Build\", \"lane\": \"Product\", \"start\": \"2027-02-01\", \"end\": \"2027-03-31\", \"status\": \"planned\"}]",
+    "families": [
+      [
+        "Roadmap"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Roadmap([{\"title\": \"API\", \"lane\": \"Platform\", \"start\": \"2027-01-01\", \"end\": \"2027-02-15\", \"status\": \"planned\"}, {\"title\": \"Rollout\", \"lane\": \"Platform\", \"start\": \"2027-02-16\", \"end\": \"2027-03-31\", \"status\": \"planned\"}, {\"title\": \"Design\", \"lane\": \"Product\", \"start\": \"2027-01-01\", \"end\": \"2027-01-31\", \"status\": \"planned\"}, {\"title\": \"Build\", \"lane\": \"Product\", \"start\": \"2027-02-01\", \"end\": \"2027-03-31\", \"status\": \"planned\"}])\n```"
+  },
+  {
+    "id": "23-route",
+    "category": "locations",
+    "request": "Show the day route between the two supplied places. Do not look up photos.",
+    "evidence": "{\"day\": 1, \"places\": [{\"name\": \"Tower\", \"lat\": 38.6916, \"lng\": -9.216}, {\"name\": \"Guesthouse\", \"lat\": 38.7118, \"lng\": -9.13}]}",
+    "families": [
+      [
+        "Map"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Map([Marker(\"Tower\", [38.6916,-9.216]), Marker(\"Guesthouse\", [38.7118,-9.13])], {route:true})\n```"
+  },
+  {
+    "id": "24-learning",
+    "category": "learning",
+    "request": "Give me a two-question multiple-choice learning check on these HTTP facts.",
+    "evidence": "[{\"q\": \"Which HTTP status means Not Found?\", \"options\": [\"200\", \"404\"], \"answer\": \"404\"}, {\"q\": \"Which method is idempotent?\", \"options\": [\"POST\", \"PUT\"], \"answer\": \"PUT\", \"why\": \"PUT replaces the resource\"}]",
+    "families": [
+      [
+        "Quiz"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Quiz([{\"q\": \"Which HTTP status means Not Found?\", \"options\": [\"200\", \"404\"], \"answer\": \"404\"}, {\"q\": \"Which method is idempotent?\", \"options\": [\"POST\", \"PUT\"], \"answer\": \"PUT\", \"why\": \"PUT replaces the resource\"}])\n```"
+  },
+  {
+    "id": "25-export",
+    "category": "input",
+    "request": "Ask me which export format and whether headers should be included.",
+    "evidence": "{\"formats\": [\"CSV\", \"JSON\"], \"headers\": \"user choice\"}",
+    "families": [
+      [
+        "Form"
+      ],
+      [
+        "Choice",
+        "Radio",
+        "OptionCards"
+      ],
+      [
+        "Toggle"
+      ]
+    ],
+    "dryReply": "```openui-lang\nroot = Form(\"export\", [Choice(\"format\", [\"CSV\", \"JSON\"], \"Format\"), Toggle(\"headers\", \"Include headers\")], [Button(\"Send\")])\n```"
+  },
+  {
+    "id": "26-conversation",
+    "category": "negative-control",
+    "request": "Reply with exactly one conversational line: Happy to help.",
+    "evidence": "No structured data.",
+    "families": [],
+    "negative": true,
+    "dryReply": "Happy to help."
+  },
+  {
+    "id": "27-readiness-no-tools",
+    "category": "status",
+    "request": "Quick status, no tools needed and please do not run any tools. I ran the release checks on the pages plugin:\n- typecheck passed\n- 714 of 714 tests passed\n- build passed with 3 deprecation warnings\n- lint found 2 errors in server/foo.ts (unused import, missing return type)\nTell me where we are and what to do before release.",
+    "evidence": "These results are user-supplied. No independent checks were run.",
+    "families": [["Status"], ["Acceptance"]],
+    "dryReply": "```openui-lang\nroot = Stack([Status(\"blocked\", \"Lint errors block release\", [\"Typecheck passed\", \"714/714 tests passed\", \"Build passed with 3 deprecation warnings\"], [\"2 lint errors in server/foo.ts\"], [\"Fix the unused import and missing return type in server/foo.ts\", \"Rerun lint before release\"]), Acceptance([{criterion:\"Typecheck\",status:\"pass\",evidence:\"User-reported\"},{criterion:\"Tests\",status:\"pass\",evidence:\"714/714, user-reported\"},{criterion:\"Build\",status:\"pass\",note:\"3 deprecation warnings, user-reported\"},{criterion:\"Lint\",status:\"fail\",note:\"Unused import and missing return type in server/foo.ts, user-reported\"}])])\n```"
+  }
+]

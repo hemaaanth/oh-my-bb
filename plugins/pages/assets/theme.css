@@ -1,8 +1,8 @@
 /* Pages theme — derived from hemaaanth/site (hem.so) at a6411cc.
- * Every rule is inside :where(), so it has zero specificity: any rule a page
- * writes wins. Pseudo-elements cannot live inside :where(), so rules like
- * :where(summary)::before carry the one type-level point a pseudo adds.
- * Tokens live on :root; override them there, not on body.
+ * Rules use :where() for zero specificity. Reports should preserve the theme;
+ * zero specificity is not permission to restyle base elements or the page frame.
+ * Pseudo-elements such as :where(summary)::before add type-level specificity.
+ * Use the existing root tokens rather than resetting them for ordinary reports.
  * Light by default. body.dark forces dark. body.auto follows the reader's
  * system, or the BB app theme when the preview sets data-bb-theme on <html>.
  * No borders around blocks, no coloured rails, no pills, no bold. Hierarchy

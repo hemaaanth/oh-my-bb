@@ -6,6 +6,7 @@
 import vm from "node:vm";
 import { formatDiagnostics } from "./diagnostics.js";
 import type { Diagnostic } from "./diagnostics.js";
+import { lintPageStyles, MAX_STYLE_ISSUES } from "./style-lint.js";
 
 /** App source cap; OpenUI programs have a separate cap. */
 export const MAX_APP_CHARS = 100_000;
@@ -97,21 +98,24 @@ export function lintApp(html: string): Diagnostic[] {
 }
 
 /** Author check report with source locations. */
-export function checkApp(html: string): { readonly ok: boolean; readonly report: string } {
+export function checkApp(html: string): { readonly ok: boolean; readonly report: string; readonly issues: Diagnostic[] } {
   if (html.length > MAX_APP_CHARS) {
-    return { ok: false, report: `The app has ${html.length} characters; page_check reads up to ${MAX_APP_CHARS}.` };
+    return { ok: false, issues: [], report: `The app has ${html.length} characters; page_check reads up to ${MAX_APP_CHARS}.` };
   }
-  const findings = lintApp(html);
+  const styles = lintPageStyles(html);
+  const findings: Diagnostic[] = [...lintApp(html), ...styles.slice(0, MAX_STYLE_ISSUES).map(issue => ({ ...issue, severity: "error" as const, message: `[${issue.rule}] ${issue.context}: ${issue.message}` }))].sort((a, b) => a.line - b.line || a.column - b.column);
   if (findings.length === 0) {
     return {
       ok: true,
+      issues: findings,
       report:
         "No errors or warnings in the app. Checked script syntax, resource loads, dialogs, gesture calls, and 100vh heights. This reads the page; it does not run it or guarantee network isolation.",
     };
   }
   return {
     ok: !findings.some((finding) => finding.severity === "error"),
-    report: `Fix before replying (lines are the app's):\n${formatDiagnostics(findings)}`,
+    issues: findings,
+    report: `Fix before replying (lines are the app's):\n${formatDiagnostics(findings)}${styles.length > MAX_STYLE_ISSUES ? `\n${styles.length - MAX_STYLE_ISSUES} more style findings omitted.` : ""}`,
   };
 }
 

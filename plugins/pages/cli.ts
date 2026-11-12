@@ -71,7 +71,7 @@ export function registerPagesCli(bb: BbPluginApi, service: PageService, store: P
             const target = /\.(?:html?|md|markdown)$/iu.test(file) ? { file } : { dir: file };
             const published = await service.publishFile({ threadId, ...target, source, title: options.title, label: options.label, folder: options.folder, key: options.key, pageId: options.page });
             const result = { ...published.result, directive: directive(published.result.page.id, published.result.version.id, options.display) };
-            return ok({ ...result, changed: published.changed }, publishSummary(published, options.display), options.json);
+            return ok({ ...result, changed: published.changed, styleIssues: published.styleIssues, styleIssuesTotal: published.styleIssuesTotal, styleIssuesOmitted: published.styleIssuesOmitted }, publishSummary(published, options.display), options.json);
           });
         },
       }),
