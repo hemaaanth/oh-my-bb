@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-pages",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Publish and share pages, with the same live UI in chat and on pages.",
   "license": "MIT",
   "files": [

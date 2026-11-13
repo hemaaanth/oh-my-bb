@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
+- Table cells stay on one line, and long values clip with an ellipsis. A tap or
+  Enter on a clipped cell shows its full value in a panel over the cell. Agents
+  opt out with the Table `wrap` argument or `class="wrap"` on HTML tables.
 - HTML pages draw `<pre class="mermaid">` and Markdown pages draw ```` ```mermaid ```` fences with the Mermaid component. An element that already holds an SVG is left alone.
 - Diagrams are drawn by Pele (pele.run). Labels are measured in the page font,
   so they no longer cut off. A wide left-to-right Diagram turns vertical on narrow
