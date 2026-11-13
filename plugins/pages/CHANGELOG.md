@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+- A card reply leaves out the button label when it is the form's only button,
+  because clicking it chose nothing. A form with several buttons still sends
+  the clicked label.
+
 ## 0.8.0
 
 - Table cells stay on one line, and long values clip with an ellipsis. A tap or
