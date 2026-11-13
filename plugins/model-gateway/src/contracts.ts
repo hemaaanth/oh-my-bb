@@ -145,9 +145,16 @@ export const resetCreditsSchema = z
 
 export type ResetCredits = z.infer<typeof resetCreditsSchema>;
 
+export const apiCreditGrantSchema = z.object({
+  grantedUsd: z.number().nonnegative(), remainingUsd: z.number().nonnegative(), expiresAt: z.number().int().nullable(),
+}).strict();
+export type ApiCreditGrant = z.infer<typeof apiCreditGrantSchema>;
+
 export const apiCreditBenefitSchema = z.object({
   organizationId: z.string().uuid(), organizationName: z.string().min(1),
   monthlyUsd: z.number().nonnegative(), remainingUsd: z.number().nonnegative().nullable().default(null), nextGrantAt: z.number().int().nullable(),
+  /** Unexpired subscription grants, oldest expiry first. Empty when the balance is unknown. */
+  grants: z.array(apiCreditGrantSchema).default([]),
   heldReason: z.string().nullable(),
 }).strict();
 export type ApiCreditBenefit = z.infer<typeof apiCreditBenefitSchema>;

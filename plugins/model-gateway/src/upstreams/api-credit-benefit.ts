@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiCreditBenefitSchema, type ApiCreditBenefit } from "../contracts.js";
+import { apiCreditBenefitSchema, type ApiCreditBenefit, type ApiCreditGrant } from "../contracts.js";
 
 const endpoint = "https://api.anthropic.com";
 const usd = z.union([z.number(), z.string().regex(/^\d+(?:\.\d+)?$/u)]).transform(Number).pipe(z.number().nonnegative());
@@ -10,6 +10,17 @@ const payloadSchema = z.object({
   next_grant_at: z.string().datetime({ offset: true }).nullish(),
   grants_held_reason: z.string().nullish(),
 });
+
+const linkStateSchema = z.object({ status: z.string().regex(/^[a-z_]{1,40}$/u),
+  reason: z.string().regex(/^[a-z_]{1,40}$/u).nullish(), eligible_from: z.string().datetime({ offset: true }).nullish() });
+
+/** Names Billing's reason so a not-yet-eligible account does not look like a setup error. */
+function unlinkedMessage(payload: unknown): string | null {
+  const state = linkStateSchema.safeParse(payload);
+  if (!state.success || state.data.status === "linked") return null;
+  const { status, reason, eligible_from } = state.data;
+  return `No linked subscription API credit benefit: ${status}${reason == null ? "" : ` (${reason})`}${eligible_from == null ? "" : `, eligible from ${new Date(eligible_from).toISOString()}`}.`;
+}
 
 export function parseApiCreditBenefit(payload: unknown): ApiCreditBenefit | null {
   const parsed = payloadSchema.safeParse(payload);
@@ -37,14 +48,17 @@ export async function fetchApiCreditBenefit(fetcher: typeof fetch, accessToken: 
   const headers = { cookie: `sessionKey=${sessionKey}` };
   const account = z.object({ uuid: z.string().uuid() }).parse(await get("/api/account", headers));
   if (account.uuid !== profile.account.uuid) throw new Error("Billing session belongs to a different Claude account.");
-  return parseApiCreditBenefit(await get(`/api/quirky-lollipop/link-state?organization_uuid=${profile.organization.uuid}&include_candidates=false`, headers));
+  const state = await get(`/api/quirky-lollipop/link-state?organization_uuid=${profile.organization.uuid}&include_candidates=false`, headers);
+  const unlinked = unlinkedMessage(state);
+  if (unlinked !== null) throw new Error(unlinked);
+  return parseApiCreditBenefit(state);
 }
 
-/** Only unexpired subscription grants count; purchased and other promotional credits do not. */
-export function parseSubscriptionCreditRemaining(payload: unknown, now = Date.now()): number | null {
+/** Only unexpired subscription grants count; purchased and other promotional credits do not. Oldest expiry first. */
+export function parseSubscriptionCreditGrants(payload: unknown, now = Date.now()): ApiCreditGrant[] | null {
   const parsed = z.object({ promo_tranches: z.array(z.unknown()) }).safeParse(payload);
   if (!parsed.success) return null;
-  let remaining = 0;
+  const grants: ApiCreditGrant[] = [];
   for (const value of parsed.data.promo_tranches) {
     if (typeof value !== "object" || value === null || !("program_id" in value) || value.program_id !== "subscription_api_credit") continue;
     const grant = z.object({ currency: z.literal("USD"),
@@ -55,19 +69,30 @@ export function parseSubscriptionCreditRemaining(payload: unknown, now = Date.no
     }).safeParse(value);
     if (!grant.success) return null;
     const g = grant.data;
-    if (g.expires_at !== null && Date.parse(g.expires_at) <= now) continue;
+    const expiresAt = g.expires_at === null ? null : Date.parse(g.expires_at);
+    if (expiresAt !== null && expiresAt <= now) continue;
     if (g.remaining_amount_minor_units > g.granted_amount_minor_units) return null;
-    remaining += g.remaining?.credits == null ? g.remaining_amount_minor_units / 100 : g.remaining.credits.amount_minor / 10 ** g.remaining.credits.exponent;
+    grants.push({ grantedUsd: g.granted_amount_minor_units / 100, expiresAt,
+      remainingUsd: g.remaining?.credits == null ? g.remaining_amount_minor_units / 100 : g.remaining.credits.amount_minor / 10 ** g.remaining.credits.exponent });
   }
-  return remaining;
+  return grants.sort((a, b) => (a.expiresAt ?? Infinity) - (b.expiresAt ?? Infinity));
 }
 
-export async function fetchSubscriptionCreditRemaining(fetcher: typeof fetch, sessionKey: string, organizationId: string): Promise<number | null> {
+export function parseSubscriptionCreditRemaining(payload: unknown, now = Date.now()): number | null {
+  return parseSubscriptionCreditGrants(payload, now)?.reduce((sum, grant) => sum + grant.remainingUsd, 0) ?? null;
+}
+
+export async function fetchSubscriptionCreditGrants(fetcher: typeof fetch, sessionKey: string, organizationId: string): Promise<ApiCreditGrant[] | null> {
   z.string().uuid().parse(organizationId);
   const response = await fetcher(`${endpoint}/api/organizations/${organizationId}/prepaid/credits`, {
     headers: { cookie: `sessionKey=${sessionKey}`, accept: "application/json" },
     signal: AbortSignal.timeout(10_000), redirect: "error",
   });
   if (!response.ok) { await response.body?.cancel(); throw new Error(`Claude subscription balance unavailable (HTTP ${response.status}). Renew the Console session.`); }
-  return parseSubscriptionCreditRemaining(await response.json());
+  return parseSubscriptionCreditGrants(await response.json());
+}
+
+/** Applies a grant list to a benefit: the sum, and each grant for the footer. */
+export function withCreditGrants(benefit: ApiCreditBenefit, grants: ApiCreditGrant[] | null): ApiCreditBenefit {
+  return { ...benefit, grants: grants ?? [], remainingUsd: grants?.reduce((sum, grant) => sum + grant.remainingUsd, 0) ?? null };
 }

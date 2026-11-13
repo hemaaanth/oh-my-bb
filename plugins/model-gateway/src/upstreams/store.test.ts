@@ -137,7 +137,7 @@ describe("QuotaStore", () => {
     expect(migrated.limitWindows).toEqual([]);
     expect(migrated.resetCredits).toBeNull();
     expect(migrated.apiCreditBenefit).toBeNull();
-    const apiCreditBenefit = { organizationId: migrated.accountId, organizationName: "Example", monthlyUsd: 200, remainingUsd: 198.21, nextGrantAt: 1, heldReason: null };
+    const apiCreditBenefit = { organizationId: migrated.accountId, organizationName: "Example", monthlyUsd: 200, remainingUsd: 198.21, nextGrantAt: 1, heldReason: null, grants: [] };
     quotas.put({ ...migrated, apiCreditBenefit });
     expect(quotas.get(migrated.accountId).apiCreditBenefit).toEqual(apiCreditBenefit);
     quotas.put({ ...migrated, resetCredits: { available: 3, usable: 1 } });

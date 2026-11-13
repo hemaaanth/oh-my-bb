@@ -65,9 +65,12 @@ Automatic Claude Code failover maps Fable to `gpt-6-astra`, Opus to
   It opens from a short-lived cache and refreshes limits on demand. Codex
   accounts also show how many one-off reset credits they have.
   Claude accounts can show the subscription API credit benefit from Billing:
-  one API row with percentage used and a countdown to the next grant. Hover
-  to see the remaining subscription credit against the monthly allowance.
-  Purchased credits and other promotions are excluded.
+  one API row. Monthly grants overlap until the older one expires, so the row
+  shows one pill per unexpired grant, side by side. The percentage is combined
+  across grants, and the countdown is to the next grant expiry. Hover a pill
+  for its balance and expiry date. Without the Console balance, the row shows
+  a dash and a countdown to the next grant. Purchased credits and other
+  promotions are excluded.
 
 ### Connect subscription API credits
 

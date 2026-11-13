@@ -66,6 +66,7 @@ import type {
   AccountSummary,
   AccountPoolConfig,
   AccountPoolConfigSetInput,
+  ApiCreditBenefit,
   FamilyQuota,
   KeyAddInput,
   LimitWindow,
@@ -461,10 +462,21 @@ function footerWindows(account: AccountSummary): Array<{ label: string; utilizat
   ].filter((window): window is { label: string; utilization: number; resetAt: number | null } => window.utilization !== null);
 }
 
-function FooterUsageBar({ label, utilization, resetAt, account, title }: {
-  label: string; utilization: number | null; resetAt: number | null; account: string; title?: string;
+function usagePercent(utilization: number | null): number | null {
+  return utilization === null ? null : Math.min(100, Math.max(0, Math.round(utilization * 100)));
+}
+
+function UsageFill({ used }: { used: number | null }) {
+  return <div className={cn("h-full rounded-full", used !== null && used >= 98 ? "bg-destructive" : "bg-warning")}
+    style={{ width: `${used ?? 0}%` }} />;
+}
+
+function FooterUsageBar({ label, utilization, resetAt, resetVerb = "Resets", account, title, segments }: {
+  label: string; utilization: number | null; resetAt: number | null; resetVerb?: string; account: string; title?: string;
+  /** Side-by-side pills sized by weight, each with its own fill. The percentage stays the combined value. */
+  segments?: Array<{ weight: number; utilization: number; title: string }>;
 }) {
-  const used = utilization === null ? null : Math.min(100, Math.max(0, Math.round(utilization * 100)));
+  const used = usagePercent(utilization);
   const remaining = resetAt === null || resetAt <= Date.now() ? "" : (() => {
     const minutes = Math.max(1, Math.ceil((resetAt - Date.now()) / 60_000));
     if (minutes >= 1_440) return `${Math.ceil(minutes / 1_440)}d`;
@@ -474,16 +486,46 @@ function FooterUsageBar({ label, utilization, resetAt, account, title }: {
     <div className="flex items-center gap-2 text-2xs tabular-nums" title={title}>
       <span className="w-12 shrink-0 text-muted-foreground">{label}</span>
       <div role="progressbar" aria-label={`${account} ${label} usage`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={used ?? undefined}
-        className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
-        <div className={cn("h-full rounded-full", used !== null && used >= 98 ? "bg-destructive" : "bg-warning")}
-          style={{ width: `${used ?? 0}%` }} />
+        className={cn("h-1 min-w-0 flex-1", segments === undefined ? "overflow-hidden rounded-full bg-muted" : "flex gap-0.5")}>
+        {segments === undefined ? <UsageFill used={used} /> : segments.map((segment, index) =>
+          <div key={index} title={segment.title} className="h-full min-w-0 overflow-hidden rounded-full bg-muted"
+            style={{ flex: `${segment.weight} 1 0%` }}>
+            <UsageFill used={usagePercent(segment.utilization)} />
+          </div>)}
       </div>
       <span className="w-8 shrink-0 text-right font-medium text-foreground">{used === null ? "—" : `${used}%`}</span>
-      <span className="w-12 shrink-0 text-right text-muted-foreground" title={resetAt === null || resetAt <= 0 ? undefined : `Resets ${new Date(resetAt).toLocaleString()}`}>
+      <span className="w-12 shrink-0 text-right text-muted-foreground" title={resetAt === null || resetAt <= 0 ? undefined : `${resetVerb} ${new Date(resetAt).toLocaleString()}`}>
         {remaining}
       </span>
     </div>
   );
+}
+
+function usd(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
+function shortDate(at: number): string {
+  return new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function ApiCreditsBar({ benefit, account }: { benefit: ApiCreditBenefit; account: string }) {
+  // Footer snapshots cached before per-grant data existed have no grants field.
+  const grants = (benefit.grants ?? []).filter((grant) => grant.grantedUsd > 0);
+  const held = benefit.heldReason === null ? "" : ` · Credits on hold: ${benefit.heldReason}`;
+  const nextGrant = benefit.nextGrantAt === null ? "" : ` · Next grant ${shortDate(benefit.nextGrantAt)}`;
+  if (grants.length === 0) return <FooterUsageBar label="API" account={account}
+    utilization={benefit.remainingUsd == null || benefit.monthlyUsd <= 0 ? null : 1 - benefit.remainingUsd / benefit.monthlyUsd}
+    resetAt={benefit.nextGrantAt} resetVerb="Next grant"
+    title={`${benefit.organizationName}: ${benefit.remainingUsd == null ? "Balance unavailable" : `${usd(benefit.remainingUsd)} of ${usd(benefit.monthlyUsd)} remaining`}${held}`} />;
+  const granted = grants.reduce((sum, grant) => sum + grant.grantedUsd, 0);
+  const remaining = grants.reduce((sum, grant) => sum + grant.remainingUsd, 0);
+  const expiries = grants.flatMap((grant) => grant.expiresAt === null ? [] : [grant.expiresAt]);
+  return <FooterUsageBar label="API" account={account} utilization={1 - remaining / granted}
+    resetAt={expiries.length === 0 ? null : Math.min(...expiries)} resetVerb="Next credit expires"
+    title={`${benefit.organizationName}: ${usd(remaining)} of ${usd(granted)} remaining across ${grants.length} ${grants.length === 1 ? "grant" : "grants"}${nextGrant}${held}`}
+    segments={grants.map((grant) => ({ weight: grant.grantedUsd, utilization: 1 - grant.remainingUsd / grant.grantedUsd,
+      title: `${usd(grant.remainingUsd)} of ${usd(grant.grantedUsd)} remaining${grant.expiresAt === null ? "" : ` · expires ${shortDate(grant.expiresAt)}`}` }))} />;
 }
 
 function resetCreditsLabel({ available }: ResetCredits): string {
@@ -511,10 +553,7 @@ function GatewayAccountPanel({ account, reconnect }: { account: AccountSummary; 
         Usage unavailable
       </p> : <div className="mt-1.5 space-y-1">
         {windows.map((window) => <FooterUsageBar key={window.label} {...window} account={account.label} />)}
-        {apiCredits == null ? null : <FooterUsageBar label="API" account={account.label}
-          utilization={apiCredits.remainingUsd == null || apiCredits.monthlyUsd <= 0 ? null : 1 - apiCredits.remainingUsd / apiCredits.monthlyUsd}
-          resetAt={apiCredits.nextGrantAt}
-          title={`${apiCredits.organizationName}: ${apiCredits.remainingUsd == null ? "Balance unavailable" : `$${apiCredits.remainingUsd.toFixed(2)} of $${apiCredits.monthlyUsd.toFixed(2)} remaining`}${apiCredits.heldReason === null ? "" : ` · Credits on hold: ${apiCredits.heldReason}`}`} />}
+        {apiCredits == null ? null : <ApiCreditsBar benefit={apiCredits} account={account.label} />}
 
       </div>}
       {account.observedAt === null && resetCredits === null ? null : <div className="mt-1.5 flex justify-between gap-2 text-2xs text-muted-foreground">
@@ -527,11 +566,12 @@ function GatewayAccountPanel({ account, reconnect }: { account: AccountSummary; 
   );
 }
 
+// localStorage so a new tab or reload shows the last usage at once; load() then replaces it in place.
 const FOOTER_USAGE_CACHE_KEY = "model-gateway.footer-usage.v3";
 type FooterUsageSnapshot = { accounts: AccountSummary[]; fetchedAt: number };
 function cachedFooterUsage(): FooterUsageSnapshot | null {
   try {
-    const raw = sessionStorage.getItem(FOOTER_USAGE_CACHE_KEY);
+    const raw = window.localStorage.getItem(FOOTER_USAGE_CACHE_KEY);
     if (raw === null) return null;
     const value: unknown = JSON.parse(raw);
     if (typeof value !== "object" || value === null || !Array.isArray((value as FooterUsageSnapshot).accounts) ||
@@ -540,7 +580,7 @@ function cachedFooterUsage(): FooterUsageSnapshot | null {
   } catch { return null; }
 }
 function cacheFooterUsage(snapshot: FooterUsageSnapshot): void {
-  try { sessionStorage.setItem(FOOTER_USAGE_CACHE_KEY, JSON.stringify(snapshot)); } catch { /* Storage may be unavailable. */ }
+  try { window.localStorage.setItem(FOOTER_USAGE_CACHE_KEY, JSON.stringify(snapshot)); } catch { /* Storage may be unavailable. */ }
 }
 
 function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {

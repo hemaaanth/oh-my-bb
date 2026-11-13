@@ -1,4 +1,4 @@
-import { fetchApiCreditBenefit, fetchSubscriptionCreditRemaining } from "./upstreams/api-credit-benefit.js";
+import { fetchApiCreditBenefit, fetchSubscriptionCreditGrants, withCreditGrants } from "./upstreams/api-credit-benefit.js";
 import { randomUUID } from "node:crypto";
 // Ported from the core Account Pooler (account-pool), MIT, Michael Yong 2026.
 import type {
@@ -341,13 +341,13 @@ export class PoolOperations {
     if (sessionKey !== null && !/^[^;\s]+$/u.test(sessionKey)) throw new Error("Invalid Console session key.");
     const benefit = this.quotas.get(id).apiCreditBenefit;
     if (benefit === null) throw new Error("Connect the Claude Billing benefit first.");
-    const remainingUsd = sessionKey === null ? null : await fetchSubscriptionCreditRemaining(fetch, sessionKey, benefit.organizationId);
-    if (sessionKey !== null && remainingUsd === null) throw new Error("Subscription credit balance unavailable.");
+    const grants = sessionKey === null ? null : await fetchSubscriptionCreditGrants(fetch, sessionKey, benefit.organizationId);
+    if (sessionKey !== null && grants === null) throw new Error("Subscription credit balance unavailable.");
     const latest = await this.accounts.readSecret(id);
     if (latest.kind !== "oauth") throw new Error("Account changed during Billing connection.");
     const { billingConsoleSessionKey: _, ...withoutConsole } = latest;
     await this.accounts.writeSecret(id, sessionKey === null ? withoutConsole : { ...latest, billingConsoleSessionKey: sessionKey });
-    this.quotas.put({ ...this.quotas.get(id), apiCreditBenefit: { ...benefit, remainingUsd } });
+    this.quotas.put({ ...this.quotas.get(id), apiCreditBenefit: withCreditGrants(benefit, grants) });
     this.onAccountsChanged();
   }
 

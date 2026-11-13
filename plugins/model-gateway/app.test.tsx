@@ -17,7 +17,7 @@ if (!Element.prototype.scrollIntoView) {
 }
 
 const app = await loadPluginApp(() => import("./app"));
-afterEach(() => { cleanup(); sessionStorage.clear(); });
+afterEach(() => { cleanup(); window.localStorage.clear(); });
 
 const CLAUDE_BLOCK = "Claude OAuth accounts serve only the claude-code harness";
 
@@ -493,6 +493,31 @@ describe("Model usage footer", () => {
     expect(bar.parentElement?.textContent).toContain("2d");
     expect(bar.parentElement?.title).toContain(remainingUsd === null ? "Balance unavailable" : `$${remainingUsd.toFixed(2)} of $200.00 remaining`);
     expect(slot.queryByText("Next credit")).toBeNull();
+  });
+
+  it("shows overlapping API grants as side-by-side pills with a combined percentage", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    const day = 86400_000;
+    const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: {
+      "account.list": () => [account({ apiCreditBenefit: {
+        organizationId: "22222222-2222-4222-8222-222222222222", organizationName: "Example",
+        monthlyUsd: 200, remainingUsd: 300, nextGrantAt: Date.now() + 28 * day, heldReason: null,
+        grants: [
+          { grantedUsd: 200, remainingUsd: 100, expiresAt: Date.now() + 2 * day },
+          { grantedUsd: 200, remainingUsd: 200, expiresAt: Date.now() + 30 * day },
+        ],
+      } })],
+    } as never });
+    await slot.findByText("API");
+    const bar = slot.getByRole("progressbar", { name: / API usage/u });
+    expect(bar.getAttribute("aria-valuenow")).toBe("25");
+    expect(bar.children).toHaveLength(2);
+    expect((bar.children[0] as HTMLElement).title).toContain("$100.00 of $200.00 remaining");
+    expect(((bar.children[0] as HTMLElement).firstElementChild as HTMLElement).style.width).toBe("50%");
+    expect(((bar.children[1] as HTMLElement).firstElementChild as HTMLElement).style.width).toBe("0%");
+    expect(bar.parentElement?.textContent).toContain("2d");
+    expect(bar.parentElement?.title).toContain("$300.00 of $400.00 remaining across 2 grants");
   });
 
   it("shows Codex one-off reset credits", async () => {

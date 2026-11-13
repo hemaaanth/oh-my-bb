@@ -1,5 +1,5 @@
 // Ported from the core Account Pooler (account-pool), MIT, Michael Yong 2026.
-import { fetchApiCreditBenefit, fetchSubscriptionCreditRemaining } from "./api-credit-benefit.js";
+import { fetchApiCreditBenefit, fetchSubscriptionCreditGrants, withCreditGrants } from "./api-credit-benefit.js";
 import { z } from "zod";
 import type { AccountSecret } from "../contracts.js";
 import {
@@ -167,9 +167,9 @@ export function createClaudeAdapter(options: {
         await response.body?.cancel();
       }
       if (secret.billingSessionKey !== undefined) {
-        const benefit = await fetchApiCreditBenefit(context.fetch, secret.accessToken, secret.billingSessionKey).catch(() => null);
+        let benefit = await fetchApiCreditBenefit(context.fetch, secret.accessToken, secret.billingSessionKey).catch(() => null);
         if (benefit !== null && secret.billingConsoleSessionKey !== undefined) {
-          benefit.remainingUsd = await fetchSubscriptionCreditRemaining(context.fetch, secret.billingConsoleSessionKey, benefit.organizationId).catch(() => null);
+          benefit = withCreditGrants(benefit, await fetchSubscriptionCreditGrants(context.fetch, secret.billingConsoleSessionKey, benefit.organizationId).catch(() => null));
         }
         context.quotas.put({ ...context.quotas.get(context.account.id), apiCreditBenefit: benefit });
       }
