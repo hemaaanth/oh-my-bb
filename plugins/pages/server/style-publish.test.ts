@@ -82,6 +82,18 @@ describe("style check and publish boundaries", () => {
       expect(fixed.styleIssues).toEqual([]);
     } finally { await harness.lifecycle.dispose(); }
   });
+  it("warns when a long Markdown page uses no components, and not when it uses a fence", async () => {
+    const { files, harness } = pagesHost();
+    try {
+      const sections = ["Accounts", "People", "Org charts"].map(h => `## ${h}\n\n| Name | Role |\n| --- | --- |\n| A | B |\n`).join("\n");
+      files.set(`${WORKSPACE}/report.md`, `# Report\n\n${sections}`);
+      const plain = JSON.parse((await harness.behavior.runCli(["publish", "report.md", "--json"], { ...context, cwd: WORKSPACE })).stdout!);
+      expect(plain.styleIssues).toEqual([expect.objectContaining({ file: "report.md", rule: "no-components", line: 1, column: 1 })]);
+      files.set(`${WORKSPACE}/report.md`, `# Report\n\n${sections}\n\`\`\`openui-lang\nroot = Callout("info", "Ok")\n\`\`\`\n`);
+      const fenced = JSON.parse((await harness.behavior.runCli(["publish", "report.md", "--json"], { ...context, cwd: WORKSPACE })).stdout!);
+      expect(fenced.styleIssues).toEqual([]);
+    } finally { await harness.lifecycle.dispose(); }
+  });
   it("checks nested folder HTML but not escaped Markdown or generated PR reviews", async () => {
     const { files, harness } = pagesHost();
     try {

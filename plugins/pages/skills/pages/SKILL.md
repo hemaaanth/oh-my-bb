@@ -17,7 +17,8 @@ Choose the surface and components before writing. Honor explicit output formats.
 - **Long document to keep or share:** publish an HTML or Markdown page. Use
   OpenUI components inside the document for its visuals: Tabs for sections,
   Table for lists, Tree or Diagram for org charts, Stats for numbers. Do not
-  rebuild them with CSS cards, tab bars or nested divs; publish warns on that.
+  rebuild them with CSS cards, tab bars or nested divs. Publish warns on long
+  HTML or Markdown pages that use no components.
   The default is a card that opens the full document; it is not a borderless
   inline view.
 - **Compact published visual:** pass `display: "inline"` to `page_publish`.

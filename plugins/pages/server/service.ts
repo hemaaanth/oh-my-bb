@@ -170,9 +170,13 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
     }
     if (!input.file) throw new PageInputError("Pass file or dir.");
     const source = await readSourceFile(sdk, input.threadId, input.file, input.source);
-    const styleIssues = source.kind === "html" ? [...lintPageComposition(source.content), ...lintPageStyles(source.content)].map(issue => ({ ...issue, file: source.file })) : [];
+    const rendered = sourceHtml(source, input.title);
+    // Markdown has no author CSS; only its shape is checked, and rendered-HTML positions mean nothing in the source.
+    const styleIssues = source.kind === "html"
+      ? [...lintPageComposition(source.content), ...lintPageStyles(source.content)].map(issue => ({ ...issue, file: source.file }))
+      : lintPageComposition(rendered).filter(issue => issue.rule === "no-components").map(issue => ({ ...issue, offset: 0, line: 1, column: 1, file: source.file }));
     // Stored and compared with local images inlined, so an image change adds a version. Folders store their images as files.
-    const html = await baked(await inlineLocalImages(sdk, input.threadId, source, sourceHtml(source, input.title), { strict: true }), input);
+    const html = await baked(await inlineLocalImages(sdk, input.threadId, source, rendered, { strict: true }), input);
     return { html, files: [], sourceKey: source.sourceKey, sourcePath: source.file, digest: sha256(html), styleIssues };
   }
 
