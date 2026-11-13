@@ -15,8 +15,11 @@ Choose the surface and components before writing. Honor explicit output formats.
   reply. No file or publish. Use it for a few stats, a small chart or table,
   a timeline, a diff, a comparison, or a quick choice. Keep surrounding prose short.
 - **Long document to keep or share:** publish an HTML or Markdown page. Use
-  OpenUI components inside the document for its visuals. The default is a card
-  that opens the full document; it is not a borderless inline view.
+  OpenUI components inside the document for its visuals: Tabs for sections,
+  Table for lists, Tree or Diagram for org charts, Stats for numbers. Do not
+  rebuild them with CSS cards, tab bars or nested divs; publish warns on that.
+  The default is a card that opens the full document; it is not a borderless
+  inline view.
 - **Compact published visual:** pass `display: "inline"` to `page_publish`.
   This is separate from a direct reply fence and still creates a saved page.
 - **No structured information:** skip UI only for a one-line answer or plain conversation.

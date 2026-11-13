@@ -1,6 +1,7 @@
 import postcss, { CssSyntaxError, type AnyNode, type Declaration, type Rule } from "postcss";
 import { attr, scanHtml } from "../../render/html.js";
 import { readPageAsset } from "../../render/assets.js";
+import { hasMermaidBlocks, hasSpecBlocks } from "../../render/spec-baked.js";
 import { formatDiagnostics } from "./diagnostics.js";
 
 export interface PageStyleIssue {
@@ -200,6 +201,51 @@ export function lintPageStyles(html: string): PageStyleIssue[] {
     if (!custom && index >= 0) lintCss(decode(tag.attrs[index]![1]), tag.valueRanges[index]![0], true, tag.name, frame);
   }
   return issues.sort((a, b) => a.offset - b.offset);
+}
+
+// Class names that rebuild a catalog component by hand. Some are theme classes; redefining them breaks the theme too.
+const HAND_MADE: Record<string, string> = {
+  stat: "Stats([Stat(...)])", stats: "Stats([Stat(...)])", kpi: "Stats([Stat(...)])", kpis: "Stats([Stat(...)])", metric: "Stats([Stat(...)])", metrics: "Stats([Stat(...)])",
+  tab: "Tabs([Tab(...)])", tabs: "Tabs([Tab(...)])", "tab-bar": "Tabs([Tab(...)])",
+  tree: "Tree or Diagram", orgchart: "Tree or Diagram", "org-chart": "Tree or Diagram",
+  timeline: "Timeline", card: "Table, Details or Callout", cards: "Table, Details or Callout",
+};
+const NO_COMPONENTS = 'A long document with no openui-lang blocks. Draw its visuals with components: <script type="text/openui-lang"> in HTML, or openui-lang fences in Markdown. Tabs for sections, Table for lists, Tree or Diagram for hierarchies, Stats for numbers. Zero style warnings is not the goal.';
+
+/** Document shape, not CSS policy: flags hand-built components and long pages that use none. Pages marked custom are skipped. */
+export function lintPageComposition(html: string): PageStyleIssue[] {
+  const tags = scanHtml(html).tags.filter(tag => tag.kind === "start");
+  if (tags.some(tag => attr(tag, "data-pages-style") === "custom")) return [];
+  const starts = [0];
+  for (let i = 0; i < html.length; i++) if (html[i] === "\n") starts.push(i + 1);
+  const issue = (rule: string, offset: number, context: string, message: string): PageStyleIssue => {
+    let low = 0, high = starts.length;
+    while (low + 1 < high) { const mid = (low + high) >>> 1; if (starts[mid]! <= offset) low = mid; else high = mid; }
+    return { rule, offset, line: low + 1, column: offset - starts[low]! + 1, context: context.slice(0, 100), message };
+  };
+  const issues: PageStyleIssue[] = [];
+  const seen = new Set<string>();
+  for (const tag of tags) {
+    if (tag.name !== "style" || !tag.text || isBundledThemeStyle(tag.text)) continue;
+    let root;
+    try { root = postcss.parse(tag.text, { from: undefined }); } catch { continue; }
+    root.walkRules((rule: Rule) => {
+      for (const [, name] of rule.selector.toLowerCase().matchAll(/\.([a-z][\w-]*)/g)) {
+        const use = HAND_MADE[name!];
+        if (!use || seen.has(name!)) continue;
+        seen.add(name!);
+        issues.push(issue("custom-component", tag.end + (rule.source?.start?.offset ?? 0), rule.selector, `Hand-made component .${name}; use ${use} in an openui-lang block.`));
+      }
+    });
+  }
+  if (!hasSpecBlocks(html) && !hasMermaidBlocks(html)) {
+    const count = (name: string) => tags.filter(tag => tag.name === name).length;
+    if (count("h2") >= 3 || count("table") >= 2 || count("details") >= 3) {
+      const frame = tags.find(tag => tag.name === "main") ?? tags.find(tag => tag.name === "body");
+      issues.unshift(issue("no-components", frame?.start ?? 0, "page", NO_COMPONENTS));
+    }
+  }
+  return issues;
 }
 
 export function formatStyleIssues(issues: readonly PageStyleIssue[], limit = MAX_STYLE_ISSUES, total = issues.length): string {

@@ -10,7 +10,7 @@ import { readSourceFile, readSourceFolder, relativeFile, resolveRoot, sourceKeyO
 import { inlineLocalImages } from "./images.js";
 import type { SpecBaker } from "./spec/index.js";
 import { HTTP_BASE, StaleVersionError, type PageStore } from "./store.js";
-import { lintPageStyles, MAX_STYLE_ISSUES, type PageStyleIssue } from "./spec/style-lint.js";
+import { lintPageComposition, lintPageStyles, MAX_STYLE_ISSUES, type PageStyleIssue } from "./spec/style-lint.js";
 
 export type MutationResult = z.infer<typeof mutationResultSchema>;
 /** `changed` is false when the bytes matched the current version and nothing was stored. */
@@ -161,7 +161,7 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
     if (input.dir) {
       const folder = await readSourceFolder(sdk, input.threadId, input.dir, input.source);
       const styleIssues = [
-        ...lintPageStyles(folder.index).map(issue => ({ ...issue, file: "index.html" })),
+        ...[...lintPageComposition(folder.index), ...lintPageStyles(folder.index)].map(issue => ({ ...issue, file: "index.html" })),
         ...folder.files.filter(file => /^text\/html\b/i.test(file.contentType)).flatMap(file => lintPageStyles(Buffer.from(file.bytes).toString("utf8")).map(issue => ({ ...issue, file: file.path }))),
       ];
       const index = await baked(folder.index, input);
@@ -170,7 +170,7 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
     }
     if (!input.file) throw new PageInputError("Pass file or dir.");
     const source = await readSourceFile(sdk, input.threadId, input.file, input.source);
-    const styleIssues = source.kind === "html" ? lintPageStyles(source.content).map(issue => ({ ...issue, file: source.file })) : [];
+    const styleIssues = source.kind === "html" ? [...lintPageComposition(source.content), ...lintPageStyles(source.content)].map(issue => ({ ...issue, file: source.file })) : [];
     // Stored and compared with local images inlined, so an image change adds a version. Folders store their images as files.
     const html = await baked(await inlineLocalImages(sdk, input.threadId, source, sourceHtml(source, input.title), { strict: true }), input);
     return { html, files: [], sourceKey: source.sourceKey, sourcePath: source.file, digest: sha256(html), styleIssues };

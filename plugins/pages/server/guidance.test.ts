@@ -41,6 +41,13 @@ describe("Pages guidance delivery", () => {
     for (const [name, text] of Object.entries(surfaces)) expect(text.length, name).toBeLessThanOrEqual(4096);
   });
 
+  it("points saved pages at components, not hand-built CSS", () => {
+    for (const text of [PAGES_GUIDANCE, PUBLISH_INSTRUCTIONS]) {
+      expect(text).toContain('<script type="text/openui-lang">');
+      expect(text).toMatch(/Tabs for (several )?sections/);
+    }
+  });
+
   it("validates every worked program through the production author checker", async () => {
     const { bb, harness } = pagesHost();
     try {

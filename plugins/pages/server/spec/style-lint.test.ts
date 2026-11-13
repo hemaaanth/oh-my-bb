@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { lintPageStyles, formatStyleIssues } from "./style-lint.js";
+import { lintPageComposition, lintPageStyles, formatStyleIssues } from "./style-lint.js";
 import { checkApp } from "./app-lint.js";
 import { readPageAsset } from "../../render/assets.js";
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/style/${name}.html`, import.meta.url), "utf8");
@@ -128,5 +128,29 @@ describe("author style guard", () => {
     expect(bounded.issues).toHaveLength(50);
     expect(bounded.report).toContain("10 more style findings omitted");
     expect(checkApp('<style>body {font:600 16px Inter;max-width:62rem;color:#fff}</style><script>const n=1;</script>').ok).toBe(false);
+  });
+});
+
+describe("page composition guard", () => {
+  // The shape of a real hand-built report: theme-clean CSS, custom stat and org-chart classes, no components.
+  const sections = ["Accounts", "People", "Org charts"].map(h => `<h2>${h}</h2><table><tr><td>x</td></tr></table>`).join("");
+  const handBuilt = `<style>.stats{display:grid}.stat{padding:8px}\n.tree .node{margin:4px}</style><body class="auto"><main class="page wide">${sections}</main></body>`;
+  const composed = (html: string) => lintPageComposition(html).map(issue => issue.rule);
+
+  it("flags a long page with no components and the hand-made component classes", () => {
+    const issues = lintPageComposition(handBuilt);
+    expect(issues.map(issue => issue.rule)).toEqual(["no-components", "custom-component", "custom-component", "custom-component"]);
+    expect(issues[0]).toMatchObject({ context: "page", message: expect.stringContaining('<script type="text/openui-lang">') });
+    expect(issues.slice(1).map(issue => issue.message)).toEqual([expect.stringContaining(".stats; use Stats"), expect.stringContaining(".stat; use Stats"), expect.stringContaining(".tree; use Tree or Diagram")]);
+    expect(issues[3]!.line).toBe(2);
+    expect(lintPageStyles(handBuilt)).toEqual([]);
+  });
+
+  it("stays quiet for component pages, short pages and custom mockups", () => {
+    const block = '<script type="text/openui-lang">root = Tabs([Tab("A", [Callout("info", "x")])])</script>';
+    expect(composed(`<main class="page">${sections}${block}</main>`)).toEqual([]);
+    expect(composed('<main class="page"><h2>One</h2><table></table><p>Short.</p></main>')).toEqual([]);
+    expect(composed(`<style data-pages-style="custom">.card{padding:4px}</style><main class="page">${sections}</main>`)).toEqual([]);
+    expect(composed('<style>.stat-row{gap:4px}.cardinal{color:var(--bb-text)}</style><main class="page"></main>')).toEqual([]);
   });
 });

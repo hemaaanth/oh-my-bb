@@ -68,6 +68,20 @@ describe("style check and publish boundaries", () => {
       expect(rpc).not.toHaveProperty("styleIssues");
     } finally { await harness.lifecycle.dispose(); }
   });
+  it("warns that a long hand-built page uses no components, before CSS findings", async () => {
+    const { files, harness } = pagesHost();
+    try {
+      const sections = ["Accounts", "People", "Org charts"].map(h => `<h2>${h}</h2><table><tr><td>x</td></tr></table>`).join("");
+      files.set(`${WORKSPACE}/report.html`, `<style>.stat{padding:8px}</style><main class="page">${sections}</main>`);
+      const tool = String(await harness.behavior.callAgentTool("page_publish", { file: "report.html" }, context));
+      expect(tool).toContain("Style warnings — published");
+      expect(tool.indexOf("[no-components]")).toBeGreaterThan(tool.indexOf("::page{"));
+      expect(tool.indexOf("[no-components]")).toBeLessThan(tool.indexOf("[custom-component] .stat"));
+      files.set(`${WORKSPACE}/report.html`, `<main class="page">${sections}<script type="text/openui-lang">root = Callout("info", "Ok")</script></main>`);
+      const fixed = JSON.parse((await harness.behavior.runCli(["publish", "report.html", "--json"], { ...context, cwd: WORKSPACE })).stdout!);
+      expect(fixed.styleIssues).toEqual([]);
+    } finally { await harness.lifecycle.dispose(); }
+  });
   it("checks nested folder HTML but not escaped Markdown or generated PR reviews", async () => {
     const { files, harness } = pagesHost();
     try {
