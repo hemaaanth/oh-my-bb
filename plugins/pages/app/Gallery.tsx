@@ -14,7 +14,7 @@ import { siteLook } from "../render/spec-runtime/css.js";
 import themeCss from "../assets/theme.css" with { type: "text" };
 import { annotateSources } from "./spec/source-metadata.js";
 import { MotionBoundary } from "./spec/motion.js";
-import { CopyMarkdown, MarkdownGroup, SpecRenderer } from "./spec/SpecRenderer.js";
+import { SpecRenderer } from "./spec/SpecRenderer.js";
 
 type Look = "bb" | "site";
 const LOOKS: { id: Look; name: string }[] = [{ id: "bb", name: "BB" }, { id: "site", name: "Site" }];
@@ -39,7 +39,7 @@ function ExampleView({ example, host, look, named }: { example: Example; host: H
     <HostContext.Provider value={previewHost}>
       <MotionBoundary>
       <SentContext.Provider value={sentValue}>
-        <SpecRenderer response={example.code} library={specLibrary} isStreaming={false} onAction={onAction} toolProvider={tools} onParseResult={annotateSources} exportable={false} />
+        <SpecRenderer response={example.code} library={specLibrary} isStreaming={false} onAction={onAction} toolProvider={tools} onParseResult={annotateSources} />
       </SentContext.Provider>
       </MotionBoundary>
     </HostContext.Provider>
@@ -85,7 +85,7 @@ export function Gallery() {
     ? groups.flatMap((group) => group.entries).filter((entry) => !entry.part && `${entry.component.name} ${entry.summary}`.toLowerCase().includes(needle))
     : selectedGroup?.entries.filter((entry) => !entry.part) ?? [];
   const count = groups.reduce((sum, group) => sum + group.entries.filter((entry) => !entry.part).length, 0);
-  return <HostContext.Provider value={host}><MarkdownGroup>
+  return <HostContext.Provider value={host}>
     <div ref={box} className="flex min-w-0 flex-col gap-3 text-sm">
       {look === "site" ? <style>{siteLook(themeCss, ".bb-site-look", dark)}</style> : null}
       <div className="flex min-w-0 items-center gap-2">
@@ -113,9 +113,9 @@ export function Gallery() {
       </div>
       {shown.length ? <div className={`flex min-w-0 flex-col gap-3 ${look === "site" ? "bb-site-look" : ""}`}>{shown.map((entry) => <EntryView key={entry.component.name} entry={entry} host={host} look={lookHost} />)}</div> : <p className="m-0 py-2.5 text-subtle-foreground">No component matches.</p>}
       {shown.length ? <section aria-label="Sources" className="flex min-w-0 flex-col gap-3 rounded-md border border-border bg-surface-recessed/70 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="m-0 text-sm font-medium text-foreground">Sources</h3><CopyMarkdown /></div>
+        <h3 className="m-0 text-sm font-medium text-foreground">Sources</h3>
         <div className="min-w-0 divide-y divide-border">{shown.map((entry) => <EntrySource key={entry.component.name} entry={entry} host={host} />)}</div>
       </section> : null}
     </div>
-  </MarkdownGroup></HostContext.Provider>;
+  </HostContext.Provider>;
 }

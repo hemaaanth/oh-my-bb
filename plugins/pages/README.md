@@ -86,8 +86,7 @@ language and preserve existing form behavior:
   and seek a supplied recording from words or errors. It does not transcribe audio.
 - Findings has explicit fix requests in click menus. Opening a menu sends
   nothing. The gallery previews the request; exported pages cannot send it.
-- Copy as Markdown uses the current field values and loaded data. Use
-  `bb pages render path/to/report.md` for plain-text export, or add `--state`
+- Use `bb pages render path/to/report.md` for plain-text export, or add `--state`
   with a JSON object to export supplied field values. Omit the path to render
   the current thread's latest component output.
 

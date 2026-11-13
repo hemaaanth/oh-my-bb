@@ -48,6 +48,17 @@ describe("Decision", () => {
   });
 });
 
+describe("Status", () => {
+  it("shows each non-empty list as a labeled row with a marked item per entry", () => {
+    render(<Fence log={[]} code={`root = Status("on-track", "Shipped", ["Merged", "Tagged"], [], ["Watch CI"])`} />);
+    expect(screen.getByText("● On track")).toBeTruthy();
+    expect([...document.querySelectorAll("dt")].map((dt) => dt.textContent)).toEqual(["Highlights", "Next"]);
+    expect(within(screen.getByRole("list", { name: "Highlights" })).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Merged", "Tagged"]);
+    expect(screen.getByRole("list", { name: "Next" }).querySelectorAll("svg")).toHaveLength(1);
+    expect(screen.queryByRole("list", { name: "Risks" })).toBeNull();
+  });
+});
+
 describe("Board", () => {
   const code = `root = Board([{title: "A", status: "todo"}, {title: "B", status: "todo"}, {title: "C", status: "done"}], null, "triage")`;
   const column = (label: string) => screen.getByRole("region", { name: label });

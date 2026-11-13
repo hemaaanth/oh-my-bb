@@ -3,7 +3,7 @@ import { useContext, useRef, useState } from "react";
 import { defineComponent, useIsStreaming, useTriggerAction } from "@openuidev/react-lang";
 import { z } from "zod";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, Ellipsis } from "../icons.generated.js";
+import { ArrowRight, Check, Ellipsis, TriangleAlert } from "../icons.generated.js";
 import { PORTAL_SCOPE, menuContent, menuItem } from "../../ui.js";
 import { ReadOnlyNote, SentContext, focusRing, useReadOnly, useSpill, type Group } from "../kit.js";
 import { axisShare, boardColumns, estimateTask, estimateTotals, formatAmount, formatDay, localDay, parseDay, moveCards, placeCard, readRoadmap, statusKey, type BoardOrder, type RoadmapStatus } from "./manage-logic.js";
@@ -249,13 +249,18 @@ const Status = defineComponent({
   description: 'A status report: the overall state, a one-line summary, then highlights, risks, and next steps as short lists. state "on-track", "at-risk", "off-track", "blocked", or "done". Empty lists are left out.',
   component: ({ props }) => {
     const [label, color] = healthText[props.state] ?? ["", "text-muted-foreground"];
-    const sections = ([["Highlights", props.highlights], ["Risks", props.risks], ["Next", props.next]] as const).map(([title, items]) => [title, texts(items)] as const).filter(([, items]) => items.length > 0);
-    return <div className="flex min-w-0 flex-col gap-3">
+    const sections = ([["Highlights", props.highlights, Check, "text-success"], ["Risks", props.risks, TriangleAlert, "text-warning"], ["Next", props.next, ArrowRight, "text-muted-foreground"]] as const)
+      .map(([title, items, Mark, tone]) => ({ title, items: texts(items), Mark, tone })).filter(({ items }) => items.length > 0);
+    return <div className="@container flex min-w-0 flex-col gap-3">
       <p className="m-0"><span className={`font-semibold ${color}`}>● {label}</span>{props.summary ? <span className="text-foreground"> · {props.summary}</span> : null}</p>
-      {sections.length ? <div className="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-4">{sections.map(([title, items]) => <section key={title} aria-label={title} className="flex flex-col gap-1">
-        <h4 className="m-0 font-medium text-muted-foreground">{title}</h4>
-        <ul className="m-0 flex flex-col gap-0.5 pl-4 text-foreground">{items.map((item, i) => <li key={i}>{item}</li>)}</ul>
-      </section>)}</div> : null}
+      {sections.length ? <dl className="m-0 grid min-w-0 grid-cols-1 border-t border-border-hairline @sm:grid-cols-[6.5rem_minmax(0,1fr)] @sm:gap-x-6">
+        {sections.map(({ title, items, Mark, tone }) => <div key={title} className="col-span-full grid grid-cols-subgrid gap-y-1 border-b border-border-hairline py-2 last:border-b-0">
+          <dt className="min-w-0 text-muted-foreground">{title}</dt>
+          <dd className="m-0 min-w-0"><ul aria-label={title} className="m-0 flex list-none flex-col gap-1 p-0 text-foreground">{items.map((item, i) => <li key={i} className="flex min-w-0 gap-2">
+            <Mark aria-hidden className={`mt-[0.2em] size-3.5 shrink-0 ${tone}`} /><span className="min-w-0 [overflow-wrap:anywhere]">{item}</span>
+          </li>)}</ul></dd>
+        </div>)}
+      </dl> : null}
     </div>;
   },
 });

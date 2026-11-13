@@ -32,7 +32,7 @@ const fence = (source: string, language = ""): string => {
 /** Uses the same native evaluation as the Renderer. No second UI language or interpreter. */
 export function snapshotMarkdown(parsed: ParseResult, snapshot: MarkdownSnapshot = {}): string {
   const parseErrors = parsed.meta.errors.filter(error => error.severity !== "warning");
-  if (parseErrors.length || parsed.meta.incomplete || parsed.meta.unresolved.length) throw new Error(parseErrors.map(error => error.message).join("\n") || "Wait for a complete, valid component before copying.");
+  if (parseErrors.length || parsed.meta.incomplete || parsed.meta.unresolved.length) throw new Error(parseErrors.map(error => error.message).join("\n") || "Wait for a complete, valid component before exporting.");
   const result = evaluateSpec(parsed, new Map(), snapshot.state, snapshot.resolveQuery);
   if (result.errors.length) throw new Error(result.errors.join("\n"));
   if (!result.root) throw new Error("The component has no exportable content yet.");

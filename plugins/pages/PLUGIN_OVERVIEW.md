@@ -1,7 +1,7 @@
 Draw small visuals directly in a reply, or publish longer HTML and Markdown
-documents as durable artifacts. Agents choose library components for status,
-plans, verification, metrics, timelines, diffs, comparisons, and charts before
-writing custom HTML. Reply UI needs no file or publish. Saved documents show
+documents as durable artifacts. Agents show instead of tell: diagrams for how things
+work, tables for comparisons, charts for numbers, and forms when they need
+your input, all from the library before any custom HTML. Reply UI needs no file or publish. Saved documents show
 as cards by default; compact visuals can be borderless and inline. Pages keeps
 versions and prior work in a searchable library.
 

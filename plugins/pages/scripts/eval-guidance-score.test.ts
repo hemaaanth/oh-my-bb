@@ -43,8 +43,8 @@ describe("guidance scorer", () => {
       expect((await scoreGuidanceReply(test, fence(`d = ${query}\nroot = Tests(d.data)`))).pass).toBe(false);
     }
   });
-  it("checks all 27 synthetic fixture answers without invoking a model", async () => {
-    expect(cases).toHaveLength(27);
+  it("checks all 33 synthetic fixture answers without invoking a model", async () => {
+    expect(cases).toHaveLength(33);
     for (const test of cases) expect(await scoreGuidanceReply(test, test.dryReply), test.id).toMatchObject({ pass: true, diagnostics: [] });
   });
 });

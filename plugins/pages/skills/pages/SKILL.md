@@ -25,30 +25,38 @@ Choose the surface and components before writing. Honor explicit output formats.
 
 ## Choose components
 
-Use the library for content it already covers. Use semantic HTML for the document
-structure and custom content that has no suitable component.
-For status/readiness with two or more checks, use one fence with `Status` and
-`Acceptance`; next actions go in `Status.next`. “No tools” still allows a fence:
-it is not a tool call. Bullets-only is incomplete unless explicitly requested.
-Use `Acceptance`, not `Table`, for pass/fail or before/after checks.
-Use `Provenance` for build/run identity, `Steps` for setup with a current step,
-`Chart`/`Sparkline` for a trend, `Timeline` for event sequences, `Roadmap` for
-phases across lanes/quarters, and `Quiz` for learning checks.
+Show, don't tell. When a reply explains, compares, measures, plans, or asks,
+render that part as UI and keep prose for the story. Expect a component in at
+least a quarter of replies. Before any reply longer than a few sentences, ask
+whether a diagram, table, chart, or form would show it better. Mix several
+components in one `Stack`, and vary them. Do not reuse one layout every time.
+
+| Moment in the reply | Components |
+| --- | --- |
+| Explaining how something works, an architecture, flow, or dependency | `Diagram`; structure → `Tree`; order of events → `Timeline` |
+| Comparing two or more options, tools, or approaches | `Compare`, `Table`; with a recommendation → `Decision` |
+| Needing the user's choice, priorities, ratings, or feedback | `Form` with `OptionCards`, `Radio`, `Checklist`, `Rating`, `Slider`, `TextArea` |
+| Likely next asks | `FollowUps`, 2–4 prompts at the end |
+| Numbers, trends, shares, limits | `Stats`, `Chart`, `Sparkline`, `SegmentedBar`, `Gauge`, `CalendarHeatmap` |
+| How-to, setup, or a key caveat | `Steps`, `Snippet`, `Callout` |
+| Status or readiness with two or more checks | `Status` + `Acceptance` in one fence; `Provenance` for build identity |
+| Plans, effort, schedules | `Plan`, `Estimate`, `Roadmap`, `Board`, `Calendar` |
+| Tests, lint, logs, CI, timings | `Tests`, `Findings`, `Logs`, `Pipeline`, `Benchmark`, `Coverage`, `StackTrace` |
+| Code, diffs, files, git | `FileCode`, `Diff`, `Json`, `KeyValue`, `Changes`, `Commits`, `PullRequest` |
+| Alternatives or optional depth | `Tabs`, `Details`, `Accordion` |
+| Teaching, visuals, places, sources | `Walkthrough`, `Quiz`, `Flashcards`, `BeforeAfter`, `App`, `Gallery`, `Map`, `Sources` |
+
+Ask with a Form instead of an open question when the answer has a shape: a pick,
+a ranking, a rating, or a checklist. Put next actions in `Status.next`, but use
+`Status` only for status reports. It is not a default layout. Use `Acceptance`,
+not `Table`, for pass/fail or before/after checks. Never paste raw tool output,
+markdown tables, or ASCII diagrams where a component fits. “No tools” still
+allows a fence: it is not a tool call. Skip UI only for a one-line answer, plain
+conversation, or an explicit text-only request.
 Inline supplied data. `Query("file")` is only for existing workspace files.
 
-| Output | Components |
-| --- | --- |
-| Status / checks / evidence | `Status`, `Acceptance`, `Provenance` |
-| Plans / steps / phases / tasks / effort | `Plan`, `Steps`, `Roadmap`, `Board`, `Estimate` |
-| Options / comparisons / decisions | `Compare`, `Decision`, `Table` |
-| Metrics / series / proportions / limits / daily counts | `Stats`, `Stat`, `Chart`, `Series`, `SegmentedBar`, `Gauge`, `CalendarHeatmap` |
-| Events / dates / flows / locations | `Timeline`, `Calendar`, `Diagram`, `Map` |
-| Code / edits / files / JSON | `FileCode`, `Code`, `Diff`, `Tree`, `Json`, `KeyValue` |
-| Tests / review / logs / timings / coverage / CI | `Tests`, `Findings`, `Logs`, `Benchmark`, `Coverage`, `Pipeline`, `StackTrace` |
-| Changes / commits / PRs / threads | `Changes`, `Commits`, `PullRequest`, `Threads`, `Environments` |
-| Sources / pictures / learning | `Sources`, `Gallery`, `Hotspots`, `Walkthrough`, `Quiz`, `Flashcards` |
-| Questions / choices / what-if | `Form`, `Choice`, `Radio`, `OptionCards`, `Slider`, `Toggle`, `EditableTable` |
-
+The catalog has over 100 components. When a moment is new, browse
+`page_examples` with no names to list them all before settling for text.
 Use `page_examples` when unsure of a signature or data shape.
 The CLI equivalent is `bb pages examples <component>`.
 Read `references/openui.md` for syntax and actions, and a group reference for detail.

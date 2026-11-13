@@ -57,11 +57,22 @@ describe("Share popover", () => {
     const slot = popover({ getShare: () => status(shareOf()), revealPassword });
     expect((await slot.findByLabelText("Share link")).textContent).toBe("https://quiet-otter.here.now/");
     expect(slot.getByLabelText("Password").textContent).toBe("••••••••••••");
-    expect(slot.getByRole("status").textContent).toBe("Live · v2 · follows new versions");
-    fireEvent.click(slot.getByRole("button", { name: "Copy" }));
+    expect(slot.getByText("Live · v2 · follows new versions").getAttribute("role")).toBe("status");
+    const copy = slot.getByRole("button", { name: "Copy password" });
+    fireEvent.click(copy);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(SECRET));
     expect(revealPassword).toHaveBeenCalledWith({ pageId });
+    // "Copied" swaps in place: no busy label, no disabled buttons, no footer line, so nothing shifts.
     expect(await slot.findByText("Password copied.")).toBeTruthy();
+    expect(copy.textContent).toBe("CopyCopied");
+    expect(slot.getByText("Copy").className).toContain("invisible");
+    expect(copy.hasAttribute("disabled")).toBe(false);
+    expect(slot.getByRole("button", { name: "Rotate password" }).hasAttribute("disabled")).toBe(false);
+    expect(slot.queryByText(/Copying/u)).toBeNull();
+    expect(slot.getByText("Live · v2 · follows new versions")).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Copy link" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://quiet-otter.here.now/"));
+    expect(await slot.findByText("Link copied.")).toBeTruthy();
     expect(slot.container.ownerDocument.body.textContent).not.toContain(SECRET);
   });
 

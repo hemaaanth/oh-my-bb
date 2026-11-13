@@ -66,7 +66,11 @@ export function CodeFrame({ label, text, children }: { label: string; text: stri
   return <figure className="relative m-0 min-w-0 overflow-hidden rounded-md after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-hairline after:content-['']">
     <figcaption className="flex items-center justify-between gap-2 border-b border-border-hairline px-3 py-1 text-xs text-subtle-foreground">
       <span className="min-w-0 truncate">{label}</span>
-      <button type="button" onClick={copy} aria-label={`Copy ${label}`} className={`shrink-0 cursor-pointer rounded-sm hover:text-foreground ${focusRing}`}><span aria-live="polite">{copied ?? "Copy"}</span></button>
+      <button type="button" onClick={copy} aria-label={`Copy ${label}`} className={`grid shrink-0 cursor-pointer justify-items-end rounded-sm hover:text-foreground ${focusRing}`}>
+        {/* Every label sits in one cell, so the button keeps the widest label's width and nothing shifts. */}
+        {(["Copy", "Copied", "Copy failed"] as const).map((text) => <span key={text} aria-hidden className={`[grid-area:1/1] ${(copied ?? "Copy") === text ? "" : "invisible"}`}>{text}</span>)}
+        <span aria-live="polite" className="sr-only">{copied ?? ""}</span>
+      </button>
     </figcaption>
     {children}
   </figure>;

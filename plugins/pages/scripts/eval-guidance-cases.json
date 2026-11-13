@@ -340,5 +340,53 @@
     "evidence": "These results are user-supplied. No independent checks were run.",
     "families": [["Status"], ["Acceptance"]],
     "dryReply": "```openui-lang\nroot = Stack([Status(\"blocked\", \"Lint errors block release\", [\"Typecheck passed\", \"714/714 tests passed\", \"Build passed with 3 deprecation warnings\"], [\"2 lint errors in server/foo.ts\"], [\"Fix the unused import and missing return type in server/foo.ts\", \"Rerun lint before release\"]), Acceptance([{criterion:\"Typecheck\",status:\"pass\",evidence:\"User-reported\"},{criterion:\"Tests\",status:\"pass\",evidence:\"714/714, user-reported\"},{criterion:\"Build\",status:\"pass\",note:\"3 deprecation warnings, user-reported\"},{criterion:\"Lint\",status:\"fail\",note:\"Unused import and missing return type in server/foo.ts, user-reported\"}])])\n```"
+  },
+  {
+    "id": "28-explain-flow",
+    "category": "everyday",
+    "request": "How does a request get from our web app to the database? We have a web app, an API, a Redis cache and Postgres.",
+    "evidence": "No structured data.",
+    "families": [["Diagram"]],
+    "dryReply": "The API checks Redis first.\n\n```openui-lang\nroot = Diagram([{id: \"web\", label: \"Web app\"}, {id: \"api\", label: \"API\"}, {id: \"redis\", label: \"Redis\"}, {id: \"pg\", label: \"Postgres\"}], [{from: \"web\", to: \"api\"}, {from: \"api\", to: \"redis\"}, {from: \"redis\", to: \"pg\", label: \"miss\"}], \"right\")\n```"
+  },
+  {
+    "id": "29-compare-libraries",
+    "category": "everyday",
+    "request": "Should I use Zustand or Redux Toolkit for a small React app? Compare them.",
+    "evidence": "No structured data.",
+    "families": [["Compare", "Table", "Decision"]],
+    "dryReply": "```openui-lang\nroot = Compare([\"Zustand\", \"Redux Toolkit\"], [{criterion: \"Boilerplate\", values: [\"Minimal\", \"Moderate\"]}, {criterion: \"Devtools\", values: [\"Plugin\", \"Built in\"]}], \"Zustand\")\n```"
+  },
+  {
+    "id": "30-ask-priorities",
+    "category": "everyday",
+    "request": "Before you start the refactor, find out what I care about most. Speed, readability or test coverage?",
+    "evidence": "No structured data.",
+    "families": [["Form", "OptionCards", "Radio", "Choice", "Checklist", "Decision"]],
+    "dryReply": "```openui-lang\nroot = Form(\"priority\", [OptionCards(\"focus\", [\"Speed\", \"Readability\", \"Test coverage\"], \"What matters most?\")], [Button(\"Send\")])\n```"
+  },
+  {
+    "id": "31-project-structure",
+    "category": "everyday",
+    "request": "Sketch a folder layout for a small Express API with routes, services and tests.",
+    "evidence": "No structured data.",
+    "families": [["Tree", "Diagram"]],
+    "dryReply": "```openui-lang\nroot = Tree([{label: \"src\", children: [\"routes\", \"services\"]}, \"tests\"])\n```"
+  },
+  {
+    "id": "32-feedback",
+    "category": "everyday",
+    "request": "I just tried the new onboarding. Ask me how it went.",
+    "evidence": "No structured data.",
+    "families": [["Form", "Rating", "OptionCards", "Radio", "TextArea"]],
+    "dryReply": "```openui-lang\nroot = Form(\"onboarding\", [Rating(\"score\", \"How was onboarding?\"), TextArea(\"notes\", \"What felt rough?\")], [Button(\"Send\")])\n```"
+  },
+  {
+    "id": "33-setup-steps",
+    "category": "everyday",
+    "request": "How do I set up a new Vite React project with Tailwind?",
+    "evidence": "No structured data.",
+    "families": [["Steps", "Snippet", "Code", "Walkthrough"]],
+    "dryReply": "```openui-lang\nroot = Steps([{title: \"Create the app\", detail: \"npm create vite@latest\"}, {title: \"Add Tailwind\", detail: \"npm install tailwindcss @tailwindcss/vite\"}])\n```"
   }
 ]
