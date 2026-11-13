@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.3
+
+- The guidance tells agents that saved pages use the same components as
+  replies: openui-lang fences in Markdown, or `<script type="text/openui-lang">`
+  blocks in HTML. It names Tabs, Table, Tree and Stats, and says not to rebuild
+  them with CSS.
+- Publish warns on a long HTML or Markdown page that has no component blocks,
+  and on CSS classes that rebuild Stats, Tabs, Tree or cards by hand. These
+  warnings come before the CSS findings. Pages marked custom are skipped.
+
 ## 0.8.2
 
 - `FollowUps` takes `multiple`. Each row gets a checkbox, and one Send button
