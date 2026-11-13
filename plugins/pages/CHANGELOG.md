@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.1
+
+- Status lists highlights, risks and next steps as labeled rows with hairline
+  dividers and a marker per item, instead of three narrow unmarked columns.
+- Removed the Copy as Markdown button from replies, pages and the gallery.
+  `bb pages render` still exports component output as Markdown.
+- The share popover's Copy link and Copy password buttons swap to "Copied" in place.
+  Copying the password no longer shows a "Copying…" spinner line, dims every
+  control, or reloads the share status.
+- Code block Copy keeps one width while its label reads Copy, Copied or Copy failed.
+- Agent guidance picks components by the moment in a reply, not by data type:
+  diagrams for explanations, Compare or Table for comparisons, Forms with
+  OptionCards, Checklist or Rating instead of open questions, and FollowUps at
+  the end. It sets an expectation of UI in at least a quarter of replies, tells
+  agents to browse the full catalog for new moments, and no longer leads with
+  Status and Acceptance. Quick signatures add Diagram, Compare, OptionCards,
+  Checklist, FollowUps, Chart, Series, Callout and Tabs.
+- Guidance evals add everyday prompts that come with no structured data.
+
 ## 0.7.0
 
 - Person-read threads receive proactive component guidance for status, plans,

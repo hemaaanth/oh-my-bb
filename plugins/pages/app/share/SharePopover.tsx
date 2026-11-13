@@ -1,5 +1,5 @@
 // Share button, Share popover, and the page_share confirmation (T4).
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Popover from "@radix-ui/react-popover";
 import { experimental_Icon as Icon, UrlLink, useRpc, type PluginAppBuilder, type PluginPendingInteractionProps } from "@get-bb/plugin-sdk/app";
@@ -23,6 +23,37 @@ const primaryButton = `inline-flex h-6 shrink-0 cursor-pointer items-center gap-
  * `[data-bb-plugin="pages"]`, so each portaled root carries the scope itself (as agent-profiles does).
  */
 const PORTAL_SCOPE = { "data-bb-portaled-overlay": "", "data-bb-plugin-root": "", "data-bb-plugin": "pages" } as const;
+
+/**
+ * A copy button that confirms in place. "Copied" swaps into the same slot for a moment, so the button
+ * keeps its width and the popover keeps its height. There is no busy label and no dimming.
+ */
+function CopyButton({ label, text, what, onError }: { label: string; text: () => Promise<string> | string; what: string; onError: (error: unknown) => void }) {
+  const [copied, setCopied] = useState(false);
+  const working = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const copy = async () => {
+    if (working.current) return;
+    working.current = true;
+    try {
+      await navigator.clipboard.writeText(await text());
+      setCopied(true);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(false), 1500);
+    } catch (error) { setCopied(false); onError(error); }
+    finally { working.current = false; }
+  };
+  return <>
+    <button type="button" aria-label={`Copy ${what.toLowerCase()}`} className={smallButton} onClick={() => void copy()}>
+      <span className="grid">
+        <span className={`inline-flex items-center gap-1 [grid-area:1/1] ${copied ? "invisible" : ""}`}><Icon name="Copy" aria-hidden className="size-3" />{label}</span>
+        <span className={`inline-flex items-center gap-1 [grid-area:1/1] ${copied ? "" : "invisible"}`}><Icon name="Check" aria-hidden className="size-3" />Copied</span>
+      </span>
+    </button>
+    <span role="status" className="sr-only">{copied ? `${what} copied.` : ""}</span>
+  </>;
+}
 
 function ShareGlyph({ className = "size-3.5" }: { className?: string }) {
   return <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -213,7 +244,7 @@ export function SharePopover({ detail }: { detail: PageDetail }) {
   const shareWith = (next: Access, lists = split(restrictedChips)) => run(share ? "Updating access…" : "Sharing…", () => rpc.call("sharePage", {
     pageId, access: next, ...(next === "restricted" ? lists : {}), ...(share ? {} : { follow }),
   }));
-  const copy = (text: string, what: string) => navigator.clipboard?.writeText(text).then(() => setNotice({ tone: "muted", text: `${what} copied.` }), () => setNotice({ tone: "error", text: "Copy failed." }));
+  const copyFailed = (error: unknown) => setNotice({ tone: "error", text: messageOf(error, "Copy failed.") });
 
   const pickAccess = (next: Access | "none") => {
     setNotice(null); setPending(null);
@@ -230,7 +261,7 @@ export function SharePopover({ detail }: { detail: PageDetail }) {
   const restrictedDirty = share !== null && access === "restricted" && (share.access !== "restricted" || !sameList(restrictedChips, [...share.allowedDomains, ...share.allowedEmails]));
 
   // ---- Link row
-  const linkSection = <Section title="Share page" action={share ? <button type="button" className={smallButton} onClick={() => void copy(share.url, "Link")}><Icon name="Copy" aria-hidden className="size-3" />Copy link</button> : null}>
+  const linkSection = <Section title="Share page" action={share ? <CopyButton label="Copy link" what="Link" text={() => share.url} onError={copyFailed} /> : null}>
     {share
       ? <ValueRow label="Share link">{share.url}</ValueRow>
       : <div className="mt-2 flex items-center justify-between gap-2">
@@ -255,9 +286,7 @@ export function SharePopover({ detail }: { detail: PageDetail }) {
       </div> : null}
     </> : null}
     {share?.access === "password" && access === "password" ? <ValueRow label="Password" action={<>
-      <button type="button" className={smallButton} disabled={busy !== null} onClick={() => void run("Copying…", async () => { const { password } = await rpc.call("revealPassword", { pageId }); await navigator.clipboard.writeText(password); }, "Password copied.")}>
-        <Icon name="Copy" aria-hidden className="size-3" />Copy
-      </button>
+      <CopyButton label="Copy" what="Password" text={async () => (await rpc.call("revealPassword", { pageId })).password} onError={copyFailed} />
       <button type="button" aria-label="Rotate password" title="Rotate password" className={smallButton} disabled={busy !== null} onClick={() => void run("Rotating password…", () => rpc.call("rotatePassword", { pageId }), "New password set. Copy it again.")}>
         <Icon name="RotateCcw" aria-hidden className="size-3" />
       </button>
