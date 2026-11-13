@@ -1,6 +1,6 @@
 // Data: tables, progress, code, diffs, calendars, diagrams, and other small views of data.
 import { defineComponent } from "@openuidev/react-lang";
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { z } from "zod";
 import { useCopy, useHost } from "../host.js";
 import { Chevron, focusRing, seriesColor, type Group } from "../kit.js";
@@ -8,17 +8,37 @@ import { ChartFailed, useChartClass, useHighchart } from "./charts.js";
 import { SourceLine } from "../SourceLine.js";
 import { FileExcerpt } from "../FileExcerpt.js";
 import { ZoomDiagram } from "../viewer.js";
+import { fitColumns, fitTable, toggleCell } from "../../../render/table-fit.js";
+
+// One line per cell, like a spreadsheet; see render/table-fit.ts. Classes key off the table's data-fit.
+const fitCell = "[table[data-fit]_&]:overflow-hidden [table[data-fit]_&]:text-ellipsis [table[data-fit]_&]:whitespace-nowrap data-[clipped]:cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary";
+
+function TableView({ columns, rows, wrap, props }: { columns: string[]; rows: (string | number | null)[][]; wrap?: boolean; props: object }) {
+  const ref = useRef<HTMLTableElement>(null);
+  useLayoutEffect(() => {
+    const table = ref.current;
+    if (wrap || !table?.parentElement) return;
+    fitTable(table, fitColumns, true);
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(() => fitTable(table, fitColumns)) : null;
+    observer?.observe(table.parentElement);
+    return () => {
+      observer?.disconnect();
+      table.parentElement?.querySelectorAll<HTMLElement & { bbClose?: () => void }>("[data-cell-panel]").forEach((panel) => panel.bbClose?.());
+    };
+  }, [wrap, columns, rows]);
+  return <div className="flex min-w-0 flex-col gap-1.5"><div className="min-w-0 overflow-x-auto">
+    <table ref={ref} className="w-full border-collapse" onClick={wrap ? undefined : (event) => toggleCell(event.nativeEvent)} onKeyDown={wrap ? undefined : (event) => toggleCell(event.nativeEvent)}>
+      <thead className="whitespace-nowrap"><tr>{columns.map((column, i) => <th key={i} className="border-b border-border px-2 py-1.5 text-left font-medium text-muted-foreground first:pl-0">{column}</th>)}</tr></thead>
+      <tbody>{rows.map((row, r) => <tr key={r}>{row.map((cell, c) => <td key={c} className={`border-b border-border-hairline px-2 py-1.5 text-foreground first:pl-0 ${wrap ? "" : fitCell} ${typeof cell === "number" ? "text-right tabular-nums" : ""}`}>{cell ?? ""}</td>)}</tr>)}</tbody>
+    </table>
+  </div><SourceLine props={props} /></div>;
+}
 
 const Table = defineComponent({
   name: "Table",
-  props: z.object({ columns: z.array(z.string()), rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))), source: z.string().optional() }),
-  description: "A data table. Each row is a list of cells in column order. Numbers align right. source is an optional caption or HTTPS URL; otherwise loaded files are credited. An empty source hides the caption.",
-  component: ({ props }) => <div className="flex min-w-0 flex-col gap-1.5"><div className="min-w-0 overflow-x-auto">
-    <table className="w-full border-collapse">
-      <thead><tr>{props.columns.map((column, i) => <th key={i} className="border-b border-border px-2 py-1.5 text-left font-medium text-muted-foreground first:pl-0">{column}</th>)}</tr></thead>
-      <tbody>{props.rows.map((row, r) => <tr key={r}>{row.map((cell, c) => <td key={c} className={`border-b border-border-hairline px-2 py-1.5 text-foreground first:pl-0 ${typeof cell === "number" ? "text-right tabular-nums" : ""}`}>{cell ?? ""}</td>)}</tr>)}</tbody>
-    </table>
-  </div><SourceLine props={props} /></div>,
+  props: z.object({ columns: z.array(z.string()), rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))), source: z.string().optional(), wrap: z.boolean().optional() }),
+  description: "A data table. Each row is a list of cells in column order. Numbers align right. Each cell shows one line, like a spreadsheet; a long cell ends in an ellipsis and a tap shows all of it. Set wrap to true only when every cell is prose the reader must read in full. source is an optional caption or HTTPS URL; otherwise loaded files are credited. An empty source hides the caption.",
+  component: ({ props }) => <TableView columns={props.columns} rows={props.rows} wrap={props.wrap} props={props} />,
 });
 
 const Progress = defineComponent({

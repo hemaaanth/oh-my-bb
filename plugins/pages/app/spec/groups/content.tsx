@@ -75,7 +75,7 @@ const Badge = defineComponent({
   name: "Badge",
   props: z.object({ text: z.string(), tone: tone.optional() }),
   description: `A short status in a tinted pill, like "Shipped", "Blocked", or "3 open". ${TONES}. For a topic or category, use Tag.`,
-  component: ({ props }) => <span className={`inline-flex w-fit max-w-full items-center rounded-sm px-1.5 py-0.5 text-xs font-medium [overflow-wrap:anywhere] ${toneFill[props.tone ?? "neutral"]}`}>{props.text}</span>,
+  component: ({ props }) => <span title={props.text} className={`inline-flex w-fit max-w-full items-center rounded-sm px-1.5 py-0.5 text-xs font-medium ${toneFill[props.tone ?? "neutral"]}`}><span className="min-w-0 truncate">{props.text}</span></span>,
 });
 
 // A fixed allow-list of MingCute glyphs keeps the bundle small (pages can use every glyph with <i data-icon>).
@@ -109,9 +109,9 @@ const Icon = defineComponent({
 
 function TagView({ text, icon, tone: t }: { text?: string; icon?: string; tone?: Tone }) {
   const Glyph = iconFor(icon);
-  return <span className="inline-flex w-fit max-w-full items-center gap-1 rounded-sm border border-border-hairline px-1.5 py-0.5 text-xs text-foreground">
+  return <span title={text} className="inline-flex w-fit max-w-full items-center gap-1 rounded-sm border border-border-hairline px-1.5 py-0.5 text-xs text-foreground">
     {Glyph ? <Glyph aria-hidden className={`size-3 shrink-0 ${t ? toneText[t] : "text-muted-foreground"}`} /> : t ? <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${toneDot[t]}`} /> : null}
-    <span className="min-w-0 [overflow-wrap:anywhere]">{text}</span>
+    <span className="min-w-0 truncate">{text}</span>
   </span>;
 }
 

@@ -140,7 +140,7 @@ const Estimate = defineComponent({
     const cell = "px-2 py-1.5 text-right tabular-nums first:pl-0";
     return <div className="flex min-w-0 flex-col gap-2">
       <div className="min-w-0 overflow-x-auto"><table className="w-full border-collapse">
-        <thead><tr className="text-muted-foreground">{["Task", "Best", "Likely", "Worst", ""].map((head, i) => <th key={i} className={`border-b border-border px-2 py-1.5 font-medium first:pl-0 ${i === 0 ? "text-left" : "text-right"}`}>{head}</th>)}</tr></thead>
+        <thead className="whitespace-nowrap"><tr className="text-muted-foreground">{["Task", "Best", "Likely", "Worst", ""].map((head, i) => <th key={i} className={`border-b border-border px-2 py-1.5 font-medium first:pl-0 ${i === 0 ? "text-left" : "text-right"}`}>{head}</th>)}</tr></thead>
         <tbody>{rows.map(({ task, estimate }, i) => <tr key={i} className="border-b border-border-hairline text-foreground">
           <td className="px-2 py-1.5 pl-0">{task.task}{estimate.error && !streaming ? <span className="block text-xs text-destructive">Not counted: {estimate.error}</span> : null}</td>
           {estimate.error ? <td colSpan={4} /> : <>

@@ -493,7 +493,7 @@ const EditableTable = defineComponent({
     return <Titled label={props.label} name={props.name}>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
-          <thead><tr className="border-b border-border-hairline text-left text-muted-foreground">{columns.map((c) => <th key={c.key} scope="col" className={`px-1 py-1 font-normal ${c.type === "number" ? "text-right" : ""}`}>{c.label}</th>)}<th className="w-8"><span className="sr-only">Remove</span></th></tr></thead>
+          <thead className="whitespace-nowrap"><tr className="border-b border-border-hairline text-left text-muted-foreground">{columns.map((c) => <th key={c.key} scope="col" className={`px-1 py-1 font-normal ${c.type === "number" ? "text-right" : ""}`}>{c.label}</th>)}<th className="w-8"><span className="sr-only">Remove</span></th></tr></thead>
           <tbody>{rows.map((row, index) => (
             <tr key={index} className="border-b border-border-hairline">
               {columns.map((c) => {

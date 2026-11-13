@@ -6,6 +6,11 @@ const CHARTS = '<script src="./_page/charts.js" defer></script>';
 const inject = (html: string, theme: "light" | "dark" | null = null, hasCharts = false) => injectPage(html, { assetBase: "./", theme, hasCharts });
 
 describe("injectPage", () => {
+  it("adds the table runtime only to pages with tables", () => {
+    expect(inject("<table><tr><td>a</td></tr></table>")).toContain("fitColumns");
+    expect(inject("<p>x</p>")).not.toContain("fitColumns");
+  });
+
   it("puts the theme first in <head>, before author styles, and leaves the rest untouched", () => {
     const html = '<!doctype html><html lang="en"><head><style>body{color:red}</style></head><body><p>x</p></body></html>';
     const out = inject(html);

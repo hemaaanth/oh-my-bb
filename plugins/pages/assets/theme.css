@@ -681,6 +681,7 @@
 :where(th, td) { padding: var(--bb-space-tight) var(--bb-space-group) var(--bb-space-tight) 0; text-align: left; vertical-align: top; }
 :where(th:last-child, td:last-child) { padding-right: 0; }
 :where(th) { color: var(--bb-muted); font-weight: 400; border-bottom: 1px solid var(--bb-rule); vertical-align: bottom; }
+:where(thead th) { white-space: nowrap; }
 :where(td) { border-bottom: 1px solid var(--bb-line); }
 :where(td:first-child) { color: var(--bb-strong); font-variation-settings: "opsz" 14, "wght" 500; }
 :where(tbody th) { border-bottom-color: var(--bb-line); vertical-align: top; }
@@ -693,6 +694,12 @@
 }
 :where(th.num, td.num) { text-align: right; }
 :where(caption) { caption-side: bottom; text-align: left; padding-top: var(--bb-space-tight); color: var(--bb-muted); }
+/* One line per cell, like a spreadsheet. The page runtime sets data-fit and data-clipped;
+ * a tap or Enter shows a clipped cell in a floating panel. class="wrap" on a table keeps normal wrapping. */
+:where(table[data-fit] :is(td, tbody th)) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:where(table[data-fit] [data-clipped]) { cursor: pointer; }
+:where(table[data-fit] [data-clipped]:focus-visible) { outline: 2px solid var(--bb-accent); outline-offset: -2px; }
+@media print { :where(table[data-fit] :is(td, tbody th)) { white-space: normal; overflow: visible; } }
 
 /* Virtualized data table. JSON-backed rows keep large datasets out of the DOM;
  * the runtime renders only the visible window. */
@@ -892,9 +899,10 @@
 :where(.note.success .tone)::before { background: var(--bb-positive); }
 :where(.note.info .tone)::before { background: var(--bb-accent); }
 
-/* Small status word, the site's .badge. */
+/* Small status word, the site's .badge. One line, so a pill never splits. */
 :where(.badge) {
-  display: inline;
+  display: inline-block;
+  white-space: nowrap;
   padding: 0.125rem 0.375rem;
   border-radius: var(--bb-radius);
   background: var(--bb-badge-bg);

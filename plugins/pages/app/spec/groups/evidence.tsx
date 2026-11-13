@@ -40,7 +40,7 @@ const Compare = defineComponent({
     const scored = rows.some((row) => row.better);
     const cell = "px-3 py-1.5 text-left align-top first:pl-0";
     return <div className="min-w-0 overflow-x-auto"><table className="w-full border-collapse">
-      <thead><tr><th className={`${cell} border-b border-border font-medium text-muted-foreground`}><span className="sr-only">Criterion</span></th>{options.map((option, i) => <th key={i} scope="col" className={`${cell} border-b-2 font-semibold ${i === pick ? "border-primary text-foreground" : "border-border text-foreground"}`}>{option}{i === pick ? <span className="block text-xs font-medium text-primary">Best</span> : null}</th>)}</tr></thead>
+      <thead className="whitespace-nowrap"><tr><th className={`${cell} border-b border-border font-medium text-muted-foreground`}><span className="sr-only">Criterion</span></th>{options.map((option, i) => <th key={i} scope="col" className={`${cell} border-b-2 font-semibold ${i === pick ? "border-primary text-foreground" : "border-border text-foreground"}`}>{option}{i === pick ? <span className="block text-xs font-medium text-primary">Best</span> : null}</th>)}</tr></thead>
       <tbody>{rows.map((row, r) => <tr key={r} className="border-b border-border-hairline">
         <th scope="row" className={`${cell} font-normal text-muted-foreground`}>{row.criterion}{row.better ? <span className="sr-only"> ({row.better === "high" ? "higher" : "lower"} is better)</span> : null}</th>
         {options.map((_, i) => {

@@ -2,9 +2,9 @@
 
 ## Table
 
-`Table(columns: string[], rows: (string | number | any)[][], source?: string)`
+`Table(columns: string[], rows: (string | number | any)[][], source?: string, wrap?: boolean)`
 
-A data table. Each row is a list of cells in column order. Numbers align right. source is an optional caption or HTTPS URL; otherwise loaded files are credited. An empty source hides the caption.
+A data table. Each row is a list of cells in column order. Numbers align right. Each cell shows one line, like a spreadsheet; a long cell ends in an ellipsis and a tap shows all of it. Set wrap to true only when every cell is prose the reader must read in full. source is an optional caption or HTTPS URL; otherwise loaded files are credited. An empty source hides the caption.
 
 Mixed cells:
 

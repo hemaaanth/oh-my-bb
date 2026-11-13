@@ -525,6 +525,10 @@ Write semantic HTML first: `h1`, `h2`, `p`, `ul`, `table`, `figure`,
 - Left-aligned text at the page measure. Group with whitespace and hairlines.
 - Put the most important fact first. Put details in `<details>`.
 - Wrap wide tables in `<div class="scroll">` so the page never scrolls sideways.
+- Table cells show one line, like a spreadsheet. A long cell ends in an
+  ellipsis; a tap or Enter shows all of it. Keep cells short. Add
+  `class="wrap"` to a table only when every cell is prose to read in full.
+  The `Table` component takes the same choice as its `wrap` argument.
 
 ### Image zoom
 

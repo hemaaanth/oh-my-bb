@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { PageAssetName } from "../contract.js";
 import { FORMS_OFFLINE, FRAME_BRIDGE } from "./frame-bridge.js";
 import { escapeHtml, scanHtml } from "./html.js";
-import { DATA_TABLE_RUNTIME, PAGE_RUNTIME, needsDataTableRuntime, needsPageRuntime } from "./page-runtime.js";
+import { DATA_TABLE_RUNTIME, PAGE_RUNTIME, TABLE_RUNTIME, needsDataTableRuntime, needsPageRuntime, needsTableRuntime } from "./page-runtime.js";
 import { FORM_RUNTIME, needsFormRuntime } from "./form-runtime.js";
 import { hasSpecBlocks } from "./spec-baked.js";
 import { pageIcons } from "./assets.js";
@@ -48,7 +48,7 @@ export const PAGE_CSP = [
 ].join("; ");
 
 /** Changes when the scripts injectPage adds change, so a cached preview revalidates to the new shell after a plugin update. */
-export const PREVIEW_SHELL_VERSION = createHash("sha256").update(FRAME_BRIDGE).update(PAGE_RUNTIME).update(FORM_RUNTIME).update(DATA_TABLE_RUNTIME).digest("base64url").slice(0, 8);
+export const PREVIEW_SHELL_VERSION = createHash("sha256").update(FRAME_BRIDGE).update(PAGE_RUNTIME).update(TABLE_RUNTIME).update(FORM_RUNTIME).update(DATA_TABLE_RUNTIME).digest("base64url").slice(0, 8);
 
 /** Text to add at `at`, replacing `remove` characters there. */
 type Insert = { at: number; text: string; remove?: number };
@@ -102,8 +102,9 @@ export function injectPage(html: string, options: InjectOptions): string {
   const runtime = needsPageRuntime(html);
   const formRuntime = needsFormRuntime(html);
   const dataTable = needsDataTableRuntime(html);
+  const tables = needsTableRuntime(html);
   const specs = hasSpecBlocks(html);
-  if (runtime || formRuntime || dataTable || options.hasCharts || specs) {
+  if (runtime || formRuntime || dataTable || tables || options.hasCharts || specs) {
     const hasBodyEnd = tags.some((tag) => tag.kind === "end" && tag.name === "body");
     let at = html.length;
     for (const tag of tags) {
@@ -112,6 +113,7 @@ export function injectPage(html: string, options: InjectOptions): string {
     }
     // Inline, so a shared page needs no extra file. It runs before the charts, which then draw the visible tab.
     if (runtime) inserts.push({ at, text: `<script>${PAGE_RUNTIME}</script>` });
+    if (tables) inserts.push({ at, text: `<script>${TABLE_RUNTIME}</script>` });
     if (formRuntime) inserts.push({ at, text: `<script>${FORM_RUNTIME}</script>` });
     if (dataTable) inserts.push({ at, text: `<script>${DATA_TABLE_RUNTIME}</script>` });
     if (options.hasCharts) inserts.push({ at, text: options.inlineAssets ? `<script>${options.inlineAssets.chartsJs}</script>` : `<script src="${url("charts.js")}" defer></script>` });

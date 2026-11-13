@@ -1,16 +1,51 @@
 // The page runtime: tabs (div.tabs), contents (nav.toc), and image zoom.
 // injectPage adds it inline only to pages that use one of them. It is a plain string, not a
-// bundled module, so the bytes shipped are exactly the bytes written here.
+// bundled module, so the bytes shipped are exactly the bytes written here. TABLE_RUNTIME
+// embeds the table-fit functions as their source text.
+import { fitColumns, fitTable, toggleCell } from "./table-fit.js";
 
 /** True when the page uses a component the runtime drives. */
 export function needsPageRuntime(html: string): boolean {
   return /\bclass\s*=\s*["']?[^"'>]*\b(?:tabs|toc|compare)\b/iu.test(html) || /<img\b[^>]*\bdata-zoom(?:\s|=|>)/iu.test(html);
 }
 
+/** True when the page has a plain HTML table for the one-line table runtime. */
+export function needsTableRuntime(html: string): boolean {
+  return /<table\b/iu.test(html);
+}
+
 /** True when the page contains the opt-in virtualized data table component. */
 export function needsDataTableRuntime(html: string): boolean {
   return /\bclass\s*=\s*["']?[^"'>]*\bdata-table\b/iu.test(html);
 }
+
+// One line per cell, like a spreadsheet. class="wrap" keeps a table's normal wrapping. A table
+// whose parent does not scroll sideways gets a div.scroll around it, so a narrow screen scrolls.
+export const TABLE_RUNTIME = String.raw`(() => {
+  "use strict";
+  const doc = document;
+  const fitColumns = ${fitColumns.toString()};
+  const fitTable = ${fitTable.toString()};
+  const toggleCell = ${toggleCell.toString()};
+  const tables = [];
+  doc.querySelectorAll("table").forEach((table) => {
+    if (table.classList.contains("wrap") || !table.parentElement) return;
+    let box = table.parentElement;
+    if (!/auto|scroll|hidden|clip/.test(getComputedStyle(box).overflowX)) {
+      const scroll = doc.createElement("div");
+      scroll.className = "scroll";
+      box.insertBefore(scroll, table);
+      scroll.append(table);
+      box = scroll;
+    }
+    table.addEventListener("click", toggleCell);
+    table.addEventListener("keydown", toggleCell);
+    fitTable(table, fitColumns);
+    tables.push(table);
+    if (typeof ResizeObserver === "function") new ResizeObserver(() => fitTable(table, fitColumns)).observe(box);
+  });
+  if (tables.length && doc.fonts && doc.fonts.ready) doc.fonts.ready.then(() => tables.forEach((table) => fitTable(table, fitColumns, true)));
+})();`;
 
 export const PAGE_RUNTIME = String.raw`(() => {
   "use strict";
