@@ -3,7 +3,7 @@ import { answerLine, formFields, messageFor, replyParts } from "./answers.js";
 
 const el = (typeName: string, props: Record<string, unknown>) => ({ type: "element", typeName, props, partial: false });
 
-// Form("f", [Stack([Choice("check", [{label: "Yes, it shows", value: "yes"}, "No"], "Did it work?")]), Toggle("notify", "Notify me"), Input("release_target")], [Button("Send")])
+// Form("f", [Stack([Choice("check", [{label: "Yes, it shows", value: "yes"}, "No"], "Did it work?")]), Toggle("notify", "Notify me"), Input("release_target")], [Button("Send"), Button("Approve")])
 const parsed = {
   root: el("Stack", { children: [el("Form", {
     name: "f",
@@ -12,9 +12,16 @@ const parsed = {
       el("Toggle", { name: "notify", label: "Notify me" }),
       el("Input", { name: "release_target" }),
     ],
-    buttons: [el("Button", { label: "Send" })],
+    buttons: [el("Button", { label: "Send" }), el("Button", { label: "Approve" })],
   })] }),
 } as never;
+
+// The same form with one button: clicking it is not a choice.
+const lone = { root: el("Stack", { children: [el("Form", {
+  name: "f",
+  fields: [el("Choice", { name: "check", label: "Which do you want?", options: ["One field", "Keep both"] }), el("Toggle", { name: "notify", label: "Notify me" })],
+  buttons: [el("Button", { label: "Apply" })],
+})] }) } as never;
 
 const event = (button: string, answers: Record<string, unknown>) =>
   ({ humanFriendlyMessage: button, formName: "f", formState: { f: Object.fromEntries(Object.entries(answers).map(([name, value]) => [name, { value }])) } }) as never;
@@ -28,6 +35,14 @@ describe("reply text", () => {
     const fields = formFields(parsed);
     expect(messageFor(event("Send", { notify: true, release_target: "", check: "No" }), fields)).toBe("- Did it work? No\n- Notify me: Yes");
     expect(messageFor(event("Approve", { release_target: "prod" }), fields)).toBe("Approve\n- Release target: prod");
+  });
+
+  it("drops the label of a form's only button, which chose nothing", () => {
+    const fields = formFields(lone);
+    expect(messageFor(event("Apply", { check: "One field" }), fields)).toBe("Which do you want? One field");
+    expect(replyParts(event("Apply", { check: "One field" }), fields)).toEqual({ text: "One field", quote: "Which do you want?", context: "Reply to a card:\nWhich do you want? One field" });
+    expect(replyParts(event("Apply", { check: "Keep both", notify: true }), fields, "Ranking").text).toBe("Which do you want? Keep both · Notify me: Yes");
+    expect(messageFor(event("Apply", {}), fields)).toBe("Apply");
   });
 
   it("still sends the button when nothing was answered", () => {

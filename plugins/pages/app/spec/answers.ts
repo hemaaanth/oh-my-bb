@@ -4,8 +4,10 @@ import type { ActionEvent, ParseResult } from "@openuidev/react-lang";
 
 /** A form field's label and its option labels by value. */
 type Field = { label?: string; options: Map<string, string> };
-/** Each Form's fields by name, read from the parsed spec. */
-export type FormFields = Map<string, Map<string, Field>>;
+/** A Form's fields by name, and how many buttons it has. */
+type FormInfo = { fields: Map<string, Field>; buttons: number };
+/** Each Form by name, read from the parsed spec. */
+export type FormFields = Map<string, FormInfo>;
 
 type Element = { type: "element"; typeName: string; props: Record<string, unknown> };
 const isElement = (value: unknown): value is Element =>
@@ -30,7 +32,8 @@ export function formFields(result: ParseResult | null | undefined): FormFields {
     const { typeName, props } = value;
     if (typeName === "Form" && typeof props.name === "string") {
       const fields = new Map<string, Field>();
-      forms.set(props.name, fields);
+      const buttons = Array.isArray(props.buttons) ? props.buttons.filter(isElement).length : 0;
+      forms.set(props.name, { fields, buttons });
       walk(props.fields, fields);
       return;
     }
@@ -68,10 +71,14 @@ const GENERIC = /^(send|submit|done|ok|okay|continue|go)$/i;
 
 type Answer = { label: string; answer: string };
 
-/** The clicked button, kept unless it is generic and there are answers, and each answered field in form order. */
+/**
+ * The clicked button and each answered field in form order. With answers, the button is dropped when
+ * its label is generic or it is the form's only button: clicking it chose nothing.
+ */
 function answersOf(event: ActionEvent, fields?: FormFields): { button: string; head: string; answers: Answer[] } {
   const form = event.formName ? event.formState?.[event.formName] : undefined;
-  const known = event.formName ? fields?.get(event.formName) : undefined;
+  const info = event.formName ? fields?.get(event.formName) : undefined;
+  const known = info?.fields;
   // In the form's own order: form state lists fields in the order they were touched.
   const order = [...(known?.keys() ?? [])];
   const rank = (name: string) => { const at = order.indexOf(name); return at < 0 ? order.length : at; };
@@ -82,12 +89,13 @@ function answersOf(event: ActionEvent, fields?: FormFields): { button: string; h
     return answer ? [{ label: field?.label ?? humanize(name), answer }] : [];
   });
   const button = event.humanFriendlyMessage?.trim() ?? "";
-  return { button, head: answers.length && GENERIC.test(button) ? "" : button, answers };
+  const chose = !GENERIC.test(button) && info?.buttons !== 1;
+  return { button, head: answers.length && !chose ? "" : button, answers };
 }
 
 /**
- * The full reply: the clicked button, then each answered field as `- Label: answer`. A generic button
- * label is dropped, and a lone answer is one line. Empty fields are left out.
+ * The full reply: the clicked button, then each answered field as `- Label: answer`. A generic or
+ * lone button is dropped, and a lone answer is one line. Empty fields are left out.
  */
 export function messageFor(event: ActionEvent, fields?: FormFields): string {
   const { button, head, answers } = answersOf(event, fields);

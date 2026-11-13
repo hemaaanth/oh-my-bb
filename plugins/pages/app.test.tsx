@@ -586,9 +586,10 @@ chart = Chart("bar", ["Mon", "Tue"], [Series("Signups", [4, 9]), Series("Churn",
     const [{ threadId, mode, input }] = send.mock.calls[0];
     expect({ threadId, mode }).toEqual({ threadId: "thread-a", mode: "queue-if-active" });
     // The bubble shows the answers; the agent also gets the full reply in a part only it sees.
-    expect(input[0]).toEqual({ type: "text", text: "Approve\n\nChannel: Ads · Budget: 35 · Notify me: Yes", mentions: [] });
+    // Approve is the form's only button, so its label chose nothing and is left out.
+    expect(input[0]).toEqual({ type: "text", text: "Channel: Ads · Budget: 35 · Notify me: Yes", mentions: [] });
     expect(input[1].visibility).toBe("agent-only");
-    expect(input[1].text.split("\n")).toEqual(["Reply to a card:", "Approve", "- Channel: Ads", "- Budget: 35", "- Notify me: Yes"]);
+    expect(input[1].text.split("\n")).toEqual(["Reply to a card:", "- Channel: Ads", "- Budget: 35", "- Notify me: Yes"]);
     // The reply is recorded first, keyed by its text and time, so the header over the sent message can find its card.
     const [{ set }] = updatePluginMetadata.mock.calls[0];
     const [record] = Object.values(set as Record<string, { at: number }>);
