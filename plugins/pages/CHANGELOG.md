@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.2
+
+- `FollowUps` takes `multiple`. Each row gets a checkbox, and one Send button
+  sends every picked step as one message. The guidance tells agents to use it
+  when the reader may want several next steps.
+- A `FollowUps` label is quoted over the sent reply.
+
 ## 0.8.1
 
 - A card reply leaves out the button label when it is the form's only button,
