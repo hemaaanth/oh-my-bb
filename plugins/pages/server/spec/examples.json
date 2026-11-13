@@ -942,12 +942,16 @@
  {
   "name": "FollowUps",
   "group": "inputs",
-  "description": "Suggested next questions, at the end of a reply. Each prompt is a row the reader clicks to send its text to the thread as their next message. Keep 2 to 4 short prompts. label is a heading above them.",
-  "signature": "FollowUps(prompts: string[], label?: string)",
+  "description": "Suggested next questions or steps, at the end of a reply. Each prompt is a row the reader clicks to send its text to the thread as their next message. Keep 2 to 4 short prompts. label is a heading above them, quoted over the sent reply. multiple true gives each row a checkbox and adds one Send button, so the reader can pick several steps and send them together; use it when the steps do not exclude each other.",
+  "signature": "FollowUps(prompts: string[], label?: string, multiple?: boolean)",
   "examples": [
    {
     "name": "Prompts",
     "code": "root = FollowUps([\"Show the slowest queries\", \"Compare with last week\", \"Draft the incident note\"], \"Next\")"
+   },
+   {
+    "name": "Pick several",
+    "code": "root = FollowUps([\"Draft a note to Jackson\", \"Find our mutual connection\", \"Enrich the backup contacts\"], \"Next steps\", true)"
    }
   ]
  },

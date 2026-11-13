@@ -317,14 +317,20 @@ root = Stack([IconButton("Like", "thumbs-up", null, "primary"), IconButton("Retr
 
 ## FollowUps
 
-`FollowUps(prompts: string[], label?: string)`
+`FollowUps(prompts: string[], label?: string, multiple?: boolean)`
 
-Suggested next questions, at the end of a reply. Each prompt is a row the reader clicks to send its text to the thread as their next message. Keep 2 to 4 short prompts. label is a heading above them.
+Suggested next questions or steps, at the end of a reply. Each prompt is a row the reader clicks to send its text to the thread as their next message. Keep 2 to 4 short prompts. label is a heading above them, quoted over the sent reply. multiple true gives each row a checkbox and adds one Send button, so the reader can pick several steps and send them together; use it when the steps do not exclude each other.
 
 Prompts:
 
 ```openui-lang
 root = FollowUps(["Show the slowest queries", "Compare with last week", "Draft the incident note"], "Next")
+```
+
+Pick several:
+
+```openui-lang
+root = FollowUps(["Draft a note to Jackson", "Find our mutual connection", "Enrich the backup contacts"], "Next steps", true)
 ```
 
 ## Form

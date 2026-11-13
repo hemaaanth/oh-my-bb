@@ -2416,13 +2416,16 @@
     },
     "label": {
      "type": "string"
+    },
+    "multiple": {
+     "type": "boolean"
     }
    },
    "required": [
     "prompts"
    ],
    "additionalProperties": false,
-   "description": "Suggested next questions, at the end of a reply. Each prompt is a row the reader clicks to send its text to the thread as their next message. Keep 2 to 4 short prompts. label is a heading above them."
+   "description": "Suggested next questions or steps, at the end of a reply. Each prompt is a row the reader clicks to send its text to the thread as their next message. Keep 2 to 4 short prompts. label is a heading above them, quoted over the sent reply. multiple true gives each row a checkbox and adds one Send button, so the reader can pick several steps and send them together; use it when the steps do not exclude each other."
   },
   "Form": {
    "type": "object",

@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Renderer, type ActionEvent } from "@openuidev/react-lang";
 import { specLibrary } from "../catalog.js";
 import { fallbackHost, HostContext } from "../host.js";
-import { blankRow, decimals, followUpPrompts, isoDate, itemProblem, optionsOf, parseNumberInput, ratingMax, replaceItem, stepBy, stepRange, stepperValue, swatchColors, tableColumns } from "./inputs.js";
+import { SentContext } from "../kit.js";
+import { blankRow, decimals, followUpMessage, followUpPrompts, isoDate, sentFollowUps, itemProblem, optionsOf, parseNumberInput, ratingMax, replaceItem, stepBy, stepRange, stepperValue, swatchColors, tableColumns } from "./inputs.js";
 
 // A host that can send to the thread, like chat. The default host is a page, where sending is read-only.
 const chat = { ...fallbackHost, kind: "chat" as const, replies: true };
@@ -89,6 +90,13 @@ describe("field values", () => {
   it("keeps follow-up prompts once each", () => {
     expect(followUpPrompts([" Why? ", "", { text: "x" }, 3, "Why?"])).toEqual(["Why?", "3"]);
   });
+
+  it("sends picked follow-ups as one message and reads them back", () => {
+    expect(followUpMessage(["Why?"])).toBe("Why?");
+    expect(followUpMessage(["Why?", "How?"])).toBe("- Why?\n- How?");
+    expect([...sentFollowUps("- Why?\n- How?", ["Why?", "How?", "When?"])]).toEqual(["Why?", "How?"]);
+    expect([...sentFollowUps("When?", ["Why?", "When?"])]).toEqual(["When?"]);
+  });
 });
 
 describe("Form", () => {
@@ -111,5 +119,26 @@ describe("Form", () => {
     render(<HostContext.Provider value={chat}><Renderer response={`root = FollowUps(["Why?", "How?"])`} library={specLibrary} isStreaming={false} onAction={(event) => events.push(event)} /></HostContext.Provider>);
     fireEvent.click(await screen.findByRole("button", { name: "How?" }));
     await waitFor(() => expect(events.map((event) => [event.humanFriendlyMessage, event.formName])).toEqual([["How?", undefined]]));
+  });
+
+  it("sends several picked follow-ups together, quoting the label", async () => {
+    const events: ActionEvent[] = [];
+    render(<HostContext.Provider value={chat}><Renderer response={`root = FollowUps(["Why?", "How?", "When?"], "Next steps", true)`} library={specLibrary} isStreaming={false} onAction={(event) => events.push(event)} /></HostContext.Provider>);
+    const send = await screen.findByRole("button", { name: "Send" });
+    expect(send.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("checkbox", { name: "When?" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Why?" }));
+    // Sent in the order shown, not the order picked.
+    fireEvent.click(screen.getByRole("button", { name: "Send 2" }));
+    await waitFor(() => expect(events).toHaveLength(1));
+    expect([events[0]!.humanFriendlyMessage, events[0]!.formName, events[0]!.params]).toEqual(["- Why?\n- When?", undefined, { quote: "Next steps", answer: "- Why?\n- When?" }]);
+  });
+
+  it("keeps the sent picks checked and locked after a reload", async () => {
+    const sent = { sent: { "": "- Why?\n- When?" }, unlock: () => undefined };
+    render(<HostContext.Provider value={chat}><SentContext.Provider value={sent}><Renderer response={`root = FollowUps(["Why?", "How?", "When?"], null, true)`} library={specLibrary} isStreaming={false} /></SentContext.Provider></HostContext.Provider>);
+    const boxes = await screen.findAllByRole("checkbox");
+    expect(boxes.map((box) => [(box as HTMLInputElement).checked, box.hasAttribute("disabled")])).toEqual([[true, true], [false, true], [true, true]]);
+    expect(screen.getByRole("button", { name: "Sent" }).hasAttribute("disabled")).toBe(true);
   });
 });

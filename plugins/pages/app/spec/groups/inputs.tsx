@@ -571,24 +571,72 @@ export function followUpPrompts(prompts: unknown): string[] {
   return out;
 }
 
-function FollowUp({ prompt }: { prompt: string }) {
+/** What picked follow-ups send: one prompt alone, or several as "- prompt" lines. */
+export function followUpMessage(picked: string[]): string {
+  return picked.length === 1 ? picked[0] : picked.map((prompt) => `- ${prompt}`).join("\n");
+}
+
+/** The prompts a sent follow-up message holds, so picks survive a reload. */
+export function sentFollowUps(message: string, prompts: string[]): Set<string> {
+  const lines = new Set(message.split("\n").map((line) => line.replace(/^- /, "").trim()));
+  return new Set(prompts.filter((prompt) => lines.has(prompt)));
+}
+
+/** The header over the sent message quotes the label, when there is one. */
+const quoteLabel = (label: string | undefined, answer: string): ActionPlan | undefined =>
+  label?.trim() ? { params: { quote: label.trim(), answer } } as unknown as ActionPlan : undefined;
+
+function FollowUp({ prompt, label }: { prompt: string; label?: string }) {
   // Own: a prompt is sent alone, even inside a Form.
   const { chosen, sent, disabled, send } = useSend(prompt, true);
-  return <button type="button" aria-pressed={sent ? chosen : undefined} disabled={disabled} onClick={() => send()} className={`flex w-full cursor-pointer items-center gap-2 border-t border-border-hairline py-1.5 text-left text-foreground enabled:hover:text-primary disabled:cursor-default ${sent && !chosen ? "opacity-40" : ""} ${chosen ? "font-medium" : ""} ${focusRing}`}>
+  return <button type="button" aria-pressed={sent ? chosen : undefined} disabled={disabled} onClick={() => send(quoteLabel(label, prompt))} className={`flex w-full cursor-pointer items-center gap-2 border-t border-border-hairline py-1.5 text-left text-foreground enabled:hover:text-primary disabled:cursor-default ${sent && !chosen ? "opacity-40" : ""} ${chosen ? "font-medium" : ""} ${focusRing}`}>
     <span className="min-w-0 flex-1">{prompt}</span>{chosen ? <Check className="size-4 shrink-0 text-success" aria-hidden /> : <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
   </button>;
 }
 
+/** Follow-ups with a checkbox each and one Send button, for next steps that do not exclude each other. */
+function PickFollowUps({ prompts, label }: { prompts: string[]; label?: string }) {
+  const trigger = useTriggerAction();
+  // Own, like a single follow-up: sent alone, even inside a Form.
+  const sentText = useContext(SentContext).sent[""];
+  const streaming = useIsStreaming();
+  const readOnly = useReadOnly();
+  const locked = streaming || readOnly || sentText !== undefined;
+  const [picked, setPicked] = useState<string[]>([]);
+  const sent = sentText === undefined ? null : sentFollowUps(sentText, prompts);
+  const chosen = prompts.filter((prompt) => picked.includes(prompt));
+  const toggle = (prompt: string) => setPicked((current) => current.includes(prompt) ? current.filter((item) => item !== prompt) : [...current, prompt]);
+  const send = () => {
+    if (!chosen.length) return;
+    const message = followUpMessage(chosen);
+    void trigger(message, undefined, quoteLabel(label, message));
+  };
+  return <>
+    {prompts.map((prompt) => {
+      const on = sent ? sent.has(prompt) : picked.includes(prompt);
+      return <label key={prompt} className={`flex w-full cursor-pointer items-center gap-2 border-t border-border-hairline py-1.5 text-foreground ${sent && !on ? "opacity-40" : ""} ${sent && on ? "font-medium" : ""}`}>
+        <input type="checkbox" className={`shrink-0 accent-primary disabled:opacity-60 ${focusRing}`} checked={on} disabled={locked} onChange={() => toggle(prompt)} />
+        <span className="min-w-0 flex-1">{prompt}</span>
+      </label>;
+    })}
+    {prompts.length ? <div className="border-t border-border-hairline pt-2">
+      <button type="button" aria-pressed={sent ? true : undefined} disabled={locked || !chosen.length} onClick={send} className={`inline-flex w-fit items-center gap-1.5 rounded-md px-3 py-1.5 font-medium ${focusRing} ${sendButton("primary", Boolean(sent), true)}`}>
+        {sent ? <><Check aria-hidden className="size-3.5 text-success" />Sent</> : chosen.length > 1 ? `Send ${chosen.length}` : "Send"}
+      </button>
+    </div> : null}
+  </>;
+}
+
 const FollowUps = defineComponent({
   name: "FollowUps",
-  props: z.object({ prompts: z.array(z.string()), label: z.string().optional() }),
-  description: "Suggested next questions, at the end of a reply. Each prompt is a row the reader clicks to send its text to the thread as their next message. Keep 2 to 4 short prompts. label is a heading above them.",
+  props: z.object({ prompts: z.array(z.string()), label: z.string().optional(), multiple: z.boolean().optional() }),
+  description: "Suggested next questions or steps, at the end of a reply. Each prompt is a row the reader clicks to send its text to the thread as their next message. Keep 2 to 4 short prompts. label is a heading above them, quoted over the sent reply. multiple true gives each row a checkbox and adds one Send button, so the reader can pick several steps and send them together; use it when the steps do not exclude each other.",
   component: ({ props }) => {
     const prompts = followUpPrompts(props.prompts);
     const readOnly = useReadOnly();
     return <div role="group" aria-label={props.label ?? "Follow-ups"} className="flex flex-col">
       {props.label ? <span className="pb-1 text-muted-foreground">{props.label}</span> : null}
-      {prompts.map((prompt) => <FollowUp key={prompt} prompt={prompt} />)}
+      {props.multiple ? <PickFollowUps prompts={prompts} label={props.label} /> : prompts.map((prompt) => <FollowUp key={prompt} prompt={prompt} label={props.label} />)}
       {readOnly && prompts.length ? <div className="border-t border-border-hairline pt-1.5"><ReadOnlyNote /></div> : null}
     </div>;
   },
@@ -688,6 +736,7 @@ export const group: Group = {
     ] },
     { component: FollowUps, summary: "suggested next prompts", examples: [
       { name: "Prompts", code: `root = FollowUps(["Show the slowest queries", "Compare with last week", "Draft the incident note"], "Next")` },
+      { name: "Pick several", code: `root = FollowUps(["Draft a note to Jackson", "Find our mutual connection", "Enrich the backup contacts"], "Next steps", true)` },
     ] },
     { component: Form, summary: "fields sent as one answer", examples: [
       { name: "Form", code: `root = Form("launch", [Choice("channel", ["Email", "Ads"], "Channel"), Slider("budget", 0, 100, 5, "Budget"), Input("note", "Note")], [Button("Approve"), Button("Hold", null, "secondary")])` },

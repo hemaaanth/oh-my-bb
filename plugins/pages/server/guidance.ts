@@ -6,7 +6,7 @@ export const GUIDANCE_COMPONENT_MAP = [
   { content: "explaining how something works, an architecture, flow or dependency", components: ["Diagram", "Mermaid"], note: "sequences, states, schemas → Mermaid; structure → Tree; order of events → Timeline" },
   { content: "comparing two or more options, tools or approaches", components: ["Compare", "Table"], note: "with a recommendation → Decision" },
   { content: "needing the user's choice, priorities, ratings or feedback", components: ["Form", "OptionCards", "Radio", "Checklist", "Rating", "Slider", "TextArea"], note: "never end on an open question that these could answer" },
-  { content: "likely next asks", components: ["FollowUps"], note: "2-4 prompts at the end" },
+  { content: "likely next asks", components: ["FollowUps"], note: "2-4 prompts at the end; multiple true when the reader may want several" },
   { content: "numbers, trends, shares, limits", components: ["Stats", "Chart", "Sparkline", "SegmentedBar", "Gauge"], note: "Stats takes Stat(...) calls, not objects" },
   { content: "how-to, setup with a current step, or a key caveat", components: ["Steps", "Snippet", "Callout"] },
   { content: "status or readiness with two or more checks", components: ["Status", "Acceptance", "Provenance"], note: "one fence, next actions in Status.next; pass/fail or before/after checks → Acceptance, not Table; build/run identity → Provenance; not a default layout" },

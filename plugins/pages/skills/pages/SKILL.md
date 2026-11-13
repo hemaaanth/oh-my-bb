@@ -36,7 +36,7 @@ components in one `Stack`, and vary them. Do not reuse one layout every time.
 | Explaining how something works, an architecture, flow, or dependency | `Diagram`; sequences, states, schemas → `Mermaid`; structure → `Tree`; order of events → `Timeline` |
 | Comparing two or more options, tools, or approaches | `Compare`, `Table`; with a recommendation → `Decision` |
 | Needing the user's choice, priorities, ratings, or feedback | `Form` with `OptionCards`, `Radio`, `Checklist`, `Rating`, `Slider`, `TextArea` |
-| Likely next asks | `FollowUps`, 2–4 prompts at the end |
+| Likely next asks | `FollowUps`, 2–4 prompts at the end; `multiple` true when the reader may want several |
 | Numbers, trends, shares, limits | `Stats`, `Chart`, `Sparkline`, `SegmentedBar`, `Gauge`, `CalendarHeatmap` |
 | How-to, setup, or a key caveat | `Steps`, `Snippet`, `Callout` |
 | Status or readiness with two or more checks | `Status` + `Acceptance` in one fence; `Provenance` for build identity |
