@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.1
 
 - Status lists highlights, risks and next steps as labeled rows with hairline
   dividers and a marker per item, instead of three narrow unmarked columns.
