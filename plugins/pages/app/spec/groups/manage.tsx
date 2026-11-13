@@ -5,9 +5,10 @@ import { z } from "zod";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ArrowRight, Check, Ellipsis, TriangleAlert } from "../icons.generated.js";
 import { PORTAL_SCOPE, menuContent, menuItem } from "../../ui.js";
-import { ReadOnlyNote, SentContext, focusRing, useReadOnly, useSpill, type Group } from "../kit.js";
+import { ReadOnlyNote, SentContext, SentNote, focusRing, sentControl, useReadOnly, useSpill, type Group } from "../kit.js";
 import { axisShare, boardColumns, estimateTask, estimateTotals, formatAmount, formatDay, localDay, parseDay, moveCards, placeCard, readRoadmap, statusKey, type BoardOrder, type RoadmapStatus } from "./manage-logic.js";
 import { useBoardDrag } from "./board-drag.js";
+import { answerLine } from "../answers.js";
 
 /** Items that have their main field yet: while a reply streams, the last one may be half written. */
 const ready = <T,>(items: T[] | undefined, key: keyof T): T[] => (Array.isArray(items) ? items.filter((item) => item && typeof item[key] === "string" && item[key] !== "") : []);
@@ -44,7 +45,7 @@ const Board = defineComponent({
   component: ({ props }) => {
     const trigger = useTriggerAction();
     const streaming = useIsStreaming();
-    const { sent, unlock } = useContext(SentContext);
+    const { sent } = useContext(SentContext);
     const [order, setOrder] = useState<BoardOrder>({});
     const scroller = useRef<HTMLDivElement>(null);
     const cards = ready(props.cards, "title");
@@ -81,7 +82,7 @@ const Board = defineComponent({
       {base.hidden > 0 ? <p className="m-0 text-muted-foreground">{base.hidden} {base.hidden === 1 ? "card is" : "cards are"} in other columns.</p> : null}
       {form !== undefined ? <div className="flex flex-wrap items-center gap-3">
         <button type="button" disabled={locked || lines.length === 0} onClick={() => void trigger(["Moves on the board:", ...lines].join("\n"), form)} className={`w-fit cursor-pointer rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60 ${focusRing}`}>{lines.length ? `Send moves (${lines.length})` : "Send moves"}</button>
-        {sent[form] !== undefined ? <p role="status" className="m-0 text-muted-foreground">Sent to the thread. <button type="button" onClick={() => unlock(form)} className={`cursor-pointer rounded-sm text-foreground underline underline-offset-2 ${focusRing}`}>Change</button></p> : lines.length === 0 ? <span className="text-muted-foreground">Drag cards to move them.</span> : null}
+        {sent[form] !== undefined ? <SentNote form={form} /> : lines.length === 0 ? <span className="text-muted-foreground">Drag cards to move them.</span> : null}
       </div> : readOnly && props.name !== undefined ? <ReadOnlyNote /> : null}
     </div>;
   },
@@ -95,32 +96,34 @@ const Decision = defineComponent({
     recommend: z.string().optional(),
     name: z.string().optional(),
   }),
-  description: 'Options for one decision, each with pros, cons, and a note. recommend is the name of the option you recommend; it is marked. Give name to let the reader choose: each option gets a Choose button that sends "<question>: <option>" to the thread, then locks. Without name it is read-only.',
+  description: 'Options for one decision, each with pros, cons, and a note. recommend is the name of the option you recommend; it is marked. Give name to let the reader choose: each option gets a Choose button that replies to the thread with that option, quoting the question, then locks. Without name it is read-only.',
   component: ({ props }) => {
     const trigger = useTriggerAction();
     const streaming = useIsStreaming();
-    const { sent, unlock } = useContext(SentContext);
+    const { sent } = useContext(SentContext);
     // Where a choice cannot be sent, the options read like a Decision without a name, plus the note.
     const readOnly = useReadOnly();
     const form = readOnly ? undefined : props.name;
     const sentText = form ? sent[form] : undefined;
-    const message = (option: string) => `${props.question}: ${option}`;
+    const message = (option: string) => answerLine(props.question, option);
     return <div className="flex min-w-0 flex-col gap-3">
       <h3 className="m-0 font-semibold text-foreground">{props.question}</h3>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-4">{ready(props.options, "name").map((option) => {
         const recommended = option.name === props.recommend;
         const chosen = sentText === message(option.name);
-        return <div key={option.name} className={`flex flex-col gap-1.5 border-l-2 pl-3 ${chosen || (recommended && sentText === undefined) ? "border-primary" : "border-border-hairline"}`}>
+        return <div key={option.name} className={`flex flex-col gap-1.5 border-l-2 pl-3 transition-opacity ${chosen || (recommended && sentText === undefined) ? "border-primary" : "border-border-hairline"} ${sentText !== undefined && !chosen ? "opacity-50" : ""}`}>
           <p className="m-0 flex flex-wrap items-baseline gap-x-2"><span className="font-semibold text-foreground">{option.name}</span>{recommended ? <span className="text-xs font-medium text-primary">Recommended</span> : null}</p>
           {option.note ? <p className="m-0 text-muted-foreground">{option.note}</p> : null}
           {texts(option.pros).length || texts(option.cons).length ? <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
             {texts(option.pros).map((pro, i) => <li key={`p${i}`} className="flex gap-2 text-foreground"><span aria-label="Pro" className="text-success">+</span>{pro}</li>)}
             {texts(option.cons).map((con, i) => <li key={`c${i}`} className="flex gap-2 text-foreground"><span aria-label="Con" className="text-destructive">−</span>{con}</li>)}
           </ul> : null}
-          {form ? <button type="button" aria-pressed={sentText === undefined ? undefined : chosen} disabled={streaming || sentText !== undefined} onClick={() => void trigger(message(option.name), form)} className={`mt-1 inline-flex w-fit cursor-pointer items-center gap-1.5 rounded-md px-3 py-1 font-medium ${chosen ? "disabled:cursor-default" : "disabled:opacity-60"} ${focusRing} ${chosen ? "bg-primary text-primary-foreground" : recommended ? "border border-primary text-primary hover:bg-state-hover" : "border border-input text-foreground hover:bg-state-hover"}`}>{chosen ? <><Check aria-hidden className="size-3.5" />Chosen</> : `Choose ${option.name}`}</button> : null}
+          {!form ? null : sentText === undefined ? <button type="button" disabled={streaming} onClick={() => void trigger(message(option.name), form, { params: { quote: props.question, answer: option.name } })} className={`mt-1 inline-flex w-fit cursor-pointer items-center gap-1.5 rounded-md px-3 py-1 font-medium disabled:cursor-default disabled:opacity-60 ${focusRing} ${recommended ? "border border-primary text-primary enabled:hover:bg-state-hover" : "border border-input text-foreground enabled:hover:bg-state-hover"}`}>{`Choose ${option.name}`}</button>
+            // Sent: only the chosen option keeps a (flat, disabled) control; the others drop theirs.
+            : chosen ? <button type="button" aria-pressed disabled className={`mt-1 inline-flex w-fit items-center gap-1.5 rounded-md px-3 py-1 font-medium ${sentControl(true)}`}><Check aria-hidden className="size-3.5 text-success" />Chosen</button> : null}
         </div>;
       })}</div>
-      {form && sentText !== undefined ? <p role="status" className="m-0 text-muted-foreground">Sent to the thread. <button type="button" onClick={() => unlock(form)} className={`cursor-pointer rounded-sm text-foreground underline underline-offset-2 ${focusRing}`}>Change</button></p> : null}
+      {form && sentText !== undefined ? <SentNote form={form} /> : null}
       {readOnly && props.name ? <ReadOnlyNote /> : null}
     </div>;
   },

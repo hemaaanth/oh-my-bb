@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import { parseDirective } from "./app/directives.js";
+import { replyKey } from "./app/reply.js";
 
 // The real Share popover belongs to T4. This stand-in exposes the props the card passes.
 vi.mock("./app/share/SharePopover.js", () => ({
@@ -568,14 +569,15 @@ chart = Chart("bar", ["Mon", "Tue"], [Series("Signups", [4, 9]), Series("Churn",
   });
 
   it("writes object answers as JSON in the sent message", async () => {
-    const { messageFor } = await import("./app/SpecFence.js");
+    const { messageFor } = await import("./app/spec/answers.js");
     const event = { humanFriendlyMessage: "Save", formName: "f", formState: { f: { rows: { value: [{ item: "Tea", qty: 2 }] }, tags: { value: ["a", "b"] } } } };
-    expect(messageFor(event as never)).toBe(`Save\n- rows: {"item":"Tea","qty":2}\n- tags: a, b`);
+    expect(messageFor(event as never)).toBe(`Save\n- Rows: {"item":"Tea","qty":2}\n- Tags: a, b`);
   });
 
   it("sends the clicked button and the form's answers to the thread", async () => {
     const send = vi.fn().mockResolvedValue({});
-    const slot = renderSlot(fence, props(program), { sdk: { threads: { send } } as never });
+    const updatePluginMetadata = vi.fn().mockResolvedValue({});
+    const slot = renderSlot(fence, props(program), { sdk: { threads: { send, updatePluginMetadata } } as never });
     fireEvent.click(await slot.findByText("Ads"));
     fireEvent.change(slot.getByRole("slider"), { target: { value: "35" } });
     fireEvent.click(slot.getByRole("switch", { name: "Notify me" }));
@@ -583,7 +585,15 @@ chart = Chart("bar", ["Mon", "Tue"], [Series("Signups", [4, 9]), Series("Churn",
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
     const [{ threadId, mode, input }] = send.mock.calls[0];
     expect({ threadId, mode }).toEqual({ threadId: "thread-a", mode: "queue-if-active" });
-    expect(input[0].text.split("\n")).toEqual(expect.arrayContaining(["Approve", "- channel: Ads", "- budget: 35", "- notify: true"]));
+    // The bubble shows the answers; the agent also gets the full reply in a part only it sees.
+    expect(input[0]).toEqual({ type: "text", text: "Approve\n\nChannel: Ads · Budget: 35 · Notify me: Yes", mentions: [] });
+    expect(input[1].visibility).toBe("agent-only");
+    expect(input[1].text.split("\n")).toEqual(["Reply to a card:", "Approve", "- Channel: Ads", "- Budget: 35", "- Notify me: Yes"]);
+    // The reply is recorded first, keyed by its text and time, so the header over the sent message can find its card.
+    const [{ set }] = updatePluginMetadata.mock.calls[0];
+    const [record] = Object.values(set as Record<string, { at: number }>);
+    expect(Object.keys(set)).toEqual([replyKey(input[0].text, record.at)]);
+    expect(slot.container.querySelector(`[data-pages-fence="${Object.values(set as Record<string, { source: string }>)[0].source}"]`)).toBeTruthy();
     // Sent: the form locks, so a second click sends nothing, and it stays locked after a reload.
     const approve = slot.getByRole("button", { name: "Approve" });
     expect(approve.hasAttribute("disabled")).toBe(true);

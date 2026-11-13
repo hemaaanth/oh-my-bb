@@ -7,7 +7,7 @@ import {
 } from "../icons.generated.js";
 import type { IconComponent } from "../glyph.js";
 import { z } from "zod";
-import { Label, ReadOnlyNote, SentContext, field, focusRing, useLocked, useReadOnly, type Group } from "../kit.js";
+import { Label, ReadOnlyNote, SentContext, SentNote, field, focusRing, sentControl, useLocked, useReadOnly, type Group } from "../kit.js";
 import { useImageResource } from "../image-resource.js";
 import { Lightbox, lightboxImage } from "../viewer.js";
 
@@ -530,10 +530,14 @@ function useSend(label: string, own?: boolean, hasAction?: boolean) {
 }
 
 const buttonStyle = {
-  primary: "bg-primary text-primary-foreground hover:opacity-90",
-  secondary: "border border-input text-foreground hover:bg-state-hover",
-  ghost: "text-muted-foreground hover:bg-state-hover hover:text-foreground",
+  primary: "bg-primary text-primary-foreground enabled:hover:opacity-90",
+  secondary: "border border-input text-foreground enabled:hover:bg-state-hover",
+  ghost: "text-muted-foreground enabled:hover:bg-state-hover enabled:hover:text-foreground",
 } as const;
+
+/** A send button's look: its variant until the answer is sent, then the settled look. */
+const sendButton = (variant: keyof typeof buttonStyle, sent: boolean, chosen: boolean) =>
+  sent ? sentControl(chosen) : `cursor-pointer disabled:cursor-default disabled:opacity-60 ${buttonStyle[variant]}`;
 
 const Button = defineComponent({
   name: "Button",
@@ -541,7 +545,7 @@ const Button = defineComponent({
   description: 'A button. With no action it sends its label (and its Form answers) to the assistant, then locks. variant "primary" (default) or "secondary".',
   component: ({ props }) => {
     const { chosen, sent, disabled, send } = useSend(props.label, false, props.action !== undefined);
-    return <button type="button" aria-pressed={sent ? chosen : undefined} disabled={disabled} onClick={() => send(props.action as ActionPlan | undefined)} className={`w-fit cursor-pointer rounded-md px-3 py-1.5 font-medium ${chosen ? "disabled:cursor-default" : "disabled:opacity-60"} ${focusRing} ${buttonStyle[props.variant ?? "primary"]}`}>{props.label}</button>;
+    return <button type="button" aria-pressed={sent ? chosen : undefined} disabled={disabled} onClick={() => send(props.action as ActionPlan | undefined)} className={`inline-flex w-fit items-center gap-1.5 rounded-md px-3 py-1.5 font-medium ${focusRing} ${sendButton(props.variant ?? "primary", sent, chosen)}`}>{sent && chosen ? <Check aria-hidden className="size-3.5 text-success" /> : null}{props.label}</button>;
   },
 });
 
@@ -553,7 +557,7 @@ const IconButton = defineComponent({
     const { chosen, sent, disabled, send } = useSend(props.label, false, props.action !== undefined);
     const Icon = iconFor(props.icon);
     return <button type="button" aria-label={props.label} title={props.label} aria-pressed={sent ? chosen : undefined} disabled={disabled} onClick={() => send(props.action as ActionPlan | undefined)}
-      className={`inline-flex h-8 min-w-8 w-fit cursor-pointer items-center justify-center rounded-md ${Icon ? "" : "px-2"} ${chosen ? "disabled:cursor-default" : "disabled:opacity-60"} ${focusRing} ${buttonStyle[props.variant ?? "secondary"]}`}>{Icon ? <Icon className="size-4" aria-hidden /> : props.label}</button>;
+      className={`inline-flex h-8 min-w-8 w-fit items-center justify-center rounded-md ${Icon ? "" : "px-2"} ${focusRing} ${sendButton(props.variant ?? "secondary", sent, chosen)}`}>{Icon ? <Icon className="size-4" aria-hidden /> : props.label}</button>;
   },
 });
 
@@ -570,8 +574,8 @@ export function followUpPrompts(prompts: unknown): string[] {
 function FollowUp({ prompt }: { prompt: string }) {
   // Own: a prompt is sent alone, even inside a Form.
   const { chosen, sent, disabled, send } = useSend(prompt, true);
-  return <button type="button" aria-pressed={sent ? chosen : undefined} disabled={disabled} onClick={() => send()} className={`flex w-full cursor-pointer items-center gap-2 border-t border-border-hairline py-1.5 text-left text-foreground hover:text-primary disabled:cursor-default ${sent && !chosen ? "opacity-60" : ""} ${chosen ? "font-medium" : ""} ${focusRing}`}>
-    <span className="min-w-0 flex-1">{prompt}</span>{chosen ? <Check className="size-4 shrink-0" aria-hidden /> : <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
+  return <button type="button" aria-pressed={sent ? chosen : undefined} disabled={disabled} onClick={() => send()} className={`flex w-full cursor-pointer items-center gap-2 border-t border-border-hairline py-1.5 text-left text-foreground enabled:hover:text-primary disabled:cursor-default ${sent && !chosen ? "opacity-40" : ""} ${chosen ? "font-medium" : ""} ${focusRing}`}>
+    <span className="min-w-0 flex-1">{prompt}</span>{chosen ? <Check className="size-4 shrink-0 text-success" aria-hidden /> : <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
   </button>;
 }
 
@@ -591,10 +595,10 @@ const FollowUps = defineComponent({
 });
 
 function SentLine({ form }: { form: string }) {
-  const { sent, unlock } = useContext(SentContext);
+  const { sent } = useContext(SentContext);
   if (useReadOnly()) return <ReadOnlyNote />;
   if (sent[form] === undefined) return null;
-  return <p role="status" className="m-0 text-muted-foreground">Sent to the thread. <button type="button" onClick={() => unlock(form)} className={`cursor-pointer rounded-sm text-foreground underline underline-offset-2 ${focusRing}`}>Edit answers</button></p>;
+  return <SentNote form={form} action="Edit answers" />;
 }
 
 const Form = defineComponent({

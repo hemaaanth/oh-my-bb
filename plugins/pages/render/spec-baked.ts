@@ -21,6 +21,13 @@ const BAKED = /<script\b[^>]*\bdata-bb-spec-baked\b[^>]*>[\s\S]*?<\/script\s*>/g
 /** True when the HTML has an openui-lang block. */
 export const hasSpecBlocks = (html: string) => new RegExp(BLOCK.source, "iu").test(html);
 
+const MERMAID = /<(?:pre|div)\b[^>]*\sclass\s*=\s*(?:"(?:[^"]*\s)?mermaid(?:\s[^"]*)?"|'(?:[^']*\s)?mermaid(?:\s[^']*)?'|mermaid(?=[\s/>]))/iu;
+/** Mermaid elements the page runtime draws, as Mermaid's own docs write them. */
+export const MERMAID_SELECTOR = "pre.mermaid, div.mermaid";
+
+/** True when the HTML has a <pre class="mermaid"> or <div class="mermaid">. */
+export const hasMermaidBlocks = (html: string) => MERMAID.test(html);
+
 /** Each block's code and where its tag starts. */
 export function specBlocks(html: string): { code: string; at: number }[] {
   return [...html.matchAll(BLOCK)].map((match) => ({ code: unescapeSpec(match[1]!), at: match.index }));

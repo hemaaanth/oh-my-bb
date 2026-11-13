@@ -3,7 +3,7 @@ import examples from "./spec/examples.json";
 
 // Each row is a moment in an ordinary reply, not a data type: agents reach for UI when the moment matches.
 export const GUIDANCE_COMPONENT_MAP = [
-  { content: "explaining how something works, an architecture, flow or dependency", components: ["Diagram"], note: "structure → Tree; order of events → Timeline" },
+  { content: "explaining how something works, an architecture, flow or dependency", components: ["Diagram", "Mermaid"], note: "sequences, states, schemas → Mermaid; structure → Tree; order of events → Timeline" },
   { content: "comparing two or more options, tools or approaches", components: ["Compare", "Table"], note: "with a recommendation → Decision" },
   { content: "needing the user's choice, priorities, ratings or feedback", components: ["Form", "OptionCards", "Radio", "Checklist", "Rating", "Slider", "TextArea"], note: "never end on an open question that these could answer" },
   { content: "likely next asks", components: ["FollowUps"], note: "2-4 prompts at the end" },
@@ -17,7 +17,7 @@ export const GUIDANCE_COMPONENT_MAP = [
   { content: "teaching, visuals, places, sources", components: ["Walkthrough", "Quiz", "Flashcards", "BeforeAfter", "App", "Map", "Sources"] },
 ] as const;
 const COMPONENT_MAP_TEXT = GUIDANCE_COMPONENT_MAP.map(group => `- ${group.content} → ${group.components.join(", ")}${"note" in group ? `; ${group.note}` : ""}`).join("\n");
-export const QUICK_COMPONENTS = ["Stack", "Stats", "Stat", "Table", "Status", "Plan", "Acceptance", "Decision", "Form", "Choice", "Toggle", "Button", "Diagram", "Compare", "OptionCards", "Checklist", "FollowUps", "Chart", "Series", "Callout", "Tabs", "Tab"] as const;
+export const QUICK_COMPONENTS = ["Stack", "Stats", "Stat", "Table", "Status", "Plan", "Acceptance", "Decision", "Form", "Choice", "Toggle", "Button", "Diagram", "Mermaid", "Compare", "OptionCards", "Checklist", "FollowUps", "Chart", "Series", "Callout", "Tabs", "Tab"] as const;
 const QUICK_SIGNATURES = QUICK_COMPONENTS.map(name => examples.find(entry => entry.name === name)!.signature).join("\n");
 
 export const PAGES_GUIDANCE = `# Pages in BB

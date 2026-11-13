@@ -2,7 +2,7 @@
 // in chat and takes the hem.so theme on shared sites. Group files import from here, never from each other.
 import { createContext, useContext, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { useFormName, useIsStreaming, type DefinedComponent } from "@openuidev/react-lang";
-import { ChevronRight } from "./icons.generated.js";
+import { Check, ChevronRight } from "./icons.generated.js";
 import { focusRing } from "../ui.js";
 import { useHost } from "./host.js";
 import { sourcedQuery } from "./source-metadata.js";
@@ -91,6 +91,25 @@ export const useReadOnly = (): boolean => !useHost().replies;
 /** The read-only state of a component that sends to the thread, shown in place of its send controls. */
 export function ReadOnlyNote() {
   return <p role="note" className="m-0 text-muted-foreground">Read-only here. Answers are sent from the chat in BB.</p>;
+}
+
+/**
+ * How a send control looks once its answer is sent. The clicked one goes flat with a check, so it reads
+ * as a record, not a button. The others fade. Neither reacts to hover.
+ */
+export const sentControl = (chosen: boolean) => chosen
+  ? "cursor-default border border-transparent bg-muted text-foreground"
+  : "cursor-default opacity-40";
+
+/** The line under a sent control: a check, "Sent to the thread", and the action that unlocks it. */
+export function SentNote({ form, action = "Change", children }: { form: string; action?: string; children?: ReactNode }) {
+  const { unlock } = useContext(SentContext);
+  return <p role="status" className="m-0 flex flex-wrap items-center gap-1.5 text-muted-foreground">
+    <Check aria-hidden className="size-3.5 shrink-0 text-success" />
+    {children ?? "Sent to the thread"}
+    <span aria-hidden>·</span>
+    <button type="button" onClick={() => unlock(form)} className={`cursor-pointer rounded-sm text-foreground underline underline-offset-2 ${focusRing}`}>{action}</button>
+  </p>;
 }
 
 /** Fields lock while the reply streams, and inside a Form once it is sent or where it cannot be sent. */

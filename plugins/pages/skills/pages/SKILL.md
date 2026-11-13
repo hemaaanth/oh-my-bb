@@ -33,7 +33,7 @@ components in one `Stack`, and vary them. Do not reuse one layout every time.
 
 | Moment in the reply | Components |
 | --- | --- |
-| Explaining how something works, an architecture, flow, or dependency | `Diagram`; structure → `Tree`; order of events → `Timeline` |
+| Explaining how something works, an architecture, flow, or dependency | `Diagram`; sequences, states, schemas → `Mermaid`; structure → `Tree`; order of events → `Timeline` |
 | Comparing two or more options, tools, or approaches | `Compare`, `Table`; with a recommendation → `Decision` |
 | Needing the user's choice, priorities, ratings, or feedback | `Form` with `OptionCards`, `Radio`, `Checklist`, `Rating`, `Slider`, `TextArea` |
 | Likely next asks | `FollowUps`, 2–4 prompts at the end |
@@ -74,6 +74,8 @@ root = Stats([Stat("Open bugs", 12), Stat("Due", "Fri")])
 To put the same UI in an HTML page, use
 `<script type="text/openui-lang">root = Stats([Stat("Open bugs", 12)])</script>`.
 Markdown pages accept the fence directly. See [Live UI on a page](#live-ui-on-a-page).
+An HTML page may also use `<pre class="mermaid">`; a Markdown page may use a
+`mermaid` fence. Both draw with the Mermaid component.
 Published OpenUI answer controls are read-only; use an HTML form when a saved
 page must send answers. Direct reply fences support interactive Forms.
 

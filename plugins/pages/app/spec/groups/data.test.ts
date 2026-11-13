@@ -1,6 +1,6 @@
 // Ported from GenUI ui/components/{calendarMath,explain-logic,content-model,chartMath}.test.ts (Apache-2.0), cut to the helpers Data uses.
 import { describe, expect, it } from "vitest";
-import { buildTree, calendarLayout, dayLabel, dayString, defaultExpanded, firstWeekday, heatLevel, layoutDiagram, monthWeeks, parseDay, percentages, trendLabel, visibleRows, weekday, type TreeItem } from "./data.js";
+import { buildTree, calendarLayout, dayLabel, dayString, defaultExpanded, firstWeekday, heatLevel, monthWeeks, parseDay, percentages, trendLabel, visibleRows, weekday, type TreeItem } from "./data.js";
 
 describe("parseDay and dayString", () => {
   it("round-trips dates, whatever the process time zone", () => {
@@ -182,20 +182,3 @@ describe("heatLevel", () => {
   });
 });
 
-describe("layoutDiagram", () => {
-  it("puts each node one layer below its deepest parent", () => {
-    expect(layoutDiagram(["a", "b", "c", "d"], [{ from: "a", to: "b" }, { from: "b", to: "c" }, { from: "a", to: "c" }, { from: "c", to: "d" }])).toEqual([["a"], ["b"], ["c"], ["d"]]);
-  });
-
-  it("ignores the edge that closes a cycle, self loops, and unknown nodes", () => {
-    expect(layoutDiagram(["a", "b", "c"], [{ from: "a", to: "b" }, { from: "b", to: "c" }, { from: "c", to: "a" }, { from: "b", to: "b" }, { from: "c", to: "zz" }])).toEqual([["a"], ["b"], ["c"]]);
-  });
-
-  it("keeps unconnected nodes on the first layer", () => {
-    expect(layoutDiagram(["x", "y"], [])).toEqual([["x", "y"]]);
-  });
-
-  it("orders a layer by where its parents sit, so edges do not cross", () => {
-    expect(layoutDiagram(["l", "r", "under-r", "under-l"], [{ from: "l", to: "under-l" }, { from: "r", to: "under-r" }])).toEqual([["l", "r"], ["under-l", "under-r"]]);
-  });
-});

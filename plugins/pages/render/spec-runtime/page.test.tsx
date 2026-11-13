@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // Published components read their baked resources without a live BB backend.
+import { act } from "react";
 import { describe, expect, it } from "vitest";
-import { bakedTools, pageHost, readBaked } from "./page.js";
+import { bakedTools, mermaidSpec, mountSpecs, pageHost, readBaked } from "./page.js";
 
 const tile = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
@@ -27,4 +28,20 @@ describe("page runtime", () => {
     expect((await host.loadAsset("missing.glb")).ok).toBe(false);
   });
 
+  it("draws <pre class=\"mermaid\"> as a Mermaid block and leaves drawn ones alone", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    // jsdom has no canvas or ResizeObserver; give Pele a text measure.
+    HTMLCanvasElement.prototype.getContext = (() => ({ font: "", measureText: (text: string) => ({ width: text.length * 7 }) })) as never;
+    document.body.innerHTML = '<pre class="diagram mermaid">\nflowchart LR\n  A --&gt; B\n</pre><div class="mermaid"><svg></svg></div><pre class="mermaid">  </pre>';
+    const pre = document.querySelector("pre")!;
+    expect(mermaidSpec(pre)).toBe('root = Mermaid("flowchart LR\\n  A --> B")');
+    let count = 0;
+    await act(async () => { count = mountSpecs(document, ""); });
+    expect(count).toBe(1);
+    expect(pre.hidden).toBe(true);
+    const svg = (pre.nextElementSibling as HTMLElement).shadowRoot!.querySelector("svg");
+    expect(svg?.textContent).toContain("B");
+    await act(async () => { count = mountSpecs(document, ""); });
+    expect(count).toBe(0);
+  });
 });

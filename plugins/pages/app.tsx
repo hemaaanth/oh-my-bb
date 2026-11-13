@@ -8,6 +8,7 @@ import { PANEL_ACTION_ID, directiveComponent } from "./app/PageCard.js";
 import { LIBRARY_PATH, LiveFileView, PageView } from "./app/PageView.js";
 import { SPEC_LANGUAGES, SpecFence } from "./app/SpecFence.js";
 import { AppFence } from "./app/AppFence.js";
+import { ReplyHeader, type MessageMetadataSlot } from "./app/ReplyHeader.js";
 import { APP_LANGUAGES } from "./render/spec-baked.js";
 
 /** Panel params are untrusted: `{ pageId, versionId? }`, `{ threadId, source, file }` for a live file, or none for the library. */
@@ -46,5 +47,8 @@ export default definePluginApp((app) => {
     app.slots.experimental_codeFenceRenderer({ id: "pages-spec", languages: SPEC_LANGUAGES, component: SpecFence });
     app.slots.experimental_codeFenceRenderer({ id: "pages-app", languages: APP_LANGUAGES, component: AppFence });
   }
+  // Newer BB hosts show a "Reply to a card" line over answers sent from a card. Older ones skip it.
+  const messageMetadata = (app.slots as { experimental_messageMetadata?: MessageMetadataSlot }).experimental_messageMetadata;
+  if (typeof messageMetadata === "function") messageMetadata({ id: "reply", placement: "above", component: ReplyHeader });
   app.slots.settingsSection({ id: "more", component: PagesSettings });
 });

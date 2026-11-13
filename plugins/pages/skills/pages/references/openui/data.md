@@ -214,7 +214,7 @@ root = CalendarHeatmap([{date: "2026-09-01", value: 3}, {date: "2026-09-02", val
 
 `Diagram(nodes: {id: string, label?: string, tone?: "neutral" | "info" | "success" | "warning" | "danger"}[], edges: {from: string, to: string, label?: string}[], direction?: "down" | "right")`
 
-A flow diagram of boxes and arrows, laid out in layers. Each node has an id and an optional label (defaults to the id). Each edge goes from one node id to another, with an optional short label. direction "down" (default) or "right". tone outlines a node: "info", "success", "warning", "danger", or "neutral" (default). Keep it under about 15 nodes.
+A flow diagram of boxes and arrows. Each node has an id and an optional label (defaults to the id). Each edge goes from one node id to another, with an optional short label. direction "down" (default) or "right"; a wide "right" diagram turns vertical on narrow screens. tone outlines a node: "info", "success", "warning", "danger", or "neutral" (default). For sequence, state, class, ER, gantt, mindmap or other diagram kinds, use Mermaid.
 
 Flow:
 
@@ -226,4 +226,22 @@ Left to right with a loop:
 
 ```openui-lang
 root = Diagram([{id: "draft", label: "Draft"}, {id: "review", label: "Review", tone: "info"}, {id: "ship", label: "Ship", tone: "success"}], [{from: "draft", to: "review"}, {from: "review", to: "draft", label: "changes"}, {from: "review", to: "ship"}], "right")
+```
+
+## Mermaid
+
+`Mermaid(source: string, title?: string)`
+
+Any Mermaid diagram, written as Mermaid text: flowchart, sequenceDiagram, stateDiagram-v2, classDiagram, erDiagram, gantt, mindmap, gitGraph, journey, timeline, architecture-beta, block, sankey and the other Mermaid 12 types. Colors follow the page theme; leave out style, classDef and themes. Use it when Diagram's boxes and arrows are not enough. Prefer Chart for numbers and Timeline for a simple list of dated events. title is an optional caption above it.
+
+Sequence:
+
+```openui-lang
+root = Mermaid("sequenceDiagram\n  participant U as User\n  participant A as API\n  participant D as Database\n  U->>A: POST /orders\n  A->>D: insert order\n  D-->>A: id 42\n  A-->>U: 201 Created", "Placing an order")
+```
+
+State:
+
+```openui-lang
+root = Mermaid("stateDiagram-v2\n  [*] --> Draft\n  Draft --> Review: submit\n  Review --> Draft: changes\n  Review --> Merged: approve\n  Merged --> [*]")
 ```

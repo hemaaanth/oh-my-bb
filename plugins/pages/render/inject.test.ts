@@ -79,6 +79,11 @@ describe("injectPage", () => {
     expect(inlined).toContain("<script>globalThis.spec = true;</script>");
   });
 
+  it("adds the spec runtime to pages with <pre class=\"mermaid\">", () => {
+    for (const html of ['<pre class="mermaid">graph TD; A-->B</pre>', "<div class='box mermaid'>x</div>", "<pre class=mermaid>x</pre>"]) expect(inject(html)).toContain("spec.js");
+    for (const html of ['<pre class="mermaid-ish">x</pre>', '<p class="mermaid">x</p>', "<pre>mermaid</pre>", '<pre data-class="mermaid">x</pre>']) expect(inject(html)).not.toContain("spec.js");
+  });
+
   it("adds component runtimes only when needed, before the charts", () => {
     expect(inject("<p class=\"lede\">x</p>")).not.toContain("<script>");
     for (const html of ['<body><div class="tabs"><section data-tab="A"></section></div></body>', '<body><nav class="toc"></nav></body>', '<body><div class="compare"><img src="before.png"></div></body>', '<body><img data-zoom src="detail.png"></body>']) {

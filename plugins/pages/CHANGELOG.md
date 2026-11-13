@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- HTML pages draw `<pre class="mermaid">` and Markdown pages draw ```` ```mermaid ```` fences with the Mermaid component. An element that already holds an SVG is left alone.
+- Diagrams are drawn by Pele (pele.run). Labels are measured in the page font,
+  so they no longer cut off. A wide left-to-right Diagram turns vertical on narrow
+  screens. Colors and node tones follow the page theme, including the lightbox.
+- New Mermaid component: any Mermaid diagram as text, such as sequence, state,
+  class, ER, gantt or mindmap. A parse error shows as text in place of the diagram.
+- Markdown export writes Diagram and Mermaid as `mermaid` code fences.
+- The inline diagram box is never taller than the diagram. The expand button
+  shows on hover or focus, and always on touch screens.
+- A card's reply reads like a quoted reply in a chat app. The bubble holds only
+  the answer: one answer alone, or several as `Label: answer` on one line. A pill
+  above it quotes what it answers: the field label, the Decision question, or the
+  card heading. A click on the pill scrolls to the card. The agent still gets the
+  question and answer in an agent-only part. Needs BB 0.49's message metadata slot;
+  older BB shows the plain reply.
+- Replies use field and option labels instead of names, leave out empty fields,
+  and drop a generic Send or Submit once there are answers.
+- Sent buttons look clearly inactive: flat and disabled, with only the chosen
+  control kept.
+
 ## 0.7.1
 
 - Status lists highlights, risks and next steps as labeled rows with hairline

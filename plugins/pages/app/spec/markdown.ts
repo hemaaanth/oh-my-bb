@@ -8,6 +8,7 @@ import { formatPercent, percent } from "./reports/coverage.js";
 import { manualBenchmarks } from "./benchmark-input.js";
 import { isTranscriptLines } from "./transcript-input.js";
 import { mapMarkers } from "./map-input.js";
+import { diagramGraph, diagramSource } from "./diagram-source.js";
 
 export interface MarkdownSnapshot {
   state?: Record<string, unknown>;
@@ -85,10 +86,10 @@ export function snapshotMarkdown(parsed: ParseResult, snapshot: MarkdownSnapshot
         return markdown(prose([`\`${path}\``, fence(excerpt.code, path.split(".").pop())]));
       }
       case "Diagram": {
-        const nodes = list(raw.nodes).map(record), edges = list(raw.edges).map(record);
-        const labels = new Map(nodes.map(n => [text(n.id), text(n.label ?? n.id)]));
-        return markdown(prose(["**Diagram**", edges.length ? edges.map(edge => `- ${labels.get(text(edge.from)) ?? text(edge.from)} → ${labels.get(text(edge.to)) ?? text(edge.to)}${edge.label ? ` (${text(edge.label)})` : ""}`).join("\n") : [...labels.values()].join(" · ")]));
+        const { nodes, edges } = diagramGraph(list(raw.nodes), list(raw.edges));
+        return markdown(nodes.length ? fence(diagramSource(nodes, edges, raw.direction === "right"), "mermaid") : "");
       }
+      case "Mermaid": return markdown(prose([raw.title ? `**${text(raw.title)}**` : "", fence(text(raw.source), "mermaid")]));
       case "Chart": props.series = Object.fromEntries(list(raw.series).map(item => { const p = record(record(item).props); return [text(p.name), converted(p.values)]; })); break;
       case "Gallery": props.images = converted(raw.items, form); break;
       case "BeforeAfter": props.images = converted(list(raw.items).map(item => ({ src: record(item).src, caption: record(item).caption ?? record(item).label, alt: record(item).alt }))); return make("Gallery", props);

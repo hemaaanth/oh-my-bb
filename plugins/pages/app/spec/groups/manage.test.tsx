@@ -31,9 +31,14 @@ describe("Decision", () => {
     const log: ActionEvent[] = [];
     render(<Fence code={code} log={log} />);
     fireEvent.click(await screen.findByRole("button", { name: "Choose Nov 4" }));
-    expect(log.map((event) => [event.humanFriendlyMessage, event.formName])).toEqual([["Launch date?: Nov 4", "launch"]]);
+    expect(log.map((event) => [event.humanFriendlyMessage, event.formName])).toEqual([["Launch date? Nov 4", "launch"]]);
+    // The question rides along, so the reply's bubble can show only the option and the header quotes the question.
+    expect(log[0].params).toEqual({ quote: "Launch date?", answer: "Nov 4" });
     expect(screen.getByRole("button", { name: "Chosen" })).toHaveProperty("disabled", true);
-    expect(screen.getByRole("button", { name: "Choose Nov 18" })).toHaveProperty("disabled", true);
+    // The other option drops its button and fades, so nothing left looks pressable.
+    expect(screen.queryByRole("button", { name: "Choose Nov 18" })).toBeNull();
+    expect(screen.getByText("Nov 18").closest("div")!.className).toContain("opacity-50");
+    expect(screen.getByRole("status").textContent).toBe("Sent to the thread·Change");
     fireEvent.click(screen.getByRole("button", { name: "Change" }));
     expect(screen.getByRole("button", { name: "Choose Nov 4" })).toHaveProperty("disabled", false);
   });

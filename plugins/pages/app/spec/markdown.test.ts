@@ -49,3 +49,12 @@ describe("native current-value Markdown", () => {
     expect(() => snapshotMarkdown(parsed, { resolveQuery: () => { throw new Error("Data is still loading."); } })).toThrow("Data is still loading");
   });
 });
+
+describe("diagram Markdown", () => {
+  it("exports Diagram and Mermaid as mermaid fences", () => {
+    const parsed = parser.parse('root = Stack([Diagram([{id: "a", label: "Start"}, {id: "b"}], [{from: "a", to: "b"}], "right"), Mermaid("sequenceDiagram\\n  A->>B: hi", "Hello")])');
+    const result = snapshotMarkdown(parsed, {});
+    expect(result).toContain('```mermaid\nflowchart LR\n  n0["Start"]\n  n1["b"]\n  n0 --> n1\n```');
+    expect(result).toContain("**Hello**\n\n```mermaid\nsequenceDiagram\n  A->>B: hi\n```");
+  });
+});

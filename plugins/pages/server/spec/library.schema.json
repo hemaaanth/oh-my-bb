@@ -131,6 +131,9 @@
   "Diagram": {
    "$ref": "#/$defs/Diagram"
   },
+  "Mermaid": {
+   "$ref": "#/$defs/Mermaid"
+  },
   "Chart": {
    "$ref": "#/$defs/Chart"
   },
@@ -368,6 +371,7 @@
   "Calendar",
   "CalendarHeatmap",
   "Diagram",
+  "Mermaid",
   "Chart",
   "Series",
   "Input",
@@ -1556,7 +1560,23 @@
     "edges"
    ],
    "additionalProperties": false,
-   "description": "A flow diagram of boxes and arrows, laid out in layers. Each node has an id and an optional label (defaults to the id). Each edge goes from one node id to another, with an optional short label. direction \"down\" (default) or \"right\". tone outlines a node: \"info\", \"success\", \"warning\", \"danger\", or \"neutral\" (default). Keep it under about 15 nodes."
+   "description": "A flow diagram of boxes and arrows. Each node has an id and an optional label (defaults to the id). Each edge goes from one node id to another, with an optional short label. direction \"down\" (default) or \"right\"; a wide \"right\" diagram turns vertical on narrow screens. tone outlines a node: \"info\", \"success\", \"warning\", \"danger\", or \"neutral\" (default). For sequence, state, class, ER, gantt, mindmap or other diagram kinds, use Mermaid."
+  },
+  "Mermaid": {
+   "type": "object",
+   "properties": {
+    "source": {
+     "type": "string"
+    },
+    "title": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "source"
+   ],
+   "additionalProperties": false,
+   "description": "Any Mermaid diagram, written as Mermaid text: flowchart, sequenceDiagram, stateDiagram-v2, classDiagram, erDiagram, gantt, mindmap, gitGraph, journey, timeline, architecture-beta, block, sankey and the other Mermaid 12 types. Colors follow the page theme; leave out style, classDef and themes. Use it when Diagram's boxes and arrows are not enough. Prefer Chart for numbers and Timeline for a simple list of dated events. title is an optional caption above it."
   },
   "Chart": {
    "type": "object",
@@ -3626,7 +3646,7 @@
     "options"
    ],
    "additionalProperties": false,
-   "description": "Options for one decision, each with pros, cons, and a note. recommend is the name of the option you recommend; it is marked. Give name to let the reader choose: each option gets a Choose button that sends \"<question>: <option>\" to the thread, then locks. Without name it is read-only."
+   "description": "Options for one decision, each with pros, cons, and a note. recommend is the name of the option you recommend; it is marked. Give name to let the reader choose: each option gets a Choose button that replies to the thread with that option, quoting the question, then locks. Without name it is read-only."
   },
   "Estimate": {
    "type": "object",

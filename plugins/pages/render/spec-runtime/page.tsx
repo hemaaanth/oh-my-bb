@@ -9,7 +9,7 @@ import { HostContext, fallbackHost, type Host, type WebMethod } from "../../app/
 import type { Tools } from "../../app/spec/kit.js";
 import { hostResources } from "../../app/spec/resources.js";
 import { specTools } from "../../app/spec/tools.js";
-import { APP_READY_ATTRIBUTE, BAKED_ATTRIBUTE, SPEC_TYPE, bakedKey, unescapeSpec, type Baked } from "../spec-baked.js";
+import { APP_READY_ATTRIBUTE, BAKED_ATTRIBUTE, MERMAID_SELECTOR, SPEC_TYPE, bakedKey, unescapeSpec, type Baked } from "../spec-baked.js";
 import { annotateSources, sourcedQuery } from "../../app/spec/source-metadata.js";
 import { MotionBoundary } from "../../app/spec/motion.js";
 import { SpecRenderer } from "../../app/spec/SpecRenderer.js";
@@ -100,8 +100,11 @@ export function SpecBlock({ code, host, tools, onError }: SpecBlockProps) {
   </HostContext.Provider>;
 }
 
+/** The openui-lang block for a <pre class="mermaid">: its text, which the browser has already unescaped. */
+export const mermaidSpec = (element: Element) => `root = Mermaid(${JSON.stringify((element.textContent ?? "").replace(/^\n+|\s+$/gu, ""))})`;
+
 /**
- * Draws every <script type="text/openui-lang"> in `doc`. Each block renders into an open shadow root right
+ * Draws every <script type="text/openui-lang"> in `doc`, and every <pre class="mermaid"> as a Mermaid block. Each block renders into an open shadow root right
  * after its script, so the page's theme.css never reaches the components and their CSS never reaches the page.
  * `css` is the component CSS (dist/app.css with the page token bridge). Returns how many blocks it drew.
  * `onError` gets each block's render errors; the page itself shows them in the block.
@@ -115,15 +118,22 @@ export function mountSpecs(doc: Document, css: string, onError?: (errors: OpenUI
   identity.searchParams.delete("frame");
   identity.hash = "";
   let ordinal = 0;
+  let mermaids = 0;
   let count = 0;
-  for (const script of Array.from(doc.querySelectorAll<HTMLScriptElement>(`script[type="${SPEC_TYPE}"]`))) {
-    const blockKey = `bb.pages.page:${identity.href}#${ordinal++}`;
-    if (script.hasAttribute("data-bb-spec-drawn")) continue;
-    script.setAttribute("data-bb-spec-drawn", "");
+  for (const element of Array.from(doc.querySelectorAll(`script[type="${SPEC_TYPE}"], ${MERMAID_SELECTOR}`))) {
+    const mermaid = element.localName !== "script";
+    const blockKey = `bb.pages.page:${identity.href}#${mermaid ? `mermaid-${mermaids++}` : ordinal++}`;
+    if (element.hasAttribute("data-bb-spec-drawn")) continue;
+    // A Mermaid element the page's own script already drew (it holds an <svg>) stays as it is.
+    if (mermaid && (element.querySelector("svg") || !element.textContent?.trim())) continue;
+    element.setAttribute("data-bb-spec-drawn", "");
+    const code = mermaid ? mermaidSpec(element) : unescapeSpec(element.textContent ?? "");
+    // The diagram takes the place of the Mermaid text.
+    if (mermaid) (element as HTMLElement).hidden = true;
     const index = count;
     const box = doc.createElement("div");
     box.className = "bb-spec";
-    script.after(box);
+    element.after(box);
     const shadow = box.attachShadow({ mode: "open" });
     const style = doc.createElement("style");
     style.textContent = css;
@@ -132,7 +142,7 @@ export function mountSpecs(doc: Document, css: string, onError?: (errors: OpenUI
     root.setAttribute("data-bb-plugin-root", "");
     root.setAttribute("data-bb-plugin", "pages");
     shadow.append(style, root);
-    createRoot(root).render(<SpecBlock code={unescapeSpec(script.textContent ?? "")} host={{ ...host, blockKey, appsReady: script.getAttribute(APP_READY_ATTRIBUTE) !== "false" }} tools={tools} onError={onError ? (errors) => onError(errors, index) : undefined} />);
+    createRoot(root).render(<SpecBlock code={code} host={{ ...host, blockKey, appsReady: element.getAttribute(APP_READY_ATTRIBUTE) !== "false" }} tools={tools} onError={onError ? (errors) => onError(errors, index) : undefined} />);
     count += 1;
   }
   return count;

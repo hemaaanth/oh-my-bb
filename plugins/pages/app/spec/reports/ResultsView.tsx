@@ -1,7 +1,7 @@
 import { useContext, useMemo, useState } from "react";
 import { useFormName } from "@openuidev/react-lang";
 import { useHost } from "../host.js";
-import { field, focusRing, SentContext } from "../kit.js";
+import { field, focusRing, SentContext, SentNote } from "../kit.js";
 import { fixAllMessage, fixThisMessage, needsFix, readFindings, severityLabel, verdictHeadline } from "./findings.js";
 import { groupTests, readTestRun } from "./test-results.js";
 import type { Value } from "./types.js";
@@ -17,7 +17,7 @@ export function FindingsView({ findings, title }: { findings: unknown; title?: s
   const read = useMemo(() => readFindings(findings as Value), [findings]);
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(30);
-  const { sent, unlock } = useContext(SentContext);
+  const { sent } = useContext(SentContext);
   const form = useFormName() ?? "";
   if (!read.ok) return <ReportError message={read.error} />;
   const report = read.report;
@@ -28,7 +28,7 @@ export function FindingsView({ findings, title }: { findings: unknown; title?: s
   return <div className="flex min-w-0 flex-col gap-3">
     <ReportTitle title={title ?? report.review?.subject ?? undefined}><span className="flex items-center gap-2 text-xs text-muted-foreground">{report.findings.length} {report.findings.length === 1 ? "finding" : "findings"}{report.tool ? ` · ${report.tool}` : ""}{fixable.length ? <FollowUpMenu label={fixable.length === 1 ? "Ask agent to fix this" : `Ask agent to fix all ${fixable.length}`} message={() => fixable.length === 1 ? fixThisMessage(fixable[0]!) : fixAllMessage(fixable, report.scale, undefined, report.review?.subject ?? null)} /> : null}</span></ReportTitle>
     {verdict ? <p className={`m-0 text-sm ${verdict.tone === "bad" ? "text-destructive" : verdict.tone === "warn" ? "text-warning" : verdict.tone === "good" ? "text-success" : "text-muted-foreground"}`}>{verdict.text}</p> : null}
-    {sent[form] !== undefined && host.replies ? <div role="status" className="text-xs text-muted-foreground">{host.kind === "gallery" ? <ReportDetails summary={<span>Preview request</span>}><p className="m-0 whitespace-pre-wrap">{sent[form]}</p></ReportDetails> : "Sent to the thread."} <button type="button" onClick={() => unlock(form)} className={`rounded-sm text-foreground underline underline-offset-2 ${focusRing}`}>Change</button></div> : null}
+    {sent[form] !== undefined && host.replies ? <div className="text-xs">{host.kind === "gallery" ? <ReportDetails summary={<span>Preview request</span>}><p className="m-0 whitespace-pre-wrap">{sent[form]}</p></ReportDetails> : null}<SentNote form={form} /></div> : null}
     {report.review && (report.review.evidence.length || report.review.artifacts.length) ? <ReportDetails summary={<span className="text-xs">Review evidence</span>}><EvidenceItems items={readEvidence([...report.review.evidence, ...report.review.artifacts])} /></ReportDetails> : null}
     {report.findings.length > 5 ? <input type="search" aria-label="Filter findings" value={query} onChange={event => { setQuery(event.target.value); setLimit(30); }} placeholder="Filter findings" className={`${field} h-7 py-1 text-xs`} /> : null}
     <div className="min-w-0">{shown.slice(0, limit).map((item, index) => <ReportDetails key={item.id ?? `${item.file}:${item.line}:${item.title}:${index}`} summary={<>

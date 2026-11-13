@@ -46,12 +46,12 @@ export function ZoomSurface({ children, content, inline = false, onBackdrop, onS
   }, [children, content]);
   useLayoutEffect(() => {
     zoom.redraw();
-    if (!pane) return;
+    if (!pane || typeof ResizeObserver !== "function") return;
     const observer = new ResizeObserver(zoom.redraw);
     observer.observe(pane);
     return () => observer.disconnect();
   }, [pane, size, zoom.redraw]);
-  const inlineStyle: CSSProperties | undefined = inline && size ? { aspectRatio: `${size.width}/${size.height}`, maxHeight: "32rem" } : undefined;
+  const inlineStyle: CSSProperties | undefined = inline && size ? { aspectRatio: `${size.width}/${size.height}`, maxHeight: `min(32rem, ${size.height}px)` } : undefined;
   return <div ref={setPane} data-pages-zoom="" className={`relative min-h-0 min-w-0 overflow-hidden select-none ${inline ? "w-full" : "flex-1"} ${zoom.zoomed ? "cursor-grab active:cursor-grabbing" : ""}`} style={{ ...inlineStyle, touchAction: inline && !zoom.zoomed ? "pan-y" : "none" }}
     onClick={(event) => { if (event.target === event.currentTarget) onBackdrop?.(); }}
     onKeyDown={(event) => {
@@ -120,9 +120,10 @@ export function Zoomable({ src, alt, caption, className, children }: { src: stri
 
 export function ZoomDiagram({ width, height, label, children }: { width: number; height: number; label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  return <div className="relative min-w-0">
+  // The button sits over the diagram, so it shows on hover or focus; touch screens without hover always show it.
+  return <div className="group relative min-w-0">
     <ZoomSurface inline content={{ width, height }}>{children}</ZoomSurface>
-    <button type="button" aria-label="Expand diagram" onClick={() => setOpen(true)} className={`absolute top-1 right-1 ${control}`}><Maximize2 aria-hidden className="size-4" /></button>
+    <button type="button" aria-label="Expand diagram" onClick={() => setOpen(true)} className={`absolute top-1 right-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 ${control}`}><Maximize2 aria-hidden className="size-4" /></button>
     <Lightbox open={open} onClose={() => setOpen(false)} label={label} tone="page">{children}</Lightbox>
   </div>;
 }

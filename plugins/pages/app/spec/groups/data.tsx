@@ -1,13 +1,14 @@
 // Data: tables, progress, code, diffs, calendars, diagrams, and other small views of data.
 import { defineComponent } from "@openuidev/react-lang";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { z } from "zod";
 import { useCopy, useHost } from "../host.js";
 import { Chevron, focusRing, seriesColor, type Group } from "../kit.js";
 import { ChartFailed, useChartClass, useHighchart } from "./charts.js";
 import { SourceLine } from "../SourceLine.js";
 import { FileExcerpt } from "../FileExcerpt.js";
-import { ZoomDiagram } from "../viewer.js";
+import { PeleDiagram } from "../pele.js";
+import { diagramGraph, diagramSource } from "../diagram-source.js";
 import { fitColumns, fitTable, toggleCell } from "../../../render/table-fit.js";
 
 // One line per cell, like a spreadsheet; see render/table-fit.ts. Classes key off the table's data-fit.
@@ -78,7 +79,6 @@ const Diff = defineComponent({
 const tone = z.enum(["neutral", "info", "success", "warning", "danger"]);
 type Tone = z.infer<typeof tone>;
 const toneText: Record<Tone, string> = { neutral: "text-muted-foreground", info: "text-primary", success: "text-success", warning: "text-warning", danger: "text-destructive" };
-const toneStroke: Record<Tone, string> = { neutral: "stroke-border", info: "stroke-primary", success: "stroke-success", warning: "stroke-warning", danger: "stroke-destructive" };
 const toneOf = (value: unknown, fallback: Tone): Tone => typeof value === "string" && value in toneText ? value as Tone : fallback;
 const formatNumber = (value: number) => new Intl.NumberFormat("en-US").format(value);
 const isNum = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
@@ -273,81 +273,25 @@ const CalendarHeatmap = defineComponent({
   },
 });
 
-/**
- * Layers for a diagram: each node sits one layer below its deepest parent. Edges that close a cycle are
- * ignored for layering. Each layer is then ordered by where its parents sit, so fewer edges cross.
- */
-export function layoutDiagram(ids: readonly string[], edges: readonly { from: string; to: string }[]): string[][] {
-  const known = new Set(ids);
-  const out = new Map<string, string[]>(ids.map((id) => [id, []]));
-  for (const edge of edges) if (known.has(edge.from) && known.has(edge.to) && edge.from !== edge.to) out.get(edge.from)!.push(edge.to);
-  // Depth-first: an edge back to a node still on the path closes a cycle.
-  const state = new Map<string, 1 | 2>(), forward: [string, string][] = [];
-  const visit = (id: string) => { state.set(id, 1); for (const to of out.get(id)!) { if (state.get(to) === 1) continue; forward.push([id, to]); if (!state.has(to)) visit(to); } state.set(id, 2); };
-  for (const id of ids) if (!state.has(id)) visit(id);
-  const layer = new Map(ids.map((id) => [id, 0]));
-  // Longest path: relax until stable; a DAG needs at most one pass per node.
-  for (let pass = 0, changed = true; changed && pass < ids.length; pass++) {
-    changed = false;
-    for (const [from, to] of forward) if (layer.get(to)! < layer.get(from)! + 1) { layer.set(to, layer.get(from)! + 1); changed = true; }
-  }
-  const layers: string[][] = [];
-  for (const id of known) (layers[layer.get(id)!] ??= []).push(id);
-  for (let l = 1; l < layers.length; l++) {
-    const above = new Map(layers[l - 1]!.map((id, i) => [id, i]));
-    const rank = new Map(layers[l]!.map((id, i) => { const parents = forward.filter(([from, to]) => to === id && above.has(from)).map(([from]) => above.get(from)!); return [id, parents.length ? parents.reduce((a, b) => a + b, 0) / parents.length : i]; }));
-    layers[l]!.sort((a, b) => rank.get(a)! - rank.get(b)!);
-  }
-  return layers.filter(Boolean);
-}
-
 const Diagram = defineComponent({
   name: "Diagram",
   props: z.object({ nodes: z.array(z.object({ id: z.string(), label: z.string().optional(), tone: tone.optional() })), edges: z.array(z.object({ from: z.string(), to: z.string(), label: z.string().optional() })), direction: z.enum(["down", "right"]).optional() }),
-  description: 'A flow diagram of boxes and arrows, laid out in layers. Each node has an id and an optional label (defaults to the id). Each edge goes from one node id to another, with an optional short label. direction "down" (default) or "right". tone outlines a node: "info", "success", "warning", "danger", or "neutral" (default). Keep it under about 15 nodes.',
+  description: 'A flow diagram of boxes and arrows. Each node has an id and an optional label (defaults to the id). Each edge goes from one node id to another, with an optional short label. direction "down" (default) or "right"; a wide "right" diagram turns vertical on narrow screens. tone outlines a node: "info", "success", "warning", "danger", or "neutral" (default). For sequence, state, class, ER, gantt, mindmap or other diagram kinds, use Mermaid.',
   component: ({ props }) => {
-    const marker = `arrow${useId().replace(/[^\w-]/g, "")}`;
-    const nodes = new Map<string, { label: string; tone: Tone }>();
-    for (const node of props.nodes) if (node?.id && !nodes.has(node.id)) nodes.set(node.id, { label: node.label || node.id, tone: toneOf(node.tone, "neutral") });
-    const edges = props.edges.filter((edge) => nodes.has(edge?.from) && nodes.has(edge?.to));
-    if (nodes.size === 0) return null;
-    const layers = layoutDiagram([...nodes.keys()], edges);
-    const right = props.direction === "right";
-    const short = (label: string) => label.length > 26 ? `${label.slice(0, 25)}…` : label;
-    const w = Math.min(180, Math.max(72, Math.max(...[...nodes.values()].map((node) => short(node.label).length)) * 7 + 24)), h = 34, pad = 4;
-    // Lay out along (down the layers) and across (within a layer), then turn the points for "right".
-    const H = right ? w : h, C = right ? h : w, along = H + (right ? 56 : 44), across = C + (right ? 16 : 20);
-    const xy = (a: number, c: number) => right ? [a, c] as const : [c, a] as const, pt = (a: number, c: number) => xy(a, c).join(",");
-    const widest = Math.max(...layers.map((layer) => layer.length));
-    const at = new Map<string, { a: number; c: number; layer: number }>();
-    layers.forEach((layer, l) => layer.forEach((id, i) => at.set(id, { a: pad + l * along, c: pad + (i + (widest - layer.length) / 2) * across, layer: l })));
-    // Edges to the next layer go straight across the gap. Longer and backward edges each take a lane past the far side, so they never cross a box.
-    const outer = pad + (widest - 1) * across + C;
-    let lanes = 0, room = 0;
-    const routes = edges.map((edge) => {
-      const s = at.get(edge.from)!, t = at.get(edge.to)!;
-      if (t.layer === s.layer + 1) {
-        const [sa, sc, ta, tc] = [s.a + H, s.c + C / 2, t.a, t.c + C / 2], mid = (sa + ta) / 2;
-        return { d: `M${pt(sa, sc)} C${pt(mid, sc)} ${pt(mid, tc)} ${pt(ta, tc)}`, label: [mid, (sc + tc) / 2] as const };
-      }
-      const lane = outer + 14 * ++lanes, r = 6, sa = s.a + H / 2, ta = t.a + H / 2, dir = ta > sa ? 1 : -1;
-      if (edge.label) room = Math.max(room, right ? 8 : edge.label.length * 3.3);
-      return { d: `M${pt(sa, s.c + C)} L${pt(sa, lane - r)} Q${pt(sa, lane)} ${pt(sa + dir * r, lane)} L${pt(ta - dir * r, lane)} Q${pt(ta, lane)} ${pt(ta, lane - r)} L${pt(ta, t.c + C)}`, label: [(sa + ta) / 2, lane] as const };
-    });
-    const alongSize = 2 * pad + (layers.length - 1) * along + H, acrossSize = outer + 14 * lanes + room + pad;
-    const [width, height] = right ? [alongSize, acrossSize] : [acrossSize, alongSize];
-    const name = (id: string) => nodes.get(id)!.label;
-    return <ZoomDiagram width={width} height={height} label="Diagram"><svg role="img" aria-label={`Diagram: ${edges.length ? edges.map((edge) => `${name(edge.from)} to ${name(edge.to)}`).join(", ") : [...nodes.values()].map((node) => node.label).join(", ")}`} width={width} viewBox={`0 0 ${width} ${height}`} className="h-auto max-w-full" style={{ fontSize: 12 }}>
-      <defs><marker id={marker} viewBox="0 0 8 8" refX={8} refY={4} markerWidth={8} markerHeight={8} orient="auto-start-reverse" className="text-muted-foreground"><path d="M0,0 L8,4 L0,8 z" fill="currentColor" /></marker></defs>
-      {routes.map((route, i) => { const [x, y] = xy(...route.label); return <g key={i}>
-        <path d={route.d} fill="none" className="stroke-muted-foreground" strokeWidth={1.25} markerEnd={`url(#${marker})`} />
-        {edges[i]!.label ? <text x={x} y={y} dy="0.32em" textAnchor="middle" className="fill-muted-foreground stroke-background" strokeWidth={4} paintOrder="stroke" style={{ fontSize: 11 }}>{edges[i]!.label}</text> : null}
-      </g>; })}
-      {[...at].map(([id, { a, c }]) => { const node = nodes.get(id)!, [x, y] = xy(a, c); return <g key={id}>
-        <rect x={x} y={y} width={w} height={h} rx={4} className={`fill-background ${toneStroke[node.tone]}`} strokeWidth={node.tone === "neutral" ? 1 : 1.5} />
-        <text x={x + w / 2} y={y + h / 2} dy="0.32em" textAnchor="middle" className="fill-foreground">{short(node.label)}{node.label.length > 26 ? <title>{node.label}</title> : null}</text>
-      </g>; })}
-    </svg></ZoomDiagram>;
+    const { nodes, edges } = diagramGraph(props.nodes ?? [], props.edges ?? []);
+    if (nodes.length === 0) return null;
+    return <PeleDiagram source={diagramSource(nodes, edges, props.direction === "right")} label="Diagram" />;
+  },
+});
+
+const Mermaid = defineComponent({
+  name: "Mermaid",
+  props: z.object({ source: z.string(), title: z.string().optional() }),
+  description: "Any Mermaid diagram, written as Mermaid text: flowchart, sequenceDiagram, stateDiagram-v2, classDiagram, erDiagram, gantt, mindmap, gitGraph, journey, timeline, architecture-beta, block, sankey and the other Mermaid 12 types. Colors follow the page theme; leave out style, classDef and themes. Use it when Diagram's boxes and arrows are not enough. Prefer Chart for numbers and Timeline for a simple list of dated events. title is an optional caption above it.",
+  component: ({ props }) => {
+    if (!props.source?.trim()) return null;
+    const diagram = <PeleDiagram source={props.source} label={props.title || "Diagram"} />;
+    return props.title ? <figure className="m-0 flex min-w-0 flex-col gap-2"><figcaption className="text-sm font-medium">{props.title}</figcaption>{diagram}</figure> : diagram;
   },
 });
 
@@ -692,6 +636,10 @@ export const group: Group = {
     { component: Diagram, summary: "boxes and arrows", examples: [
       { name: "Flow", code: `root = Diagram([{id: "req", label: "Request"}, {id: "auth", label: "Auth"}, {id: "cache", label: "Cache"}, {id: "db", label: "Database"}, {id: "res", label: "Response", tone: "success"}], [{from: "req", to: "auth"}, {from: "auth", to: "cache"}, {from: "cache", to: "res", label: "hit"}, {from: "cache", to: "db", label: "miss"}, {from: "db", to: "res"}])` },
       { name: "Left to right with a loop", code: `root = Diagram([{id: "draft", label: "Draft"}, {id: "review", label: "Review", tone: "info"}, {id: "ship", label: "Ship", tone: "success"}], [{from: "draft", to: "review"}, {from: "review", to: "draft", label: "changes"}, {from: "review", to: "ship"}], "right")` },
+    ] },
+    { component: Mermaid, summary: "sequence, state, class, ER, gantt and other Mermaid diagrams", examples: [
+      { name: "Sequence", code: `root = Mermaid("sequenceDiagram\\n  participant U as User\\n  participant A as API\\n  participant D as Database\\n  U->>A: POST /orders\\n  A->>D: insert order\\n  D-->>A: id 42\\n  A-->>U: 201 Created", "Placing an order")` },
+      { name: "State", code: `root = Mermaid("stateDiagram-v2\\n  [*] --> Draft\\n  Draft --> Review: submit\\n  Review --> Draft: changes\\n  Review --> Merged: approve\\n  Merged --> [*]")` },
     ] },
   ],
 };

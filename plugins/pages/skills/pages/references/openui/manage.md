@@ -28,7 +28,7 @@ root = Board([{title: "Dark mode", status: "Backlog"}, {title: "CSV export", sta
 
 `Decision(question: string, options: {name: string, pros?: string[], cons?: string[], note?: string}[], recommend?: string, name?: string)`
 
-Options for one decision, each with pros, cons, and a note. recommend is the name of the option you recommend; it is marked. Give name to let the reader choose: each option gets a Choose button that sends "<question>: <option>" to the thread, then locks. Without name it is read-only.
+Options for one decision, each with pros, cons, and a note. recommend is the name of the option you recommend; it is marked. Give name to let the reader choose: each option gets a Choose button that replies to the thread with that option, quoting the question, then locks. Without name it is read-only.
 
 Read-only:
 

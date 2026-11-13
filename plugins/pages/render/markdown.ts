@@ -14,11 +14,14 @@ pageMd.renderer.rules.fence = (tokens, index, options, env, self) => {
   const language = token.info.trim().split(/\s+/u)[0] ?? "";
   const spec = (SPEC_LANGUAGES as readonly string[]).includes(language);
   const app = (APP_LANGUAGES as readonly string[]).includes(language);
-  if (!spec && !app) return fence(tokens, index, options, env, self);
+  const mermaid = language === "mermaid";
+  if (!spec && !app && !mermaid) return fence(tokens, index, options, env, self);
   // The token's source range includes the closing marker only when one exists.
   let lines = token.content && !token.content.endsWith("\n") ? 1 : 0;
   for (let i = 0; i < token.content.length; i++) if (token.content.charCodeAt(i) === 10) lines++;
   const closed = !!token.map && token.map[1] - token.map[0] === lines + 2;
+  // A ```mermaid fence is drawn by the Mermaid component; a truncated one stays code.
+  if (mermaid) return closed ? `<script type="${SPEC_TYPE}">${escapeSpec(`root = Mermaid(${JSON.stringify(token.content.replace(/\s+$/u, ""))})`)}</script>\n` : fence(tokens, index, options, env, self);
   if (spec) return `<script type="${SPEC_TYPE}"${closed ? "" : ` ${APP_READY_ATTRIBUTE}="false"`}>${escapeSpec(token.content)}</script>\n`;
   if (app) {
     // A truncated app fence remains code; no preview bootstrap or app script runs.

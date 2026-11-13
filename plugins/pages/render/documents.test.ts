@@ -14,6 +14,12 @@ describe("renderMarkdown", () => {
     expect(html).toContain('<script type="text/openui-lang">root = TextContent("<\\/script><b>x")\n</script>');
   });
 
+  it("turns closed mermaid fences into Mermaid blocks and leaves a truncated one as code", () => {
+    const html = renderMarkdown('```mermaid\nflowchart LR\n  A --> B["</script>"]\n```', { title: "t" });
+    expect(html).toContain('<script type="text/openui-lang">root = Mermaid("flowchart LR\\n  A --> B[\\"<\\/script>\\"]")</script>');
+    expect(renderMarkdown("```mermaid\nflowchart LR", { title: "t" })).not.toContain("text/openui-lang");
+  });
+
   it("uses a leading h1 as the title, otherwise adds the given title", () => {
     expect(renderMarkdown("# Own title\n\ntext", { title: "file.md" }).match(/<h1>/gu)).toHaveLength(1);
     expect(renderMarkdown("# Own title", { title: "file.md" })).toContain("<h1>Own title</h1>");

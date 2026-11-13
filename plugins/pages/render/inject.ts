@@ -4,7 +4,7 @@ import { FORMS_OFFLINE, FRAME_BRIDGE } from "./frame-bridge.js";
 import { escapeHtml, scanHtml } from "./html.js";
 import { DATA_TABLE_RUNTIME, PAGE_RUNTIME, TABLE_RUNTIME, needsDataTableRuntime, needsPageRuntime, needsTableRuntime } from "./page-runtime.js";
 import { FORM_RUNTIME, needsFormRuntime } from "./form-runtime.js";
-import { hasSpecBlocks } from "./spec-baked.js";
+import { hasMermaidBlocks, hasSpecBlocks } from "./spec-baked.js";
 import { pageIcons } from "./assets.js";
 import { iconReplacements } from "./icons/expand.js";
 
@@ -103,7 +103,7 @@ export function injectPage(html: string, options: InjectOptions): string {
   const formRuntime = needsFormRuntime(html);
   const dataTable = needsDataTableRuntime(html);
   const tables = needsTableRuntime(html);
-  const specs = hasSpecBlocks(html);
+  const specs = hasSpecBlocks(html) || hasMermaidBlocks(html);
   if (runtime || formRuntime || dataTable || tables || options.hasCharts || specs) {
     const hasBodyEnd = tags.some((tag) => tag.kind === "end" && tag.name === "body");
     let at = html.length;
