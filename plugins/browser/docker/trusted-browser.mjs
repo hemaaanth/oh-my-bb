@@ -1423,7 +1423,7 @@ function retireThreadNativeBrowser(identity) {
   const recorded = readNativeBrowser(identity);
   if (!recorded) return;
   const browser = liveNativeBrowser(identity);
-  if (recorded.placement !== "private" || recorded.display?.geometry !== "1920x1080") fail("This closed native desktop uses an old placement or geometry; it was preserved for an explicit drain");
+  if (recorded.placement !== "desktop" && (recorded.placement !== "private" || recorded.display?.geometry !== "1920x1080")) fail("This closed native desktop uses an old placement or geometry; it was preserved for an explicit drain");
   if (alive(recorded.pid) && !browser) fail("Cannot verify the closed thread's native process; it was preserved");
   if (browser) {
     logNativeLifecycle(identity, "shutdown-requested", browser, { method: "Browser.close" });
@@ -1448,9 +1448,9 @@ function withNativeBrowser(identity, launch, action) {
   const browser = withNativeLock(identity, () => {
     let running = liveNativeBrowser(identity);
     let launched = false;
-    const placement = launch ? (identity.thread?"private":wantedPlacement()) : null;
+    const placement = launch ? wantedPlacement() : null;
     const handoff=()=>identity.thread?existsSync(threadHoldPath()):anyThreadHandoff();
-    if(running&&identity.thread&&running.display?.geometry!=="1920x1080")fail("This private browser desktop uses an old geometry. Drain and explicitly close it with its original runtime before reopening; it was not resized.");
+    if(running&&identity.thread&&running.placement==="private"&&running.display?.geometry!=="1920x1080")fail("This private browser desktop uses an old geometry. Drain and explicitly close it with its original runtime before reopening; it was not resized.");
     // Move Brave only while nobody drives it or holds it for manual work.
     if (running && launch && (running.placement || "desktop") !== placement && !handoff() && !otherLeases(identity)) {
       logNativeLifecycle(identity, "placement-change", running, { from: running.placement || "desktop", to: placement });

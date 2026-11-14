@@ -289,3 +289,5 @@ private browser data.
 A paired relay can reload its own extension with
 `BB_BROWSER_BACKEND=relay bb-browser extension reload`. This refuses to reload
 while a handoff is paused. Its idle heartbeat keeps the MV3 worker connected.
+
+Native thread display placement also follows `BB_BROWSER_DISPLAY=auto|desktop|private` (or the display setting file). Explicit `desktop` overrides remote presence while preserving the separate thread profile. Desktop windows stay on the configured workspace without focus changes. Only private displays support full desktop streaming; desktop placement uses page-only controls.

@@ -50,7 +50,7 @@ child.once('exit',(code,signal)=>{appendFileSync(process.env.BB_TEST_ENGINE_EXIT
  });
  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
  const address=server.address();if(!address||typeof address==='string')throw Error('Fixture listener unavailable');const url=`http://127.0.0.1:${address.port}`;
- const env={...process.env,BB_BROWSER_HOME:root,BB_BROWSER_BACKEND:'native',BB_BROWSER_PROFILE:'Brave-native-fixture',BB_BROWSER_EGRESS:'direct',BB_BROWSER_STATE:'',BB_BROWSER_REQUIRED_STATE:'',XDG_CONFIG_HOME:join(root,'config'),BB_BROWSER_EXECUTABLE:supervisor,BB_TEST_REAL_BRAVE:process.env.BB_TEST_BRAVE_EXECUTABLE||'/opt/brave-origin-bin/brave',BB_TEST_CHROME_WRAPPER:process.env.BB_TEST_CHROME_WRAPPER||'/opt/brave-origin-bin/brave-origin',BB_TEST_ENGINE_EXITS:exits};
+ const env={...process.env,BB_BROWSER_HOME:root,BB_BROWSER_BACKEND:'native',BB_BROWSER_DISPLAY:'private',BB_BROWSER_PROFILE:'Brave-native-fixture',BB_BROWSER_EGRESS:'direct',BB_BROWSER_STATE:'',BB_BROWSER_REQUIRED_STATE:'',XDG_CONFIG_HOME:join(root,'config'),BB_BROWSER_EXECUTABLE:supervisor,BB_TEST_REAL_BRAVE:process.env.BB_TEST_BRAVE_EXECUTABLE||'/opt/brave-origin-bin/brave',BB_TEST_CHROME_WRAPPER:process.env.BB_TEST_CHROME_WRAPPER||'/opt/brave-origin-bin/brave-origin',BB_TEST_ENGINE_EXITS:exits};
  const start=(thread:string,args:string[])=>{
   const result=Promise.withResolvers<string>(),child=spawn('bb-browser',args,{env:{...env,BB_THREAD_ID:thread},stdio:['ignore','pipe','pipe']});let out='',error='';
   child.stdout.on('data',chunk=>out+=chunk);child.stderr.on('data',chunk=>error+=chunk);child.once('error',result.reject);child.once('close',code=>code===0?result.resolve(out):result.reject(Error(thread+' '+args.join(' ')+': '+error)));

@@ -1,5 +1,5 @@
 Browser gives native and isolated BB threads separate persistent profiles,
-processes and private desktops, so threads can use different accounts on one site.
+processes, so threads can use different accounts on one site. Native browsers can use the configured local workspace or a private desktop.
 An optional extension can relay an explicitly paired regular profile, or export
 cookies while that browser stays open. A toolbar popup shows connection and sync
 health. Authentication sharing is off until enabled.
@@ -11,8 +11,7 @@ without cropping. Only one viewer streams at once. Pop-out transfers ownership;
 **View here** returns it. Fullscreen keeps the same connection.
 
 Without desktop integration, handoff offers page-only controls. Browser chrome
-and OS dialogs are unavailable there. Native thread windows stay private, not on
-the user's workspace. Existing native profiles are preserved, not copied.
+and OS dialogs are unavailable there. Native placement follows `BB_BROWSER_DISPLAY=auto|desktop|private`. Auto selects a private display during remote presence; explicit desktop placement uses the configured local workspace without focusing it. Existing native profiles are preserved, not copied.
 Default authentication seeds apply once; new sign-ins stay private to the thread.
 Some sites require manual login. A copied seed does not verify the account.
 
