@@ -65,3 +65,8 @@ it("reports real sync results without exposing credentials and clears the badge 
   expect(saved.syncState).toBe("off");
   expect(chrome.action.setBadgeText).toHaveBeenLastCalledWith({text:""});
 });
+it("opens no settings tab on install, because bb-browser loads it into every fresh thread profile", async () => {
+  const { handlers, chrome } = await worker();
+  handlers.installed({ reason: "install" }); await vi.advanceTimersByTimeAsync(0);
+  expect(chrome.runtime.openOptionsPage).not.toHaveBeenCalled();
+});

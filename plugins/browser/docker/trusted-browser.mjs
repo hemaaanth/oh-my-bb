@@ -101,6 +101,16 @@ const LOOPBACK_HEX = /^(?:[0-9A-F]{6}7F|0{24}01000000|0{16}FFFF0000[0-9A-F]{6}7F
 const PORT_PROBE =
   'const s=require("node:net").createServer();s.once("error",()=>process.exit(1));' +
   's.listen({host:"127.0.0.1",port:Number(process.argv[1]),exclusive:true},()=>s.close(()=>process.exit(0)))';
+// Closes 1Password's welcome page for 30 seconds after launch. Omarchy installs
+// 1Password into every Brave profile, so each fresh thread profile opens it.
+// It only lists and closes pages over the loopback debugging port.
+const WELCOME_SWEEP =
+  'const port=Number(process.argv[1]),base="http://127.0.0.1:"+port,end=Date.now()+30000;' +
+  'const welcome=/^chrome-extension:\\/\\/(?:aeblfdkhhhdcdjpifhhbdiojplfjncoa|khgocmkkpikpnmmkgmdnfckapcdkgfaf)\\/app\\/app\\.html#\\/page\\/welcome/;' +
+  '(async()=>{let misses=0;while(Date.now()<end&&misses<10){try{' +
+  'const pages=await(await fetch(base+"/json/list",{signal:AbortSignal.timeout(2000)})).json();misses=0;' +
+  'for(const page of pages)if(page.type==="page"&&welcome.test(page.url))await fetch(base+"/json/close/"+page.id,{signal:AbortSignal.timeout(2000)}).catch(()=>{});' +
+  '}catch{misses++}await new Promise(r=>setTimeout(r,500))}})().finally(()=>process.exit(0));';
 const NATIVE_LAUNCH_ATTEMPTS = 3;
 const NATIVE_LIFECYCLE_LOG_LIMIT = 256 * 1024;
 // Initial browser size only. Hyprland's normal tiling determines visible bounds.
@@ -1289,6 +1299,7 @@ function launchNativeBrowser(identity, placement = "desktop") {
         "close it first. bb-browser never attaches to a browser it did not launch",
     );
   }
+  skipOriginStartup(profile);
   let launched = null;
   const children = [];
   try {
@@ -1300,6 +1311,23 @@ function launchNativeBrowser(identity, placement = "desktop") {
       stopNativeBrowser(identity);
     }
   }
+}
+
+// Brave Origin opens a "support us or stay free" startup tab in every profile
+// until this Local State flag is set. A fresh thread profile would show it on
+// each launch. Call only while no Brave holds the profile: Brave rewrites
+// Local State on exit. An unreadable Local State is left alone.
+function skipOriginStartup(profile) {
+  const path = join(profile, "Local State");
+  let state = {};
+  try {
+    state = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") return;
+  }
+  if (state?.brave?.origin?.free_tier_accepted === true) return;
+  state.brave = { ...state.brave, origin: { ...state.brave?.origin, free_tier_accepted: true } };
+  writePrivate(path, JSON.stringify(state));
 }
 
 function startNativeBrowser(identity, children, placement = "desktop") {
@@ -1353,6 +1381,7 @@ function startNativeBrowser(identity, children, placement = "desktop") {
     if (started?.listener === "loopback") {
       const browser = { pid: started.pid, port, profile, windowClass, startedAt: new Date().toISOString(), placement, ...(display ? { display } : {}) };
       writePrivate(recordPath(identity), `${JSON.stringify(browser)}\n`);
+      spawn(nodeRuntime(), ["-e", WELCOME_SWEEP, String(port)], { detached: true, stdio: "ignore" }).unref();
       // The window must appear under the distinct managed class.
       if (!display && !waitFor(() => checkNativeWindows(browser) > 0, 15_000)) {
         fail(`the native browser opened no ${windowClass} window`);

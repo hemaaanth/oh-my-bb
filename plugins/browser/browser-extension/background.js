@@ -52,8 +52,9 @@ function schedule() {
 chrome.cookies.onChanged.addListener(schedule);
 chrome.alarms.onAlarm.addListener((alarm) => { if (alarm.name === "cookie-sync") void sync(); });
 chrome.runtime.onStartup.addListener(() => void sync());
-chrome.runtime.onInstalled.addListener((details) => {
-  if (details.reason === "install") void chrome.runtime.openOptionsPage();
+// No settings tab on install: bb-browser loads this extension into every fresh
+// thread profile, so an install tab would open in each one. The popup links to settings.
+chrome.runtime.onInstalled.addListener(() => {
   void chrome.storage.local.get(["token", "cookieExport"]).then(saved => { if (saved.cookieExport === undefined) return chrome.storage.local.set({cookieExport:!!saved.token}); });
   void sync();
 });

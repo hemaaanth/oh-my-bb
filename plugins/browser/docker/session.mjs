@@ -110,6 +110,10 @@ try {
       let count = 0; for (const name of sessions) if (await alive(await read(join(parent, name, 'session.json')))) count++;
       if (count >= 4) throw Error('Four isolated sessions are already running; close an idle session first');
       const profile = join(directory, 'profile'); await mkdir(profile, { recursive: true, mode: 0o700 });
+      // Skip Brave Origin's "support us or stay free" startup tab, as native profiles do.
+      { const file=join(profile,'Local State');let state={},readable=true;
+        try{state=JSON.parse(await readFile(file,'utf8'));}catch(error){readable=error.code==='ENOENT';}
+        if(readable&&state?.brave?.origin?.free_tier_accepted!==true)await privateWrite(file,{...state,brave:{...state.brave,origin:{...state.brave?.origin,free_tier_accepted:true}}}); }
       if (identity.proxy) {
         const defaults=join(profile,'Default');await mkdir(defaults,{recursive:true,mode:0o700});
         const file=join(defaults,'Preferences');let preferences={};
