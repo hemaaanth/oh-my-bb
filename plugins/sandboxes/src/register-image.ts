@@ -1,3 +1,4 @@
+import { registerBoatImage } from "./boat-image.js";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
@@ -363,12 +364,15 @@ export interface SandboxImageRegistrationRequest {
   /** For providers with regions: where to register, else the configured default. */
   regionId?: string;
   onLog?: (message: string) => void;
+  onName?: (name: string) => void;
 }
 
 export interface SandboxImageRegistrationInput
   extends SandboxImageRegistrationRequest {
   e2bScriptPath: string;
   env?: NodeJS.ProcessEnv;
+  boatJournalDirectory?: string;
+  signal?: AbortSignal;
 }
 
 export async function registerSandboxImage(
@@ -452,6 +456,13 @@ export async function registerSandboxImage(
       ...(input.onLog === undefined ? {} : { onLog: input.onLog }),
     });
     return { name, placement: null };
+  }
+  if (input.provider === "box") {
+    const apiKey = configured(input.settings.boxApiKey, env.BOAT_API_KEY, env.BOX_API_KEY);
+    if (!apiKey) throw new Error("Configure the Boat API key first");
+    if (!input.boatJournalDirectory) throw new Error("Boat image recovery directory is required");
+    return registerBoatImage({ apiKey, name: input.name, pinnedReference: input.pinnedReference,
+      registry: input.registry, journalDirectory: input.boatJournalDirectory, signal: input.signal, onName: input.onName, onLog: input.onLog });
   }
   throw new Error(`Unsupported image provider: ${input.provider}`);
 }

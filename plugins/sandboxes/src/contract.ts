@@ -487,6 +487,7 @@ export const sandboxRpcContract = defineRpcContract({
       }),
       z.object({
         provider: z.literal("box"),
+        snapshotId: z.string().max(500).optional(),
         apiKey: z.string().max(10_000).optional(),
         machineClass: z.enum(["small", "default", "large"]),
         environment: z.string().min(1).max(500),

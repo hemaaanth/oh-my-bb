@@ -49,6 +49,7 @@ describe("sandboxes plugin server", () => {
         { provider: "daytona", credentialsConfigured: false, activeName: null },
         { provider: "modal", credentialsConfigured: false, activeName: null },
         { provider: "e2b", credentialsConfigured: false, activeName: null },
+        { provider: "box", credentialsConfigured: false, activeName: null },
 
       ],
     });

@@ -115,6 +115,8 @@ export interface SandboxBackend<
   resume?(
     context: SandboxLifecycleContext<Resource>,
   ): Promise<{ resource: Resource; executor: MachineExecutor }>;
+  /** Extend a provider deadline without starting or resuming the machine. */
+  renewLease?(context: SandboxResourceContext<Resource>): Promise<void>;
   /** Terminate the VM and delete its durable artifacts. */
   remove(context: SandboxResourceContext<Resource>): Promise<void>;
   /**

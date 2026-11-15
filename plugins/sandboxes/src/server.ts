@@ -28,6 +28,8 @@ import { createFreestyleMachineBackend } from "./provider/backends/freestyle.js"
 import { createBoxMachineBackend } from "./provider/backends/box.js";
 import { createE2bMachineBackend } from "./provider/backends/e2b.js";
 import { registerNativeProjectEnvironmentSync } from "./provider/project-env.js";
+import { cleanupBoatImageBuilds } from "./boat-image.js";
+import { registerNativeLeaseRenewal } from "./provider/lease-renewal.js";
 import { registerNativeIdleSuspend } from "./provider/idle-suspend.js";
 import { LegacySandboxCleanup } from "./legacy-cleanup.js";
 import { resolveNativeThreadStatuses } from "./provider/sidebar-status.js";
@@ -87,8 +89,8 @@ import {
   readImageVersions,
 } from "./upgrade-sources.js";
 
-export function supportsTrustedBrowserProvisioning(provider: SandboxProvider): boolean {
-  return provider !== "box";
+export function supportsTrustedBrowserProvisioning(provider: SandboxProvider, managedRuntime = false): boolean {
+  return provider !== "box" || managedRuntime;
 }
 
 const projectContextSchema = z.object({
@@ -237,11 +239,19 @@ export default async function plugin(bb: BbPluginApi) {
       );
     }
     const providerConfiguration = new SandboxProviderConfigurationStore(db.name);
+    const boatImageController = new AbortController();
+    bb.onDispose(() => boatImageController.abort());
+    const boatJournalDirectory = join(dirname(db.name), "boat-image-builds");
+    // Only a previous worker's receipts exist when this promise starts.
+    const boatImageRecovery = providerConfiguration.getSecret("boxApiKey").then(async key => {
+      const apiKey = key || process.env.BOAT_API_KEY || process.env.BOX_API_KEY;
+      if (apiKey) await cleanupBoatImageBuilds(boatJournalDirectory, apiKey, message => bb.log.warn(message));
+    }).catch(error => bb.log.warn(`Boat image recovery could not run: ${error instanceof Error ? error.message : String(error)}`));
     const selectedArtifacts = () => {
       const result: Partial<Record<SandboxProvider, string>> = {};
       for (const provider of sandboxProviderValues) {
         const image = store.getDefaultImage(provider);
-        if (image !== null) result[provider] = image.name;
+        if (image !== null && (provider !== "box" || store.isManagedBoatImage(image.id))) result[provider] = image.name;
       }
       return result;
     };
@@ -280,6 +290,7 @@ export default async function plugin(bb: BbPluginApi) {
         boxApiKey: shared.boxApiKey ?? boxApiKey,
         boxMachineClass: providers.box.machineClass,
         boxEnvironment: providers.box.environment,
+        boxSnapshotId: providers.box.snapshotId,
         freestyleApiKey: shared.freestyleApiKey ?? freestyleApiKey,
         freestyleCpu: providers.freestyle.cpu,
         freestyleMemory: providers.freestyle.memory,
@@ -467,10 +478,10 @@ export default async function plugin(bb: BbPluginApi) {
         }
     });
     const startupPolicies = new Map<string, Promise<StartupHarnessPolicy>>();
-    const startupHarnessPolicy = async (): Promise<StartupHarnessPolicy> => {
+    const startupHarnessPolicy = async (provider: SandboxProvider): Promise<StartupHarnessPolicy> => {
       const currentRecipe = await recipe.read();
       if (currentRecipe.dockerfile) return { target: null, tools: null };
-      const image = sandboxImageProviders.map(provider => store.getDefaultImage(provider))
+      const image = store.getDefaultImage(provider) ?? sandboxImageProviders.map(provider => store.getDefaultImage(provider))
         .find(candidate => candidate?.imageVersion != null);
       const registry = sandboxImageRegistryConfig(await combinedSettings());
       const tag = image?.imageVersion;
@@ -513,12 +524,20 @@ export default async function plugin(bb: BbPluginApi) {
         ...input
       }: { key: string; hostId: string } & Pick<Parameters<typeof provisionTrustedBrowser>[0], "executor" | "report" | "signal">) => {
         try {
-          await prepareGatewayHarnesses(bb, input, await startupHarnessPolicy());
+          await prepareGatewayHarnesses(bb, input, await startupHarnessPolicy(provider));
         } catch (error) {
           input.signal.throwIfAborted();
           throw new Error(`Managed model setup failed after native connection on ${input.hostId}. Machine and data are retained; reconcile its native lifecycle state before retrying setup/resume. ${error instanceof Error ? error.message : String(error)}`);
         }
-        if (!supportsTrustedBrowserProvisioning(provider)) {
+        const managedBoat = provider === "box" && z.object({ runtimeContainer: z.literal(true) }).safeParse(await bb.experimental_machines.getResource(input.hostId)).success;
+        if (managedBoat) {
+          const docker = await input.executor.exec({
+            command: ["sh", "-ec", ". /usr/local/lib/bb-sandbox/image-tools.sh; if bb_image_has docker; then bb-sandbox-docker --wait; fi"],
+            stdin: "", signal: input.signal, timeoutMs: 120_000, onOutput: message => input.report.log(message),
+          });
+          if (docker.exitCode !== 0) throw new Error("The selected Docker runtime could not start in the prepared machine");
+        }
+        if (!supportsTrustedBrowserProvisioning(provider, managedBoat)) {
           bb.log.warn("Sandbox Browser provisioning unavailable on Boat: secure input transport required");
           input.report.log("Browser provisioning is unavailable on Boat until secure identity delivery is supported; no Browser identity was sent.\n");
           return;
@@ -534,6 +553,7 @@ export default async function plugin(bb: BbPluginApi) {
       >
     >();
     const runBackends = new Map<SandboxProvider, SandboxRunBackend>();
+    const leaseBackends = new Map<string, SandboxBackend<unknown, PluginMachineProviderResource>>();
     const legacyMachine = (id: string) => {
       const record = store.getLegacySandbox(id);
       const backend = record === null ? undefined : legacyBackends.get(record.provider);
@@ -587,6 +607,7 @@ export default async function plugin(bb: BbPluginApi) {
       const backend = createBoxMachineBackend(config.box);
       legacyBackends.set("box", backend);
       runBackends.set("box", backend);
+      leaseBackends.set(backend.definition.id, backend);
       registerSandboxBackend(bb, backend, optionsFor("box"));
     }
     if (config.e2b !== null) {
@@ -595,6 +616,7 @@ export default async function plugin(bb: BbPluginApi) {
       runBackends.set("e2b", backend);
       registerSandboxBackend(bb, backend, optionsFor("e2b"));
     }
+    registerNativeLeaseRenewal(bb, leaseBackends);
     let reconfigureChain = Promise.resolve();
     const pendingArtifacts: Partial<Record<SandboxProvider, string>> = {};
     const reconfigure = (activated?: {
@@ -721,7 +743,10 @@ export default async function plugin(bb: BbPluginApi) {
       // so startup finds every toolchain label it checks.
       buildAndPush: async (input) =>
         buildAndPushSandboxImage({ ...input, harness: input.harness ?? await bundledHarnessVersions() }),
-      register: (input) => registerSandboxImage({ ...input, e2bScriptPath }),
+      register: async (input) => {
+        if (input.provider === "box") await boatImageRecovery;
+        return registerSandboxImage({ ...input, e2bScriptPath, boatJournalDirectory, signal: boatImageController.signal });
+      },
       resolveRegistryImage,
       readImageBbAppVersion: (input) =>
         readRegistryImageLabel({ ...input, label: "bb.app.version" }),
@@ -843,7 +868,7 @@ export default async function plugin(bb: BbPluginApi) {
         persistence:
           provider === "freestyle" ? providerConfig.freestyle.persistence : "",
         snapshotId:
-          provider === "freestyle" ? providerConfig.freestyle.snapshotId : "",
+          provider === "box" ? providerConfig.box.snapshotId : provider === "freestyle" ? providerConfig.freestyle.snapshotId : "",
         supportsImages: sandboxImageProviders.some(
           (candidate) => candidate === provider,
         ),
@@ -1160,6 +1185,7 @@ export default async function plugin(bb: BbPluginApi) {
           await providerConfiguration.updateConfiguration("box", {
             machineClass: input.machineClass,
             environment: input.environment,
+            ...(input.snapshotId === undefined ? {} : { snapshotId: input.snapshotId }),
           });
           await providerConfiguration.setSecrets({
             ...(input.apiKey === undefined ? {} : { boxApiKey: input.apiKey }),

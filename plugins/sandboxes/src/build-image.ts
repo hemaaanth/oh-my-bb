@@ -192,22 +192,21 @@ export async function buildAndPushSandboxImage(
       `docker buildx build exited ${build.exitCode}: ${redact(build.stderr.trim()).slice(-4_000) || "no output"}`,
     );
   }
-  const inspect = await runDocker([
-    "buildx",
-    "imagetools",
-    "inspect",
-    input.reference,
-    "--format",
-    "{{json .Manifest.Digest}}",
-  ]);
+  let inspect: DockerResult = { stdout: "", stderr: "", exitCode: 1 };
   let digest = "";
-  if (inspect.exitCode === 0) {
-    try {
-      const parsed: unknown = JSON.parse(inspect.stdout.trim());
-      if (typeof parsed === "string") digest = parsed.trim();
-    } catch {
-      digest = "";
+  // Registries can briefly return manifest-not-found immediately after a push.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    inspect = await runDocker(["buildx", "imagetools", "inspect", input.reference, "--format", "{{json .Manifest.Digest}}"]);
+    if (inspect.exitCode === 0) {
+      try {
+        const parsed: unknown = JSON.parse(inspect.stdout.trim());
+        if (typeof parsed === "string") digest = parsed.trim();
+      } catch { digest = ""; }
+      break;
     }
+    if (!/not found|manifest unknown|429|502|503|timed? ?out/iu.test(inspect.stderr) || attempt === 4) break;
+    input.onLog?.("Waiting for the registry to expose the pushed image digest");
+    await new Promise(resolve => setTimeout(resolve, Math.min(8_000, 2_000 * 2 ** attempt)));
   }
   if (!digestPattern.test(digest)) {
     throw new Error(

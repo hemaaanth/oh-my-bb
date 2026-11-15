@@ -245,7 +245,7 @@ describe("bb sandbox build-image", () => {
     const { fake } = await cli(settled("build", build([])));
 
     await expect(
-      fake.harness.runCli(["build-image", "--local", "--provider", "box"]),
+      fake.harness.runCli(["build-image", "--local", "--provider", "freestyle"]),
     ).resolves.toMatchObject({
       exitCode: 1,
       stderr: expect.stringContaining(

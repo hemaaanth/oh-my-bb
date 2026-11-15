@@ -169,6 +169,7 @@ export type SandboxSettings = PluginSettingsValues<
   boxApiKey: string;
   boxMachineClass: string;
   boxEnvironment: string;
+  boxSnapshotId?: string;
   freestyleApiKey: string;
   freestyleCpu: string;
   freestyleMemory: string;
@@ -183,12 +184,13 @@ export type SandboxSettings = PluginSettingsValues<
 
 /**
  * Every provider that can consume the shared sandbox image by registry
- * reference. Boat and Freestyle bootstrap their toolchain at launch instead.
+ * reference. Boat saves the shared runtime inside a native VM snapshot.
  */
 export const sandboxImageProviders = [
   "daytona",
   "modal",
   "e2b",
+  "box",
 ] as const satisfies readonly SandboxProvider[];
 
 export type SandboxImageProvider = (typeof sandboxImageProviders)[number];
@@ -226,6 +228,8 @@ export interface SandboxRuntimeConfig {
     apiKey: string;
     machineClass: "small" | "default" | "large";
     environment: string;
+    snapshotId?: string;
+    runtimeContainer?: boolean;
   } | null;
   freestyle: {
     apiKey: string;
@@ -363,6 +367,8 @@ export function loadSandboxRuntimeConfig(
                 ? settings.boxMachineClass
                 : "default",
             environment: first(settings.boxEnvironment) ?? "base",
+            snapshotId: first(artifacts.box, settings.boxSnapshotId),
+            runtimeContainer: Boolean(artifacts.box),
           },
     freestyle:
       freestyleApiKey === undefined

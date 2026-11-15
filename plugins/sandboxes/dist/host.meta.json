@@ -1,12 +1,12 @@
 {
   "sdkMajor": 0,
-  "sdkVersion": "0.6.104",
+  "sdkVersion": "0.6.132",
   "artifactFormatVersion": 1,
   "pluginId": "sandboxes",
   "pluginVersion": "0.3.2",
   "builtWith": {
-    "bbVersion": "0.48.1",
-    "pluginSdkVersion": "0.6.104"
+    "bbVersion": "0.49.0",
+    "pluginSdkVersion": "0.6.132"
   },
   "artifactDigest": "28a3d36d926b2805e333f4bf361d87aa63d5fa27fe5ba014c180eb03d117d17f"
 }

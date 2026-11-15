@@ -14,6 +14,7 @@ afterEach(async () => {
   delete process.env.BB_TEST_DOCKER_STDIN;
   delete process.env.BB_TEST_DOCKER_DIGEST;
   delete process.env.BB_TEST_DOCKER_NO_CACHE_EXPORT;
+  delete process.env.BB_TEST_DOCKER_INSPECT_ONCE;
   await Promise.all(
     temporaryDirectories
       .splice(0)
@@ -45,6 +46,7 @@ async function fakeDocker(digestOutput: string): Promise<{
       'if [ "$1" = "login" ]; then cat > "$BB_TEST_DOCKER_STDIN"; echo "Login Succeeded"; exit 0; fi',
       'if [ "$2" = "build" ] && [ -n "$BB_TEST_DOCKER_NO_CACHE_EXPORT" ] && printf "%s" "$*" | grep -q -- "--cache-to"; then echo "ERROR: Cache export is not supported for the docker driver." >&2; exit 1; fi',
       'if [ "$2" = "build" ]; then echo "#5 exporting layers" >&2; exit 0; fi',
+      'if [ "$2" = "imagetools" ] && [ -n "$BB_TEST_DOCKER_INSPECT_ONCE" ] && [ ! -f "$BB_TEST_DOCKER_INSPECT_ONCE" ]; then touch "$BB_TEST_DOCKER_INSPECT_ONCE"; echo "manifest not found" >&2; exit 1; fi',
       'if [ "$2" = "imagetools" ]; then printf "%s\\n" "$BB_TEST_DOCKER_DIGEST"; exit 0; fi',
       "exit 3",
       "",
@@ -171,4 +173,15 @@ describe("buildAndPushSandboxImage", () => {
       }),
     ).rejects.toThrow("docker CLI is not installed");
   });
+});
+
+it("retries a registry manifest visibility delay without rebuilding", async () => {
+  const { argvLog, contextDir } = await fakeDocker(JSON.stringify(digest));
+  process.env.BB_TEST_DOCKER_INSPECT_ONCE = join(contextDir, "first-inspect");
+  const result = await buildAndPushSandboxImage({ contextDir, dockerfilePath: join(contextDir, "Dockerfile"),
+    reference: "ghcr.io/acme/bb-sandbox:v1", platform: "linux/amd64", bbAppVersion: "0.49.0", registryUsername: null, registryToken: null });
+  expect(result.digest).toBe(digest);
+  const calls = (await readFile(argvLog, "utf8")).split("\n");
+  expect(calls.filter(line => line.startsWith("buildx build"))).toHaveLength(1);
+  expect(calls.filter(line => line.startsWith("buildx imagetools"))).toHaveLength(2);
 });

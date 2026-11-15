@@ -134,9 +134,25 @@ reference with each provider that can consume it:
 | Daytona | snapshot created from the registry reference |
 | Modal | image created from the registry reference, then published |
 | E2B | template built `fromImage` on the reference |
+| Boat | prepared VM snapshot containing the same pinned runtime image |
 
-Boat and Freestyle have no custom-image API. They install the same pinned
-toolchain through the portable runtime bootstrap on first boot.
+Boat preparation uses a temporary VM with account environments disabled. It pulls the
+same immutable image, starts an unenrolled runtime container, saves a uniquely named
+native snapshot, then restores a second VM and runs the shared smoke checks. Only a
+verified snapshot becomes active. Both temporary VMs are deleted. Failed snapshots
+are deleted; interrupted allocation receipts are replayed on the next plugin start.
+Registry credentials use a temporary file under `/tmp` and are removed before capture.
+The runtime has no BB enrollment identity or user logins until a real machine starts.
+
+Boat's native image is Ubuntu; its managed runtime runs the shared Debian image in a
+privileged container with a persistent root filesystem in a Docker named volume.
+The backend transparently bootstraps and runs BB inside that filesystem. Boat
+recreates containers on restore, so their ordinary writable layers are not used
+for BB state or workspaces. Temporary and runtime files use fresh tmpfs mounts. This preserves the shared tool selection, extra
+packages, custom Dockerfile instructions, browser and desktop runtime without a
+second installer implementation. Tagged Docker images, named-volume state and container settings survive Boat
+snapshot restore. A marker written before capture proves writable-state retention. Managed Boat images currently require `linux/amd64`.
+Freestyle continues to use its provider-native base snapshot and launch bootstrap.
 
 The build also reads and writes a layer cache in the same registry, tagged
 `buildcache-<platform>` (for example `buildcache-linux-amd64`). Layers are
@@ -147,9 +163,8 @@ continues without saving it. Registry cleanup policies should keep the
 `buildcache-*` tags.
 
 The selected image pins the sandbox's bb version. When the host is upgraded,
-build and activate a new sandbox image with that same version. Boat and
-Freestyle install the same pinned version through the portable bootstrap on
-first boot.
+build and activate a new sandbox image with that same version. Boat saves that same pinned version in its prepared runtime snapshot. Freestyle
+installs it through the portable bootstrap on first boot.
 
 Registry configuration is shared rather than provider-scoped:
 
@@ -465,10 +480,8 @@ It merges that setting into `/root/.codex/config.toml` without replacing other
 Codex configuration, so new images and existing sandboxes repaired with
 `bb sandbox upgrade` use the same setting as the bb server machine.
 
-Daytona, Modal, E2B, reference this image directly. Boat and
-Freestyle install the same layers through the portable bootstrap, which embeds
-the same installer scripts and skips any layer the provider will not let it
-install as root.
+Daytona, Modal and E2B reference this image directly. Boat saves the same image
+in a verified native VM snapshot. Freestyle uses its portable launch bootstrap.
 
 ## Upgrading harnesses and bb
 
@@ -733,7 +746,7 @@ The required runtime includes Node.js, BB host daemon, Git/GitHub CLI/SSH, basic
 
 The former GitHub build-repository setting, import command and workflow dispatcher are retired. Their historical KV receipt is retained but no longer read. The image registry repository is still needed: it is the container destination, not a source-code repository.
 
-Boat and Freestyle bootstrap at launch and do not use the custom-image builder.
+Boat participates in Build image and register-image. Freestyle uses its launch bootstrap.
 
 ### Custom image instructions and Browser settings
 
@@ -751,7 +764,16 @@ A provider without credentials has disabled setup controls. After adding credent
 
 BB pauses Boat sandboxes after 15 minutes of inactivity by default. Stop saves disk state; it interrupts running processes. Resume restores the saved disk. Deleting a sandbox removes it.
 
-Boat also has a separate two-hour wall-clock auto-stop, reset on each create or resume. This permits trial accounts to start. It can interrupt an active turn after two hours, including with Always on enabled. BB idle sleep does not extend this deadline.
+Boat also has a separate two-hour wall-clock auto-stop. BB checks connected active machines every minute and renews that deadline when fewer than 30 minutes remain, including with Always on enabled. The shared idle policy still stops idle machines through BB so they resume on the next turn. Sleeping machines are never woken by deadline renewal. If the hub is unavailable or renewal fails long enough, Boat's deadline remains a fallback stop. No vendor-specific deadline setting is needed.
+
+**Build image** automatically prepares, saves, verifies and activates a Boat snapshot
+from the shared recipe. `bb sandbox build-image --provider boat` targets only Boat;
+`bb sandbox register-image --provider boat --reference <tag>` prepares a snapshot
+from an already-published image. The previous active image remains available if
+preparation or verification fails. No manual snapshot preparation or vendor-specific
+snapshot setting is needed. Existing machines retain their saved runtime mode;
+new machines use the verified active snapshot. Older manually selected snapshots
+remain a compatibility fallback when no managed image exists.
 
 Boat was formerly Box. Existing saved keys, sandbox IDs and internal `box` / `sandbox-box` identifiers remain valid. New API requests use `boat.dev`.
 
@@ -763,7 +785,7 @@ The shared M tier requests 12 GiB of RAM. Freestyle plans capped at 8 GiB must u
 
 Standard sandbox startup checks enabled agent CLIs against the shared image’s version labels on every provider. Vendor-installed versions are replaced when they differ. The version metadata is cached per image; a current machine skips installation. Without a registered image, startup uses the same pins as the bundled Dockerfile. A saved custom Dockerfile explicitly retains its installed versions.
 
-Daytona, Modal and E2B boot the registered image. Boat and Freestyle start from a provider base, so a fresh machine also needs tool installation. Matching the agent CLIs does not make the provider operating systems or base packages identical.
+Daytona, Modal and E2B boot the registered image. Boat restores its prepared shared runtime container. Freestyle starts from a provider base and installs tools at launch.
 
 Modal’s executor closes the normal stdin stream after writing enrollment data and forwards output while commands run. The emergency zero-offset EOF method is not used for bootstrap.
 

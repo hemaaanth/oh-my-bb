@@ -465,6 +465,10 @@ export const sandboxMigrations = [
     resource_json TEXT NOT NULL,
     created_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS sandbox_image_runtimes (
+    image_id TEXT PRIMARY KEY NOT NULL REFERENCES sandbox_images(id) ON DELETE CASCADE,
+    runtime TEXT NOT NULL CHECK (runtime = 'boat-volume-v1')
+  )`,
 ] as const;
 
 function fromSandboxRow(row: SandboxRow): SandboxRecord {
@@ -561,6 +565,15 @@ function fromImageRow(
 
 export class SandboxStore {
   constructor(private readonly db: Database.Database) {}
+
+  recordBoatImageRuntime(imageId: string): void {
+    if (this.requireImage(imageId).provider !== "box") throw new Error("Boat runtime metadata requires a Boat image");
+    this.db.prepare("INSERT OR REPLACE INTO sandbox_image_runtimes (image_id, runtime) VALUES (?, 'boat-volume-v1')").run(imageId);
+  }
+
+  isManagedBoatImage(imageId: string): boolean {
+    return this.db.prepare("SELECT 1 FROM sandbox_image_runtimes WHERE image_id = ? AND runtime = 'boat-volume-v1'").get(imageId) !== undefined;
+  }
 
   recordImageProvenance(imageId: string, pinnedReference: string, artifact: { sourceCommit: string; inputsSha256: string; archiveSha256: string }): void {
     this.db.prepare(`INSERT INTO sandbox_image_provenance (image_id, pinned_reference, source_commit, inputs_sha256, archive_sha256, verified_at)

@@ -180,7 +180,7 @@ function watchSeconds(argv: string[]): number {
 }
 
 function imageProviderOption(argv: string[]): SandboxProvider | undefined {
-  const value = option(argv, "--provider");
+  const value = providerAlias(option(argv, "--provider"));
   if (value === undefined) return undefined;
   if (!isProvider(value) || !isSandboxImageProvider(value)) {
     throw new Error(

@@ -432,7 +432,7 @@ export class SandboxImageManager {
     if (registrable.length === 0) {
       throw new Error(
         requested === undefined
-          ? "Configure credentials for at least one image-backed provider (Daytona, Modal, or E2B) first"
+          ? "Configure credentials for at least one image-backed provider (Daytona, Modal, E2B, or Boat) first"
           : `Configure the ${requested} credentials first`,
       );
     }
@@ -454,9 +454,8 @@ export class SandboxImageManager {
       // One image serves every provider, so it carries the extra packages that
       // any of the targeted providers asked for.
       extraPackages = normalizeExtraPackages(
-        registrable.flatMap(
-          (provider) =>
-            this.deps.store.getProviderSettings(provider).extraPackages,
+        sandboxImageProviders.flatMap(
+          (provider) => this.deps.store.getProviderSettings(provider).extraPackages,
         ),
       );
     } else {
@@ -695,7 +694,7 @@ export class SandboxImageManager {
     if (this.deps.store.requireImage(imageId).name !== name) {
       this.deps.store.renameImage(imageId, name);
     }
-    const label = sizeTier === null ? provider : `${provider} (size ${sizeTier})`;
+    const label = sizeTier === null ? (provider === "box" ? "Boat" : provider) : `${provider} (size ${sizeTier})`;
     this.publishProgress(
       provider,
       imageId,
@@ -708,6 +707,7 @@ export class SandboxImageManager {
       const registered = await this.deps.register({
         provider,
         name,
+        onName: (candidate) => this.deps.store.renameImage(imageId, candidate),
         pinnedReference: pushed.pinnedReference,
         reference: pushed.reference,
         settings: prepared.settings,
@@ -721,14 +721,16 @@ export class SandboxImageManager {
         },
       });
       this.deps.store.recordImageProvenance(imageId, pushed.pinnedReference, artifact);
-      await this.deps.activateImage(provider, registered.name);
+      if (provider === "box") this.deps.store.recordBoatImageRuntime(imageId);
       if (registered.name !== name) {
         this.deps.store.renameImage(imageId, registered.name);
       }
+      await this.deps.activateImage(provider, registered.name);
       this.deps.store.finishImageBuild(
         imageId,
         registered.placement ?? undefined,
       );
+      this.deps.bb.realtime.publish("sandbox-provider-settings", { provider, type: "image-activated" });
       this.publishProgress(
         provider,
         imageId,

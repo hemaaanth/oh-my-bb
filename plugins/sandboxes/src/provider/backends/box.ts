@@ -3,6 +3,8 @@
  * Core installs the daemon over the executor; command status uses an exit marker.
  * Allocation-key lookup is not implemented, so uncertain cleanup stays retained.
  */
+import { randomUUID } from "node:crypto";
+import { BOAT_RUNTIME_CONTAINER, BOAT_RUNTIME_ROOT, BoatImageClient } from "../../boat-image.js";
 import { z } from "zod";
 import type {
   MachineExecutor,
@@ -18,18 +20,38 @@ import {
   type SandboxSizeTier,
 } from "../../size-tiers.js";
 import type { SandboxBackend } from "../sandbox-backend.js";
-import { toShellCommand } from "./shell-exec.js";
+import { shQuote, toShellCommand } from "./shell-exec.js";
 
 const BASE_URL = "https://boat.dev/api/v1";
 // Boat TTL is wall-clock, not idle time. BB handles idle suspension separately.
 const AUTO_STOP_SECONDS = 2 * 60 * 60;
 const RC_MARKER = "__BBRC__";
 
+// Boat restores files and recreates processes. Never let a saved PID identify
+// an unrelated process (or a zombie) when core runs machine setup again.
+const clearStaleDaemonPids = `const fs = require("node:fs"), path = require("node:path");
+function clean(dir) {
+    const file = path.join(dir, "install-daemon.pid");
+    if (fs.existsSync(file)) {
+      const pid = fs.readFileSync(file, "utf8").trim();
+      let command = "";
+      if (/^[1-9][0-9]*$/.test(pid)) {
+        try { command = fs.readFileSync("/proc/" + pid + "/cmdline", "utf8").replaceAll("\\0", " "); }
+        catch (error) { if (error.code !== "ENOENT" && error.code !== "ESRCH") throw error; }
+      }
+      if (!/\\b(?:bb-host-daemon(?:\\.js)?|daemon-bundle\\.mjs|host-daemon)\\b/.test(command)) fs.unlinkSync(file);
+    }
+}
+clean("/root/.bb");
+if (fs.existsSync("/root/.bb-machines")) for (const entry of fs.readdirSync("/root/.bb-machines", {withFileTypes:true})) {
+  if (entry.isDirectory()) clean(path.join("/root/.bb-machines", entry.name));
+}`;
+
 type BoxConfig = NonNullable<SandboxRuntimeConfig["box"]>;
 type BoxMachineClass = BoxConfig["machineClass"];
 
 const boxEnvelopeSchema = z.object({
-  sandbox: z.object({ id: z.string(), state: z.string() }),
+  sandbox: z.object({ id: z.string(), state: z.string(), archiveAfter: z.string().nullable().optional() }),
 });
 const commandSchema = z.object({
   success: z.boolean(),
@@ -50,6 +72,7 @@ const boxResourceSchema = z.object({
   machineClass: z.enum(["small", "default", "large"]),
   environment: z.string(),
   sizeTier: z.enum(sandboxSizeTierValues),
+  runtimeContainer: z.boolean().optional(),
 });
 export type BoxResource = z.infer<typeof boxResourceSchema>;
 
@@ -95,18 +118,33 @@ export function createBoxMachineBackend(
       ? inputs.size
       : DEFAULT_SANDBOX_SIZE_TIER;
 
-  const executorFor = (boxId: string): MachineExecutor => ({
+  const executorFor = (boxId: string, managed = false): MachineExecutor => ({
     async exec(request_) {
       request_.signal.throwIfAborted();
-      const command = `${toShellCommand(request_.command, request_.stdin)}; printf '${RC_MARKER}%s' "$?"`;
+      const inputPath = `/tmp/bb-stdin-${randomUUID()}`;
+      if (managed && request_.stdin.length > 0) {
+        await request(`/sandboxes/${encodeURIComponent(boxId)}/files`, { method: "PUT", signal: request_.signal,
+          body: JSON.stringify({ path: inputPath, content: Buffer.from(request_.stdin).toString("base64"), encoding: "base64" }) });
+      }
+      const argv = managed ? ["sudo", "docker", "exec", "-i", "-e", "IS_SANDBOX=1", BOAT_RUNTIME_CONTAINER, "chroot", BOAT_RUNTIME_ROOT, ...request_.command] : request_.command;
+      const shell = toShellCommand(argv, managed ? "" : request_.stdin);
+      const invocation = managed && request_.stdin.length > 0
+        ? `chmod 600 ${inputPath}; ${shell} <${inputPath}; rc=$?; rm -f ${inputPath}; (exit $rc)` : shell;
+      const command = `${invocation}; printf '${RC_MARKER}%s' "$?"`;
       const result = commandSchema.parse(
         await request(`/sandboxes/${encodeURIComponent(boxId)}/commands`, {
-          method: "POST",
+          method: "POST", signal: request_.signal,
           body: JSON.stringify({
             command,
-            timeoutSeconds: Math.max(1, Math.ceil(request_.timeoutMs / 1000)),
+            timeoutSeconds: Math.min(600, Math.max(1, Math.ceil(request_.timeoutMs / 1000))),
             detached: false,
           }),
+        }).catch(async error => {
+          if (managed && request_.stdin.length > 0) {
+            await request(`/sandboxes/${encodeURIComponent(boxId)}/commands`, { method: "POST", signal: AbortSignal.timeout(15_000),
+              body: JSON.stringify({ command: `rm -f ${inputPath}`, timeoutSeconds: 10, detached: false }) }).catch(() => {});
+          }
+          throw error;
         }),
       );
       let stdout = result.stdout;
@@ -160,9 +198,9 @@ export function createBoxMachineBackend(
       return resource.key;
     },
     async availability(): Promise<PluginMachineProviderAvailability> {
-      return config.apiKey.length === 0
-        ? { status: "setup-required", message: "Add a Boat API key." }
-        : { status: "available" };
+      if (config.apiKey.length === 0) return { status: "setup-required", message: "Add a Boat API key." };
+      if (!config.snapshotId) return { status: "setup-required", message: "Build a runtime image in Settings → Sandboxes before starting a new machine." };
+      return { status: "available" };
     },
     async validate(inputs): Promise<PluginMachineValidateDecision> {
       if (inputs.size !== undefined && !isSandboxSizeTier(inputs.size)) {
@@ -178,6 +216,7 @@ export function createBoxMachineBackend(
         await request("/sandboxes", {
           method: "POST",
           body: JSON.stringify({
+            ...(config.snapshotId ? { from: config.snapshotId } : {}),
             type: machineClass,
             name: `bb-${context.key}`,
             ttlSeconds: AUTO_STOP_SECONDS,
@@ -193,9 +232,15 @@ export function createBoxMachineBackend(
         machineClass,
         environment: config.environment,
         sizeTier: tier,
+        ...(config.runtimeContainer ? { runtimeContainer: true } : {}),
       };
       await context.checkpoint(resource);
-      return { resource, executor: executorFor(created.sandbox.id) };
+      if (resource.runtimeContainer) {
+        await waitUntilRunning(created.sandbox.id);
+        await new BoatImageClient(config.apiKey, AbortSignal.any([context.signal, AbortSignal.timeout(330_000)])).command(created.sandbox.id,
+          `sudo systemctl start docker; for attempt in $(seq 1 150); do sudo docker start ${BOAT_RUNTIME_CONTAINER} >/dev/null 2>&1 && sudo docker exec ${BOAT_RUNTIME_CONTAINER} test -r ${BOAT_RUNTIME_ROOT}/proc/self/stat && exit 0; sleep 2; done; exit 1`);
+      }
+      return { resource, executor: executorFor(created.sandbox.id, resource.runtimeContainer) };
     },
     async reconcileCleanup() {
       const listed = z.object({
@@ -204,6 +249,20 @@ export function createBoxMachineBackend(
       // Older creates had no allocation name. Only a completely empty account proves absence.
       if (listed.sandboxes.length === 0 && !listed.pageInfo.hasMore) return;
       throw new Error("Boat cannot confirm cleanup by allocation key; retain the native resource for manual reconciliation");
+    },
+    async renewLease(context) {
+      const path = `/sandboxes/${encodeURIComponent(context.resource.providerSandboxId)}`;
+      const body = await request(path, { signal: context.signal });
+      if (body === null) return;
+      const { sandbox } = boxEnvelopeSchema.parse(body);
+      if (!["ready", "idle", "running"].includes(sandbox.state)) return;
+      const deadline = Date.parse(sandbox.archiveAfter ?? "");
+      if (!Number.isFinite(deadline)) throw new Error("Boat did not report a valid auto-stop deadline");
+      if (deadline - Date.now() > 30 * 60_000) return;
+      await request(path, {
+        method: "PATCH", signal: context.signal,
+        body: JSON.stringify({ ttlSeconds: AUTO_STOP_SECONDS }),
+      });
     },
     async suspend(context) {
       context.report.step("Stopping the Boat sandbox");
@@ -220,9 +279,15 @@ export function createBoxMachineBackend(
         { method: "POST", body: JSON.stringify({ ttlSeconds: AUTO_STOP_SECONDS }) },
       );
       await waitUntilRunning(context.resource.providerSandboxId);
+      if (context.resource.runtimeContainer) {
+        await new BoatImageClient(config.apiKey, AbortSignal.any([context.signal, AbortSignal.timeout(330_000)])).command(context.resource.providerSandboxId,
+          `sudo systemctl start docker; for attempt in $(seq 1 150); do sudo docker start ${BOAT_RUNTIME_CONTAINER} >/dev/null 2>&1 && sudo docker exec ${BOAT_RUNTIME_CONTAINER} test -r ${BOAT_RUNTIME_ROOT}/proc/self/stat && exit 0; sleep 2; done; exit 1`);
+        await new BoatImageClient(config.apiKey, AbortSignal.any([context.signal, AbortSignal.timeout(30_000)])).command(context.resource.providerSandboxId,
+          `sudo docker exec ${BOAT_RUNTIME_CONTAINER} chroot ${BOAT_RUNTIME_ROOT} node -e ${shQuote(clearStaleDaemonPids)}`);
+      }
       return {
         resource: context.resource,
-        executor: executorFor(context.resource.providerSandboxId),
+        executor: executorFor(context.resource.providerSandboxId, context.resource.runtimeContainer),
       };
     },
     async remove(context) {

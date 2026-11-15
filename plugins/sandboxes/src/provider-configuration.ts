@@ -11,7 +11,7 @@ export interface SandboxProviderConfiguration {
   daytona: { apiUrl: string; target: string; sandboxClass: string };
   modal: { appName: string; vmRuntime: boolean };
   e2b: Record<string, never>;
-  box: { machineClass: string; environment: string };
+  box: { machineClass: string; environment: string; snapshotId: string };
   freestyle: {
     cpu: string;
     memory: string;
@@ -26,7 +26,7 @@ const defaults: SandboxProviderConfiguration = {
   daytona: { apiUrl: "", target: "", sandboxClass: "container" },
   modal: { appName: "bb-sandboxes", vmRuntime: false },
   e2b: {},
-  box: { machineClass: "default", environment: "base" },
+  box: { machineClass: "default", environment: "base", snapshotId: "" },
   freestyle: {
     cpu: "4",
     memory: "8",
@@ -77,7 +77,7 @@ export class SandboxProviderConfigurationStore {
       const parsed = JSON.parse(await readFile(this.configPath, "utf8")) as {
         daytona?: { apiUrl?: unknown; target?: unknown; sandboxClass?: unknown };
         modal?: { appName?: unknown; vmRuntime?: unknown };
-        box?: { machineClass?: unknown; environment?: unknown };
+        box?: { machineClass?: unknown; environment?: unknown; snapshotId?: unknown };
         freestyle?: {
           cpu?: unknown;
           memory?: unknown;
@@ -102,6 +102,7 @@ export class SandboxProviderConfigurationStore {
         box: {
           machineClass: clean(parsed.box?.machineClass) || defaults.box.machineClass,
           environment: clean(parsed.box?.environment) || defaults.box.environment,
+          snapshotId: clean(parsed.box?.snapshotId),
         },
         freestyle: {
           cpu: clean(parsed.freestyle?.cpu) || defaults.freestyle.cpu,
@@ -145,6 +146,7 @@ export class SandboxProviderConfigurationStore {
       next.box = {
         machineClass: clean(values.machineClass) || defaults.box.machineClass,
         environment: clean(values.environment) || defaults.box.environment,
+        snapshotId: values.snapshotId === undefined ? next.box.snapshotId : clean(values.snapshotId),
       };
     } else if (provider === "freestyle") {
       next.freestyle = {

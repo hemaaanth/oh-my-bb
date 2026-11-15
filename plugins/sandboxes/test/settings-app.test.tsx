@@ -32,7 +32,7 @@ it("keeps an unsent preferences draft across realtime refresh and failed save", 
 it("keeps a provider snapshot draft when metadata refreshes, without view-time capacity or setup", async () => {
   const slot = renderSlot(app.settingsSections.find(section => section.id === "providers")!, {}, { rpc: baseRpc as never });
   fireEvent.click(await slot.findByRole("button", { name: "Freestyle options" }));
-  const input = await slot.findByPlaceholderText("freestyle/ubuntu (default)");
+  const input = await slot.findByRole("textbox", { name: "Base snapshot" });
   fireEvent.change(input, { target: { value: "snapshot-unsent" } });
   await slot.behavior.emitRealtime("sandbox-provider-settings", { type: "changed" });
   await waitFor(() => expect((input as HTMLInputElement).value).toBe("snapshot-unsent"));
@@ -167,4 +167,23 @@ it("locks provider options until an explicit credential check succeeds", async (
   fireEvent.click(slot.getByRole("button", { name: "Check Freestyle connection" }));
   await waitFor(() => expect((options as HTMLButtonElement).disabled).toBe(false));
   expect(checks).toBe(1);
+});
+
+it("shows Boat's managed image without another snapshot configuration field", async () => {
+  const boat = { ...provider, provider: "box", supportsImages: true, artifactName: "verified-image" };
+  const slot = renderSlot(app.settingsSections.find(section => section.id === "providers")!, {}, { rpc: {
+    ...baseRpc, providerSettings: () => ({ providers: [boat] }),
+  } as never });
+  fireEvent.click(await slot.findByRole("button", { name: "Boat options" }));
+  expect(await slot.findByText("verified-image")).toBeTruthy();
+  expect(slot.queryByRole("textbox", { name: "Base snapshot" })).toBeNull();
+});
+
+it("shows Boat build progress in the shared image builder", async () => {
+  window.sessionStorage.removeItem("sandboxes:image-build");
+  const slot = renderSlot(app.settingsSections.find(section => section.id === "runtime-images")!, {}, { rpc: baseRpc as never });
+  fireEvent.click(await slot.findByRole("button", { name: "Build first image" }));
+  await slot.findByRole("checkbox", { name: "Goldsky" });
+  await slot.behavior.emitRealtime("sandbox-image-builds", { provider: "box", phase: "building", message: "Verifying restored Boat snapshot" });
+  expect(await slot.findByText("Verifying restored Boat snapshot")).toBeTruthy();
 });

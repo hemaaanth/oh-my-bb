@@ -161,6 +161,7 @@ const allCredentials = {
   modalTokenId: "m",
   modalTokenSecret: "s",
   e2bApiKey: "e",
+  boxApiKey: "b",
 
 
 
@@ -206,12 +207,13 @@ describe("SandboxImageManager", () => {
         name: "bb-sandbox-v1",
         pinnedReference: `ghcr.io/acme/bb-sandbox@${digest}`,
       },
+      { provider: "box", name: "bb-sandbox-v1", pinnedReference: `ghcr.io/acme/bb-sandbox@${digest}` },
     ]);
     expect(activations).toEqual(
       registrations.map(({ provider, name }) => ({ provider, name })),
     );
     expect(build.registrations.map(({ status }) => status)).toEqual(
-      new Array(6).fill("registered"),
+      new Array(7).fill("registered"),
     );
     expect(store.getDefaultImage("daytona")?.name).toBe("bb-sandbox-v1-m");
     expect(store.getDefaultImage("daytona", "XL")).toMatchObject({
@@ -309,6 +311,7 @@ describe("SandboxImageManager", () => {
       "daytona:skipped",
       "modal:skipped",
       "e2b:registered",
+      "box:skipped",
 
     ]);
     await fake.harness.dispose();
@@ -329,7 +332,7 @@ describe("SandboxImageManager", () => {
   it("refuses providers that bootstrap at launch", async () => {
     const { fake, manager } = await harness({ settings: allCredentials });
 
-    await expect(manager.build({ provider: "box" })).rejects.toThrow(
+    await expect(manager.build({ provider: "freestyle" })).rejects.toThrow(
       "bootstraps its toolchain at launch",
     );
     await fake.harness.dispose();
@@ -355,6 +358,7 @@ describe("SandboxImageManager", () => {
       "daytona:registered",
       "modal:error",
       "e2b:registered",
+      "box:registered",
 
     ]);
     expect(store.listImages("modal")[0]).toMatchObject({
@@ -434,4 +438,33 @@ it("uses the saved recipe in the build context", async () => {
     await fixture.manager.build({ name: "custom-recipe" });
     expect(dockerfile).toContain("RUN echo custom-recipe");
   } finally { await fixture.fake.harness.dispose(); }
+});
+
+it("keeps the previous Boat image active when the next restored snapshot fails verification", async () => {
+  let fail = false;
+  const { fake, manager, store, activations, builds } = await harness({ settings: { boxApiKey: "b" },
+    getImageRecipe: async () => ({ tools: ["codex"], dockerfile: "RUN echo custom" }),
+    register: async input => {
+      if (fail) throw new Error("restored runtime failed");
+      return { name: input.name + "-verified", placement: null };
+    },
+  });
+  store.updateProviderSettings("daytona", { extraPackages: ["jq"] });
+  const first = await manager.build({ provider: "box", name: "first" });
+  expect(first.extraPackages).toEqual(["jq"]);
+  expect(store.isManagedBoatImage(store.getDefaultImage("box")!.id)).toBe(true);
+  fail = true;
+  await expect(manager.build({ provider: "box", name: "second" })).rejects.toThrow("restored runtime failed");
+  expect(store.getDefaultImage("box")?.name).toBe("bb-sandbox-first-verified");
+  expect(activations).toEqual([{ provider: "box", name: "bb-sandbox-first-verified" }]);
+  expect(builds).toHaveLength(2);
+  await fake.harness.dispose();
+});
+
+it("does not treat historical Boat images as prepared volume runtimes", async () => {
+  const { fake, store } = await harness();
+  const legacy = store.beginImageBuild({ id: "legacy-boat", provider: "box", name: "historical", extraPackages: [] });
+  store.finishImageBuild(legacy.id);
+  expect(store.isManagedBoatImage(legacy.id)).toBe(false);
+  await fake.harness.dispose();
 });

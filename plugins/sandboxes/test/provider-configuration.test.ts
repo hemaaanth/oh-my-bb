@@ -34,3 +34,15 @@ describe("SandboxProviderConfigurationStore", () => {
     expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
   });
 });
+
+it("persists the shared base snapshot field and preserves it for older clients", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-sandbox-snapshot-"));
+  temporaryDirectories.push(root);
+  const store = new SandboxProviderConfigurationStore(join(root, "data.db"));
+  expect((await store.getConfiguration()).box.snapshotId).toBe("");
+  await store.updateConfiguration("box", { snapshotId: " prepared-tools " });
+  await store.updateConfiguration("box", { environment: "base" });
+  expect((await new SandboxProviderConfigurationStore(join(root, "data.db")).getConfiguration()).box.snapshotId).toBe("prepared-tools");
+  await store.updateConfiguration("box", { snapshotId: "" });
+  expect((await store.getConfiguration()).box.snapshotId).toBe("");
+});

@@ -107,7 +107,7 @@ interface DaytonaCapacityView {
 
 
 
-type SandboxImageProvider = "daytona" | "modal" | "e2b";
+type SandboxImageProvider = "daytona" | "modal" | "e2b" | "box";
 
 interface ImageSettingsView {
   recipe: ImageRecipe;
@@ -137,7 +137,8 @@ function isImageBuildProgress(value: unknown): value is {
     (provider === null ||
       provider === "daytona" ||
       provider === "modal" ||
-      provider === "e2b") &&
+      provider === "e2b" ||
+      provider === "box") &&
     (phase === "building" || phase === "ready" || phase === "error") &&
     typeof message === "string"
   );
@@ -147,7 +148,7 @@ function providerLifecycleNote(provider: SandboxProvider): string {
   if (provider === "modal") {
     return "Runs for up to 24 hours; idle sleep does not apply.";
   }
-  if (provider === "box") return "Pauses on idle and saves disk. Boat also auto-stops after 2 hours awake.";
+  if (provider === "box") return "Sleeps on idle and saves disk. The running deadline renews automatically.";
   if (provider === "freestyle") return "Pauses on idle. Disk retention depends on the selected persistence mode.";
   return provider === "daytona"
     ? "Sleeps on idle and wakes on the next message."
@@ -274,6 +275,7 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
                     provider,
                     machineClass: machineClassDraft === "small" || machineClassDraft === "large" ? machineClassDraft : "default",
                     environment: environmentDraft,
+                    snapshotId: snapshotIdDraft,
                   })
                 : await rpc.call("updateProviderConfiguration", {
                     provider, cpu: cpuDraft, memory: memoryDraft, storage: storageDraft,
@@ -344,12 +346,14 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
                       </SelectContent>
                     </Select>
                   </label>
-                  <label className="block min-w-0 space-y-1 text-xs text-muted-foreground">
-                    <span>Base snapshot <span className="opacity-70">(optional)</span></span>
-                    <Input value={snapshotIdDraft} placeholder="freestyle/ubuntu (default)" onChange={(event) => setSnapshotIdDraft(event.target.value)} />
-                    <span>Public image slug or your snapshot ID. Leave blank for Ubuntu.</span>
-                  </label>
                 </>
+              ) : null}
+              {provider === "freestyle" ? (
+                <label className="block min-w-0 space-y-1 text-xs text-muted-foreground">
+                  <span>Base snapshot <span className="opacity-70">(optional)</span></span>
+                  <Input aria-label="Base snapshot" value={snapshotIdDraft} placeholder="Provider default" onChange={(event) => setSnapshotIdDraft(event.target.value)} />
+                  <span>Saved snapshot name or ID. Leave blank for the provider's default image. Used only for new machines.</span>
+                </label>
               ) : null}
               {provider === "daytona" ? (
                 <>
@@ -502,7 +506,7 @@ function ProviderSettingsCard({ provider }: { provider: SandboxProvider }) {
             <div className="min-w-0">
               <div className="text-muted-foreground">Active image</div>
               <div className="mt-1 truncate font-mono text-foreground">
-                {view.supportsImages ? (view.artifactName ?? "Not generated") : "Bootstrapped at launch"}
+                {view.supportsImages ? (view.artifactName ?? "Not generated") : (view.snapshotId || "Bootstrapped at launch")}
               </div>
             </div>
           </div>
@@ -906,10 +910,10 @@ function MoreSettings() {
   return <section className="min-w-0 space-y-3"><h2 className="text-sm font-medium">More</h2><div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-recessed/70 px-3 py-3"><div><p className="text-sm">Setup guide</p><p className="text-xs text-muted-foreground">Setup and usage.</p></div><SettingsDialog title="Sandboxes setup guide" description="From your first image to your first cloud thread." buttonLabel="Open setup guide"><ol className="space-y-4 text-sm list-decimal pl-5">
     <li><strong>Connect a provider.</strong> Add its API credentials in Configuration. Open its options in Providers and choose a region or runtime if needed.</li>
     <li><strong>Prepare the builder.</strong> Install Docker with Buildx on this BB server. Create a private container registry repository, such as GHCR or Docker Hub, and add its username and write token in Configuration.</li>
-    <li><strong>Build your first image.</strong> Open Runtime images → Image builder. Enter the registry repository, choose its platform and optional tools, and save. Goldsky and HubSpot are optional. Choose Build and register image to build, push, and register the image with your configured Daytona, Modal or E2B providers. This can take a while and may incur costs.</li>
+    <li><strong>Build your first image.</strong> Open Runtime images → Image builder. Enter the registry repository, choose its platform and optional tools, and save. Goldsky and HubSpot are optional. Choose Build and register image to build, push, and register the image with your configured Daytona, Modal, E2B or Boat providers. This can take a while and may incur costs.</li>
     <li><strong>Choose defaults.</strong> Set the default machine size and idle timeout in Preferences. Modal runs for up to 24 hours and does not sleep on idle.</li>
     <li><strong>Start a thread.</strong> Pick your project and a Sandboxes machine in BB’s new-thread composer. BB creates and retires the machine. New machines use your registered image.</li>
-  </ol><p className="mt-4 text-xs text-muted-foreground">Boat and Freestyle bootstrap tools at launch and do not use this custom-image builder. Tailscale keys are needed for trusted browser home egress and optional local-editor SSH. Existing machines and images are not changed by saving builder settings.</p></SettingsDialog></div></section>;
+  </ol><p className="mt-4 text-xs text-muted-foreground">Boat saves the shared image in a prepared VM snapshot and verifies a restored copy before activation. Freestyle bootstraps tools at launch. Tailscale keys are needed for trusted browser home egress and optional local-editor SSH. Existing machines and images are not changed by saving builder settings.</p></SettingsDialog></div></section>;
 }
 
 

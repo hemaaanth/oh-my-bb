@@ -11,3 +11,5 @@ No provider account, private builder or application configuration is bundled. Of
 Remote thread CPU, RAM, disk, and lifecycle status appear in the native Info panel’s **Sandbox** section. Local threads have no extra section or header icon. **Manage sandbox** contains the existing controls. Model/fallback information remains in the composer.
 
 Each sandbox thread can show its own desktop inline in chat, in a **Desktop** side panel, or as a link from `bb sandbox desktop`. The view streams through voxl and lasts fifteen minutes.
+
+Build image prepares Boat from the shared runtime image, saves a native snapshot, verifies a restored copy, deletes its temporary VMs and activates only after verification. Freestyle retains its Base snapshot control. Boat deadlines renew automatically while connected machines remain active; the shared idle policy defaults to 15 minutes and sleeping machines stay asleep.

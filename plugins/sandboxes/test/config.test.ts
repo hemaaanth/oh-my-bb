@@ -201,3 +201,15 @@ it("accepts Boat environment keys while preserving saved Box credentials", () =>
   expect(loadSandboxRuntimeConfig(settings(), { BOX_API_KEY: "old-key" }).box?.apiKey).toBe("old-key");
   expect(loadSandboxRuntimeConfig(settings({ boxApiKey: "saved-key" }), { BOAT_API_KEY: "new-key" }).box?.apiKey).toBe("saved-key");
 });
+
+it("passes the saved base snapshot to the Boat runtime", () => {
+  expect(loadSandboxRuntimeConfig(settings({ boxApiKey: "key", boxSnapshotId: " tools " }), {}).box?.snapshotId).toBe("tools");
+  expect(loadSandboxRuntimeConfig(settings({ boxApiKey: "key", boxSnapshotId: "" }), {}).box?.snapshotId).toBeUndefined();
+});
+
+it("prefers the verified managed Boat snapshot and enables its runtime transport", () => {
+  expect(loadSandboxRuntimeConfig(settings({ boxApiKey: "key", boxSnapshotId: "manual" }), {}, { box: "verified" }).box)
+    .toMatchObject({ snapshotId: "verified", runtimeContainer: true });
+  expect(loadSandboxRuntimeConfig(settings({ boxApiKey: "key", boxSnapshotId: "manual" }), {}).box)
+    .toMatchObject({ snapshotId: "manual", runtimeContainer: false });
+});

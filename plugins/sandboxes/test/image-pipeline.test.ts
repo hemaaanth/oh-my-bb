@@ -300,7 +300,7 @@ describe("bb sandbox register-image", () => {
     ]);
     // Daytona runs once per size.
     expect(status.build?.registrations.map((entry) => entry.status)).toEqual([
-      ...new Array(6).fill("registered"),
+      ...new Array(6).fill("registered"), "skipped",
     ]);
     expect(store.getDefaultImage("daytona")).toMatchObject({
       name: "bb-sandbox-20260820t031500z-m",
