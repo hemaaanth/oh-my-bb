@@ -189,7 +189,7 @@ describe("Catalog Executor connections", () => {
     const approved = call();
     const ask = await pendingCard(harness);
     expect(ask).toMatchObject({
-      threadId: "thr", rendererId: "executor-approval", title: "Approve hubspot.submitFeedback",
+      threadId: "thr", rendererId: "executor-approval", title: "hubspot: submitFeedback",
       payload: { toolkit: "gtm", address: "hubspot.submitFeedback", integration: "hubspot", tool: "submitFeedback", account: "acct_1", message: "Allow this call?", args: JSON.stringify({ note: "hi" }, null, 2), approvalUrl: "" },
     });
     harness.behavior.submitInteraction(ask.id, { approved: true });
@@ -214,6 +214,9 @@ describe("Catalog Executor connections", () => {
           r_a: { app: "pandadoc", tool: "archive", input: { id: "d1" }, account: "gm@goldsky.com" },
           r_b: { app: "slack", tool: "send", input: { text: "hi" }, message: "Allow?" },
           r_c: { app: "slack", tool: "send", input: { text: "again" }, message: "Allow?" },
+          r_account: { app: "slack", tool: "send", account: "different-account", input: { text: "elsewhere" } },
+          r_script2: { app: "app_a3bf775f", tool: "execute", input: { intent: "Check other keys", code: "return 2" } },
+          r_script: { app: "app_a3bf775f", tool: "execute", input: { intent: "Check license keys", code: "return 1" } },
           r_d: { app: "slack", tool: "send", input: { text: "other thread" }, message: "Allow?" },
         },
         // The code names the request it pauses on.
@@ -232,7 +235,7 @@ describe("Catalog Executor connections", () => {
     it("shows a burst one card at a time, answered together by Approve all", async () => {
       const { executor, harness, call, queue } = await setup();
       const archived = call("r_a");
-      expect((await pendingCard(harness)).payload).toMatchObject({ integration: "pandadoc", account: "gm@goldsky.com", tool: "archive", reason: "Executor asks before this call." });
+      expect((await pendingCard(harness)).payload).toMatchObject({ integration: "pandadoc", account: "gm@goldsky.com", tool: "archive", reason: "Allow this pending call once, or allow this tool for the rest of this thread." });
 
       const sent = [call("r_b"), call("r_c")];
       await vi.waitFor(async () => expect((await queue()).pending).toHaveLength(3));
@@ -259,10 +262,40 @@ describe("Catalog Executor connections", () => {
       expect(await call("r_c")).toBe("resumed r_c");
       expect(harness.inspection.pendingInteractions).toHaveLength(0);
 
+      const otherAccount = call("r_account");
+      harness.behavior.cancelInteraction((await pendingCard(harness)).id);
+      await otherAccount;
+
       const elsewhere = call("r_d", "thr-other");
       harness.behavior.cancelInteraction((await pendingCard(harness)).id);
       expect(await elsewhere).toBe("resumed r_d");
-      expect(executor.decisions.map(({ requestId, action }) => [requestId, action])).toEqual([["r_b", "accept"], ["r_c", "accept"], ["r_d", "decline"]]);
+      expect(executor.decisions.map(({ requestId, action }) => [requestId, action])).toEqual([["r_b", "accept"], ["r_c", "accept"], ["r_account", "decline"], ["r_d", "decline"]]);
+    });
+
+    it("excludes queued scripts from a bulk tool approval", async () => {
+      const { harness, call, queue } = await setup();
+      const ordinary = call("r_a");
+      const card = await pendingCard(harness);
+      const script = call("r_script");
+      await vi.waitFor(async () => expect((await queue()).pending).toHaveLength(2));
+      harness.behavior.submitInteraction(card.id, { approved: true, scope: "all" });
+      await ordinary;
+      const scriptCard = await pendingCard(harness);
+      expect(scriptCard.payload).toMatchObject({ script: true });
+      harness.behavior.cancelInteraction(scriptCard.id);
+      await script;
+    });
+
+    it("never widens a generic script approval, even for a forged thread scope", async () => {
+      const { harness, call } = await setup();
+      const first = call("r_script");
+      const card = await pendingCard(harness);
+      expect(card).toMatchObject({ title: "Check license keys", payload: { script: true, integration: "Executor script" } });
+      harness.behavior.submitInteraction(card.id, { approved: true, scope: "thread" });
+      await first;
+      const next = call("r_script2");
+      harness.behavior.cancelInteraction((await pendingCard(harness)).id);
+      await next;
     });
 
     it("opens a queued call's own card when the one before it waits too long", async () => {

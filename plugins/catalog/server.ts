@@ -1,3 +1,4 @@
+import { approvalView } from "./approval-view.js";
 import { homedir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -138,7 +139,7 @@ const CALLBACK_PATH = `/api/v1/plugins/catalog/http${CALLBACK_ROUTE}`;
 /** The Executor app's own skills are docs for executor_docs, not skills to project. */
 const EXECUTOR_APP = "executor";
 
-interface QueuedApproval { id: string; address: string; name: string; summary: string; open: boolean; decision: "accept" | "decline" | null; stop: AbortController }
+interface QueuedApproval { grantKey: string; script: boolean; id: string; address: string; name: string; summary: string; open: boolean; decision: "accept" | "decline" | null; stop: AbortController }
 interface ApprovalQueue { entries: QueuedApproval[]; changed: Promise<void>; wake: () => void }
 
 /** The card submits `{ approved, scope }`; `scope` widens an approval to this tool in the thread, or to every waiting call. */
@@ -630,14 +631,16 @@ export default async function plugin(bb: BbPluginApi) {
    * restart, or a busy queue).
    */
   async function askInThread(client: McpConnectionClient, context: ThreadContext, connection: string, approval: ApprovalRequired): Promise<"accept" | "decline" | null> {
-    if (threadAllowed.get(context.threadId)?.has(approval.address)) {
+    const view = approvalView(approval);
+    const grantKey = JSON.stringify([connection, approval.address, approval.account]);
+    if (!view.script && threadAllowed.get(context.threadId)?.has(grantKey)) {
       requireApprovalAccess(client, context, connection);
       return "accept";
     }
     const name = approval.address;
     const queue = approvalQueue(context.threadId);
     const entry: QueuedApproval = {
-      id: randomUUID(), address: approval.address, name, summary: `${approval.app}: ${approval.tool}`,
+      id: randomUUID(), address: approval.address, name, summary: view.title, script: view.script, grantKey,
       open: false, decision: null, stop: new AbortController(),
     };
     queue.entries.push(entry);
@@ -649,10 +652,11 @@ export default async function plugin(bb: BbPluginApi) {
         const result = await bb.ui.requestInput({
           threadId: context.threadId,
           rendererId: APPROVAL_RENDERER_ID,
-          title: `Approve ${name}`.slice(0, 200),
+          title: view.title.slice(0, 200),
           payload: {
-            approvalId: entry.id, toolkit: connection, address: approval.address, integration: approval.app, account: approval.account,
-            tool: approval.tool, description: null, reason: "Executor asks before this call.", message: approval.message,
+            approvalId: entry.id, toolkit: connection, address: approval.address, integration: view.integration, account: approval.account,
+            tool: approval.tool, description: view.description, reason: view.reason, message: approval.message,
+            purpose: view.title, script: view.script,
             args: shownArgs(approval.input), approvalUrl: "",
           },
           timeoutMs: 60 * 60 * 1000,
@@ -660,7 +664,7 @@ export default async function plugin(bb: BbPluginApi) {
           describeSubmission: (value) => {
             const answer = approvalAnswer(value);
             const verb = answer.approved ? "Approved" : "Declined";
-            const scope = answer.scope === "thread" ? " for this thread" : answer.scope === "all" ? " and every waiting call" : "";
+            const scope = view.script ? "" : answer.scope === "thread" ? " for this thread" : answer.scope === "all" ? " and every waiting call" : "";
             return { title: `${verb} ${name}${scope}`.slice(0, 200) };
           },
         }, { signal: AbortSignal.any([context.signal, entry.stop.signal]) });
@@ -669,11 +673,11 @@ export default async function plugin(bb: BbPluginApi) {
           if (answer.approved) requireApprovalAccess(client, context, connection);
           entry.decision = answer.approved ? "accept" : "decline";
           const others = queue.entries.filter((other) => other !== entry);
-          if (answer.approved && answer.scope === "thread") {
-            allowInThread(context.threadId, approval.address);
-            answerQueued(context.threadId, others.filter((other) => other.address === approval.address));
+          if (answer.approved && answer.scope === "thread" && !view.script) {
+            allowInThread(context.threadId, grantKey);
+            answerQueued(context.threadId, others.filter((other) => other.grantKey === grantKey && !other.script));
           }
-          if (answer.approved && answer.scope === "all") answerQueued(context.threadId, others);
+          if (answer.approved && answer.scope === "all" && !view.script) answerQueued(context.threadId, others.filter((other) => !other.script));
         } else if (!entry.decision) {
           // Dismissing the form is a decline; any other cancellation is no answer at all.
           if (result.reason !== "user") return null;

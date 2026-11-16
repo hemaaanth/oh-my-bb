@@ -12,7 +12,7 @@ const APPROVAL_RENDERER_ID = "executor-approval";
 const APPROVALS_CHANGED = "executor-approvals-changed";
 type ApprovalPayload = {
   approvalId: string; toolkit: string; address: string; integration: string; account: string | null; tool: string;
-  description: string | null; reason: string; message: string; args: string; approvalUrl: string;
+  purpose?: string; script?: boolean; description: string | null; reason: string; message: string; args: string; approvalUrl: string;
 };
 type PendingApprovals = z.infer<typeof executorApprovalsSchema>["pending"];
 
@@ -56,12 +56,11 @@ function ExecutorApproval({ interaction, submit }: PluginPendingInteractionProps
   useEffect(() => registerChoiceHandler((index) => {
     if (busy) return false;
     if (index === CHOICES.approve) void answer(true);
-    else if (index === CHOICES.thread) void answer(true, "thread");
+    else if (index === CHOICES.thread && !payload?.script) void answer(true, "thread");
     else if (index === CHOICES.decline) void answer(false);
-    else if (index === CHOICES.all && others.length) void answer(true, "all");
     else return false;
     return true;
-  }), [registerChoiceHandler, answer, busy, others.length]);
+  }), [registerChoiceHandler, answer, busy, others.length, payload?.script]);
   if (!payload) return <p role="alert" className="text-sm text-destructive">This approval request is malformed.</p>;
   const rows = payload.args ? argumentRows(payload.args) : null;
   const key = (choice: number) => {
@@ -80,11 +79,18 @@ function ExecutorApproval({ interaction, submit }: PluginPendingInteractionProps
             <Pill variant="secondary" className="rounded-full px-2 py-0.5 text-[10px] font-medium">{payload.toolkit}</Pill>
           </div>
         </div>
-        <p className="line-clamp-3">{payload.description ?? `Run ${payload.tool}.`}</p>
-        <p className="break-all font-mono text-[11px] text-muted-foreground">{payload.address.replace(/^tools\./u, "")}</p>
-      </div>
+        <p className="whitespace-pre-wrap break-words font-medium">{payload.purpose ?? `Run ${payload.tool}.`}</p>
+        {payload.description ? <p className="text-xs text-muted-foreground">{payload.description}</p> : null}
+          </div>
       <p className="text-xs text-muted-foreground">{payload.reason}</p>
-      {payload.message ? <p className="text-xs text-muted-foreground">{payload.message}</p> : null}
+      {!payload.script ? <p className="text-xs">Tool: {payload.address}</p> : null}
+      {!payload.script && rows?.length ? <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+        {rows.slice(0, 6).map(([name, value]) => <div key={name} className="contents"><dt className="text-muted-foreground">{name}</dt><dd className="whitespace-pre-wrap break-words">{value.length > 300 ? `${value.slice(0, 300)}… (see details)` : value}</dd></div>)}
+      </dl> : null}
+      <details className="rounded-md border px-2.5 py-2">
+      <summary className="cursor-pointer text-xs">Technical details · request arguments</summary>
+      <p className="my-2 break-all font-mono text-[11px]">{payload.address}</p>
+      {payload.message && (!rows || !/^Approve \S+\? Arguments:/u.test(payload.message)) ? <p className="whitespace-pre-wrap break-words text-xs">{payload.message}</p> : null}
       {rows ? (
         rows.length ? (
           <dl className="grid max-h-56 grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-1 overflow-auto rounded-md bg-muted px-2.5 py-2 text-xs">
@@ -95,6 +101,7 @@ function ExecutorApproval({ interaction, submit }: PluginPendingInteractionProps
           </dl>
         ) : null
       ) : payload.args ? <pre className="max-h-56 overflow-auto rounded-md bg-muted px-2.5 py-2 font-mono text-[11px] leading-4">{payload.args}</pre> : null}
+      </details>
       {others.length ? (
         <div className="text-xs text-muted-foreground">
           <p>{others.length} more call{others.length === 1 ? " is" : "s are"} waiting in this thread:</p>
@@ -104,9 +111,8 @@ function ExecutorApproval({ interaction, submit }: PluginPendingInteractionProps
       <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
         <span className="mr-auto" />
         <Button size="sm" variant="outline" disabled={busy} aria-keyshortcuts={keys(CHOICES.decline)} onClick={() => void answer(false)}>Decline{key(CHOICES.decline)}</Button>
-        <Button size="sm" variant="outline" disabled={busy} aria-keyshortcuts={keys(CHOICES.thread)} onClick={() => void answer(true, "thread")}>Approve for this thread{key(CHOICES.thread)}</Button>
-        {others.length ? <Button size="sm" variant="outline" disabled={busy} aria-keyshortcuts={keys(CHOICES.all)} onClick={() => void answer(true, "all")}>Approve all {others.length + 1}{key(CHOICES.all)}</Button> : null}
-        <Button size="sm" disabled={busy} aria-keyshortcuts={keys(CHOICES.approve)} onClick={() => void answer(true)}>Approve{key(CHOICES.approve)}</Button>
+        {!payload.script ? <Button size="sm" variant="outline" disabled={busy} aria-keyshortcuts={keys(CHOICES.thread)} onClick={() => void answer(true, "thread")}>Allow this tool for this thread{key(CHOICES.thread)}</Button> : null}
+        <Button size="sm" disabled={busy} aria-keyshortcuts={keys(CHOICES.approve)} onClick={() => void answer(true)}>Allow once{key(CHOICES.approve)}</Button>
       </div>
     </div>
   );

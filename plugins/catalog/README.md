@@ -61,16 +61,15 @@ server, so local worktrees and sandboxes behave the same.
 ## Approvals
 
 Executor decides which tool calls need approval. When a call pauses, the
-plugin shows a card in the thread with Approve and Decline. It sends the
+plugin shows a card in the thread with Allow once and Decline. It sends the
 answer to Executor and resumes the call. The agent sees only the result. It
 cannot approve its own call.
 
 A burst of calls shows one card at a time. A queued call opens its own card
 after 30 seconds, because some harnesses give up on a slow tool after about a
-minute. **Approve for this thread** approves later calls to the same tool in
-that thread until the plugin restarts. **Approve all** answers every waiting
-call in the thread. If nobody answers within an hour, the agent gets
-Executor's approval link, and `executor_resume` waits for that decision.
+minute. **Allow this tool for this thread** allows ordinary tools by connection, account and address
+until the plugin restarts. Generic scripts always need a one-time decision.
+If nobody answers within an hour, `executor_resume` asks again in the thread.
 
 ## Account health
 
@@ -149,3 +148,21 @@ npm run build
 The build writes `dist/` and does not reload the plugin. `npm pack` builds
 first. The archive holds `dist`, the SVG, skills, docs and licenses. See
 [third-party provenance](THIRD_PARTY.md) and [the package overview](PLUGIN_OVERVIEW.md).
+
+## Approval cards
+
+Cards lead with the purpose supplied by the agent. This text is not proof of
+what a script does. Technical details show the supplied arguments once (with an explicit truncation marker for large inputs),
+collapsed by default. Ordinary tools show their address and a bounded argument
+preview before the decision.
+
+Generic `execute` calls and calls carrying `code` only allow a one-time decision.
+They cannot acquire thread-wide permission or be accepted by a bulk decision.
+Ordinary tools may still be allowed by connection, account and address for the rest of the thread; this
+covers different arguments to that same tool. No new automatic read exemptions
+are inferred from source code or the agent's purpose.
+
+Executor's current approval response supplies an invocation and an elicitation,
+not a verified operation plan. Verified effects, narrower grants and pausing
+before operations outside a grant require Executor runtime support. BB continues
+to ask for each subsequent approval returned by that runtime.
