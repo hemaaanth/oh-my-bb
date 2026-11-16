@@ -151,7 +151,7 @@ first. The archive holds `dist`, the SVG, skills, docs and licenses. See
 
 ## Approval cards
 
-Cards lead with the purpose supplied by the agent. This text is not proof of
+The card title shows the purpose supplied by the agent once. Script cards show only a collapsed **View code** control and the decision buttons. This text is not proof of
 what a script does. Technical details show the supplied arguments once (with an explicit truncation marker for large inputs),
 collapsed by default. Ordinary tools show their address and a bounded argument
 preview before the decision.

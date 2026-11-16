@@ -1,20 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { definePluginApp, experimental_useQuestionFormHost, useRealtime, useRpc, type PluginPendingInteractionProps } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import type { z } from "zod";
-import type { executorApprovalsSchema, rpcContract } from "./contract";
+import type { rpcContract } from "./contract";
 import { CatalogPanel, CatalogIntegrationSettings } from "./catalog-panel";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/pill";
 
 /** Must match APPROVAL_RENDERER_ID and APPROVALS_CHANGED in server.ts. */
 const APPROVAL_RENDERER_ID = "executor-approval";
-const APPROVALS_CHANGED = "executor-approvals-changed";
 type ApprovalPayload = {
   approvalId: string; toolkit: string; address: string; integration: string; account: string | null; tool: string;
   purpose?: string; script?: boolean; description: string | null; reason: string; message: string; args: string; approvalUrl: string;
 };
-type PendingApprovals = z.infer<typeof executorApprovalsSchema>["pending"];
 
 const isApprovalPayload = (value: unknown): value is ApprovalPayload =>
   Boolean(value && typeof value === "object" && !Array.isArray(value)
@@ -36,19 +32,9 @@ const CHOICES = { approve: 0, thread: 1, decline: 2, all: 3 } as const;
 
 /** An Executor call waiting for approval, answered in the thread instead of on Executor's page. */
 function ExecutorApproval({ interaction, submit }: PluginPendingInteractionProps) {
-  const rpc = useRpc<typeof rpcContract>();
   const { shortcuts, registerChoiceHandler } = experimental_useQuestionFormHost();
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<PendingApprovals>([]);
   const payload = isApprovalPayload(interaction.payload) ? interaction.payload : null;
-  const load = useCallback(async () => {
-    setPending((await rpc.call("executorApprovals", { threadId: interaction.threadId })).pending);
-  }, [rpc, interaction.threadId]);
-  useEffect(() => { void load().catch(() => undefined); }, [load]);
-  useRealtime(APPROVALS_CHANGED, useCallback((event: unknown) => {
-    if ((event as { threadId?: unknown } | null)?.threadId === interaction.threadId) void load().catch(() => undefined);
-  }, [load, interaction.threadId]));
-  const others = pending.filter((entry) => entry.approvalId !== payload?.approvalId);
   const answer = useCallback(async (approved: boolean, scope: "once" | "thread" | "all" = "once") => {
     setBusy(true);
     try { await submit({ approved, scope }); } finally { setBusy(false); }
@@ -60,7 +46,7 @@ function ExecutorApproval({ interaction, submit }: PluginPendingInteractionProps
     else if (index === CHOICES.decline) void answer(false);
     else return false;
     return true;
-  }), [registerChoiceHandler, answer, busy, others.length, payload?.script]);
+  }), [registerChoiceHandler, answer, busy, payload?.script]);
   if (!payload) return <p role="alert" className="text-sm text-destructive">This approval request is malformed.</p>;
   const rows = payload.args ? argumentRows(payload.args) : null;
   const key = (choice: number) => {
@@ -68,46 +54,17 @@ function ExecutorApproval({ interaction, submit }: PluginPendingInteractionProps
     return shortcut ? <kbd className="ml-1.5 font-mono text-[10px] opacity-60">{shortcut.label}</kbd> : null;
   };
   const keys = (choice: number) => shortcuts.get(String(choice))?.ariaKeyshortcuts;
-  const position = pending.findIndex((entry) => entry.approvalId === payload.approvalId);
+  const code = rows?.find(([name]) => name === "code")?.[1];
   return (
     <div className="w-full space-y-3 text-[13px]">
-      <div className="space-y-1">
-        <div className="flex items-center justify-between gap-2">
-          <p className="min-w-0 truncate font-medium">{payload.integration}{payload.account ? <span className="font-normal text-muted-foreground"> · {payload.account}</span> : null}</p>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {pending.length > 1 && position >= 0 ? <span className="text-xs text-muted-foreground">{position + 1} of {pending.length}</span> : null}
-            <Pill variant="secondary" className="rounded-full px-2 py-0.5 text-[10px] font-medium">{payload.toolkit}</Pill>
-          </div>
-        </div>
-        <p className="whitespace-pre-wrap break-words font-medium">{payload.purpose ?? `Run ${payload.tool}.`}</p>
-        {payload.description ? <p className="text-xs text-muted-foreground">{payload.description}</p> : null}
-          </div>
-      <p className="text-xs text-muted-foreground">{payload.reason}</p>
-      {!payload.script ? <p className="text-xs">Tool: {payload.address}</p> : null}
       {!payload.script && rows?.length ? <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-        {rows.slice(0, 6).map(([name, value]) => <div key={name} className="contents"><dt className="text-muted-foreground">{name}</dt><dd className="whitespace-pre-wrap break-words">{value.length > 300 ? `${value.slice(0, 300)}… (see details)` : value}</dd></div>)}
+        {rows.filter(([name]) => name !== "intent").slice(0, 6).map(([name, value]) => <div key={name} className="contents"><dt className="text-muted-foreground">{name}</dt><dd className="whitespace-pre-wrap break-words">{value.length > 300 ? `${value.slice(0, 300)}…` : value}</dd></div>)}
       </dl> : null}
-      <details className="rounded-md border px-2.5 py-2">
-      <summary className="cursor-pointer text-xs">Technical details · request arguments</summary>
-      <p className="my-2 break-all font-mono text-[11px]">{payload.address}</p>
-      {payload.message && (!rows || !/^Approve \S+\? Arguments:/u.test(payload.message)) ? <p className="whitespace-pre-wrap break-words text-xs">{payload.message}</p> : null}
-      {rows ? (
-        rows.length ? (
-          <dl className="grid max-h-56 grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-1 overflow-auto rounded-md bg-muted px-2.5 py-2 text-xs">
-            {rows.map(([name, value]) => [
-              <dt key={`k:${name}`} className="font-mono text-muted-foreground">{name}</dt>,
-              <dd key={`v:${name}`} className="whitespace-pre-wrap break-words">{value}</dd>,
-            ])}
-          </dl>
-        ) : null
-      ) : payload.args ? <pre className="max-h-56 overflow-auto rounded-md bg-muted px-2.5 py-2 font-mono text-[11px] leading-4">{payload.args}</pre> : null}
+      <details>
+        <summary className="cursor-pointer text-xs text-muted-foreground">{payload.script ? "View code" : "Details"}</summary>
+        {!payload.script || !code ? <p className="my-2 break-all font-mono text-[11px]">{payload.address}</p> : null}
+        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted px-2.5 py-2 font-mono text-[11px] leading-4">{code ?? payload.args}</pre>
       </details>
-      {others.length ? (
-        <div className="text-xs text-muted-foreground">
-          <p>{others.length} more call{others.length === 1 ? " is" : "s are"} waiting in this thread:</p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-4">{others.slice(0, 4).map((entry) => <li key={entry.approvalId} className="truncate">{entry.summary}</li>)}{others.length > 4 ? <li>…</li> : null}</ul>
-        </div>
-      ) : null}
       <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
         <span className="mr-auto" />
         <Button size="sm" variant="outline" disabled={busy} aria-keyshortcuts={keys(CHOICES.decline)} onClick={() => void answer(false)}>Decline{key(CHOICES.decline)}</Button>
