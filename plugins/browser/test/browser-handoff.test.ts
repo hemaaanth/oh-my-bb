@@ -8,9 +8,10 @@ function setup(desktop?:{openDesktop:(hostId:string,threadId:string,viewOnly?:bo
   const thread = makeThreadResponse({ id: "thr_browser", environmentId: "env_browser" });
   const host = makeHostResponse({ id: "host_browser", name: "My desktop",machineProviderId:sandbox?"sandbox-daytona":null, status: "connected", lifecycle: { phase: "active", suspendedAt: null, message: null, pendingLog: "", teardown: null } });
   let ok = true;
+  let error: string | undefined;
   const fake = createFakePluginHost({ pluginId: "sandboxes", experimental_hostEntry: true, sdk: {
     threads: { get: async () => thread }, environments: { get: async () => ({ hostId: host.id }) }, hosts: { get: async () => host },
-  }, experimental_callHostRpc: async () => ({ok}) });
+  }, experimental_callHostRpc: async () => ({ok, ...(error ? {error} : {})}) });
   dispose.push(() => fake.harness.lifecycle.dispose());
   let desktopRequested=false;
   const idle = {hold:vi.fn(), release:vi.fn(),...(desktop?{
@@ -20,7 +21,7 @@ function setup(desktop?:{openDesktop:(hostId:string,threadId:string,viewOnly?:bo
   registerBrowserHandoff(fake.bb, idle,async()=>JSON.stringify({state:'disconnected',url:null}));
   const actions = () => fake.harness.experimental_hostRpcCalls.map(call => (call.input as { action:string }).action);
   const start = () => fake.harness.behavior.callAgentTool("browser_handoff", {reason:"login", instructions:"Sign in on the browser, then select Done."}, {threadId:thread.id});
-  return {...fake, thread, host, actions, start, idle, setOk:(value:boolean) => {ok=value;}};
+  return {...fake, thread, host, actions, start, idle, setOk:(value:boolean, detail?:string) => {ok=value;error=detail;}};
 }
 it("shows native attention card, preserves window while idle, and resumes only after Done", async () => {
   const {harness, thread, actions, start, idle} = setup();
@@ -145,4 +146,10 @@ it("does not accept empty or oversized replies as completion", async () => {
     expect(await result).toMatchObject({ isError: true });
     expect(actions()).toEqual(["pause", "discard"]);
   }
+});
+
+it("reports the host pause error without suggesting an unverified update", async () => {
+  const {start, setOk} = setup();
+  setOk(false, "native desktop requires a Hyprland session");
+  await expect(start()).rejects.toThrow("Could not pause the browser for manual input: native desktop requires a Hyprland session");
 });

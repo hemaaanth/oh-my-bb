@@ -8,15 +8,19 @@ import type {ConnectStatus} from "./viewer-origins.js";
 export { browserHandoffHostContract } from "./browser-handoff-contract.js";
 
 /** Fixed argv only. The caller cannot choose a command, backend, or profile. */
-export function browserThreadControl(input: { threadId: string; action: "pause" | "resume" | "show" | "close" | "discard" }, signal: AbortSignal): Promise<{ ok: boolean }> {
+export function browserThreadControl(input: { threadId: string; action: "pause" | "resume" | "show" | "close" | "discard" }, signal: AbortSignal): Promise<{ ok: boolean; error?: string }> {
   browserHandoffHostContract.browserThreadControl.input.parse(input);
   return new Promise(resolve => {
     const child = spawn("bb-browser", ["thread", input.action], {
-      env: { ...process.env, BB_THREAD_ID: input.threadId }, stdio: "ignore",
+      env: { ...process.env, BB_THREAD_ID: input.threadId }, stdio: ["ignore", "ignore", "pipe"],
       signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
     });
-    child.once("error", () => resolve({ ok: false }));
-    child.once("close", code => resolve({ ok: code === 0 }));
+    let stderr = "";
+    child.stderr?.on("data", chunk => { stderr = (stderr + String(chunk)).slice(-2000); });
+    child.once("error", error => resolve({ ok: false, error: error.message.slice(0, 2000) }));
+    child.once("close", code => resolve(code === 0 ? { ok: true } : {
+      ok: false, error: stderr.trim() || `bb-browser thread ${input.action} exited with code ${code}`,
+    }));
   });
 }
 
@@ -97,7 +101,8 @@ export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: st
         await stopLive(context.threadId);changed(context.threadId);
         await idle?.hold(hostId, context.threadId);
         pauseAttempted = true;
-        if (!(await control(context.threadId, "pause", context.signal, hostId)).ok) throw new Error("Could not pause the browser for manual input; update bb-browser on this host");
+        const paused = await control(context.threadId, "pause", context.signal, hostId);
+        if (!paused.ok) throw new Error(`Could not pause the browser for manual input: ${paused.error || "bb-browser thread pause failed on this host"}`);
         const host = await bb.sdk.hosts.get({ hostId });
         const desktopUrl=await idle?.openDesktop?.(hostId,context.threadId);
         const result = await bb.ui.requestInput({

@@ -702,8 +702,8 @@ function selectedBackend(stateName) {
   }
   if (configured === "native") {
     if (remote) fail("the native backend is local only; sandboxes keep the agent-browser launch");
-    if (!hyprlandSession()) {
-      fail("the native backend needs a Hyprland Wayland session (HYPRLAND_INSTANCE_SIGNATURE, WAYLAND_DISPLAY, hyprctl)");
+    if (!hyprlandSession() && !(threadOwner() && wantedPlacement() === "private")) {
+      fail("the native desktop backend needs a Hyprland Wayland session (HYPRLAND_INSTANCE_SIGNATURE, WAYLAND_DISPLAY, hyprctl)");
     }
     return "native";
   }

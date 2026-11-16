@@ -5,7 +5,7 @@ const threadId = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
 export const browserHandoffHostContract = defineRpcContract({
   browserThreadControl: {
     input: z.object({ threadId, action: z.enum(["pause", "resume", "show", "close", "discard"]) }).strict(),
-    output: z.object({ ok: z.boolean() }),
+    output: z.object({ ok: z.boolean(), error: z.string().max(2000).optional() }),
   },
 });
 export const browserLiveState=z.object({kind:z.enum(["closed","local","watch","handoff"]),url:z.string().optional()});
