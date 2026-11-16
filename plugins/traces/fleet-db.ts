@@ -4,9 +4,6 @@ import { buildTrace, type TraceEvent, type TraceSpan, type TraceThread } from ".
 import { matchesFleetFilter, TOOL_KINDS, type FleetFilter } from "./fleet-query";
 import type { FleetMode, FleetRow } from "./fleet-contract";
 
-// This is the BB schema shipped with desktop 0.47.1. A migration disables
-// fleet reads until this internal dependency is reviewed; thread SDK views remain available.
-export const EXPECTED_MIGRATION_HASH = "9fec044e3b7902083cde83067c20b03b3e71076a25bb3e6a0e56090f2a92ac3c";
 export const MAX_THREADS = 2_000;
 export const MAX_EVENTS = 3_000_000;
 const MAX_THREAD_EVENTS = 50_000;
@@ -20,7 +17,7 @@ const EVENT_SQL = `SELECT id, thread_id AS threadId, sequence AS seq, scope_kind
   FROM events INDEXED BY events_thread_sequence_idx WHERE thread_id=? AND created_at>=? AND created_at<? ORDER BY sequence`;
 
 export class FleetSchemaError extends Error {
-  constructor() { super("BB's database schema changed. Fleet scans are disabled; per-thread Waterfall and Context Inspector still work."); }
+  constructor(detail = "database could not be read") { super(`Incompatible BB trace schema: ${detail}. Fleet scans are disabled; per-thread Waterfall and Context Inspector still work.`); }
 }
 export interface FleetThread {
   id: string; projectId: string; projectName: string; provider: string; model: string | null;
@@ -48,19 +45,18 @@ export function openFleetDb(dataDir: string): Database.Database {
   try {
     db.pragma("query_only=ON");
     db.pragma("busy_timeout=1000");
-    const migration = db.prepare("SELECT hash FROM __drizzle_migrations ORDER BY created_at DESC LIMIT 1").get() as { hash?: string } | undefined;
-    if (migration?.hash !== EXPECTED_MIGRATION_HASH) throw new FleetSchemaError();
     const required: Record<string, string[]> = {
       threads: ["id", "project_id", "environment_id", "provider_id", "model_override", "parent_thread_id", "status", "created_at", "updated_at", "deleted_at"],
-      events: ["id", "thread_id", "sequence", "scope_kind", "turn_id", "item_id", "item_kind", "type", "data", "created_at"],
+      events: ["id", "thread_id", "sequence", "scope_kind", "turn_id", "item_id", "item_kind", "type", "data", "created_at", "parent_tool_call_id"],
       projects: ["id", "name", "deleted_at"], environments: ["id", "is_worktree"],
     };
     for (const [table, columns] of Object.entries(required)) {
       const present = new Set((db.pragma(`table_info(${table})`) as Array<{ name: string }>).map((column) => column.name));
-      if (columns.some((column) => !present.has(column))) throw new FleetSchemaError();
+      const missing = columns.filter((column) => !present.has(column));
+      if (missing.length) throw new FleetSchemaError(`missing ${table} columns: ${missing.join(", ")}`);
     }
     const indexes = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all() as Array<{ name: string }>).map((index) => index.name));
-    if (!indexes.has("events_thread_sequence_idx") || !indexes.has("events_thread_type_sequence_idx") || !indexes.has("threads_project_updated_idx")) throw new FleetSchemaError();
+    if (!indexes.has("events_thread_sequence_idx") || !indexes.has("events_thread_type_sequence_idx") || !indexes.has("threads_project_updated_idx")) throw new FleetSchemaError("missing required trace query indexes");
     return db;
   } catch (cause) { db.close(); if (cause instanceof FleetSchemaError) throw cause; throw new FleetSchemaError(); }
 }

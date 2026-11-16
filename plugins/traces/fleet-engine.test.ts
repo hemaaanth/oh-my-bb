@@ -3,13 +3,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EXPECTED_MIGRATION_HASH, FleetSchemaError, listFleetThreads, openFleetDb, scanFleetThread } from "./fleet-db";
+import { FleetSchemaError, listFleetThreads, openFleetDb, scanFleetThread } from "./fleet-db";
 import { FleetEngine } from "./fleet-engine";
 import { metricDrilldownQuery, parseFleetQuery } from "./fleet-query";
 
 const NOW = 1_000_000_000;
 const homes: string[] = [];
-function fixture(hash = EXPECTED_MIGRATION_HASH) {
+function fixture(hash = "fixture-migration") {
   const home = mkdtempSync(join(tmpdir(), "traces-fleet-")); homes.push(home);
   const db = new Database(join(home, "bb.db"));
   db.exec(`CREATE TABLE __drizzle_migrations (hash TEXT, created_at INTEGER);
@@ -50,9 +50,9 @@ afterEach(() => { vi.useRealTimers(); for (const home of homes.splice(0)) rmSync
 
 describe("read-only thread-first scanner", () => {
   it("refuses schema drift and uses query_only on a valid database", () => {
-    const bad = fixture("another-migration"); bad.db.close();
+    const bad = fixture("another-migration"); bad.db.exec("DROP INDEX events_thread_sequence_idx"); bad.db.close();
     expect(() => openFleetDb(bad.home)).toThrow(FleetSchemaError);
-    const good = fixture(); good.db.close();
+    const good = fixture("compatible-new-migration"); good.db.close();
     const read = openFleetDb(good.home);
     expect(() => read.prepare("DELETE FROM events").run()).toThrow();
     read.close();
@@ -195,7 +195,7 @@ describe("read-only thread-first scanner", () => {
 
 describe("progressive fleet engine", () => {
   it("reports schema drift without disabling per-thread features", async () => {
-    const { home, db } = fixture("new-core-migration"); db.close();
+    const { home, db } = fixture("new-core-migration"); db.exec("ALTER TABLE events DROP COLUMN parent_tool_call_id"); db.close();
     const engine = new FleetEngine(() => home, () => {}, () => NOW);
     const result = engine.start({ query: "", since: "1h", view: "explorer", mode: "events" });
     expect(result.status).toBe("schema-mismatch");

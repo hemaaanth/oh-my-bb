@@ -9,10 +9,10 @@ const sidebar = { component: app.navPanels.find(({ id }) => id === "waterfall")!
 
 const base: PluginSidebarThread = {
   id: "thr_one", projectId: "proj_alpha", title: "First run", titleFallback: null, displayTitle: "First run",
-  parentThreadId: null, lifecycleOwnerThreadId: null, sourceThreadId: null, sectionId: null,
+  parentThreadId: null, parentNotifications: "all", lifecycleOwnerThreadId: null, sourceThreadId: null, sectionId: null,
   originKind: null, originPluginId: null, providerId: "codex", status: "idle", runtimeStatus: "idle",
   queuedWork: "none", hasPendingInteraction: false,
-  activity: { workflows: 0, backgroundAgents: 0, backgroundCommands: 0, planMode: 0, goals: 0 },
+  activity: { workflows: 0, backgroundAgents: 0, backgroundCommands: 0, planMode: 0 },
   indicator: "none", indicatorLabel: null, isUnread: false, isPinned: false, pinnedAt: null, pinSortKey: null,
   isArchived: false, archivedAt: null, href: "/projects/proj_alpha/threads/thr_one", isHidden: false,
   environment: null, host: null, createdAt: 100, updatedAt: 200, lastReadAt: null, latestAttentionAt: 200,

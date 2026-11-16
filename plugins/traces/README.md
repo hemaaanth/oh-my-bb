@@ -46,7 +46,7 @@ Fleet Metrics shows measured tool p50/p95, recorded failure rates and categories
 
 ## Read-only fleet lifecycle
 
-The SQLite connection opens `bb.db` in read-only, `query_only` mode at `bb.server.experimental_dataDir`. Fleet scans require the reviewed BB migration hash and expected columns/indexes. If they change, Explorer/Metrics report **schema-mismatch** and stop; SDK-backed Waterfall/Context still work. Candidate threads come from `threads.updated_at` **or an active status**: BB can append events to an active thread without advancing its thread row's `updated_at`. Optional project/provider filters narrow the cohort. Events are then sought by `thread_id` using BB's existing index. There is no time-only event index, so 7d scans can take minutes.
+The SQLite connection opens `bb.db` in read-only, `query_only` mode at `bb.server.experimental_dataDir`. Fleet scans validate the columns and indexes their queries require. Compatible additive migrations remain supported. If a required column or index is missing, Explorer/Metrics report **schema-mismatch** and stop; SDK-backed Waterfall/Context still work. Candidate threads come from `threads.updated_at` **or an active status**: BB can append events to an active thread without advancing its thread row's `updated_at`. Optional project/provider filters narrow the cohort. Events are then sought by `thread_id` using BB's existing index. There is no time-only event index, so 7d scans can take minutes.
 
 Jobs process five threads per batch and yield between 256-event chunks inside a busy thread. They publish partial progress through `bb.realtime`; the UI coalesces terminal status reads and refreshes active snapshots each minute. At most two scans run together. Cancel stops after the current chunk or thread and also releases a completed job's live tail. `SQLITE_BUSY` is retried twice. Scans cap at 7 days, 2,000 threads, 3 million events, and 50,000 events per thread; results report source-specific limit counts and skipped relevant payloads. Four job snapshots are retained in memory for up to ten minutes since their last access; an open viewer refreshes its snapshot and rebuilds it from source if evicted. Each response has the newest 250 rows globally, with at most 250 retained per thread. Latency samples are bounded and flagged partial if capped.
 
@@ -86,3 +86,16 @@ The synthetic SQLite fixture tests read-only schema gating, thread-first query s
 ### Demo Mode
 
 Supports optional Demo Mode markers. Private names, descriptions, messages, drafts, record values, payloads, and typed searches are masked. Icons, standard headings, actions, statuses, times, and counts stay readable. Hover labels containing private text are masked separately. Native inputs and editors are concealed by Demo Mode too. This is presentation masking; saved data, links, exports, and clipboard contents are unchanged. No dependency or startup integration probe is added.
+
+### Large thread retrieval
+
+Use `bb traces thread <id> --limit 50 --offset 0 --search executor` to return a
+flat JSON page of matching spans. Follow `nextOffset` until it is null. The
+response includes `lastSeq`; restart pagination if the source changes while
+reading. Search includes sensitive payloads only with `--reveal`. Pages are
+bounded by count and byte size. The full tree remains the default without these
+options. This pages the built trace; it does not reduce event loading cost.
+
+Add `--events` to search stored event payloads before span truncation. This mode
+supports one thread and returns bounded excerpts around the match. It requires
+`--reveal` to search payload contents; hidden mode searches metadata only.

@@ -39,14 +39,21 @@ describe("SDK trace RPC and CLI", () => {
     expect(text.stdout).toContain("Errors:");
     const revealed = await harness.behavior.runCli(["thread", thread.id, "--json", "--reveal"]);
     expect(revealed.stdout).toContain(secret);
+    const page = await harness.behavior.runCli(["thread", thread.id, "--limit", "2", "--search", "tool"]);
+    expect(JSON.parse(page.stdout!).spans.length).toBeLessThanOrEqual(2);
+    const hidden = await harness.behavior.runCli(["thread", thread.id, "--events", "--search", secret]);
+    expect(JSON.parse(hidden.stdout!).total).toBe(0);
+    const found = await harness.behavior.runCli(["thread", thread.id, "--events", "--search", secret, "--reveal"]);
+    expect(JSON.parse(found.stdout!).total).toBe(1);
     const revealedText = await harness.behavior.runCli(["thread", thread.id, "--reveal"]);
     expect(revealedText.stdout).toContain(secret);
+    const readsBeforeAppend = reads;
     events.push({ id: "after", threadId: thread.id, seq: events.at(-1)!.seq + 1, scope: { kind: "thread" },
       type: "provider/warning", createdAt: events.at(-1)!.createdAt + 2, data: { message: "new warning" } });
     await harness.behavior.emitThreadEvent("experimental_thread.events", { thread, sequence: events.at(-1)!.seq });
     const refreshed = await harness.behavior.callRpc("traces_thread", { threadId: thread.id, includeChildren: false, reveal: false }) as TraceResult;
     expect(refreshed.eventCount).toBe(events.length);
-    expect(reads).toBe(3); // The appended page starts after the cached last sequence.
+    expect(reads).toBe(readsBeforeAppend + 1); // The appended page starts after the cached last sequence.
     await harness.lifecycle.dispose();
   });
   it("coalesces append bursts and rereads rewritten or gapped histories", async () => {

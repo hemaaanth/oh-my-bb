@@ -65,3 +65,11 @@ Fleet commands wait up to 25 seconds. If the result says `running`, **it is part
 `slow` ranks measured tool durations by p50/p95. Unknown durations are excluded and counted separately. `errors` groups recorded provider and item failures without raw messages. Fleet Metrics' first-output measure uses the first stored reasoning/message delta after a turn starts; it is not network TTFT. **Fleet-window token/cache totals are unknown.** BB prunes historical usage snapshots, and remaining lifetime totals are not a window total. Use `bb traces prompt` for per-call usage on a supported thread.
 
 The fleet scanner reads BB's existing SQLite in read-only mode. It selects candidate threads by updated time **plus active threads** (whose event log can grow while the thread row stays stale), then seeks events by thread ID. Rows are safe metadata only. `bb traces query` does not return secret payload text; the UI detail pane reads one event through the SDK with Reveal on by default. A completed job can follow changed threads while connected, but the event signal is not durable CDC. After reconnect or restart, rescan source; never call a live tail lossless.
+
+For large threads use `bb traces thread <id> --limit 50 --offset 0 --search executor`.
+This returns flat JSON spans, total, nextOffset and lastSeq. Follow nextOffset;
+restart if lastSeq changes. Payload search requires --reveal. Fleet compatibility
+checks required query columns/indexes, not an exact migration hash.
+
+Use `--events --search <text> --reveal` when a payload may be beyond the span
+text limit. It searches stored events before clipping and returns match excerpts.

@@ -1,3 +1,4 @@
+import { tracePage, eventPage } from "./trace-page";
 import { cliCommand, defineCli, defineRpcContract, PluginCliError, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { buildTrace, type TraceEvent, type TraceResult, type TraceThread, type TraceSpan } from "./spans";
@@ -281,6 +282,10 @@ export default function plugin(bb: BbPluginApi) {
         positionals: [{ name: "id", description: "Thread ID; use --self for the calling thread" }],
         options: {
           self: { type: "boolean", description: "Use the current calling thread" },
+          events: { type: "boolean", description: "Page stored events, searching before payload truncation" },
+          offset: { type: "integer", min: 0, max: 10_000_000, description: "Return flat spans starting at this match offset" },
+          limit: { type: "integer", min: 1, max: 100, description: "Return a bounded span page (default: 50)" },
+          search: { type: "string", description: "Filter spans by text; payload search requires --reveal" },
           json: { type: "boolean", description: "Return the full span tree and time summary" },
           children: { type: "boolean", description: "Include descendant threads" },
           reveal: { type: "boolean", description: "Explicitly show sensitive inputs, outputs, and event payloads" },
@@ -289,10 +294,18 @@ export default function plugin(bb: BbPluginApi) {
           if (input.options.self && input.positionals.id) throw new PluginCliError("Choose either a thread ID or --self, not both.");
           const threadId = input.options.self ? ctx.threadId : input.positionals.id;
           if (!threadId) throw new PluginCliError("A thread ID is required.", { hint: "Pass <id> or --self inside a thread." });
+          if (input.options.events) {
+            if (input.options.children) throw new PluginCliError("Event pages support one thread; omit --children.");
+            const rows = await readEvents(threadId);
+            const page = eventPage(rows, input.options.offset, input.options.limit, input.options.search, input.options.reveal);
+            return { exitCode: 0, stdout: JSON.stringify(page) };
+          }
           const result = await trace(threadId, input.options.children, input.options.reveal);
-          const stdout = input.options.json ? JSON.stringify(result) : formatTree(result, input.options.reveal);
+          const paged = input.options.offset !== undefined || input.options.limit !== undefined || input.options.search !== undefined;
+          const stdout = paged ? JSON.stringify(tracePage(result, input.options.offset, input.options.limit, input.options.search))
+            : input.options.json ? JSON.stringify(result) : formatTree(result, input.options.reveal);
           if (Buffer.byteLength(stdout, "utf8") > MAX_CLI_BYTES) throw new PluginCliError("The trace exceeds the CLI output limit.", {
-            hint: "Use the Traces UI for very large threads, or omit --children." });
+            hint: "Use --limit 50 --offset 0 for bounded spans, optionally --search <text> and --reveal." });
           return { exitCode: 0, stdout };
         },
       }),
