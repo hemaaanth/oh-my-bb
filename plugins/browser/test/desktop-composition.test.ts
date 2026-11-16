@@ -24,8 +24,9 @@ it.runIf(!!process.env.BB_TEST_SANDBOXES_SOURCE).each(['open-loss','close-loss']
   if(!child.connected)return Promise.reject(Error('Sandboxes fixture disconnected: '+errors));
   const job=Promise.withResolvers<unknown>(),id=++serial;jobs.set(id,job);child.send({id,method,input});return job.promise;
  };
- const host=makeHostResponse({id:'host_fixture',machineProviderId:null,status:'connected'}),thread=makeThreadResponse({id:'thr_fixture',environmentId:'env_fixture'}),actions:string[]=[],rpc:string[]=[];
- const fake=createFakePluginHost({pluginId:'browser',experimental_hostEntry:true,settings:{sandboxesIntegration:true},sdk:{threads:{get:async()=>thread},environments:{get:async()=>({hostId:host.id})},hosts:{get:async()=>host},plugins:{callRpc:async({method,input})=>{rpc.push(method);return await call(method,input) as never;}}},experimental_callHostRpc:async({method,input})=>{
+ // Browser streams only a sandbox's private display. Sandbox holds stay in Browser's test.
+ const host=makeHostResponse({id:'host_fixture',machineProviderId:'sandbox-fixture',status:'connected'}),thread=makeThreadResponse({id:'thr_fixture',environmentId:'env_fixture'}),actions:string[]=[],rpc:string[]=[];
+ const fake=createFakePluginHost({pluginId:'browser',experimental_hostEntry:true,settings:{sandboxesIntegration:true},sdk:{threads:{get:async()=>thread},environments:{get:async()=>({hostId:host.id})},hosts:{get:async()=>host},plugins:{callRpc:async({method,input})=>{rpc.push(method);if(method==='browserHoldV1')return null as never;return await call(method,input) as never;}}},experimental_callHostRpc:async({method,input})=>{
   if(method==='browserDesktopTarget')return {display:':1234',authority:'/private/authority',owner:{pid:42,start:'100'},displayOwner:{pid:43,start:'101'}};
   const action=z.object({action:z.string()}).parse(input).action;actions.push(action);return {ok:true};
  }});

@@ -665,7 +665,33 @@ function resolveState(explicit) {
   return existsSync(statePath("default")) ? statePath("default") : null;
 }
 
+// Agent shells often start without the compositor's variables. hyprctl lists
+// the live Hyprland instances of this user. Only missing variables are filled,
+// and only from exactly one match, so a wrong session is never guessed.
+let hyprlandAdopted = false;
+function adoptHyprlandSession() {
+  if (hyprlandAdopted) return;
+  hyprlandAdopted = true;
+  if (process.platform !== "linux" || (env.HYPRLAND_INSTANCE_SIGNATURE && env.WAYLAND_DISPLAY)) return;
+  // hyprctl and Wayland find their sockets under XDG_RUNTIME_DIR. It is never
+  // invented here, because bb-browser's own socket directory also uses it.
+  const hyprctl = which("hyprctl");
+  if (!hyprctl || !env.XDG_RUNTIME_DIR) return;
+  const result = spawnSync(hyprctl, ["instances", "-j"], { encoding: "utf8", timeout: 3_000, maxBuffer: 1024 * 1024 });
+  let instances;
+  try { instances = JSON.parse(result.stdout); } catch { return; }
+  if (!Array.isArray(instances)) return;
+  const live = instances.filter((item) => typeof item?.instance === "string" && /^[A-Za-z0-9_]+$/.test(item.instance) &&
+    typeof item.wl_socket === "string" && /^wayland-\d+$/.test(item.wl_socket) && Number.isInteger(item.pid) && alive(item.pid));
+  const matching = live.filter((item) => (!env.HYPRLAND_INSTANCE_SIGNATURE || item.instance === env.HYPRLAND_INSTANCE_SIGNATURE) &&
+    (!env.WAYLAND_DISPLAY || item.wl_socket === env.WAYLAND_DISPLAY));
+  if (matching.length !== 1) return;
+  env.HYPRLAND_INSTANCE_SIGNATURE ||= matching[0].instance;
+  env.WAYLAND_DISPLAY ||= matching[0].wl_socket;
+}
+
 function hyprlandSession() {
+  adoptHyprlandSession();
   return (
     process.platform === "linux" &&
     Boolean(env.HYPRLAND_INSTANCE_SIGNATURE) &&
@@ -1205,13 +1231,43 @@ function clearNativeRuntime(identity) {
 }
 
 // Where the managed Brave draws. "desktop" is the Hyprland session. "private"
-// is a TigerVNC display that only this user can open, streamed to a remote
-// viewer. auto picks private while someone uses this host through bb Connect.
-// One profile runs in one place, so a change restarts Brave with its sign-ins.
-function wantedPlacement() {
+// is a TigerVNC display that only this user can open. auto picks desktop while
+// someone sits at this host. Otherwise it picks private while someone uses this
+// host through bb Connect. One profile runs in one place.
+function displayMode() {
   const mode = setting("BB_BROWSER_DISPLAY", "display") || "auto";
   if (!["auto", "desktop", "private"].includes(mode)) fail("BB_BROWSER_DISPLAY must be auto, desktop, or private");
-  return mode === "auto" ? (remoteViewer() ? "private" : "desktop") : mode;
+  return mode;
+}
+function wantedPlacement() {
+  const mode = displayMode();
+  if (mode !== "auto") return mode;
+  if (localSeatActive()) return "desktop";
+  return remoteViewer() ? "private" : "desktop";
+}
+
+// Someone is at this host when its Hyprland session shows a lit, unlocked
+// screen. A bb Connect client can stay connected while its owner sits here, so
+// this check comes first.
+function localSeatActive() {
+  if (!hyprlandSession()) return false;
+  try {
+    for (const name of readdirSync("/proc")) {
+      if (!/^\d+$/.test(name)) continue;
+      try {
+        if (statSync(`/proc/${name}`).uid === process.getuid() && /^(hyprlock|swaylock|gtklock|waylock)$/.test(readFileSync(`/proc/${name}/comm`, "utf8").trim())) return false;
+      } catch {}
+    }
+  } catch {
+    return false;
+  }
+  const result = spawnSync("hyprctl", ["monitors", "-j"], { encoding: "utf8", timeout: 3_000, maxBuffer: 1024 * 1024 });
+  try {
+    const monitors = JSON.parse(result.stdout);
+    return Array.isArray(monitors) && monitors.some((monitor) => monitor && monitor.disabled !== true && monitor.dpmsStatus !== false);
+  } catch {
+    return false;
+  }
 }
 
 // Same rule as bb's own presence check: a connected remote client, or remote
@@ -1477,7 +1533,9 @@ function withNativeBrowser(identity, launch, action) {
   const browser = withNativeLock(identity, () => {
     let running = liveNativeBrowser(identity);
     let launched = false;
-    const placement = launch ? wantedPlacement() : null;
+    // In auto mode a running Brave stays where it is, so a presence change
+    // never restarts it mid-task. The next launch decides again.
+    const placement = !launch ? null : running && displayMode() === "auto" ? running.placement || "desktop" : wantedPlacement();
     const handoff=()=>identity.thread?existsSync(threadHoldPath()):anyThreadHandoff();
     if(running&&identity.thread&&running.placement==="private"&&running.display?.geometry!=="1920x1080")fail("This private browser desktop uses an old geometry. Drain and explicitly close it with its original runtime before reopening; it was not resized.");
     // Move Brave only while nobody drives it or holds it for manual work.
@@ -2107,7 +2165,7 @@ function doctor(argv) {
       return "agent: agent-browser launches Brave with the identity below" +
         (nativePossible ? " (a configured user agent or state keeps the native backend off; BB_BROWSER_BACKEND=native chooses it)" : "");
     }
-    return threadOwner()?"native: one persistent profile and fixed 1920x1080 private desktop per thread; never the user desktop":
+    return threadOwner()?`native: one persistent profile per thread; display ${displayMode()} (desktop is workspace ${nativeWorkspace()}, private is a 1920x1080 private display)`:
       "native: one persistent legacy profile over loopback CDP; "+`a Hyprland rule keeps its window on ${nativeWorkspace()}; session close detaches without terminating Brave`;
   });
   record("identity", () => {
@@ -2679,9 +2737,11 @@ function threadCommand(args) {
   if (op === "pause") {
     const identity = plannedIdentity();
     const pause = () => { writePrivate(threadHoldPath(), "manual\n"); return 0; };
-    if (identity.backend === "native") withNativeBrowser(identity,false,browser=>withNativeLock(identity, () => withThreadLock(identity, () => {if(browser)threadCdp(identity,browser,"prepare");return pause();})));
+    // The placement tells the handoff card where a person at this host finds the window.
+    let placement = null;
+    if (identity.backend === "native") withNativeBrowser(identity,false,browser=>withNativeLock(identity, () => withThreadLock(identity, () => {if(browser){threadCdp(identity,browser,"prepare");placement=browser.placement||"desktop";}return pause();})));
     else withThreadLock(identity, pause);
-    console.log(JSON.stringify({ok:true, workspace:nativeWorkspace()})); return 0;
+    console.log(JSON.stringify({ok:true, workspace:nativeWorkspace(), ...(placement?{placement}:{})})); return 0;
   }
   if (op === "resume") { plannedIdentity();rmSync(threadHoldPath(), {force:true}); return 0; }
   if (op === "desktop") {

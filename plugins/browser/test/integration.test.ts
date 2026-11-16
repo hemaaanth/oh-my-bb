@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import plugin from "../src/server.js";
 import { registerViewer } from "../src/viewer.js";
 import { browserExtensionOrigin } from "../src/browser-extension-download.js";
@@ -94,4 +94,25 @@ it('applies the two global browser policies to every sandbox without sharing see
  await fake.harness.behavior.setSettings({homeRouting:false});
  expect(await prepare()).toMatchObject({egress:'direct',exitNode:'',state:null});
  expect(JSON.stringify(fake.harness.logEntries)).not.toContain('private-fixture');
+});
+
+it('keeps a handoff on the user computer on the page view even with Sandboxes on',async()=>{
+ const {makeHostResponse,makeThreadResponse}=await import('@get-bb/plugin-sdk/testing');
+ const thread=makeThreadResponse({id:'thr_local',environmentId:'env_local'});
+ const host=makeHostResponse({id:'local',name:'My desktop',status:'connected',machineProviderId:null});
+ const pluginCalls:string[]=[];
+ const fake=createFakePluginHost({pluginId:'browser',experimental_hostEntry:true,settings:{sandboxesIntegration:true},
+  experimental_callHostRpc:async({method,input})=>method==='browserThreadControl'?{ok:true,...((input as {action:string}).action==='pause'?{placement:'desktop',workspace:'8'}:{})}:{surface:'fixture'},
+  sdk:{threads:{get:async()=>thread},environments:{get:async()=>({hostId:host.id})},hosts:{get:async()=>host},
+   plugins:{callRpc:async({method})=>{pluginCalls.push(method);throw Error('unexpected RPC '+method);}}},
+ });dispose.push(()=>fake.harness.lifecycle.dispose());
+ await plugin(fake.bb,async()=>JSON.stringify({state:'disconnected',url:null}));
+ expect(await fake.harness.behavior.callAgentTool('browser_live',{action:'open'},{threadId:thread.id})).toContain('only on sandbox hosts');
+ const done=fake.harness.behavior.callAgentTool('browser_handoff',{reason:'login',instructions:'Sign in, then select Done.'},{threadId:thread.id});
+ await vi.waitFor(()=>expect(fake.harness.pendingInteractions).toHaveLength(1));
+ expect(fake.harness.pendingInteractions[0]!.payload).toMatchObject({inlineViewer:false,viewerUrl:expect.stringContaining('/http/viewer?token='),viewerNotice:expect.stringContaining('workspace 8 of My desktop')});
+ fake.harness.behavior.submitInteraction(fake.harness.pendingInteractions[0]!.id,{done:true});await done;
+ // No getbb.app desktop share: no desktop target on the host and no Sandboxes desktop RPC.
+ expect(fake.harness.experimental_hostRpcCalls.map(call=>call.method)).not.toContain('browserDesktopTarget');
+ expect(pluginCalls.filter(method=>method.startsWith('desktop'))).toEqual([]);
 });

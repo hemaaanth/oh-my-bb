@@ -37,7 +37,7 @@ export function BrowserLive({message}:PluginMessageDirectiveProps){
   const status=error?<span role="alert" className="min-w-0 truncate text-destructive" title={error}>{error}</span>
     :view===null?<span className="text-muted-foreground">Loading…</span>
     :watching?<span className="text-muted-foreground">View only</span>
-    :view.kind==='local'?<span className="min-w-0 text-muted-foreground">Desktop streaming unavailable. Use a handoff for page controls or enable the optional Sandboxes desktop integration.</span>
+    :view.kind==='local'?<span className="min-w-0 text-muted-foreground">Live view works on sandbox hosts. On this computer, a browser handoff gives page controls.</span>
     :view.kind==='handoff'?<span className="min-w-0 truncate text-muted-foreground">Use the browser handoff in this chat.</span>
     :busy?<span className="text-muted-foreground">Opening…</span>:<span className="text-muted-foreground">Closed</span>;
   const actions=watching?<>

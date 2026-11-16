@@ -4,14 +4,14 @@ An optional extension can relay an explicitly paired regular profile, or export
 cookies while that browser stays open. A toolbar popup shows connection and sync
 health. Authentication sharing is off until enabled.
 
-Watch a private browser desktop inside chat with the optional Sandboxes
+Watch a sandbox's private browser desktop inside chat with the optional Sandboxes
 integration. Login, OAuth and bot-check handoffs pause automation and open the
 same desktop for mouse and keyboard input. Its fixed 1920×1080 screen scales
 without cropping. Only one viewer streams at once. Pop-out transfers ownership;
 **View here** returns it. Fullscreen keeps the same connection.
 
 Without desktop integration, handoff offers page-only controls. Browser chrome
-and OS dialogs are unavailable there. Native placement follows `BB_BROWSER_DISPLAY=auto|desktop|private`. Auto selects a private display during remote presence; explicit desktop placement uses the configured local workspace without focusing it. Existing native profiles are preserved, not copied.
+and OS dialogs are unavailable there. Native placement follows `BB_BROWSER_DISPLAY=auto|desktop|private`. Auto uses the configured local workspace while the screen is on and unlocked, and a private display when you are away and connected remotely. A running browser keeps its placement until it closes. Desktop placement never focuses the window. On your own computer, handoff uses the page view and names the workspace that holds the window. Existing native profiles are preserved, not copied.
 Default authentication seeds apply once; new sign-ins stay private to the thread.
 Some sites require manual login. A copied seed does not verify the account.
 

@@ -8,23 +8,29 @@ import type {ConnectStatus} from "./viewer-origins.js";
 export { browserHandoffHostContract } from "./browser-handoff-contract.js";
 
 /** Fixed argv only. The caller cannot choose a command, backend, or profile. */
-export function browserThreadControl(input: { threadId: string; action: "pause" | "resume" | "show" | "close" | "discard" }, signal: AbortSignal): Promise<{ ok: boolean; error?: string }> {
+const pausedWindow = z.object({ placement: z.enum(["desktop", "private"]).optional(), workspace: z.string().max(80).optional() });
+export function browserThreadControl(input: { threadId: string; action: "pause" | "resume" | "show" | "close" | "discard" }, signal: AbortSignal): Promise<{ ok: boolean; error?: string; placement?: "desktop" | "private"; workspace?: string }> {
   browserHandoffHostContract.browserThreadControl.input.parse(input);
   return new Promise(resolve => {
     const child = spawn("bb-browser", ["thread", input.action], {
-      env: { ...process.env, BB_THREAD_ID: input.threadId }, stdio: ["ignore", "ignore", "pipe"],
+      env: { ...process.env, BB_THREAD_ID: input.threadId }, stdio: ["ignore", "pipe", "pipe"],
       signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
     });
-    let stderr = "";
+    let stdout = "", stderr = "";
+    child.stdout?.on("data", chunk => { stdout = (stdout + String(chunk)).slice(0, 4000); });
     child.stderr?.on("data", chunk => { stderr = (stderr + String(chunk)).slice(-2000); });
     child.once("error", error => resolve({ ok: false, error: error.message.slice(0, 2000) }));
-    child.once("close", code => resolve(code === 0 ? { ok: true } : {
-      ok: false, error: stderr.trim() || `bb-browser thread ${input.action} exited with code ${code}`,
-    }));
+    child.once("close", code => {
+      if (code !== 0) return resolve({ ok: false, error: stderr.trim() || `bb-browser thread ${input.action} exited with code ${code}` });
+      // Only pause reports a window. An older bb-browser prints less; that is not an error.
+      let shown: z.infer<typeof pausedWindow> = {};
+      if (input.action === "pause") try { shown = pausedWindow.catch({}).parse(JSON.parse(stdout)); } catch {}
+      resolve({ ok: true, ...(shown.placement ? { placement: shown.placement } : {}), ...(shown.workspace ? { workspace: shown.workspace } : {}) });
+    });
   });
 }
 
-export const BROWSER_AGENT_INSTRUCTIONS = 'Use bb-browser for browser work. BB_THREAD_ID gives each thread a separate profile. Native placement follows BB_BROWSER_DISPLAY=auto|desktop|private: auto uses the local workspace unless bb Connect has remote presence. Honor an explicit local workspace request with BB_BROWSER_DISPLAY=desktop and keep BB_THREAD_ID intact. Isolated sessions use private desktops. Use browser_handoff when login, OAuth, a bot check, or another manual browser action needs the user. It pauses automation until Done, Reply or Cancel. With the optional Sandboxes integration enabled, browser_handoff and browser_live embed the private desktop. Without desktop streaming, handoff offers page-only controls; browser chrome and OS dialogs require explicit desktop integration setup. Native desktop placement uses the configured workspace without focusing it; private placement stays off the user workspace. Never activate windows, change workspaces, or capture the user desktop. Relay/existing keep their supported page-only behavior. After opening a page with bb-browser, show a view-only browser_live card by default and immediately emit ::browser-live{} once on its own line in a progress message before continuing browser actions. Reuse the existing card during that browser session rather than posting one per action. Respect a user-closed view or a request to keep browsing hidden; do not reopen it automatically. If desktop streaming is unavailable, continue without enabling integrations or repeatedly retrying the viewer. Close owned browser sessions with bb-browser close --all when finished unless the user is still watching.';
+export const BROWSER_AGENT_INSTRUCTIONS = 'Use bb-browser for browser work. BB_THREAD_ID gives each thread a separate profile. Native placement follows BB_BROWSER_DISPLAY=auto|desktop|private: auto uses the local workspace while the host screen is on and unlocked, otherwise a private display when bb Connect has remote presence. A running browser keeps its placement until it closes. Honor an explicit local workspace request with BB_BROWSER_DISPLAY=desktop and keep BB_THREAD_ID intact. Isolated sessions use private desktops. Use browser_handoff when login, OAuth, a bot check, or another manual browser action needs the user. It pauses automation until Done, Reply or Cancel. On sandbox hosts with the optional Sandboxes integration, browser_handoff and browser_live embed the private desktop. On the user\'s own computer, browser_live is unavailable and handoff offers page-only controls in BB; it names the workspace when the window is on the desktop. Native desktop placement uses the configured workspace without focusing it; private placement stays off the user workspace. Never activate windows, change workspaces, or capture the user desktop. Relay/existing keep their supported page-only behavior. After opening a page with bb-browser, show a view-only browser_live card by default and immediately emit ::browser-live{} once on its own line in a progress message before continuing browser actions. Reuse the existing card during that browser session rather than posting one per action. Respect a user-closed view or a request to keep browsing hidden; do not reopen it automatically. If desktop streaming is unavailable, continue without enabling integrations or repeatedly retrying the viewer. Close owned browser sessions with bb-browser close --all when finished unless the user is still watching.';
 
 export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: string, threadId: string): void | Promise<void>; release(hostId: string, threadId: string): void | Promise<void>;openDesktop?(hostId:string,threadId:string,viewOnly?:boolean):Promise<string|null>;closeDesktop?(threadId:string):Promise<void> },connect?:ConnectStatus) {
   const viewer = registerViewer(bb,connect);
@@ -73,13 +79,13 @@ export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: st
     },
   });
   bb.agents.registerTool({
-    name:'browser_live',description:'Show or close an inline live view of this thread’s private browser desktop. Requires the optional Sandboxes desktop integration. Does not pause automation.',
+    name:'browser_live',description:'Show or close an inline live view of this thread’s private browser desktop on a sandbox host. Requires the optional Sandboxes desktop integration. Does not pause automation.',
     instructions:'Open the page with bb-browser first, then show this view-only card by default when browser work starts. Reuse the existing card during the session; do not post one per action. Respect a user-closed view or a request to browse hidden. After opening, immediately emit ::browser-live{} exactly once on its own line in a progress message before continuing browser actions. Viewing is read-only and does not pause automation; use browser_handoff when the user needs to interact.',
     parameters:z.object({action:z.enum(['open','close']).default('open')}).strict(),
     execute:async({action},context)=>{
       if(action==='close'){await finishLive(context.threadId);return 'Live browser view closed.';}
       const view=await startLive(context.threadId);
-      return view.kind==='local'?'Desktop streaming is unavailable. Enable the optional Sandboxes integration for private desktop viewing. A browser_handoff can offer page-only controls; desktop placement has page-only controls.':view.kind==='handoff'?'A browser handoff is already waiting in this chat.':'Live browser view opened. Automation can continue.\n::browser-live{}';
+      return view.kind==='local'?'Live view works only on sandbox hosts. This browser runs on the user\'s own computer. Continue without a live view. Use browser_handoff when the user must act in the browser; it offers page-only controls.':view.kind==='handoff'?'A browser handoff is already waiting in this chat.':'Live browser view opened. Automation can continue.\n::browser-live{}';
     },
   });
   bb.agents.registerTool({
@@ -105,9 +111,13 @@ export function registerBrowserHandoff(bb: BbPluginApi, idle?: { hold(hostId: st
         if (!paused.ok) throw new Error(`Could not pause the browser for manual input: ${paused.error || "bb-browser thread pause failed on this host"}`);
         const host = await bb.sdk.hosts.get({ hostId });
         const desktopUrl=await idle?.openDesktop?.(hostId,context.threadId);
+        // A window on the desktop is easiest to use there. The page view works from anywhere.
+        const pageNotice = paused.placement === "desktop" && !host.machineProviderId?.startsWith("sandbox-")
+          ? `The browser window is on workspace ${paused.workspace ?? "8"} of ${host.name}. If you are at that computer, use it there. Otherwise open the page view. It has no browser toolbar or system dialogs.`
+          : "Open the page view to act in the browser. It has no browser toolbar or system dialogs.";
         const result = await bb.ui.requestInput({
           threadId: context.threadId, rendererId: BROWSER_HANDOFF_RENDERER,
-          title: "Browser needs your attention", payload: { ...input, host: host.name, inlineViewer:!!desktopUrl,viewerUrl:desktopUrl??await viewer.issue(context.threadId,hostId),...(!desktopUrl?{viewerNotice:"Page-only controls. Browser chrome and OS dialogs are not exposed. Private placement stays off your workspace; enable the optional Sandboxes desktop integration when full desktop access is needed."}:{}) }, timeoutMs: 15 * 60_000,
+          title: "Browser needs your attention", payload: { ...input, host: host.name, inlineViewer:!!desktopUrl,viewerUrl:desktopUrl??await viewer.issue(context.threadId,hostId),...(!desktopUrl?{viewerNotice:pageNotice}:{}) }, timeoutMs: 15 * 60_000,
           presentation: { label: { pending: "Waiting for your browser action", completed: "Browser action answered" }, icon: { glyph: "Globe" } },
           describeSubmission: value => { const parsed = browserHandoffAnswer.safeParse(value); return { title: parsed.success && "reply" in parsed.data ? "Replied to browser request" : parsed.success && "done" in parsed.data && parsed.data.done ? "Finished browser action" : "Cancelled browser action" }; },
         }, { signal: context.signal });

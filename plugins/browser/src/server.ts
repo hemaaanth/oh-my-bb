@@ -62,8 +62,12 @@ export default async function plugin(bb: BbPluginApi,connect?:ConnectStatus) {
   registerBrowserHandoff(bb, { openDesktop:async(hostId,threadId,viewOnly=false)=>{
     await closeDesktop(threadId);
     const host=await bb.sdk.hosts.get({hostId}),sandbox=!!host.machineProviderId?.startsWith('sandbox-');
-    // Only explicitly opted-in, owned private displays use desktop streaming.
-    if(sandbox)await requireSandboxes();else if(host.status!=='connected'||!(await settings.get()).sandboxesIntegration)return null;
+    // Only a sandbox's private display streams. A local host would need a bb Connect
+    // port share on a new getbb.app subdomain. Each one asks for a fresh sign-in,
+    // and that sign-in cannot load inside the chat frame. The page view runs on
+    // BB's own origin, so local hosts use it.
+    if(!sandbox)return null;
+    await requireSandboxes();
     const target=await desktopClient.call('browserDesktopTarget',{threadId,watch:viewOnly},{hostId,timeoutMs:30000});
     if(!target)return null; // Paired regular profiles, scratch headless sessions, and desktop-placed browsers remain page-only.
     desktopSessions.add(threadId);

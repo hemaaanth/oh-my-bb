@@ -9,9 +9,10 @@ function setup(desktop?:{openDesktop:(hostId:string,threadId:string,viewOnly?:bo
   const host = makeHostResponse({ id: "host_browser", name: "My desktop",machineProviderId:sandbox?"sandbox-daytona":null, status: "connected", lifecycle: { phase: "active", suspendedAt: null, message: null, pendingLog: "", teardown: null } });
   let ok = true;
   let error: string | undefined;
+  let window: {placement?:string;workspace?:string} = {};
   const fake = createFakePluginHost({ pluginId: "sandboxes", experimental_hostEntry: true, sdk: {
     threads: { get: async () => thread }, environments: { get: async () => ({ hostId: host.id }) }, hosts: { get: async () => host },
-  }, experimental_callHostRpc: async () => ({ok, ...(error ? {error} : {})}) });
+  }, experimental_callHostRpc: async ({input}) => ({ok, ...(error ? {error} : {}), ...((input as {action:string}).action === "pause" ? window : {})}) });
   dispose.push(() => fake.harness.lifecycle.dispose());
   let desktopRequested=false;
   const idle = {hold:vi.fn(), release:vi.fn(),...(desktop?{
@@ -21,7 +22,7 @@ function setup(desktop?:{openDesktop:(hostId:string,threadId:string,viewOnly?:bo
   registerBrowserHandoff(fake.bb, idle,async()=>JSON.stringify({state:'disconnected',url:null}));
   const actions = () => fake.harness.experimental_hostRpcCalls.map(call => (call.input as { action:string }).action);
   const start = () => fake.harness.behavior.callAgentTool("browser_handoff", {reason:"login", instructions:"Sign in on the browser, then select Done."}, {threadId:thread.id});
-  return {...fake, thread, host, actions, start, idle, setOk:(value:boolean, detail?:string) => {ok=value;error=detail;}};
+  return {...fake, thread, host, actions, start, idle, setOk:(value:boolean, detail?:string) => {ok=value;error=detail;}, setWindow:(value:typeof window) => {window=value;}};
 }
 it("shows native attention card, preserves window while idle, and resumes only after Done", async () => {
   const {harness, thread, actions, start, idle} = setup();
@@ -103,11 +104,19 @@ it('offers page-only handoff without probing Sandboxes when desktop integration 
  expect(harness.inspection.sdk.callsTo('plugins.callRpc')).toEqual([]);
  harness.behavior.submitInteraction(harness.pendingInteractions[0].id,{done:true});await done;
 });
-it('streams a local browser that moved to a private display for a remote viewer',async()=>{
- const openDesktop=vi.fn(async()=>'https://hemarchy--1234.getbb.app/#grant'),closeDesktop=vi.fn(async()=>{});const {harness,thread,start}=setup({openDesktop,closeDesktop});
- expect(await harness.behavior.callAgentTool('browser_live',{action:'open'},{threadId:thread.id})).toContain('::browser-live{}');
- expect(await harness.behavior.callRpc('getBrowserView',{threadId:thread.id})).toEqual({kind:'watch',url:'https://hemarchy--1234.getbb.app/#grant'});
- const done=start();await vi.waitFor(()=>expect(harness.pendingInteractions).toHaveLength(1));expect(harness.pendingInteractions[0].payload).toMatchObject({inlineViewer:true,viewerUrl:'https://hemarchy--1234.getbb.app/#grant'});harness.behavior.submitInteraction(harness.pendingInteractions[0].id,{done:true});await done;
+it('points a person at the desktop window and still offers the page view',async()=>{
+ const {harness,thread,start,setWindow}=setup();
+ expect(await harness.behavior.callAgentTool('browser_live',{action:'open'},{threadId:thread.id})).toContain('only on sandbox hosts');
+ setWindow({placement:'desktop',workspace:'8'});
+ const done=start();await vi.waitFor(()=>expect(harness.pendingInteractions).toHaveLength(1));
+ expect(harness.pendingInteractions[0].payload).toMatchObject({inlineViewer:false,viewerUrl:expect.stringContaining('/http/viewer?token='),viewerNotice:expect.stringContaining('workspace 8 of My desktop')});
+ harness.behavior.submitInteraction(harness.pendingInteractions[0].id,{done:true});await done;
+});
+it('does not name a workspace for a private display',async()=>{
+ const {harness,start,setWindow}=setup();setWindow({placement:'private',workspace:'8'});
+ const done=start();await vi.waitFor(()=>expect(harness.pendingInteractions).toHaveLength(1));
+ expect(harness.pendingInteractions[0].payload).toMatchObject({inlineViewer:false,viewerNotice:expect.not.stringContaining('workspace')});
+ harness.behavior.submitInteraction(harness.pendingInteractions[0].id,{done:true});await done;
 });
 it('revokes watching before an interactive inline handoff and prevents watch reopening while pending',async()=>{
  const order:string[]=[],openDesktop=vi.fn(async(_host:string,_thread:string,watch?:boolean)=>{order.push(watch?'watch':'interact');return 'https://sandbox--1234.getbb.app/#grant';}),closeDesktop=vi.fn(async()=>{order.push('close');});

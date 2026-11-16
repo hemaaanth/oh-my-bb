@@ -823,6 +823,7 @@ process.on("SIGTERM", () => {
     await fake(
       "hyprctl",
       `if (process.env.FAKE_HYPR_FAIL) { console.log("lua error"); process.exit(1); }
+if (argv[0] === "instances") { console.log(process.env.FAKE_HYPR_INSTANCES || "[]"); process.exit(0); }
 if (argv[0] === "clients") {
   const dir = process.env.FAKE_ROOT + "/clients";
   let names = [];
@@ -1257,6 +1258,20 @@ console.log(argv[1].includes("hl.window_rule") ? "bb-browser-rule:true" : argv[1
     for (const call of await calls("agent-browser")) expect(call.argv).not.toContain("--cdp");
     const doctor = runNative(["doctor", "--offline"], setup.env);
     expect(doctor.stdout).toMatch(/backend\s+agent.*keeps the native backend off/);
+  });
+
+  it("finds the one live Hyprland session when an agent shell lacks its variables", async () => {
+    const bare = { XDG_RUNTIME_DIR: join(root, "runtime"), XDG_CONFIG_HOME: join(root, "config"), FAKE_ROOT: root };
+    const instance = (name: string) => ({ instance: name, wl_socket: "wayland-1", pid: process.pid, time: 1 });
+    const one = run(["doctor", "--offline"], { env: { ...bare, FAKE_HYPR_INSTANCES: JSON.stringify([instance("abc_1"), { ...instance("dead_2"), pid: 2 ** 22 + 1 }]) } });
+    expect(one.stdout).toMatch(/backend\s+native/);
+    // Two live sessions are ambiguous, so none is adopted.
+    const two = run(["doctor", "--offline"], { env: { ...bare, FAKE_HYPR_INSTANCES: JSON.stringify([instance("abc_1"), instance("def_2")]) } });
+    expect(two.stdout).toMatch(/backend\s+agent/);
+    // Without XDG_RUNTIME_DIR nothing is looked up or invented.
+    const none = run(["doctor", "--offline"], { env: { XDG_CONFIG_HOME: join(root, "config"), FAKE_ROOT: root, FAKE_HYPR_INSTANCES: JSON.stringify([instance("abc_1")]) } });
+    expect(none.stdout).toMatch(/backend\s+agent/);
+    expect((await calls("hyprctl")).filter((call) => call.argv[0] === "instances")).toHaveLength(2);
   });
 
   it("chooses the agent backend automatically when a default state was imported", async () => {
