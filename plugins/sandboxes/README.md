@@ -715,6 +715,8 @@ Every sandbox thread can show its own display, the shared Xvfb that GUI apps, `b
 
 All three share one grant per thread, so the inline view and the panel show the same session. Opening again replaces the grant. The host finds the display itself; callers cannot name another one. It picks this user's Xvfb that has TCP disabled and no authority file, preferring the display that `bb-sandbox-display` recorded. If none runs, it starts one with `bb-sandbox-display start`. The stream, gateway, token, expiry and idle hold work the same as for private desktops below. For a thread's Browser window, use Browser's live view instead.
 
+If the desktop frame asks you to sign in or stays blank, use **Open desktop in browser**. Finish BB Connect sign-in in that browser tab. If sign-in returns to an empty viewer, open the desktop in your browser again from the BB panel.
+
 ### Private remote desktops
 
 Sandboxes provides a provider-independent desktop viewer through `desktopOpenV1` and `desktopCloseV1`. It streams the display with [voxl](https://github.com/tembo/voxl) as H.264 over a WebSocket. An installed plugin requests a viewer for its existing private X display and thread. Browser uses this service for headed sandbox handoffs; other GUI consumers can use the same RPC. The thread's environment selects the machine explicitly. These grants never fall back to the sandbox's shared display.

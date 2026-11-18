@@ -112,11 +112,16 @@ function SandboxDesktop({threadId,panel}:{threadId:string;panel:boolean}){
     <span className="flex min-w-0 flex-1 items-center">{status}</span>
     <span className="ml-1 flex shrink-0 items-center gap-0.5">{actions}</span>
   </div>;
+  const recovery=open&&!yielded&&popout.stalled
+    ?<div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-xs">
+      <span role="status" className="text-muted-foreground">If BB Connect asks you to sign in, finish in your browser and open the desktop again.</span>
+      <ModeButton label="Open desktop in browser" onClick={()=>{try{popout.openInBrowser();}catch(cause){setError(cause instanceof Error?cause.message:'Couldn’t open the desktop.');}}}/>
+    </div>:null;
   // The wrapper and voxl preserve contain scaling; fullscreen never swaps the frame.
   const body=<DesktopFrame url={open?.url??null} control={!!open&&!open.viewOnly} panel={panel} threadId={threadId} yielded={yielded} frameRef={frame} viewerRef={viewer}/>;
   return panel
-    ?<div ref={root} className="flex h-full flex-col text-sm">{header}{body}</div>
-    :<div ref={root} className="my-2 overflow-hidden rounded-lg border border-border bg-background text-sm">{header}{body}</div>;
+    ?<div ref={root} className="flex h-full flex-col text-sm">{header}{recovery}{body}</div>
+    :<div ref={root} className="my-2 overflow-hidden rounded-lg border border-border bg-background text-sm">{header}{recovery}{body}</div>;
 }
 
 // The agent's view must show even when its reply leaves out the directive, so a view the

@@ -28,26 +28,36 @@ export function useViewerPopout(frameRef:RefObject<HTMLIFrameElement|null>,sessi
  const navigate=useBbNavigate();
  type Prepared={frame:HTMLIFrameElement;sessionUrl:string;url:string;expires:number};
  const [prepared,setPrepared]=useState<Prepared|null>(null),current=useRef<Prepared|null>(null);
+ const [stalledUrl,setStalledUrl]=useState<string|null>(null);
  useEffect(()=>{
   let timer:number|undefined,cancelled=false;
   const save=(value:Prepared|null)=>{window.clearTimeout(timer);current.current=value;setPrepared(value);if(value)timer=window.setTimeout(()=>save(null),value.expires-Date.now());};
-  save(null);const frame=frameRef.current;if(!frame||!sessionUrl)return;
+  save(null);setStalledUrl(null);const frame=frameRef.current;if(!frame||!sessionUrl)return;
+  let responseTimer:number;
+  const expectResponse=()=>{window.clearTimeout(responseTimer);setStalledUrl(null);responseTimer=window.setTimeout(()=>setStalledUrl(sessionUrl),6000);};
+  const responded=()=>{window.clearTimeout(responseTimer);setStalledUrl(null);};
+  expectResponse();
   const controller=new AbortController();
   const expected=new URL(frame.src,location.href),origin=expected.origin;
   const accept=(value:{url?:unknown;expires?:unknown})=>{
    if(cancelled||frameRef.current!==frame)return;
-   try{const url=new URL(String(value.url));if(url.protocol!=='https:'||url.origin!==origin||url.hash.split('&')[0]!==expected.hash.split('&')[0]||typeof value.expires!=='number'||!Number.isFinite(value.expires)||value.expires<=Date.now())return;save({frame,sessionUrl,url:url.href,expires:value.expires});}catch{}
+   try{const url=new URL(String(value.url));if(url.protocol!=='https:'||url.origin!==origin||url.hash.split('&')[0]!==expected.hash.split('&')[0]||typeof value.expires!=='number'||!Number.isFinite(value.expires)||value.expires<=Date.now())return;responded();save({frame,sessionUrl,url:url.href,expires:value.expires});}catch{}
   };
   const receive=(event:MessageEvent)=>{
    if(event.source!==frame.contentWindow||event.origin!==origin||event.data?.protocol!=='bb-desktop-v1')return;
-   if(event.data.state==='ready')accept(event.data);else if(event.data.state)save(null);
+   if(event.data.state==='ready')accept(event.data);else if(event.data.state==='viewing'||event.data.state==='elsewhere'){responded();save(null);}
   };
   const request=()=>{void viewerRequest(frame,'transfer',undefined,controller.signal).then(accept).catch(()=>{});};
-  const load=()=>{save(null);request();};
+  const load=()=>{save(null);expectResponse();request();};
   window.addEventListener('message',receive);frame.addEventListener('load',load);request();
-  return()=>{cancelled=true;controller.abort();window.clearTimeout(timer);current.current=null;window.removeEventListener('message',receive);frame.removeEventListener('load',load);};
+  return()=>{cancelled=true;controller.abort();window.clearTimeout(timer);window.clearTimeout(responseTimer);current.current=null;window.removeEventListener('message',receive);frame.removeEventListener('load',load);};
  },[frameRef,sessionUrl]);
  return {
+  stalled:sessionUrl!==null&&stalledUrl===sessionUrl,
+  openInBrowser(){
+   if(!sessionUrl||new URL(sessionUrl).protocol!=='https:')throw Error('The desktop is closed.');
+   if(!navigate.openUrl(sessionUrl))throw Error('Couldn’t open the desktop in your browser.');
+  },
   ready:!!prepared&&prepared.sessionUrl===sessionUrl&&prepared.frame===frameRef.current&&prepared.expires>Date.now(),
   open(){
    const value=current.current;

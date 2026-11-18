@@ -29,3 +29,19 @@ it('rejects foreign, stale-grant and expired readiness and retains the stream wh
  announce(frame,ready);fireEvent.click(button);await slot.findByRole('alert');
  expect(slot.getByTitle('Sandbox desktop')).toBe(frame);expect(button).toHaveProperty('disabled',false);
 });
+it('offers a browser recovery path when the embedded viewer never responds',async()=>{
+ const url='https://viewer.example/#grant',openUrl=vi.fn(()=>true);
+ const slot=renderSlot(app.messageDirectives.find(value=>value.id==='sandbox-desktop')!,{attributes:{},message:{threadId:'thr_desktop'},source:'::sandbox-desktop{}',openWorkspaceFile:null} as never,{rpc:{getSandboxDesktop:async()=>({kind:'open',url,expires:Date.now()+60000,viewOnly:false})} as never,openUrl});
+ await slot.findByTitle('Sandbox desktop');
+ vi.useFakeTimers();
+ try{
+  const frame=slot.getByTitle('Sandbox desktop') as HTMLIFrameElement;
+  fireEvent.load(frame);
+  act(()=>vi.advanceTimersByTime(6000));
+  fireEvent.click(slot.getByRole('button',{name:'Open desktop in browser'}));
+  expect(openUrl).toHaveBeenCalledExactlyOnceWith(url);
+  expect(slot.getByRole('button',{name:'Open in new tab'})).toHaveProperty('disabled',true);
+  announce(frame,{state:'viewing'});
+  expect(slot.queryByRole('button',{name:'Open desktop in browser'})).toBeNull();
+ }finally{vi.useRealTimers();}
+});
