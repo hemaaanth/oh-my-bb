@@ -65,6 +65,19 @@ it("loads and serves HTTP while provider discovery is blocked", async () => {
   }
 });
 
+it("serves FX's native Codex model catalog through its thread URL", async () => {
+  const gw = await gateway();
+  const entries = await gw.env("acp-fx");
+  const models = entries.find(({ name }) => name === "FX_E2E_OPENAI_CODEX_MODELS_URL")!.value as { serverPath: string };
+  const response = await gw.host.harness.behavior.fetchHttp("GET", models.serverPath.replace("/api/v1/plugins/model-gateway/http", ""));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    models: expect.arrayContaining([{ slug: "gpt-6.1-sol", visibility: "list", supported_in_api: true,
+      context_window: 500000, input_modalities: ["text", "image"],
+      supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }, { effort: "high" }] }]),
+  });
+});
+
 it("shares Pi routing across late providers, isolates threads, and makes removed ids inert", async () => {
   const gw = await gateway();
   const id = "agent-11111111-1111-4111-8111-111111111111";
@@ -127,5 +140,5 @@ it("returns host setup files over the schema RPC with the caller's server URL", 
   const gw = await gateway();
   const result = await gw.host.harness.behavior.callRpc("host.setupFiles", { hostId: "remote-host", serverBaseUrl: "https://remote.example", piAgentDirs: [".pi/agent", ".profiles/sol"] }) as { files: Array<{ content: string; path: string }> };
   expect(result.files[0]!.content).toContain("https://remote.example/api/v1/plugins/model-gateway/http/v1");
-  expect(result.files.map(({ path }) => path)).toEqual([".omp/agent/models.yml", ".pi/agent/extensions/model-gateway.js", ".profiles/sol/extensions/model-gateway.js", ".omp/agent/extensions/model-gateway.js", ".omp/agent/config.yml", ".pi/agent/settings.json", ".profiles/sol/settings.json"]);
+  expect(result.files.map(({ path }) => path)).toEqual([".omp/agent/models.yml", ".config/nanocodex-acp/model-gateway.json", ".config/bb/model-gateway-models.json", ".pi/agent/extensions/model-gateway.js", ".profiles/sol/extensions/model-gateway.js", ".omp/agent/extensions/model-gateway.js", ".omp/agent/config.yml", ".pi/agent/settings.json", ".profiles/sol/settings.json"]);
 });

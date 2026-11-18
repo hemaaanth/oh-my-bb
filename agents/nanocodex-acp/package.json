@@ -1,6 +1,6 @@
 {
   "name": "nanocodex-acp",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Run nanocodex as a stdio ACP agent routed through BB Model Gateway.",
   "license": "MIT",
   "author": "Hemanth Soni",
@@ -37,8 +37,8 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.5.0",
-    "nanocodex": "0.6.5",
-    "nanocodex-tools": "0.6.5"
+    "nanocodex": "0.6.7",
+    "nanocodex-tools": "0.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

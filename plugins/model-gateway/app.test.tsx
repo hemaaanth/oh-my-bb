@@ -320,6 +320,18 @@ describe("Model Gateway settings", () => {
     expect(slot.getByRole("button", { name: "Disable" })).toBeTruthy();
   });
 
+  it("shows the Boundless team balance and key limit in Credentials", async () => {
+    const key = account({
+      kind: "api-key", provider: "codex", label: "boundless", email: null,
+      apiSpend: { balanceUsd: 18.51, keySpentUsd: 12.04, keyLimitUsd: 20, observedAt: Date.now() },
+    });
+    const slot = render({ "status.get": () => status([key]) });
+    expect(await slot.findByText("$18.51 team balance · $12.04 key spend / $20.00")).toBeTruthy();
+    const actions = await slot.findByRole("button", { name: /boundless actions/i });
+    fireEvent.keyDown(actions, { key: "Enter" });
+    expect(await slot.findByRole("menuitem", { name: "Refresh usage" })).toBeTruthy();
+  });
+
 
   it("turns Jev auto on for one harness from its Edit drawer", async () => {
     const withKey = { ...CONFIG, auto: { ...CONFIG.auto, key: "openrouter" } };
@@ -518,6 +530,88 @@ describe("Model usage footer", () => {
     expect(((bar.children[1] as HTMLElement).firstElementChild as HTMLElement).style.width).toBe("0%");
     expect(bar.parentElement?.textContent).toContain("2d");
     expect(bar.parentElement?.title).toContain("$300.00 of $400.00 remaining across 2 grants");
+  });
+
+  it("collapses accounts and shows an OpenAI billing snapshot as joined grant segments", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    const day = 86400_000;
+    const key = account({
+      provider: "codex", kind: "api-key", label: "openai-api", email: null,
+      id: "88888888-8888-4888-8888-888888888888",
+      apiCreditSnapshot: { organizationName: "Personal Organization", observedAt: Date.now(), grants: [
+        { grantedUsd: 62, remainingUsd: 62, expiresAt: Date.now() + day },
+        { grantedUsd: 50, remainingUsd: 50, expiresAt: Date.now() + 30 * day },
+        { grantedUsd: 30, remainingUsd: 7.90, expiresAt: Date.now() + 20 * day },
+        { grantedUsd: 1, remainingUsd: 1, expiresAt: Date.now() - day },
+      ] },
+    });
+    const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: {
+      "account.list": () => [account(), key],
+    } as never });
+    const name = await slot.findByText("Personal Organization");
+    expect(slot.getByText("$119.90 API")).toBeTruthy();
+    expect(name.closest("details")?.open).toBe(false);
+    fireEvent.click(name.closest("summary")!);
+    expect(name.closest("details")?.open).toBe(true);
+    expect(slot.getByRole("progressbar", { name: "openai-api API usage" }).children).toHaveLength(3);
+    expect(slot.getByRole("progressbar", { name: "openai-api API usage" }).parentElement?.title).toMatch(/Billing snapshot/);
+  });
+
+  it("shows a linked organization as an API bar under its ChatGPT account", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    const owner = account({ provider: "codex", label: "chatgpt", email: "example@example.com" });
+    const key = account({
+      provider: "codex", kind: "api-key", label: "openai-api", email: null,
+      id: "88888888-8888-4888-8888-888888888888",
+      apiCreditSnapshot: { organizationName: "Personal Organization", ownerAccountId: owner.id, observedAt: Date.now(),
+        grants: [{ grantedUsd: 50, remainingUsd: 40, expiresAt: null }],
+      },
+    });
+    const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: { "account.list": () => [owner, key] } as never });
+    const name = await slot.findByText("example@example.com");
+    expect(slot.queryByText("Personal Organization")).toBeNull();
+    expect(slot.queryByText(/Billing snapshot/)).toBeNull();
+    const bar = slot.getByRole("progressbar", { name: "chatgpt API usage" });
+    expect(bar.closest("details")).toBe(name.closest("details"));
+    expect(bar.parentElement?.title).toContain("Personal Organization: $40.00 of $50.00 remaining");
+  });
+
+  it("shows Grok and Cursor as one collapsed weekly usage row", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: {
+      "account.list": () => [],
+      "usage.xSnapshot": () => ({
+        plan: "Premium", weeklyUtilization: 0.261105, resetDate: "2026-11-18",
+        observedAt: Date.parse("2026-11-17T12:00:00"), extraSpentUsd: 0.02, extraBalanceUsd: 0,
+      }),
+    } as never });
+    const heading = await slot.findByText("Grok + Cursor");
+    expect(heading.closest("details")?.open).toBe(false);
+    expect(slot.getByText("Premium · 26% used")).toBeTruthy();
+    fireEvent.click(heading.closest("summary")!);
+    expect(slot.getByRole("progressbar", { name: "Grok + Cursor 7d usage" }).getAttribute("aria-valuenow")).toBe("26");
+    expect(slot.getByText("$0.00 extra credits · $0.02 used this month")).toBeTruthy();
+    expect(slot.getByText("Reset shown · Nov 18")).toBeTruthy();
+  });
+
+  it("shows Antigravity weekly quotas by model group without requiring a routing account", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: {
+      "account.list": () => [],
+      "usage.antigravitySnapshot": () => ({
+        plan: "Starter", observedAt: Date.now(),
+        groups: [{ name: "Gemini", weeklyUtilization: 0 }, { name: "Claude/GPT", weeklyUtilization: 0.14 }],
+      }),
+    } as never });
+    const heading = await slot.findByText("Google Antigravity");
+    expect(slot.getByText("Starter · 14% used")).toBeTruthy();
+    fireEvent.click(heading.closest("summary")!);
+    expect(slot.getByRole("progressbar", { name: "Antigravity Gemini usage" }).getAttribute("aria-valuenow")).toBe("0");
+    expect(slot.getByRole("progressbar", { name: "Antigravity Claude/GPT usage" }).getAttribute("aria-valuenow")).toBe("14");
   });
 
   it("shows Codex one-off reset credits", async () => {

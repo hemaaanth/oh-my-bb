@@ -96,8 +96,10 @@ bb gateway model-route remove DeepSeek-V4.1-Flash-1017
 ```
 
 An exact model route overrides the harness chain and automatic model choice.
-It fails closed when its key is unavailable; it never falls back to another
-account. Other models keep their existing chains. Run `bb gateway setup host`
+A route accepts additional named keys in fallback order, for example
+`bb gateway model-route set my-model responses-compatible-key:primary responses-compatible-key:backup`.
+Each key can map the model ID with `model-map`. Routes use only their listed keys;
+if all fail, the request fails without using the harness subscription chain. Other models keep their existing chains. Run `bb gateway setup host`
 on each execution host after adding a model route so Pi and OMP discover it.
 
 A routed model's context window, output ceiling and reasoning efforts come

@@ -149,6 +149,33 @@ export const apiCreditGrantSchema = z.object({
   grantedUsd: z.number().nonnegative(), remainingUsd: z.number().nonnegative(), expiresAt: z.number().int().nullable(),
 }).strict();
 export type ApiCreditGrant = z.infer<typeof apiCreditGrantSchema>;
+export const apiCreditSnapshotSchema = z.object({
+  organizationName: z.string().trim().min(1).max(120),
+  ownerAccountId: z.string().uuid().optional(),
+  observedAt: z.number().int().nonnegative(),
+  grants: z.array(apiCreditGrantSchema.refine((grant) =>
+    grant.grantedUsd > 0 && grant.remainingUsd <= grant.grantedUsd)).max(100),
+}).strict();
+export type ApiCreditSnapshot = z.infer<typeof apiCreditSnapshotSchema>;
+
+export const xUsageSnapshotSchema = z.object({
+  plan: z.string().trim().min(1).max(40),
+  weeklyUtilization: z.number().min(0).max(1),
+  resetDate: z.string().date(),
+  observedAt: z.number().int().nonnegative(),
+  extraSpentUsd: z.number().nonnegative(),
+  extraBalanceUsd: z.number(),
+}).strict();
+export type XUsageSnapshot = z.infer<typeof xUsageSnapshotSchema>;
+export const antigravityUsageSnapshotSchema = z.object({
+  plan: z.string().trim().min(1).max(80),
+  observedAt: z.number().int().nonnegative(),
+  groups: z.array(z.object({
+    name: z.string().trim().min(1).max(60),
+    weeklyUtilization: z.number().min(0).max(1),
+  }).strict()).min(1).max(8),
+}).strict();
+export type AntigravityUsageSnapshot = z.infer<typeof antigravityUsageSnapshotSchema>;
 
 export const apiCreditBenefitSchema = z.object({
   organizationId: z.string().uuid(), organizationName: z.string().min(1),
@@ -158,6 +185,14 @@ export const apiCreditBenefitSchema = z.object({
   heldReason: z.string().nullable(),
 }).strict();
 export type ApiCreditBenefit = z.infer<typeof apiCreditBenefitSchema>;
+
+export const apiSpendSchema = z.object({
+  balanceUsd: z.number().nullable(),
+  keySpentUsd: z.number().nonnegative(),
+  keyLimitUsd: z.number().nonnegative().nullable(),
+  observedAt: z.number().int(),
+}).strict();
+export type ApiSpend = z.infer<typeof apiSpendSchema>;
 
 export const accountSchema = z
   .object({
@@ -242,7 +277,9 @@ export const accountSummarySchema = accountSchema.extend({
   familyWeekly: familyWeeklySchema,
   limitWindows: z.array(limitWindowSchema),
   resetCredits: resetCreditsSchema.nullable(),
-    apiCreditBenefit: apiCreditBenefitSchema.nullable().default(null),
+  apiCreditBenefit: apiCreditBenefitSchema.nullable().default(null),
+  apiSpend: apiSpendSchema.nullable().optional(),
+  apiCreditSnapshot: apiCreditSnapshotSchema.optional(),
   observedAt: z.number().int().nullable(),
   heldUntil: z.number().int().nullable(),
   error: z.string().nullable(),

@@ -14,7 +14,7 @@ afterEach(async () => { await Promise.all(homes.splice(0).map((dir) => fs.rm(dir
 describe("host setup files", () => {
   it("uses the host URL, covers configured Pi dirs, and revises when URL or model map changes", () => {
     const generated = setup(undefined, [".pi/agent", ".profiles/sol"]);
-    expect(generated.files.map((file) => file.path)).toEqual([".omp/agent/models.yml", ".pi/agent/extensions/model-gateway.js", ".profiles/sol/extensions/model-gateway.js", ".omp/agent/extensions/model-gateway.js", ".omp/agent/config.yml", ".pi/agent/settings.json", ".profiles/sol/settings.json"]);
+    expect(generated.files.map((file) => file.path)).toEqual([".omp/agent/models.yml", ".config/nanocodex-acp/model-gateway.json", ".config/bb/model-gateway-models.json", ".pi/agent/extensions/model-gateway.js", ".profiles/sol/extensions/model-gateway.js", ".omp/agent/extensions/model-gateway.js", ".omp/agent/config.yml", ".pi/agent/settings.json", ".profiles/sol/settings.json"]);
     expect(generated.files[0]!.content).toContain("https://sandbox.example/api/v1/plugins/model-gateway/http/v1");
     expect(generated.files.every((file) => file.sha256 === sha256(file.content))).toBe(true);
     expect(setup().revision).not.toBe(setup("https://other.example").revision);
@@ -23,11 +23,22 @@ describe("host setup files", () => {
 
   it("checks a fresh HOME without writing, applies once, and is idempotent", async () => {
     const dir = await home(); const { files } = setup();
-    expect((await checkSetupFiles(dir, files)).files.map((file) => file.status)).toEqual(["missing", "missing", "missing", "missing", "missing"]);
+    expect((await checkSetupFiles(dir, files)).files.map((file) => file.status)).toEqual(files.map(() => "missing"));
     expect(await fs.readdir(dir)).toEqual([]);
     expect((await applySetupFiles(dir, files)).files.every((file) => file.changed)).toBe(true);
     expect((await applySetupFiles(dir, files)).files.every((file) => file.status === "current" && !file.changed && file.backup === null)).toBe(true);
     expect(await fs.readFile(path.join(dir, files[1]!.path), "utf8")).toBe(files[1]!.content);
+  });
+
+  it("exports routed model capabilities without any account or key data", () => {
+    const id = "DeepSeek-V4.1-Flash-1017";
+    const { files } = hostSetupFiles({ hostId: "h", serverBaseUrl: "https://sandbox.example" }, map, { [id]: "responses-compatible-key:wafer" });
+    const catalog = files.find((file) => file.path === ".config/nanocodex-acp/model-gateway.json")!;
+    expect(JSON.parse(catalog.content)).toMatchObject({ models: [{ id, name: "DSF4.1", contextWindow: 1048576 }] });
+    expect(catalog.content).not.toContain("wafer");
+    const prime = files.find((file) => file.path === ".config/bb/model-gateway-models.json")!;
+    expect(JSON.parse(prime.content)).toMatchObject({ models: [{ id, name: "DSF4.1", input: ["text"], contextWindow: 1048576 }] });
+    expect(prime.content).not.toContain("wafer");
   });
 
   it("keeps unrelated OMP bytes and backs up changed managed files", async () => {

@@ -240,6 +240,20 @@ describe("Claude Code turn with two tool calls round-trips through ChatGPT", () 
 describe("responsesStreamToMessages edge cases", () => {
   const created = { type: "response.created", response: { id: "r", status: "in_progress" } };
 
+  it("emits one tool block even when reasoning interrupts its argument deltas", async () => {
+    const tool = { type: "function_call", id: "item_1", call_id: "call_1", name: "run_command", arguments: '{"cmd":"printf OK"}' };
+    const message = fold(await translateStream(sse([
+      created,
+      { type: "response.output_item.added", item: { ...tool, arguments: "" } },
+      { type: "response.function_call_arguments.delta", item_id: tool.id, delta: tool.arguments },
+      { type: "response.reasoning_summary_text.delta", item_id: "rs", summary_index: 0, delta: "Thinking" },
+      { type: "response.output_item.done", item: { ...tool, arguments: "" } },
+      { type: "response.completed", response: { output: [{ ...tool, id: "item_final" }] } },
+    ])));
+    expect(message.content.filter((block: Rec) => block.type === "tool_use"))
+      .toEqual([{ type: "tool_use", id: "call_1", name: "run_command", input: { cmd: "printf OK" } }]);
+  });
+
   it("maps hosted web search to server_tool_use + web_search_tool_result", async () => {
     const events = await translateStream(sse([
       created,

@@ -42,8 +42,10 @@ Model Gateway contributes these per thread.
 Without either value the adapter fails before launching Prime. It never falls back to a local Prime login.
 
 Each launch creates a private temporary Prime agent directory and a short, unique daemon socket.
+The worker uses a private loopback relay. The adapter sends the Gateway thread token
+upstream and gives the worker a per-launch local token.
 Its `models.json` defines provider `model-gateway`, API `openai-responses`, and `authHeader: true`.
-The API key is the environment reference `MODEL_GATEWAY_TOKEN`, not the token value.
+The API key is the environment reference `MODEL_GATEWAY_TOKEN`, which resolves to the local token in the worker.
 The URL must not contain credentials, query parameters, or a fragment.
 The adapter launches Prime offline, so startup discovery does not contact model providers.
 
@@ -65,6 +67,8 @@ Direct provider names and API-key or daemon-socket overrides are refused.
 `prime-agent-acp model-list` prints one `provider/model - model (provider)` line per model.
 It lists the gateway defaults without needing a thread token or a Prime login.
 Those defaults are `gpt-6-sol`, `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-luna`, and `gpt-5.6-terra`.
+Run `bb gateway setup host` to include configured Model Gateway routes.
+The managed catalog contains model IDs and limits and is used for both discovery and launch.
 A custom model selected with `--model` is also registered in the launch's config.
 `gpt-6.1-sol` uses 500,000 context tokens and 128,000 output tokens.
 Without `--model`, the adapter selects `gpt-6-sol`.

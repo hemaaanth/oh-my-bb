@@ -1,9 +1,12 @@
 import { fetchApiCreditBenefit, fetchSubscriptionCreditGrants, withCreditGrants } from "./upstreams/api-credit-benefit.js";
 import { randomUUID } from "node:crypto";
+import type { PluginKvStorage } from "@get-bb/plugin-sdk";
+import { antigravityUsageSnapshotSchema, xUsageSnapshotSchema, type AntigravityUsageSnapshot, type XUsageSnapshot } from "./contracts.js";
 // Ported from the core Account Pooler (account-pool), MIT, Michael Yong 2026.
 import type {
   Account,
   AccountSummary,
+  ApiCreditSnapshot,
   HubTokenSummary,
   PoolProvider,
   PoolStatus,
@@ -139,6 +142,7 @@ export class PoolOperations {
     private readonly onAccountEnabled: (
       accountId: string,
     ) => Promise<void> = async () => {},
+    private readonly storage?: PluginKvStorage,
   ) {}
 
   async add(input: AccountAddInput): Promise<Account> {
@@ -361,6 +365,39 @@ export class PoolOperations {
     );
   }
 
+  async saveOpenAiCreditSnapshot(id: string, snapshot: ApiCreditSnapshot): Promise<void> {
+    const account = await this.accounts.get(id);
+    if (account?.kind !== "api-key" || account.baseUrl !== "https://api.openai.com/v1")
+      throw new Error("Credit snapshots require an OpenAI API account.");
+    if (snapshot.ownerAccountId !== undefined) {
+      const owner = await this.accounts.get(snapshot.ownerAccountId);
+      if (owner?.kind !== "oauth" || owner.provider !== "codex")
+        throw new Error("Choose a signed-in ChatGPT account for the credit bar.");
+    }
+    this.quotas.putCreditSnapshot(id, snapshot);
+    this.onAccountsChanged();
+  }
+
+  async xUsageSnapshot(): Promise<XUsageSnapshot | null> {
+    return xUsageSnapshotSchema.nullable().parse(await this.storage?.get("x-usage-snapshot") ?? null);
+  }
+
+  async saveXUsageSnapshot(snapshot: XUsageSnapshot): Promise<void> {
+    if (this.storage === undefined) throw new Error("Gateway usage storage is unavailable.");
+    await this.storage.set("x-usage-snapshot", xUsageSnapshotSchema.parse(snapshot));
+    this.onAccountsChanged();
+  }
+
+  async antigravityUsageSnapshot(): Promise<AntigravityUsageSnapshot | null> {
+    return antigravityUsageSnapshotSchema.nullable().parse(await this.storage?.get("antigravity-usage-snapshot") ?? null);
+  }
+
+  async saveAntigravityUsageSnapshot(snapshot: AntigravityUsageSnapshot): Promise<void> {
+    if (this.storage === undefined) throw new Error("Gateway usage storage is unavailable.");
+    await this.storage.set("antigravity-usage-snapshot", antigravityUsageSnapshotSchema.parse(snapshot));
+    this.onAccountsChanged();
+  }
+
   async setRouting(provider: RoutingTarget, enabled: boolean): Promise<void> {
     await this.routing.setProviderEnabled(provider, enabled);
     this.onAccountsChanged();
@@ -390,6 +427,9 @@ export class PoolOperations {
       })),
       accounts: status.accounts.map((account) => ({
         ...account,
+        ...(account.kind === "api-key" && account.baseUrl === "https://api.openai.com/v1"
+          ? { apiCreditSnapshot: this.quotas.creditSnapshot(account.id) }
+          : {}),
         lastUsedHostName:
           account.lastUsedHostId === null
             ? null

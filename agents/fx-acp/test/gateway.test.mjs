@@ -29,11 +29,12 @@ it("relays host-reachable URLs through private loopback endpoints without a logi
   });
   cleanups.push(gateway.close);
   expect(gateway.env.FX_AUTH_MODE).toBe("host-managed");
-  expect(gateway.env.FX_PROVIDER).toBe("gateway");
-  const modelsUrl = gateway.env.FX_E2E_OPENAI_CODEX_MODELS_URL;
-  const responsesUrl = gateway.env.FX_E2E_OPENAI_CODEX_RESPONSES_URL;
+  expect(gateway.env.FX_PROVIDER).toBe("codex");
+  expect(gateway.env.FX_PROVIDER_STRICT).toBe("1");
+  const modelsUrl = gateway.env.FX_TEST_OPENAI_CODEX_MODELS_URL;
+  const responsesUrl = gateway.env.FX_TEST_OPENAI_CODEX_RESPONSES_URL;
   if (!modelsUrl || !responsesUrl) throw new Error("Missing relay URLs");
-  const models = await fetch(modelsUrl);
+  const models = await fetch(`${modelsUrl}?client_version=0.157.0`);
   expect(await models.json()).toEqual({ models: [] });
   const response = await fetch(responsesUrl, { method: "POST", body: '{"model":"gpt-6-sol"}' });
   expect(await response.text()).toBe('event: response.completed\ndata: {"type":"response.completed"}\n\n');

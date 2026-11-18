@@ -58,6 +58,22 @@ describe("Prime gateway adapter", () => {
     expect(output).not.toContain("openai-codex/");
   });
 
+  it("lists configured Gateway routes before BB provides a thread token", async () => {
+    const home = await fs.mkdtemp(path.join(tmpdir(), "pa-catalog-"));
+    try {
+      const directory = path.join(home, ".config/bb");
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(path.join(directory, "model-gateway-models.json"), JSON.stringify({
+        managedBy: "bb gateway setup host",
+        models: [{ id: "custom-model", name: "Custom model", input: ["text"], contextWindow: 200000, maxTokens: 64000 }],
+      }));
+      const output = execFileSync(process.execPath, [adapter, "model-list"], { env: { HOME: home }, encoding: "utf8" });
+      expect(output.split("\n")).toContain("model-gateway/custom-model - Custom model (model-gateway)");
+    } finally {
+      await fs.rm(home, { recursive: true, force: true });
+    }
+  });
+
   it("stops its private daemon without connecting to another daemon", async () => {
     const root = await fs.mkdtemp(path.join(tmpdir(), "pa-stop-"));
     const peer = net.createServer();

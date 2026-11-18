@@ -7,11 +7,13 @@ import { z } from "zod";
 import type { PluginKvStorage } from "@get-bb/plugin-sdk";
 import {
   accountSchema,
+  apiCreditSnapshotSchema,
   accountSecretSchema,
   hubTokenSummarySchema,
   providerSchema,
   quotaSchema,
   type Account,
+  type ApiCreditSnapshot,
   type AccountQuota,
   type AccountSecret,
   type HubTokenSummary,
@@ -658,6 +660,16 @@ export const EMPTY_QUOTA: Omit<AccountQuota, "accountId"> = {
 export class QuotaStore {
   constructor(private readonly db: Database.Database) {}
 
+  creditSnapshot(accountId: string): ApiCreditSnapshot | undefined {
+    const row = this.db.prepare("SELECT snapshot FROM api_credit_snapshot WHERE account_id = ?").pluck().get(accountId);
+    return typeof row === "string" ? apiCreditSnapshotSchema.parse(JSON.parse(row)) : undefined;
+  }
+
+  putCreditSnapshot(accountId: string, snapshot: ApiCreditSnapshot): void {
+    this.db.prepare("INSERT OR REPLACE INTO api_credit_snapshot (account_id, snapshot) VALUES (?, ?)")
+      .run(accountId, JSON.stringify(apiCreditSnapshotSchema.parse(snapshot)));
+  }
+
   get(accountId: string): AccountQuota {
     const row = quotaRowSchema
       .optional()
@@ -735,6 +747,7 @@ export class QuotaStore {
   }
 
   remove(accountId: string): void {
+    this.db.prepare("DELETE FROM api_credit_snapshot WHERE account_id = ?").run(accountId);
     this.db
       .prepare("DELETE FROM account_quota WHERE account_id = ?")
       .run(accountId);
@@ -1026,4 +1039,5 @@ export const QUOTA_MIGRATIONS = [
   `ALTER TABLE account_quota ADD COLUMN reset_credits_json TEXT NOT NULL DEFAULT 'null'`,
   `ALTER TABLE thread_route ADD COLUMN requested_model TEXT`,
   `ALTER TABLE account_quota ADD COLUMN api_credit_benefit_json TEXT NOT NULL DEFAULT 'null'`,
+  `CREATE TABLE api_credit_snapshot (account_id TEXT PRIMARY KEY, snapshot TEXT NOT NULL)`,
 ];

@@ -1,13 +1,14 @@
 // Native Claude Code request construction for Gateway-owned OAuth accounts.
 // History replay and inert MCP inventory adapted from pi-claude-code (MIT); see THIRD_PARTY.md.
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { createInterface } from "node:readline";
+import { promisify } from "node:util";
 
 const MAX_REQUEST = 8 * 1024 * 1024;
 const MAX_OUTPUT = 1024 * 1024;
@@ -16,6 +17,15 @@ const TIMEOUT_MS = 60_000;
 const MCP_PREFIX = "mcp__gateway__";
 const MAX_WORKERS = 4;
 const MAX_WAITING = 16;
+const exec = promisify(execFile);
+
+async function nativeClaudeCommand(signal: AbortSignal): Promise<string> {
+  // Resolve Mise with the host's trusted config before starting the isolated CLI.
+  const resolved = await exec("mise", ["which", "claude"], { signal, timeout: 3_000 })
+    .then(({ stdout }) => stdout.trim(), () => "");
+  signal.throwIfAborted();
+  return isAbsolute(resolved) ? resolved : "claude";
+}
 
 // Embed the worker so a BB runtime copy of the server bundle cannot resolve it
 // relative to the wrong source tree. This file is written only inside root.
@@ -71,7 +81,7 @@ export class NativeClaudeError extends Error {}
 export interface NativeClaudeInput {
   body: Uint8Array;
   model: string;
-  streaming: boolean;
+  streaming?: boolean;
   signal: AbortSignal;
   command?: string;
 }
@@ -98,9 +108,12 @@ function prepareHistory(payload: Rec) {
     return { name: `tool_${index}`, description: typeof tool.description === "string" ? tool.description : "", inputSchema: tool.input_schema };
   });
   const history = payload.messages.map((message: unknown) => {
-    if (!record(message) || (message.role !== "user" && message.role !== "assistant") || !Array.isArray(message.content))
+    if (!record(message) || (message.role !== "user" && message.role !== "assistant"))
       throw new NativeClaudeError("Claude history has an unsupported message.");
-    return { role: message.role, content: message.content.map((block: unknown) => {
+    const content = typeof message.content === "string"
+      ? [{ type: "text", text: message.content }] : message.content;
+    if (!Array.isArray(content)) throw new NativeClaudeError("Claude history has unsupported content.");
+    return { role: message.role, content: content.map((block: unknown) => {
       if (!record(block) || block.type !== "tool_use") return block;
       const name = names.get(String(block.name));
       if (!name) throw new NativeClaudeError(`Historical Claude tool ${String(block.name)} is not declared.`);
@@ -132,6 +145,10 @@ export async function prepareNativeClaude(input: NativeClaudeInput): Promise<Nat
   catch { throw new NativeClaudeError("Invalid translated Claude request."); }
   if (!record(payload) || payload.model !== input.model)
     throw new NativeClaudeError("Claude request model does not match the selected route.");
+  const streaming = input.streaming ?? payload.stream === true;
+  const system = Array.isArray(payload.system) && payload.system.every((block) =>
+    record(block) && block.type === "text" && typeof block.text === "string")
+    ? payload.system.map((block) => block.text).join("\n\n") : payload.system;
   const { history, frames, manifest, names, reverse } = prepareHistory(payload);
   const root = await mkdtemp(join(tmpdir(), "gateway-claude-"));
   const token = randomBytes(32).toString("base64url");
@@ -162,9 +179,9 @@ export async function prepareNativeClaude(input: NativeClaudeInput): Promise<Nat
     await mkdir(join(root, "config"), { mode: 0o700 });
     await writeFile(join(root, "tools.json"), JSON.stringify(manifest), { mode: 0o600 });
     await writeFile(join(root, "inert-mcp.mjs"), MCP_WORKER, { mode: 0o600 });
-    if (payload.system !== undefined && typeof payload.system !== "string")
+    if (system !== undefined && typeof system !== "string")
       throw new NativeClaudeError("Claude system prompt is unsupported.");
-    await writeFile(join(root, "system.md"), payload.system ?? "", { mode: 0o600 });
+    await writeFile(join(root, "system.md"), system ?? "", { mode: 0o600 });
     if (process.platform === "win32") throw new NativeClaudeError("Native Claude CLI requires process-group cleanup, unavailable on Windows.");
     release = await admit(workerAbort.signal);
     server = createServer((req, res) => {
@@ -207,13 +224,13 @@ export async function prepareNativeClaude(input: NativeClaudeInput): Promise<Nat
           }
           if (record(native.tool_choice) && native.tool_choice.type === "tool" && !native.tool_choice.name)
             throw new NativeClaudeError("Claude tool choice is not in the inventory.");
-          native.stream = input.streaming;
+          native.stream = streaming;
           const headers = new Headers();
           for (const [key, value] of Object.entries(req.headers))
             if (typeof value === "string" && !["host", "authorization", "content-length", "connection", "accept-encoding"].includes(key))
               headers.set(key, value);
           headers.set("content-type", "application/json");
-          headers.set("accept", input.streaming ? "text/event-stream" : "application/json");
+          headers.set("accept", streaming ? "text/event-stream" : "application/json");
           resolveCapture({ body: new TextEncoder().encode(JSON.stringify(native)), headers, names: reverse });
         } catch (error) {
           rejectCapture(error instanceof Error ? error : new NativeClaudeError("Invalid Claude CLI request."));
@@ -240,7 +257,8 @@ export async function prepareNativeClaude(input: NativeClaudeInput): Promise<Nat
       DISABLE_AUTO_COMPACT: "1", ENABLE_TOOL_SEARCH: "false",
     };
     const mcp = { mcpServers: { gateway: { command: process.execPath, args: [join(root, "inert-mcp.mjs"), join(root, "tools.json")], env: { ELECTRON_RUN_AS_NODE: "1" } } } };
-    child = spawn(input.command ?? "claude", ["-p", "--model", input.model, "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--tools", "", "--system-prompt-file", join(root, "system.md"), "--settings", '{"disableAllHooks":true}', "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands", "--max-turns", "1", "--permission-mode", "dontAsk", "--no-session-persistence", "--mcp-config", JSON.stringify(mcp)], { cwd: root, env, detached: true, stdio: ["pipe", "pipe", "pipe"] });
+    const command = input.command ?? await nativeClaudeCommand(workerAbort.signal);
+    child = spawn(command, ["-p", "--model", input.model, "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--tools", "", "--system-prompt-file", join(root, "system.md"), "--settings", '{"disableAllHooks":true}', "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands", "--max-turns", "1", "--permission-mode", "dontAsk", "--no-session-persistence", "--mcp-config", JSON.stringify(mcp)], { cwd: root, env, detached: true, stdio: ["pipe", "pipe", "pipe"] });
     const exited = new Promise<void>((resolve, reject) => {
       child!.once("error", () => reject(new NativeClaudeError("Claude Code CLI is unavailable. Install it on the Gateway host.")));
       child!.once("exit", () => resolve());

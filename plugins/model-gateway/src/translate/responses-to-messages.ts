@@ -115,8 +115,9 @@ export async function* responsesStreamToMessages(
   let webSearchRequests = 0;
   let sawContent = false;
   const completedItems = new Set<string>();
+  const functionArguments = new Map<string, string>();
   // At most one open block: Responses streams output items one after another.
-  type Block = { kind: "text" | "thinking" | "tool_use" | "server"; index: number; itemId?: string; part?: unknown; argsSent?: boolean };
+  type Block = { kind: "text" | "thinking" | "tool_use" | "server"; index: number; itemId?: string; part?: unknown };
   let open: Block | null = null;
   const out: Uint8Array[] = [];
   const emit = (data: Rec) => out.push(sseFrame(data));
@@ -162,11 +163,15 @@ export async function* responsesStreamToMessages(
   };
 
   const itemKey = (item: Rec): string | null => {
-    if (typeof item.id === "string" && item.id.length > 0) return item.id;
     if (typeof item.call_id === "string" && item.call_id.length > 0)
       return `${String(item.type)}:${item.call_id}`;
+    if (typeof item.id === "string" && item.id.length > 0) return item.id;
     return null;
   };
+
+  const toolCallId = (item: Rec): string =>
+    [item.call_id, item.id].find((id): id is string => typeof id === "string" && id.length > 0)
+      ?? `toolu_${randomUUID().replace(/-/g, "")}`;
 
   const completeItem = (item: Rec) => {
     const key = itemKey(item);
@@ -185,24 +190,16 @@ export async function* responsesStreamToMessages(
       }
     } else if (item.type === "function_call" || item.type === "custom_tool_call") {
       sawToolUse = true;
-      const callId = typeof item.call_id === "string" ? item.call_id : `toolu_${randomUUID().replace(/-/g, "")}`;
-      const use = block?.kind === "tool_use" && block.itemId === key
-        ? block
-        : openBlock("tool_use", {
-            type: "tool_use",
-            id: callId,
-            name: typeof item.name === "string" ? item.name : "",
-            input: {},
-          }, key ?? undefined);
-      if (!use.argsSent) {
-        const args = item.type === "custom_tool_call"
-          ? JSON.stringify({ input: typeof item.input === "string" ? item.input : "" })
-          : typeof item.arguments === "string" ? item.arguments : "";
-        if (args.length > 0) {
-          emit({ type: "content_block_delta", index: use.index, delta: { type: "input_json_delta", partial_json: args } });
-          use.argsSent = true;
-        }
-      }
+      const use = openBlock("tool_use", {
+        type: "tool_use", id: toolCallId(item), name: typeof item.name === "string" ? item.name : "", input: {},
+      }, key ?? undefined);
+      const itemId = typeof item.id === "string" ? item.id : "";
+      const args = item.type === "custom_tool_call"
+        ? JSON.stringify({ input: typeof item.input === "string" ? item.input : "" })
+        : typeof item.arguments === "string" && item.arguments.length > 0 ? item.arguments : functionArguments.get(itemId) ?? "";
+      functionArguments.delete(itemId);
+      if (args.length > 0)
+        emit({ type: "content_block_delta", index: use.index, delta: { type: "input_json_delta", partial_json: args } });
       close();
     } else if (item.type === "reasoning") {
       const enc = typeof item.encrypted_content === "string" && item.encrypted_content.length > 0 ? item.encrypted_content : undefined;
@@ -255,23 +252,11 @@ export async function* responsesStreamToMessages(
         emit({ type: "content_block_delta", index: block.index, delta: { type: "thinking_delta", thinking: text } });
         break;
       }
-      case "response.output_item.added": {
-        const item = isRec(event.item) ? event.item : {};
-        if (item.type !== "function_call" && item.type !== "custom_tool_call") break;
-        sawToolUse = true;
-        openBlock("tool_use", {
-          type: "tool_use",
-          id: typeof item.call_id === "string" ? item.call_id : `toolu_${randomUUID().replace(/-/g, "")}`,
-          name: typeof item.name === "string" ? item.name : "",
-          input: {},
-        }, itemKey(item) ?? undefined);
-        break;
-      }
       case "response.function_call_arguments.delta": {
-        const block = current();
-        if (block?.kind !== "tool_use" || typeof event.delta !== "string" || event.delta.length === 0) break;
-        emit({ type: "content_block_delta", index: block.index, delta: { type: "input_json_delta", partial_json: event.delta } });
-        block.argsSent = true;
+        // Responses can interleave reasoning with argument deltas. Emit the
+        // tool block at completion so Messages sees it exactly once.
+        if (typeof event.item_id === "string" && typeof event.delta === "string")
+          functionArguments.set(event.item_id, (functionArguments.get(event.item_id) ?? "") + event.delta);
         break;
       }
       case "response.output_item.done": {

@@ -18,10 +18,10 @@ const ALLOWED_REQUEST_HEADERS: Record<PoolProvider, Set<string>> = {
 };
 
 // Error bodies that mean "this key has no money left", across vendors:
-// OpenAI `insufficient_quota`, Anthropic "credit balance is too low", Moonshot
+// OpenAI `insufficient_quota` and `credit_balance_exhausted`, Anthropic "credit balance is too low", Moonshot
 // `exceeded_current_quota_error`, and the generic balance/billing wording.
 const CREDIT_EXHAUSTED =
-  /insufficient_quota|exceeded_current_quota|credit balance|insufficient (?:balance|credits?|funds)|balance is (?:too low|insufficient)|payment required|billing/iu;
+  /insufficient_quota|credit_balance_exhausted|exceeded_current_quota|credit balance|insufficient (?:balance|credits?|funds)|balance is (?:too low|insufficient)|payment required|billing/iu;
 
 /**
  * True when the key has run out of credit: HTTP 402, or a 400/403/429 whose
@@ -30,9 +30,24 @@ const CREDIT_EXHAUSTED =
 export async function isCreditExhausted(response: Response): Promise<boolean> {
   if (response.status === 402) return true;
   if (![400, 403, 429].includes(response.status)) return false;
+  return CREDIT_EXHAUSTED.test(await peekBody(response));
+}
+
+/**
+ * True when a ChatGPT plan lacks the requested model: Codex's 400
+ * `model_not_found`. Another account may still serve it. Reads a clone.
+ */
+export async function isPlanModelMissing(response: Response): Promise<boolean> {
+  return response.status === 400 && PLAN_MODEL_MISSING.test(await peekBody(response));
+}
+
+const PLAN_MODEL_MISSING = /model_not_found|model is not supported when using Codex with a ChatGPT account/u;
+
+/** The first 4 KiB of the body, read from a clone within a short timeout. */
+async function peekBody(response: Response): Promise<string> {
   // Always cancel the clone: an unread tee branch keeps the upstream open.
   const reader = response.clone().body?.getReader();
-  if (reader === undefined) return false;
+  if (reader === undefined) return "";
   const decoder = new TextDecoder();
   let text = "";
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -46,13 +61,13 @@ export async function isCreditExhausted(response: Response): Promise<boolean> {
       text += decoder.decode(chunk.value, { stream: true });
     }
   } catch {
-    // An unreadable body is not a credit answer.
+    // An unreadable body matches nothing.
   } finally {
     clearTimeout(timer);
     // Not awaited: a tee branch's cancel settles only once the other branch cancels too.
     void reader.cancel().catch(() => undefined);
   }
-  return CREDIT_EXHAUSTED.test(text);
+  return text;
 }
 
 /** `protocol` is the wire protocol the key speaks: claude = Messages, codex = Responses. */

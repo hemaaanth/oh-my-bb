@@ -3,6 +3,8 @@
 // nanocodex as a stdio ACP agent for BB's provider-acp bridge.
 // Transport is the Model Gateway only: NANOCODEX_API_BASE_URL + MODEL_GATEWAY_TOKEN.
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { parseArgs } from "node:util";
 import * as acp from "@agentclientprotocol/sdk";
@@ -12,10 +14,28 @@ import { createNodeProcessTools } from "nanocodex-tools/node";
 /** The manifest is the one place the version lives. */
 const VERSION = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version;
 
-// nanocodex 0.6.5 rejects any other model id client-side. The gateway maps them to real upstreams.
-const MODELS = ["gpt-6-sol", "gpt-6-luna", "gpt-6-astra", "@cf/zai-org/glm-5.3", "kimi-k3", "mimo-v2.6-pro"];
+const MODELS = ["gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra", "@cf/zai-org/glm-5.3", "kimi-k3", "mimo-v2.6-pro", "claude-opus-5-5", "claude-sonnet-5-5"];
 const THINKING = ["none", "low", "medium", "high", "xhigh", "max"];
 const PERMISSION_MODES = ["accept-edits", "full"];
+const CLAUDE_TOOL_NAMES = new Map([["exec_command", "run_command"], ["write_stdin", "send_terminal_input"]]);
+
+/** @type {Map<string, { name: string, contextWindow: number, maxTokens: number }>} */
+const routedModels = new Map();
+try {
+  const catalog = JSON.parse(readFileSync(join(homedir(), ".config/nanocodex-acp/model-gateway.json"), "utf8"));
+  if (catalog.managedBy === "bb gateway setup host" && Array.isArray(catalog.models)) {
+    for (const { id, name, contextWindow, maxTokens } of catalog.models) {
+      if (typeof id === "string" && /^[A-Za-z0-9@][A-Za-z0-9._/@:+-]*$/u.test(id) &&
+          typeof name === "string" && !/[\r\n]/u.test(name) &&
+          Number.isSafeInteger(contextWindow) && contextWindow > 0 &&
+          Number.isSafeInteger(maxTokens) && maxTokens > 0) {
+        routedModels.set(id, { name, contextWindow, maxTokens });
+      }
+    }
+  }
+} catch (error) {
+  if (/** @type {NodeJS.ErrnoException} */ (error).code !== "ENOENT") throw error;
+}
 
 // stdout carries ACP frames only.
 console.log = console.error;
@@ -29,17 +49,20 @@ const { values: flags } = parseArgs({
   },
 });
 if (flags["list-models"]) {
-  for (const model of MODELS) process.stdout.write(`${model} - ${model}\n`);
+  const models = routedModels.size > 0 ? MODELS.filter((model) => /^(gpt|claude)-/u.test(model)) : MODELS;
+  for (const model of new Set([...models, ...routedModels.keys()])) {
+    process.stdout.write(`${model} - ${routedModels.get(model)?.name ?? model}\n`);
+  }
   process.exit(0);
 }
-for (const [flag, allowed] of /** @type {const} */ ([["model", MODELS], ["thinking", THINKING], ["permission-mode", PERMISSION_MODES]])) {
+for (const [flag, allowed] of /** @type {const} */ ([["model", [...MODELS, ...routedModels.keys()]], ["thinking", THINKING], ["permission-mode", PERMISSION_MODES]])) {
   const value = flags[flag];
-  if (value !== undefined && !allowed.includes(value)) {
+  if (value !== undefined && !allowed.includes(flag === "model" && value === "gpt-6-sol" ? "gpt-6.1-sol" : value)) {
     process.stderr.write(`nanocodex-acp: --${flag} must be one of ${allowed.join(", ")}; got "${value}"\n`);
     process.exit(2);
   }
 }
-const model = /** @type {import("nanocodex/node").Agent.create.Options["model"]} */ (flags.model);
+const model = flags.model === "gpt-6-sol" ? "gpt-6.1-sol" : flags.model;
 const thinking = /** @type {import("nanocodex").Thinking | undefined} */ (flags.thinking);
 const askPermission = flags["permission-mode"] !== "full";
 
@@ -75,9 +98,10 @@ const toolKind = (tool) => (tool === "exec_command" || tool === "write_stdin" ? 
 /**
  * @typedef {{
  *   id: string,
- *   agent: import("nanocodex").DefaultAgent,
+ *   agent: import("nanocodex").Agent<Pick<import("nanocodex").AgentActions, "events">>,
+ *   prompt: (input: import("nanocodex").PromptItem[]) => NonNullable<Session["turn"]>,
  *   closeTools: () => Promise<void>,
- *   turn?: import("nanocodex").Turn,
+ *   turn?: { result(): Promise<{ dispose(): void }>, cancel(): Promise<void> },
  *   allowed: Set<string>,
  *   streamed: Set<string>,
  * }} Session
@@ -173,21 +197,44 @@ const connection = acp
     authMethods: [],
   }))
   .onRequest("session/new", async ({ params }) => {
-    const transport = Transport.openAi(gatewayEndpoints(process.env));
+    const endpoints = gatewayEndpoints(process.env);
     const { tools, close } = await createNodeProcessTools({ workspace: params.cwd });
     /** @type {Session} */
-    const session = { id: "", agent: /** @type {any} */ (undefined), closeTools: close, allowed: new Set(), streamed: new Set() };
+    const session = { id: "", agent: /** @type {any} */ (undefined), prompt: /** @type {any} */ (undefined), closeTools: close, allowed: new Set(), streamed: new Set() };
     try {
-      session.agent = await Agent.create({
-        transport,
-        model,
-        thinking,
-        workspace: params.cwd,
-        // Direct mode drops the `exec` Code Mode tool, whose JavaScript can require("fs") past the gate.
-        toolMode: "direct",
-        rawApiEvents: false,
-        tools: tools.map((tool) => gate(tool, session)),
-      });
+      // Direct tools go through BB's permission gate in both harnesses.
+      const options = { thinking, workspace: params.cwd, toolMode: /** @type {const} */ ("direct"), tools: tools.map((tool) => gate(tool, session)) };
+      const route = model === undefined ? undefined : routedModels.get(model);
+      if (model !== undefined && (model.startsWith("claude-") || (route && !MODELS.includes(model)))) {
+        const endpoint = new URL(endpoints.apiBaseUrl);
+        endpoint.pathname += "/messages";
+        const agent = await Agent.create({
+          ...options,
+          harness: "claude",
+          model,
+          contextWindowTokens: route?.contextWindow,
+          maxTokens: route?.maxTokens,
+          tools: options.tools.map(({ name, description, parameters, handler }) => ({
+            name: CLAUDE_TOOL_NAMES.get(name) ?? name,
+            description,
+            parameters,
+            handler,
+          })),
+          endpoint: endpoint.href,
+          auth: { headers: () => ({ Authorization: `Bearer ${endpoints.apiKey}` }) },
+        });
+        session.agent = agent;
+        session.prompt = (input) => agent.turn.prompt({ input: input.map((item) => "text" in item ? item.text : "").join("\n") });
+      } else {
+        const agent = await Agent.create({
+          ...options,
+          transport: Transport.openAi(endpoints),
+          model: /** @type {import("nanocodex/node").Agent.create.Options["model"]} */ (model),
+          rawApiEvents: false,
+        });
+        session.agent = agent;
+        session.prompt = (input) => agent.turn.prompt({ input });
+      }
     } catch (error) {
       await close();
       throw nanocodexError(error);
@@ -209,7 +256,7 @@ const connection = acp
       : block.type === "resource_link" ? { type: "text", text: `[file: ${block.uri}]` }
       : { type: "text", text: `[unsupported ${block.type} attachment]` },
     );
-    session.turn = session.agent.turn.prompt({ input });
+    session.turn = session.prompt(input);
     try {
       (await session.turn.result()).dispose();
       return { stopReason: "end_turn" };

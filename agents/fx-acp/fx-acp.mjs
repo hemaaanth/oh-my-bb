@@ -4,7 +4,9 @@
 // and hides the Provider option (Vercel AI Gateway, Grok) from the ACP client.
 // Every other frame passes through unchanged.
 import { spawn } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -15,6 +17,23 @@ export const PROVIDER_OPTION = "provider";
 export const PINNED_PROVIDER = "codex";
 /** Results of these client requests carry `configOptions` for a session. */
 const SESSION_OPENERS = new Set(["session/new", "session/load", "session/resume", "session/fork"]);
+const DEFAULT_MODELS = [
+  "gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra",
+  "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+];
+
+function listModels() {
+  const models = new Map(DEFAULT_MODELS.map((id) => [id, id]));
+  try {
+    const catalog = JSON.parse(readFileSync(join(homedir(), ".config/bb/model-gateway-models.json"), "utf8"));
+    if (catalog.managedBy !== "bb gateway setup host" || !Array.isArray(catalog.models))
+      throw new Error("Invalid managed FX model catalog. Run bb gateway setup host.");
+    for (const { id, name } of catalog.models) models.set(id, name);
+  } catch (error) {
+    if (/** @type {NodeJS.ErrnoException} */ (error).code !== "ENOENT") throw error;
+  }
+  for (const [id, name] of models) console.log(`${id} - ${name}`);
+}
 
 /** @typedef {{ jsonrpc?: string, id?: string | number | null, method?: string, params?: any, result?: any, error?: any }} Frame */
 
@@ -172,7 +191,7 @@ export async function gatewayEnvironment(env) {
   // FX's native override URLs accept only loopback HTTP, even on remote hosts.
   const prefix = `/${randomUUID()}`;
   const server = createServer(async (req, res) => {
-    const target = req.method === "GET" && req.url === `${prefix}/models` ? models
+    const target = req.method === "GET" && req.url?.split("?", 1)[0] === `${prefix}/models` ? models
       : req.method === "POST" && req.url === `${prefix}/responses` ? responses : null;
     if (target === null) { res.writeHead(404).end(); return; }
     const abort = new AbortController();
@@ -196,14 +215,17 @@ export async function gatewayEnvironment(env) {
   if (!address || typeof address === "string") throw new Error("Cannot bind FX gateway relay.");
   const base = `http://127.0.0.1:${address.port}${prefix}`;
   return {
-    env: { ...env, FX_AUTH_MODE: "host-managed", FX_PROVIDER: "gateway",
+    env: { ...env, FX_AUTH_MODE: "host-managed", FX_PROVIDER: PINNED_PROVIDER, FX_PROVIDER_STRICT: "1",
       FX_E2E_OPENAI_CODEX_RESPONSES_URL: `${base}/responses`,
-      FX_E2E_OPENAI_CODEX_MODELS_URL: `${base}/models` },
+      FX_E2E_OPENAI_CODEX_MODELS_URL: `${base}/models`,
+      FX_TEST_OPENAI_CODEX_RESPONSES_URL: `${base}/responses`,
+      FX_TEST_OPENAI_CODEX_MODELS_URL: `${base}/models` },
     close: () => { server.closeAllConnections(); server.close(); },
   };
 }
 
 async function main() {
+  if (process.argv[2] === "model-list") return listModels();
   const gateway = await gatewayEnvironment(process.env);
   const child = spawn(process.env.FX_BIN || "fx", ["acp", ...process.argv.slice(2)], {
     env: gateway.env, stdio: ["pipe", "pipe", "inherit"],

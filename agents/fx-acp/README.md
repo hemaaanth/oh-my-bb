@@ -1,6 +1,6 @@
 # fx-acp
 
-`fx-acp` runs [FX](https://github.com/vercel-labs/fx) (`fx acp`, tested with 0.0.11) as a stdio
+`fx-acp` runs [FX](https://github.com/vercel-labs/fx) (`fx acp`, tested with 0.0.17) as a stdio
 ACP agent for BB's ACP providers plugin (`provider-acp`). The provider id stays `acp-fx`.
 
 It is a small relay, not a new agent. It starts `fx acp`, passes every frame through
@@ -43,11 +43,19 @@ old `fx` entry. Keep the id `fx`, so the provider id stays `acp-fx` and the Mode
 keeps routing it.
 
 ```json
-{ "id": "fx", "displayName": "FX", "command": "fx-acp" }
+{
+  "id": "fx",
+  "displayName": "FX",
+  "command": "fx-acp",
+  "modelCli": { "listArgs": ["model-list"], "selectFlag": "--model", "primaryModels": [] }
+}
 ```
 
 `customAgents` is one JSON array. Read the current value first and change only the `fx`
 entry.
+
+Run `bb gateway setup host` to include configured Model Gateway routes in BB's model list.
+FX loads the routed model catalog from the Gateway when a session starts.
 
 ## How it works
 

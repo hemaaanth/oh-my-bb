@@ -32,7 +32,7 @@ import {
   DEFAULT_MODEL_MAP,
   type ThreadIdentity,
 } from "./chain.js";
-import { accountSchema, accountSummarySchema, statusSchema, type Account } from "./contracts.js";
+import { accountSchema, accountSummarySchema, statusSchema, type Account, type AccountSummary } from "./contracts.js";
 import { createAccountPoolPlugin } from "./server.js";
 import { createClaudeAdapter } from "./upstreams/claude-adapter.js";
 import { createCodexAdapter } from "./upstreams/codex-adapter.js";
@@ -122,9 +122,28 @@ describe("chain config", () => {
     expect(modelChain("pi", ["claude-key:*", ...chain], [account({ kind: "api-key" }), max, pro], "claude-opus-5")[0]).toBe("claude-key:*");
   });
 
+  it("restricts Nano Codex models to their matching subscription family", () => {
+    const claude = account({});
+    const codex = account({ provider: "codex" });
+    const chain = ["chatgpt-oauth:*", claude.id];
+    expect(modelChain("acp-nanocodex", chain, [claude, codex], "claude-sonnet-5-5")).toEqual([claude.id]);
+    expect(modelChain("acp-nanocodex", chain, [claude, codex], "gpt-6.1-sol")).toEqual(["chatgpt-oauth:*"]);
+    expect(modelChain("acp-nanocodex", chain, [claude, codex], "kimi-k3")).toEqual(chain);
+    expect(modelChain("acp-nanocodex", ["chatgpt-oauth:*"], [codex], "claude-sonnet-5-5")).toEqual([]);
+  });
+
   it("restricts exact model routes to named compatible keys", () => {
     expect(modelRoutesSchema.parse({ deepseek: "responses-compatible-key:wafer" })).toEqual({ deepseek: "responses-compatible-key:wafer" });
     for (const target of ["chatgpt-oauth:*", "responses-compatible-key:*", "https://other.test", "claude-oauth:owner"])
+      expect(modelRoutesSchema.safeParse({ deepseek: target }).success).toBe(false);
+  });
+
+  it("accepts ordered exact routes while preserving legacy pins and rejecting unsafe targets", () => {
+    const entries = ["responses-compatible-key:lyber", "responses-compatible-key:boundless", "responses-compatible-key:near"];
+    const routes = modelRoutesSchema.parse({ deepseek: entries });
+    expect(modelChain("acp-omp", ["chatgpt-oauth:*"], [], "gw-deepseek", routes)).toEqual(entries);
+    expect(modelChain("pi", [], [], "deepseek", { deepseek: entries[0]! })).toEqual([entries[0]]);
+    for (const target of [[], ["chatgpt-oauth:*"], [entries[0], "responses-compatible-key:*"]])
       expect(modelRoutesSchema.safeParse({ deepseek: target }).success).toBe(false);
   });
 
@@ -156,9 +175,19 @@ describe("chain config", () => {
     expect(fitForCompatibleResponses({ input: "hi", reasoning: { effort: "medium" } }, model).reasoning).toEqual({ effort: "high" });
     expect(fitForCompatibleResponses({ input: "hi", reasoning: { effort: "minimal" } }, model).reasoning).toEqual({ effort: "low" });
     expect(fitForCompatibleResponses({ input: "hi", reasoning: { effort: "max" } }, model).reasoning).toEqual({ effort: "max" });
+    expect(fitForCompatibleResponses({ input: "hi", reasoning: { effort: "none" } }, "deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated").reasoning).toEqual({ effort: "low" });
     // A model with no published effort list, and a request without one, pass through.
     expect(fitForCompatibleResponses({ input: "hi", reasoning: { effort: "medium" } }, "DeepSeek-V4.1-Flash-1017")).toEqual({ input: "hi", reasoning: { effort: "medium" } });
     expect(fitForCompatibleResponses({ input: "hi" }, model)).toEqual({ input: "hi" });
+  });
+
+  it("omits the FX verbosity object for Lyber while keeping explicit schemas", () => {
+    const model = "kimi-k31-pro-abliterated";
+    const body = { input: "hi", text: { verbosity: "low" } };
+    const schema = { input: "hi", text: { format: { type: "json_schema" } } };
+    expect(fitForCompatibleResponses(body, model)).toEqual({ input: "hi" });
+    expect(fitForCompatibleResponses(schema, model)).toEqual(schema);
+    expect(fitForCompatibleResponses(body, "gpt-6.2-sol")).toEqual(body);
   });
 
   it("maps automatic Claude fallbacks to the configured cost tiers", () => {
@@ -1612,16 +1641,14 @@ describe("chain failover in the hub", () => {
     expect(turn.headers.get("session-id")).toBe("fx-session");
     expect(JSON.parse(turn.body).model).toBe("gpt-5.6-luna");
 
-    gw.upstream.reply = () => Response.json({ models: [{ slug: "gpt-6-sol" }] });
+    const upstreamRequests = gw.upstream.requests.length;
     const models = await fetchHttp(
       "GET",
       `${modelsUrl.serverPath.slice(MOUNT.length)}&client_version=0.157.0`,
       { headers: fxHeaders },
     );
-    expect(await models.json()).toMatchObject({ models: [{ slug: "gpt-6-sol" }] });
-    expect(gw.upstream.requests.at(-1)!.url).toBe(
-      "https://chatgpt.test/models?client_version=0.157.0",
-    );
+    expect(await models.json()).toMatchObject({ models: expect.arrayContaining([expect.objectContaining({ slug: "gpt-6-sol" })]) });
+    expect(gw.upstream.requests).toHaveLength(upstreamRequests);
 
     for (const request of gw.upstream.requests) {
       expect(request.url).not.toContain("gateway_token");
@@ -1986,6 +2013,13 @@ describe("chain failover in the hub", () => {
     expect((await gw.send(ompToken, { ...body, model: `gw-${model}` }, "/v1/responses")).status).toBe(200);
     expect(JSON.parse(gw.upstream.requests.at(-1)!.body)).toMatchObject(body);
 
+    const nanoToken = await valueOf(gw.env("acp-nanocodex", "thr_pinned_nano"), "MODEL_GATEWAY_TOKEN") as string;
+    expect((await gw.send(nanoToken, {
+      model, max_tokens: 1024, messages: [{ role: "user", content: "hi" }],
+    }, "/v1/messages")).status).toBe(200);
+    expect(gw.upstream.requests.at(-1)?.url).toBe("https://wafer.test/v1/responses");
+    expect(JSON.parse(gw.upstream.requests.at(-1)!.body).model).toBe(model);
+
     gw.upstream.attempts.length = 0;
     expect((await gw.send(token, { ...body, model: "gpt-6-sol" }, "/v1/responses")).status).toBe(200);
     expect(gw.upstream.attempts).toEqual(["pro-token"]);
@@ -1996,6 +2030,113 @@ describe("chain failover in the hub", () => {
     expect(gw.upstream.attempts).toEqual([]);
     expect((await gw.cli("model-route", "remove", model)).exitCode).toBe(0);
     expect(JSON.parse((await gw.cli("model-route", "show")).stdout)).toEqual({});
+    expect((await gw.send(nanoToken, {
+      model, max_tokens: 1024, messages: [{ role: "user", content: "hi" }],
+    }, "/v1/messages")).status).toBe(404);
+    expect(gw.upstream.attempts).toEqual([]);
+  });
+
+  it("fails an exact route over in order on 503 with per-provider model mapping", async () => {
+    const gw = await gateway({ withCodex: true });
+    const model = "deepseek-v4.1-flash-1017-abliterated";
+    for (const label of ["lyber", "boundless", "near"])
+      expect((await addKey(gw, "responses-compatible-key", label, `https://${label}.test/v1`, `sk-${label}`)).exitCode).toBe(0);
+    const entries = ["lyber", "boundless", "near"].map((label) => `responses-compatible-key:${label}`);
+    expect((await gw.cli("model-route", "set", model, ...entries)).exitCode).toBe(0);
+    expect((await gw.cli("model-route", "set", "bad", entries[0]!, "responses-compatible-key:missing")).exitCode).toBe(1);
+    expect((await gw.cli("model-map", "set", entries[2]!, model, "near-deepseek")).exitCode).toBe(0);
+    gw.upstream.reply = (who) => who === "sk-near"
+      ? completed("resp_fallback") : new Response(null, { status: 503 });
+    const token = await valueOf(gw.env("acp-omp", "thr_exact_fallback"), "MODEL_GATEWAY_TOKEN") as string;
+    const body = { model: `gw-${model}`, input: "hi" };
+    expect((await gw.send(token, body, "/v1/responses")).status).toBe(200);
+    expect(gw.upstream.attempts).toEqual(["sk-lyber", "sk-boundless", "sk-near"]);
+    expect(JSON.parse(gw.upstream.requests.at(-1)!.body).model).toBe("near-deepseek");
+    expect(await gw.route("thr_exact_fallback")).toMatchObject({ entryIndex: 2, chain: entries });
+    gw.upstream.attempts.length = 0;
+    gw.upstream.reply = () => new Response(null, { status: 503 });
+    const other = await valueOf(gw.env("pi", "thr_exact_failed"), "MODEL_GATEWAY_TOKEN") as string;
+    expect((await gw.send(other, body, "/v1/responses")).status).toBe(503);
+    expect(gw.upstream.attempts).toEqual(["sk-lyber", "sk-boundless", "sk-near"]);
+  });
+
+  it("holds an exhausted OpenAI API grant without changing the subscription model route", async () => {
+    const gw = await gateway({ withCodex: true });
+    const kind = "responses-compatible-key:openai-api";
+    const apiModel = "openai-api-gpt-6.2-sol";
+    await addKey(gw, "responses-compatible-key", "openai-api", "https://api.openai.com/v1", "sk-openai");
+    await gw.cli("model-map", "set", kind, apiModel, "gpt-6.2-sol");
+    await gw.cli("model-route", "set", apiModel, kind);
+    gw.upstream.reply = (who) => who === "sk-openai"
+      ? Response.json({ error: { code: "credit_balance_exhausted" } }, { status: 429 })
+      : completed("resp_subscription");
+    const token = await valueOf(gw.env("acp-omp", "thr_openai_api"), "MODEL_GATEWAY_TOKEN") as string;
+    const exhausted = await gw.host.harness.behavior.fetchHttp("POST", "/v1/responses", {
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: `gw-${apiModel}`, input: "hi" }),
+    });
+    expect(exhausted.status).toBe(429);
+    expect(exhausted.headers.get("retry-after")).toBe("1800");
+    expect(JSON.parse(gw.upstream.requests.at(-1)!.body).model).toBe("gpt-6.2-sol");
+    expect((await gw.send(token, { model: "gw-gpt-6-sol", input: "hi" }, "/v1/responses")).status).toBe(200);
+    expect(gw.upstream.attempts).toEqual(["sk-openai", "pro-token"]);
+  });
+
+  it("reads Boundless account spend only from its official endpoint", async () => {
+    const gw = await gateway();
+    const base = "https://api.inference.boundless.network/v1";
+    await addKey(gw, "responses-compatible-key", "boundless", base, "sk-boundless");
+    await addKey(gw, "responses-compatible-key", "boundless-relay", "https://relay.test/v1", "sk-relay");
+    const { accounts } = JSON.parse((await gw.cli("account", "list", "--json")).stdout) as { accounts: Account[] };
+    const boundless = accounts.find(({ label }) => label === "boundless")!;
+    const relay = accounts.find(({ label }) => label === "boundless-relay")!;
+    gw.upstream.reply = () => Response.json({
+      object: "credits", currency: "usd", balance: 18.512340007, key: { spent: 12.0400017, limit: null },
+    });
+
+    const refresh = (accountId: string) => gw.host.harness.behavior.callRpc("account.refreshUsage", { accountId });
+    expect(await refresh(boundless.id)).toMatchObject({ account: {
+      apiSpend: { balanceUsd: 18.512340007, keySpentUsd: 12.0400017, keyLimitUsd: null, observedAt: T },
+      status: "ready",
+    } });
+    expect(await refresh(relay.id)).toMatchObject({ account: { id: relay.id } });
+    expect(gw.upstream.attempts).toEqual(["sk-boundless"]);
+    expect(gw.upstream.requests[0]?.url).toBe(`${base}/credits`);
+
+    gw.upstream.reply = () => new Response(null, { status: 503 });
+    gw.setNow(T + 1000);
+    expect(await refresh(boundless.id)).toMatchObject({ account: {
+      apiSpend: { observedAt: T }, status: "ready",
+    } });
+  });
+
+  it("lists a saved OpenAI credit snapshot only on its API account", async () => {
+    const gw = await gateway({ withCodex: true });
+    await addKey(gw, "responses-compatible-key", "openai-api", "https://api.openai.com/v1", "sk-openai");
+    const { accounts } = JSON.parse((await gw.cli("account", "list", "--json")).stdout) as { accounts: Account[] };
+    const id = accounts.find((account) => account.label === "openai-api")!.id;
+    const ownerAccountId = accounts.find((account) => account.kind === "oauth" && account.provider === "codex")!.id;
+    const snapshot = {
+      organizationName: "Example", ownerAccountId, observedAt: T,
+      grants: [{ grantedUsd: 50, remainingUsd: 40, expiresAt: null }],
+    };
+    expect((await gw.cli("account", "openai-credit-snapshot", id, JSON.stringify({ ...snapshot, ownerAccountId: id }))).exitCode).toBe(1);
+    expect((await gw.cli("account", "openai-credit-snapshot", id, JSON.stringify(snapshot))).exitCode).toBe(0);
+    expect((await gw.cli("account", "openai-credit-snapshot", accounts.find((account) => account.kind === "oauth")!.id, JSON.stringify(snapshot))).exitCode).toBe(1);
+    const updated = await gw.host.harness.behavior.callRpc("account.list", null) as AccountSummary[];
+    expect(updated.find((account) => account.id === id)?.apiCreditSnapshot).toEqual(snapshot);
+    expect(updated.filter((account) => account.apiCreditSnapshot !== undefined)).toHaveLength(1);
+  });
+
+  it("stores the shared X subscription usage independently of Gateway routing accounts", async () => {
+    const gw = await gateway();
+    const snapshot = { plan: "Premium", weeklyUtilization: 0.26, resetDate: "2026-11-18",
+      observedAt: T, extraSpentUsd: 0.02, extraBalanceUsd: 0 };
+    expect(await gw.host.harness.behavior.callRpc("usage.xSnapshot", null)).toBeNull();
+    expect((await gw.cli("x-usage-snapshot", JSON.stringify(snapshot))).exitCode).toBe(0);
+    expect(await gw.host.harness.behavior.callRpc("usage.xSnapshot", null)).toEqual(snapshot);
+    expect((await gw.cli("x-usage-snapshot", JSON.stringify({ ...snapshot, weeklyUtilization: 26 }))).exitCode).toBe(1);
+    expect(await gw.host.harness.behavior.callRpc("usage.xSnapshot", null)).toEqual(snapshot);
   });
 
   const capacityFrame = (code = "serverOverloaded") =>
@@ -2262,6 +2403,23 @@ describe("chain failover in the hub", () => {
     const omp = (await valueOf(gw.env("acp-omp", "thr_omp_or"), "MODEL_GATEWAY_TOKEN")) as string;
     await gw.send(omp, { ...body, model: "gw-gpt-6-astra" }, "/v1/responses");
     expect(JSON.parse(gw.upstream.requests.at(-1)!.body)).toEqual({ ...body, model: "openai/gpt-6", input: [{ type: "message", role: "user", content: "hi" }] });
+  });
+
+  it("skips a ChatGPT account whose plan lacks the model instead of ending the turn on its 400", async () => {
+    const gw = await gateway({ withCodex: true });
+    await addKey(gw, "responses-compatible-key", "openrouter", OPENROUTER, "sk-or");
+    await gw.cli("chain", "set", "codex", "chatgpt-oauth:*", "responses-compatible-key:openrouter");
+    const missing = "The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account.";
+    gw.upstream.reply = (who) => (who === "pro-token" ? Response.json({ detail: missing }, { status: 400 }) : completed(`resp_${who}`));
+    const key = await gw.token("codex", "thr_plan_model");
+    const body = { model: "gpt-6-sol", input: [{ role: "user", content: "hi" }], stream: true };
+    expect((await gw.send(key, body, "/v1/responses")).status).toBe(200);
+    expect(gw.upstream.attempts).toEqual(["pro-token", "sk-or"]);
+    // With nowhere else to go, the plan's own message still reaches the harness.
+    await gw.cli("chain", "set", "codex", "chatgpt-oauth:*");
+    const alone = await gw.send(await gw.token("codex", "thr_plan_model_alone"), body, "/v1/responses");
+    expect(alone.status).toBe(400);
+    expect(alone.text).toContain(missing);
   });
 
   it("serves Codex from an Anthropic-compatible key with Responses <-> Messages translation", async () => {

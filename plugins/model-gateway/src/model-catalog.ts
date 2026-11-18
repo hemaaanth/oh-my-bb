@@ -47,6 +47,9 @@ export interface CompatibleKeyModel {
  */
 
 export const COMPATIBLE_KEY_MODELS: Record<string, CompatibleKeyModel> = {
+  "openai-api-gpt-6.2-sol": {
+    contextWindow: 1050000, maxTokens: 128000, input: ["text", "image"], displayName: "6.2-Sol (OpenAI API)",
+  },
   // Wafer Responses is text-only; cap output conservatively within its 1M context.
   "DeepSeek-V4.1-Flash-1017": {
     contextWindow: 1048576, maxTokens: 64000, input: ["text"], displayName: "DSF4.1",
@@ -55,6 +58,10 @@ export const COMPATIBLE_KEY_MODELS: Record<string, CompatibleKeyModel> = {
   "deepseek-v4.1-flash-1017-abliterated": {
     contextWindow: 1048576, maxTokens: 126976, input: ["text"],
     reasoningEfforts: ["none", "low", "high", "xhigh", "max"], displayName: "DSF4.1-A",
+  },
+  "deepseek-v4.1-flash-1017-near": {
+    contextWindow: 200000, maxTokens: 64000, input: ["text"],
+    reasoningEfforts: ["low", "high", "xhigh", "max"], displayName: "DSF4.1-A (NEAR)",
   },
   "kimi-k31-pro-abliterated": {
     contextWindow: 1048576, maxTokens: 131072, input: ["text"],
@@ -70,7 +77,9 @@ const EFFORT_ORDER = ["none", "minimal", "low", "medium", "high", "xhigh", "max"
  * Unknown models and unlisted levels pass through unchanged.
  */
 export function compatibleReasoningEffort(model: string, effort: string): string {
-  const allowed = COMPATIBLE_KEY_MODELS[model.replace(/^gw-/u, "")]?.reasoningEfforts;
+  const bare = model.replace(/^gw-/u, "");
+  const id = bare === "deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated" ? "deepseek-v4.1-flash-1017-near" : bare;
+  const allowed = COMPATIBLE_KEY_MODELS[id]?.reasoningEfforts;
   if (allowed === undefined || allowed.includes(effort)) return effort;
   const target = EFFORT_ORDER.indexOf(effort as (typeof EFFORT_ORDER)[number]);
   if (target < 0) return effort;

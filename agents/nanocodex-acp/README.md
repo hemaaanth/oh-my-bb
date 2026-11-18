@@ -1,6 +1,6 @@
 # nanocodex-acp
 
-`nanocodex-acp` runs [nanocodex](https://www.npmjs.com/package/nanocodex) 0.6.5 as a stdio
+`nanocodex-acp` runs [nanocodex](https://www.npmjs.com/package/nanocodex) 0.6.7 as a stdio
 ACP agent. BB's ACP providers plugin (`provider-acp`) launches it as a custom agent. The
 provider id is `acp-nanocodex`.
 
@@ -25,10 +25,11 @@ The tarball produces a copy instead of a symlink to the checkout.
 
 | Variable | Required | Meaning |
 |---|---|---|
-| `NANOCODEX_API_BASE_URL` | yes | The gateway's Responses base URL, `http(s)://`. It may carry a path prefix, for example `<BB server>/api/v1/plugins/model-gateway/http/v1`. |
+| `NANOCODEX_API_BASE_URL` | yes | The gateway's versioned base URL, `http(s)://`. It may carry a path prefix, for example `<BB server>/api/v1/plugins/model-gateway/http/v1`. |
 | `MODEL_GATEWAY_TOKEN` | yes | The gateway hub token. It is sent as `Authorization: Bearer <token>`. |
 
-The agent derives the WebSocket URL from `NANOCODEX_API_BASE_URL`: it swaps `http` to `ws`
+The Claude harness sends HTTP requests to `/messages` under the same base URL.
+The Codex harness derives the WebSocket URL from `NANOCODEX_API_BASE_URL`: it swaps `http` to `ws`
 (or `https` to `wss`) and appends `/responses`. It always passes that URL to nanocodex.
 This matters: when the WebSocket URL is not set, nanocodex silently connects to
 `wss://api.openai.com/v1/responses`.
@@ -50,7 +51,7 @@ Add this entry to the `customAgents` setting of the ACP providers plugin
   "modelCli": {
     "listArgs": ["--list-models"],
     "selectFlag": "--model",
-    "primaryModels": ["gpt-6-sol", "gpt-6-astra", "gpt-6-luna"]
+    "primaryModels": []
   },
   "reasoningCli": {
     "flag": "--thinking",
@@ -75,7 +76,7 @@ BB's ACP bridge starts one `nanocodex-acp` process per thread. It uses these met
 | ACP | nanocodex |
 |---|---|
 | `initialize` | Capabilities: no `loadSession`, no image input, no auth methods. |
-| `session/new` | `Transport.openAi({ apiKey, apiBaseUrl, websocketUrl })` from the environment, then `Agent.create` with the session `cwd` as the workspace. |
+| `session/new` | Selects the Claude or Codex harness and creates an agent with the session `cwd` as the workspace. Both transports use the gateway URL and token. |
 | `session/prompt` | `agent.turn.prompt()`; waits for `turn.result()`. |
 | `session/cancel` | `turn.cancel()`. The prompt ends with `stopReason: "cancelled"`. |
 | `session/update` | From `events.watch()`, see below. |
@@ -85,10 +86,16 @@ The bridge also knows `session/load`, `session/fork`, `session/set_model` and
 `session/set_config_option`. It calls them only when the agent advertises them, and
 nanocodex-acp does not. Custom agents never fork.
 
-**Model.** `--list-models` prints the six ids nanocodex 0.6.5 accepts: `gpt-6-sol`,
-`gpt-6-luna`, `gpt-6-astra`, `@cf/zai-org/glm-5.3`, `kimi-k3`, `mimo-v2.6-pro`. BB passes
-the thread's choice as `--model <id>` at launch (`modelCli.selectFlag`). The gateway maps these
-ids to real upstream models, so there is no aliasing here.
+**Model.** The picker offers Codex, Claude Opus 5.5, Claude Sonnet 5.5, and the
+exact model routes exported by `bb gateway setup host`. Rerun setup after
+changing those routes. The catalog has model IDs and limits only. For models
+outside Nano Codex's Codex catalog, the adapter uses Nano Codex's Messages
+harness and the gateway translates to the routed upstream protocol.
+Existing `gpt-6-sol` selections
+launch with `gpt-6.1-sol`. For Claude and GPT selections, the gateway uses the
+matching OAuth pool. To enable Claude, the gateway's existing
+`allowClaudeOAuthAcrossHarnesses` preference must be on and the chain must include
+`claude-oauth:*` alongside `chatgpt-oauth:*`.
 
 **Reasoning.** BB passes the reasoning level as `--thinking <level>` at launch
 (`reasoningCli`). The six levels are nanocodex's `thinking` values.
@@ -122,13 +129,14 @@ nanocodex has no permission hook. nanocodex-acp gives it the Node OS-process too
 nanocodex has no separate file-edit tool. It edits files through `exec_command`. So in
 `accept-edits` mode every command asks, including commands that only edit files.
 
-nanocodex also always gives the model its own tools. Their status:
+The Claude harness uses the same permission gate for `run_command` and
+`send_terminal_input`. The Codex harness also exposes these built-in tools:
 
 | Tool | Status |
 |---|---|
 | `exec` (Code Mode) | **Off.** The agent uses `toolMode: "direct"`. Code Mode JavaScript gets `require`, so it could reach `fs` and `child_process` without the gate. |
 | `wait` | Off. It is part of Code Mode. |
-| `spawn_agent`, `send_agent_message`, `wait_agent`, `interrupt_agent`, `close_agent`, `list_agents`, `submit_result` | On. nanocodex 0.6.5 has no public switch to turn them off. They do not touch the OS themselves: child agents run on the same host tools, the wrapped `exec_command` and `write_stdin`, so every child command still asks (read from the nanocodex source; not tested). Child tool calls do not appear as `tool_call` updates (only the root session's events are watched); they appear only as permission requests. |
+| `spawn_agent`, `send_agent_message`, `wait_agent`, `interrupt_agent`, `close_agent`, `list_agents`, `submit_result` | On. They do not touch the OS themselves: child agents run on the same host tools, the wrapped `exec_command` and `write_stdin`, so every child command still asks (read from the nanocodex source; not tested). Child tool calls do not appear as `tool_call` updates (only the root session's events are watched); they appear only as permission requests. |
 
 ## Develop
 
@@ -154,13 +162,13 @@ npm run build     # node --check
 - a reasoning summary arrives as `agent_thought_chunk`;
 - `session/cancel` ends the turn as `cancelled`;
 - `session/new` fails when `NANOCODEX_API_BASE_URL` is missing, and nothing connects;
-- `--list-models` prints the six ids;
+- `--list-models` includes the Codex and Claude models;
+- Claude sends a Messages request with the gateway bearer token and streams the reply;
 - `initialize` reports the version in `package.json`.
 
 ## Dependencies
 
-`nanocodex` and `nanocodex-tools` are pinned to 0.6.5. A newer nanocodex (0.6.7) renames
-`gpt-6-sol` to `gpt-6.1-sol`, which would break the model ids above, so it is not used.
+`nanocodex` and `nanocodex-tools` are pinned to 0.6.7.
 
 `package.json` has an `overrides` entry that lifts `@modelcontextprotocol/sdk` from the 1.30.0
 that nanocodex pins to 1.31 or later. 1.30.x has a high-severity OAuth advisory

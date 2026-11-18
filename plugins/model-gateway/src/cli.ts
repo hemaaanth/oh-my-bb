@@ -6,6 +6,9 @@ import { setTimeout as wait } from "node:timers/promises";
 import {
   accountAddInputSchema,
   accountIdInputSchema,
+  apiCreditSnapshotSchema,
+  xUsageSnapshotSchema,
+  antigravityUsageSnapshotSchema,
   accountPriorityInputSchema,
   accountReorderInputSchema,
   accountPoolConfigSetInputSchema,
@@ -79,6 +82,9 @@ const HELP = [
   "  printf '%s\\n' \"$KEY\" | bb gateway key add <claude-key|anthropic-compatible-key|responses-compatible-key> --label <label> [--base-url <url>] [--priority <n>] --key-stdin",
   "  bb gateway account list [--json]",
   "  bb gateway account billing-connect <id> --key-stdin | billing-disconnect <id>",
+  "  bb gateway account openai-credit-snapshot <id> <json>",
+  "  bb gateway x-usage-snapshot [<json>]",
+  "  bb gateway antigravity-usage-snapshot [<json>]",
   "  bb gateway account remove <id>",
   "  bb gateway account enable <id>",
   "  bb gateway account disable <id>",
@@ -93,7 +99,7 @@ const HELP = [
   "      kinds: claude-oauth, claude-key, chatgpt-oauth, anthropic-compatible-key, responses-compatible-key",
   "  bb gateway model-map show [--json]",
   "  bb gateway model-route show",
-  "  bb gateway model-route set <model> <anthropic-compatible-key:label|responses-compatible-key:label>",
+  "  bb gateway model-route set <model> <anthropic-compatible-key:label|responses-compatible-key:label> [fallback...]",
   "  bb gateway model-route remove <model>",
   "  bb gateway model-map set <kind>[:<label>] <pattern> <model>",
   "  bb gateway auto [show]",
@@ -223,6 +229,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
       "Windows",
       "Resets",
       "Subscription API credit",
+      "API spend",
       ...families.map(familyLabel),
       "Status",
     ].join("\t"),
@@ -244,6 +251,8 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
         formatLimitWindows(account.limitWindows),
         formatResetCredits(account.resetCredits),
         account.apiCreditBenefit == null ? "-" : `${account.apiCreditBenefit.organizationName}: USD ${account.apiCreditBenefit.remainingUsd ?? "?"} remaining / ${account.apiCreditBenefit.monthlyUsd}/month; next ${formatReset(account.apiCreditBenefit.nextGrantAt)}`,
+        account.apiSpend === undefined ? "-" : account.apiSpend === null ? "Unavailable" :
+          `Team balance: ${account.apiSpend.balanceUsd === null ? "no limit" : `USD ${account.apiSpend.balanceUsd}`}; key spend: USD ${account.apiSpend.keySpentUsd}${account.apiSpend.keyLimitUsd === null ? "" : ` / ${account.apiSpend.keyLimitUsd}`}`,
         ...families.map((family) =>
           formatFamilyQuota(account.familyWeekly[family]),
         ),
@@ -510,8 +519,8 @@ export function registerPoolCli(
       },
       {
         name: "model-route",
-        summary: "Pin an exact model to one compatible API key, show pins, or remove a pin",
-        usage: "bb gateway model-route <set MODEL KIND:LABEL|show|remove MODEL>",
+        summary: "Route an exact model through compatible API keys in order, show routes, or remove a route",
+        usage: "bb gateway model-route <set MODEL KIND:LABEL [FALLBACK...]|show|remove MODEL>",
       },
       {
         name: "model-map-set",
@@ -589,6 +598,24 @@ export function registerPoolCli(
           if (argv[1]!.startsWith("billing-balance")) await operations.connectBillingBalance(accountId, disconnect ? null : key!);
           else await operations.connectBilling(accountId, disconnect ? null : key!);
           return { exitCode: 0, stdout: disconnect ? "Billing session removed.\n" : "Subscription API credits connected.\n" };
+        }
+        if (argv[0] === "antigravity-usage-snapshot") {
+          if (argv.length === 1) return { exitCode: 0, stdout: JSON.stringify(await operations.antigravityUsageSnapshot()) + "\n" };
+          if (argv.length !== 2) throw new Error("Usage: bb gateway antigravity-usage-snapshot [<json>]");
+          await operations.saveAntigravityUsageSnapshot(antigravityUsageSnapshotSchema.parse(JSON.parse(argv[1]!)));
+          return { exitCode: 0, stdout: "Antigravity usage snapshot saved.\n" };
+        }
+        if (argv[0] === "x-usage-snapshot") {
+          if (argv.length === 1) return { exitCode: 0, stdout: JSON.stringify(await operations.xUsageSnapshot()) + "\n" };
+          if (argv.length !== 2) throw new Error("Usage: bb gateway x-usage-snapshot [<json>]");
+          await operations.saveXUsageSnapshot(xUsageSnapshotSchema.parse(JSON.parse(argv[1]!)));
+          return { exitCode: 0, stdout: "Shared Grok and Cursor usage snapshot saved.\n" };
+        }
+        if (argv[0] === "account" && argv[1] === "openai-credit-snapshot") {
+          const { id } = accountIdInputSchema.parse({ id: argv[2] });
+          const snapshot = apiCreditSnapshotSchema.parse(JSON.parse(argv[3] ?? ""));
+          await operations.saveOpenAiCreditSnapshot(id, snapshot);
+          return { exitCode: 0, stdout: "OpenAI API credit snapshot saved.\n" };
         }
         if (argv[0] === "account" && argv[1] === "priority") {
           if (argv.length !== 4 || argv[3]?.trim() === "")
@@ -904,14 +931,19 @@ export function registerPoolCli(
         }
         if (argv[0] === "model-route" && (argv[1] === "set" || argv[1] === "remove")) {
           const model = argv[2];
-          if (!model || argv.length !== (argv[1] === "set" ? 4 : 3))
-            throw new Error("Usage: bb gateway model-route set <model> <kind:label> | remove <model>");
+          if (!model || (argv[1] === "set" ? argv.length < 4 : argv.length !== 3))
+            throw new Error("Usage: bb gateway model-route set <model> <kind:label> [fallback...] | remove <model>");
           const routes = { ...config.get().modelRoutes };
           if (argv[1] === "remove") delete routes[model];
-          else routes[model] = argv[3]!;
+          else routes[model] = argv.length === 4 ? argv[3]! : argv.slice(3);
           const modelRoutes = modelRoutesSchema.parse(routes);
-          if (argv[1] === "set" && !expandChain([modelRoutes[model]!], await operations.list()).flat().length)
-            throw new Error("The model route needs an enabled compatible API key with that label.");
+          if (argv[1] === "set") {
+            const target = modelRoutes[model]!;
+            const entries = typeof target === "string" ? [target] : target;
+            const accounts = await operations.list();
+            if (expandChain(entries, accounts).some((group) => group.length === 0))
+              throw new Error("Every model route entry needs an enabled compatible API key with that label.");
+          }
           const next = await config.set({ modelRoutes });
           return { exitCode: 0, stdout: json(next.modelRoutes) };
         }

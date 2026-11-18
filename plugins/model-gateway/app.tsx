@@ -67,6 +67,10 @@ import type {
   AccountPoolConfig,
   AccountPoolConfigSetInput,
   ApiCreditBenefit,
+  ApiCreditGrant,
+  ApiCreditSnapshot,
+  XUsageSnapshot,
+  AntigravityUsageSnapshot,
   FamilyQuota,
   KeyAddInput,
   LimitWindow,
@@ -518,12 +522,16 @@ function ApiCreditsBar({ benefit, account }: { benefit: ApiCreditBenefit; accoun
     utilization={benefit.remainingUsd == null || benefit.monthlyUsd <= 0 ? null : 1 - benefit.remainingUsd / benefit.monthlyUsd}
     resetAt={benefit.nextGrantAt} resetVerb="Next grant"
     title={`${benefit.organizationName}: ${benefit.remainingUsd == null ? "Balance unavailable" : `${usd(benefit.remainingUsd)} of ${usd(benefit.monthlyUsd)} remaining`}${held}`} />;
+  return <CreditGrantBar grants={grants} account={account} title={benefit.organizationName} note={nextGrant + held} />;
+}
+
+function CreditGrantBar({ grants, account, title, note = "" }: { grants: ApiCreditGrant[]; account: string; title: string; note?: string }) {
   const granted = grants.reduce((sum, grant) => sum + grant.grantedUsd, 0);
   const remaining = grants.reduce((sum, grant) => sum + grant.remainingUsd, 0);
   const expiries = grants.flatMap((grant) => grant.expiresAt === null ? [] : [grant.expiresAt]);
-  return <FooterUsageBar label="API" account={account} utilization={1 - remaining / granted}
+  return <FooterUsageBar label="API" account={account} utilization={granted === 0 ? null : 1 - remaining / granted}
     resetAt={expiries.length === 0 ? null : Math.min(...expiries)} resetVerb="Next credit expires"
-    title={`${benefit.organizationName}: ${usd(remaining)} of ${usd(granted)} remaining across ${grants.length} ${grants.length === 1 ? "grant" : "grants"}${nextGrant}${held}`}
+    title={`${title}: ${usd(remaining)} of ${usd(granted)} remaining across ${grants.length} ${grants.length === 1 ? "grant" : "grants"}${note}`}
     segments={grants.map((grant) => ({ weight: grant.grantedUsd, utilization: 1 - grant.remainingUsd / grant.grantedUsd,
       title: `${usd(grant.remainingUsd)} of ${usd(grant.grantedUsd)} remaining${grant.expiresAt === null ? "" : ` · expires ${shortDate(grant.expiresAt)}`}` }))} />;
 }
@@ -532,19 +540,30 @@ function resetCreditsLabel({ available }: ResetCredits): string {
   return `${available} ${available === 1 ? "reset" : "resets"} available`;
 }
 
-function GatewayAccountPanel({ account, reconnect }: { account: AccountSummary; reconnect: () => void }) {
+function GatewayAccountPanel({ account, reconnect, startOpen, linkedCredits = [] }: {
+  account: AccountSummary; reconnect: () => void; startOpen: boolean; linkedCredits?: ApiCreditSnapshot[];
+}) {
   const windows = footerWindows(account);
   const apiCredits = account.provider === "claude" ? account.apiCreditBenefit : null;
+  const snapshot = account.apiCreditSnapshot;
+  const grants = snapshot?.grants.filter((grant) => grant.expiresAt === null || grant.expiresAt > Date.now()) ?? [];
+  const summary = account.error ? "Needs attention" : snapshot ? `${usd(grants.reduce((sum, grant) => sum + grant.remainingUsd, 0))} API` : quotaSummary(account);
   // Snapshots cached before reset credits existed have no such field.
   const resetCredits = account.resetCredits ?? null;
   return (
-    <div className="px-3 py-2">
-      <div className="flex min-w-0 items-center gap-2">
+    <details className="group px-3 py-2" open={startOpen}>
+      <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
         {account.provider === "claude" ? <GatewayClaudeIcon className="size-4 shrink-0" /> :
             <GatewayChatGPTIcon className="size-4 shrink-0" />}
-        <span className="min-w-0 truncate text-xs font-medium text-foreground" title={account.email ?? account.label}>{account.email ?? account.label}</span>
-      </div>
-      {account.error !== null ? <div className="mt-2 space-y-2">
+        <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground" title={snapshot?.organizationName ?? account.email ?? account.label}>{snapshot?.organizationName ?? account.email ?? account.label}</span>
+        {summary === null ? null : <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">{summary}</span>}
+        <Icon name="ChevronDown" className="size-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+      {snapshot ? <div className="mt-1.5">
+        <CreditGrantBar grants={grants} account={account.label} title={snapshot.organizationName}
+          note={` · Billing snapshot ${shortDate(snapshot.observedAt)}`} />
+      </div> :
+      account.error !== null ? <div className="mt-2 space-y-2">
         <p role="alert" className="break-words text-xs text-destructive-text">
           Account needs attention. Usage is unavailable. {account.error}
         </p>
@@ -554,7 +573,12 @@ function GatewayAccountPanel({ account, reconnect }: { account: AccountSummary; 
       </p> : <div className="mt-1.5 space-y-1">
         {windows.map((window) => <FooterUsageBar key={window.label} {...window} account={account.label} />)}
         {apiCredits == null ? null : <ApiCreditsBar benefit={apiCredits} account={account.label} />}
-
+      </div>}
+      {linkedCredits.length === 0 ? null : <div className="mt-1.5 space-y-1">
+        {linkedCredits.map((credit) => <CreditGrantBar key={credit.organizationName}
+          grants={credit.grants.filter((grant) => grant.expiresAt === null || grant.expiresAt > Date.now())}
+          account={account.label} title={credit.organizationName}
+          note={` · Billing snapshot ${shortDate(credit.observedAt)}`} />)}
       </div>}
       {account.observedAt === null && resetCredits === null ? null : <div className="mt-1.5 flex justify-between gap-2 text-2xs text-muted-foreground">
         <span title={resetCredits === null ? undefined : "One-off resets that set a usage limit back to zero"}>
@@ -562,13 +586,16 @@ function GatewayAccountPanel({ account, reconnect }: { account: AccountSummary; 
         </span>
         {account.observedAt === null ? null : <span>{account.error === null ? "Updated" : "Last successful update"} {relative(account.observedAt)}</span>}
       </div>}
-    </div>
+    </details>
   );
 }
 
 // localStorage so a new tab or reload shows the last usage at once; load() then replaces it in place.
 const FOOTER_USAGE_CACHE_KEY = "model-gateway.footer-usage.v3";
-type FooterUsageSnapshot = { accounts: AccountSummary[]; fetchedAt: number };
+type FooterUsageSnapshot = {
+  accounts: AccountSummary[]; fetchedAt: number;
+  xUsage?: XUsageSnapshot | null; antigravityUsage?: AntigravityUsageSnapshot | null;
+};
 function cachedFooterUsage(): FooterUsageSnapshot | null {
   try {
     const raw = window.localStorage.getItem(FOOTER_USAGE_CACHE_KEY);
@@ -583,17 +610,77 @@ function cacheFooterUsage(snapshot: FooterUsageSnapshot): void {
   try { window.localStorage.setItem(FOOTER_USAGE_CACHE_KEY, JSON.stringify(snapshot)); } catch { /* Storage may be unavailable. */ }
 }
 
+function XUsagePanel({ usage }: { usage: XUsageSnapshot }) {
+  const reset = shortDate(Date.parse(`${usage.resetDate}T12:00:00`));
+  return <details className="group px-3 py-2">
+    <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+      <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">Grok + Cursor</span>
+      <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">{usage.plan} · {usagePercent(usage.weeklyUtilization)}% used</span>
+      <Icon name="ChevronDown" className="size-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+    </summary>
+    <div className="mt-1.5 space-y-1">
+      <FooterUsageBar label="7d" account="Grok + Cursor" utilization={usage.weeklyUtilization} resetAt={null}
+        title={`Shared weekly usage · Reset shown in dashboard: ${reset}`} />
+      <p className="text-2xs text-muted-foreground">
+        {usd(usage.extraBalanceUsd)} extra credits · {usd(usage.extraSpentUsd)} used this month
+      </p>
+      <p className="flex justify-between gap-2 text-2xs text-muted-foreground">
+        <a href="https://grok.com/dashboard/usage" target="_blank" rel="noreferrer" className="underline">
+          Snapshot · {shortDate(usage.observedAt)}
+        </a>
+        <span>Reset shown · {reset}</span>
+      </p>
+    </div>
+  </details>;
+}
+
+function AntigravityUsagePanel({ usage }: { usage: AntigravityUsageSnapshot }) {
+  const highest = Math.max(...usage.groups.map(({ weeklyUtilization }) => weeklyUtilization));
+  return <details className="group px-3 py-2">
+    <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+      <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">Google Antigravity</span>
+      <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">{usage.plan} · {usagePercent(highest)}% used</span>
+      <Icon name="ChevronDown" className="size-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+    </summary>
+    <div className="mt-1.5 space-y-1">
+      {usage.groups.map((group) => <FooterUsageBar key={group.name} label={group.name} account="Antigravity"
+        utilization={group.weeklyUtilization} resetAt={null} title={`${group.name} shared weekly quota`} />)}
+      <p className="text-2xs text-muted-foreground">Snapshot · {shortDate(usage.observedAt)}</p>
+    </div>
+  </details>;
+}
+
 function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
   const rpc = useRpc<typeof accountPoolRpcContract>();
   const [snapshot, setSnapshot] = useState<FooterUsageSnapshot | null>(cachedFooterUsage);
-  const accounts = snapshot?.accounts.filter((account) => account.kind === "oauth") ?? null;
+  const xUsage = snapshot?.xUsage;
+  const antigravityUsage = snapshot?.antigravityUsage;
+  const hasExternalUsage = xUsage != null || antigravityUsage != null;
+  const linkedCredits = new Map<string, Map<string, ApiCreditSnapshot>>();
+  const accounts = snapshot === null ? null : distinctAccounts(snapshot.accounts.filter((account) => {
+    if (account.kind === "oauth") return true;
+    const credit = account.apiCreditSnapshot;
+    if (credit === undefined) return false;
+    const owner = snapshot.accounts.find((candidate) => candidate.kind === "oauth" && candidate.id === credit.ownerAccountId);
+    if (owner === undefined) return true;
+    const identity = accountIdentity(owner);
+    const byOrganization = linkedCredits.get(identity) ?? new Map<string, ApiCreditSnapshot>();
+    const previous = byOrganization.get(credit.organizationName);
+    if (previous === undefined || credit.observedAt > previous.observedAt) byOrganization.set(credit.organizationName, credit);
+    linkedCredits.set(identity, byOrganization);
+    return false;
+  }));
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [reconnectAccount, setReconnectAccount] = useState<AccountSummary | null>(null);
   const load = useCallback(async () => {
     try {
-      const next = await rpc.call("account.list", null);
-      const updated = { accounts: next, fetchedAt: Date.now() };
+      const [next, sharedUsage, googleUsage] = await Promise.all([
+        rpc.call("account.list", null),
+        rpc.call("usage.xSnapshot", null).catch(() => undefined),
+        rpc.call("usage.antigravitySnapshot", null).catch(() => undefined),
+      ]);
+      const updated = { accounts: next, fetchedAt: Date.now(), xUsage: sharedUsage, antigravityUsage: googleUsage };
       cacheFooterUsage(updated);
       setSnapshot(updated);
       setError(null);
@@ -607,7 +694,7 @@ function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
     if (refreshing || accounts === null) return;
     setRefreshing(true);
     try {
-      await Promise.all(accounts.map((account) => rpc.call("account.refreshUsage", { accountId: account.id })));
+      await Promise.all(accounts.filter((account) => account.kind === "oauth").map((account) => rpc.call("account.refreshUsage", { accountId: account.id })));
       await load();
     } catch (cause) {
       setError(errorText(cause));
@@ -620,7 +707,7 @@ function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
       <div className="flex items-center justify-between border-b border-border px-3 py-1">
         <h2 className="text-xs font-semibold">Gateway usage</h2>
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" onClick={() => void refresh()} disabled={refreshing || accounts === null || accounts.length === 0} aria-label="Refresh Gateway usage">
+          <Button size="sm" variant="ghost" onClick={() => void refresh()} disabled={refreshing || accounts === null || (accounts.length === 0 && !hasExternalUsage)} aria-label="Refresh Gateway usage">
             <Icon name="RotateCcw" className={cn("size-4", refreshing && "animate-spin")} />
           </Button>
           <Button size="sm" variant="ghost" onClick={dismiss} aria-label="Close Gateway usage">
@@ -630,9 +717,11 @@ function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {
       </div>
       {error === null ? null : <p role="alert" className="px-4 py-2 text-xs text-destructive-text">{error}</p>}
       {accounts === null ? <p className="px-4 py-5 text-xs text-muted-foreground">Loading accounts…</p> :
-        accounts.length === 0 ? <p className="px-4 py-5 text-xs text-muted-foreground">No subscription accounts connected.</p> :
+        accounts.length === 0 && !hasExternalUsage ? <p className="px-4 py-5 text-xs text-muted-foreground">No subscription accounts connected.</p> :
         <div className="divide-y divide-border">
-          {distinctAccounts(accounts).sort((left, right) => left.provider.localeCompare(right.provider)).map((account) => <GatewayAccountPanel key={accountIdentity(account)} account={account} reconnect={() => setReconnectAccount(account)} />)}
+          {accounts.sort((left, right) => left.provider.localeCompare(right.provider)).map((account) => <GatewayAccountPanel key={accountIdentity(account)} account={account} startOpen={accounts.length === 1 && !hasExternalUsage} linkedCredits={[...(linkedCredits.get(accountIdentity(account))?.values() ?? [])]} reconnect={() => setReconnectAccount(account)} />)}
+          {xUsage == null ? null : <XUsagePanel usage={xUsage} />}
+          {antigravityUsage == null ? null : <AntigravityUsagePanel usage={antigravityUsage} />}
         </div>}
       {reconnectAccount === null ? null : <ReconnectAccountDialog account={reconnectAccount} close={() => { setReconnectAccount(null); void load(); }} />}
     </section>
@@ -790,6 +879,7 @@ function UpstreamRow({
 }) {
   const status = statusPresentation(account);
   const quota = quotaSummary(account);
+  const spend = account.apiSpend;
   const actionsTrigger = useRef<HTMLButtonElement>(null);
   return (
     <div
@@ -825,6 +915,15 @@ function UpstreamRow({
             {quota === null ? null : (
               <span className="tabular-nums">{quota}</span>
             )}
+            {spend === undefined ? null : spend === null ? (
+              <span>API balance unavailable</span>
+            ) : (
+              <span className="tabular-nums" title={`Reported by Boundless ${relative(spend.observedAt)}. Key spend: $${spend.keySpentUsd}.`}>
+                {spend.balanceUsd === null ? "No team balance limit" : `${usd(spend.balanceUsd)} team balance`}
+                {" · "}{usd(spend.keySpentUsd)} key spend
+                {spend.keyLimitUsd === null ? "" : ` / ${usd(spend.keyLimitUsd)}`}
+              </span>
+            )}
             {account.lastUsedAt === null ? null : (
               <span>used {relative(account.lastUsedAt)}</span>
             )}
@@ -858,9 +957,9 @@ function UpstreamRow({
             <Icon name="ListView" />
             Set priority…
           </DropdownMenuItem>
-          {account.kind === "oauth" ? (
+          {account.kind === "oauth" || spend !== undefined ? (
             <DropdownMenuItem
-              disabled={pending}
+              disabled={pending || !account.enabled}
               onSelect={() => onAction("refresh", actionsTrigger.current)}
             >
               <Icon name="RotateCcw" />

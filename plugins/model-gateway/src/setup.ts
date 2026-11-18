@@ -59,11 +59,14 @@ hides the Vercel AI Gateway and Grok providers.
    customAgents is one JSON array: read it first, keep the other entries, and
    replace an old "fx" entry that runs "fx" "acp".
 
-   { "id": "fx", "displayName": "FX", "command": "fx-acp" }
+   { "id": "fx", "displayName": "FX", "command": "fx-acp",
+     "modelCli": { "listArgs": ["model-list"], "selectFlag": "--model", "primaryModels": [] } }
 
 3. No FX login is needed for routed BB turns. The adapter uses FX's native
    host-managed auth mode and relays its loopback-only endpoint overrides to
    the gateway URLs. No OAuth file is copied or fabricated.
+
+4. Run bb gateway setup host to include configured routes in FX's model picker.
 
 Without both contributed URLs, standalone FX keeps its existing login behavior.
 
@@ -79,7 +82,7 @@ Gateway does not install or require nanocodex or nanocodex-acp.
 
    git clone --depth 1 --branch nanocodex-acp/v0.1.0 https://github.com/hemaaanth/oh-my-bb.git
    npm pack --pack-destination . ./oh-my-bb/agents/nanocodex-acp
-   npm install --global ./nanocodex-acp-0.1.0.tgz
+   npm install --global --prefix "$HOME/.local" ./nanocodex-acp-0.1.0.tgz
    nanocodex-acp --list-models
 
 2. Append this entry to the customAgents setting of the ACP providers plugin.
@@ -92,7 +95,7 @@ Gateway does not install or require nanocodex or nanocodex-acp.
   "modelCli": {
     "listArgs": ["--list-models"],
     "selectFlag": "--model",
-    "primaryModels": ["gpt-6-sol", "gpt-6-astra", "gpt-6-luna"]
+    "primaryModels": []
   },
   "reasoningCli": {
     "flag": "--thinking",
@@ -106,7 +109,14 @@ Gateway does not install or require nanocodex or nanocodex-acp.
 }
 
 The gateway sets NANOCODEX_API_BASE_URL and MODEL_GATEWAY_TOKEN for each
-acp-nanocodex thread. gpt-6-* models run on the gateway's ChatGPT accounts.
+acp-nanocodex thread. GPT models use the gateway's ChatGPT subscriptions.
+Run bb gateway setup host after changing exact model routes. It writes the
+catalog used by the adapter's model discovery, including custom model IDs.
+To add Claude models from nanocodex-acp 0.1.1 or later, enable the gateway's
+allowClaudeOAuthAcrossHarnesses preference and set both subscription pools:
+
+  bb gateway chain set acp-nanocodex chatgpt-oauth:* claude-oauth:*
+
 kimi-k3, @cf/zai-org/glm-5.3 and mimo-v2.6-pro need an API-key upstream in the
 acp-nanocodex chain, for example:
 
@@ -253,6 +263,34 @@ export function hostSetupFiles(
     path: ".omp/agent/models.yml", op: "managed-block", marker: BEGIN,
     content, sha256: sha256(content),
   }];
+  const nanoCatalog = JSON.stringify({
+    managedBy: "bb gateway setup host",
+    models: Object.keys(modelRoutes).map((id) => {
+      const { name, contextWindow, maxTokens } = gatewayModelDetails(id);
+      return { id, name, contextWindow, maxTokens };
+    }),
+  }) + "\n";
+  files.push({
+    path: ".config/nanocodex-acp/model-gateway.json",
+    op: "managed-file",
+    marker: '{"managedBy":"bb gateway setup host"',
+    content: nanoCatalog,
+    sha256: sha256(nanoCatalog),
+  });
+  const acpCatalog = JSON.stringify({
+    managedBy: "bb gateway setup host",
+    models: Object.keys(modelRoutes).map((id) => {
+      const { name, input, contextWindow, maxTokens } = gatewayModelDetails(id);
+      return { id, name, input, contextWindow, maxTokens };
+    }),
+  }) + "\n";
+  files.push({
+    path: ".config/bb/model-gateway-models.json",
+    op: "managed-file",
+    marker: '{"managedBy":"bb gateway setup host"',
+    content: acpCatalog,
+    sha256: sha256(acpCatalog),
+  });
   for (const dir of new Set(input.piAgentDirs ?? [".pi/agent"])) {
     validateSetupPath(dir);
     const content = piExtension(gatewayModels(modelMap, modelRoutes));

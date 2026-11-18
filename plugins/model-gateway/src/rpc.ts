@@ -24,6 +24,8 @@ import {
   tokenRotateInputSchema,
   routingSetInputSchema,
   routingTargetSchema,
+  xUsageSnapshotSchema,
+  antigravityUsageSnapshotSchema,
   type AccountPoolConfigController,
   type KeyAddInput,
   type RoutingTarget,
@@ -99,6 +101,8 @@ export const accountPoolRpcContract = defineRpcContract({
     input: z.null(),
     output: z.array(accountSummarySchema),
   },
+  "usage.xSnapshot": { input: z.null(), output: xUsageSnapshotSchema.nullable() },
+  "usage.antigravitySnapshot": { input: z.null(), output: antigravityUsageSnapshotSchema.nullable() },
   "account.remove": {
     input: accountIdInputSchema,
     output: z.object({ removed: z.boolean() }).strict(),
@@ -327,6 +331,8 @@ export function createRpcHandlers(
     "account.add": (input: Parameters<PoolOperations["add"]>[0]) =>
       operations.add(input),
     "account.list": () => operations.list(),
+    "usage.xSnapshot": () => operations.xUsageSnapshot(),
+    "usage.antigravitySnapshot": () => operations.antigravityUsageSnapshot(),
     "account.remove": async ({ id }: { id: string }) => ({
       removed: await operations.remove(id),
     }),

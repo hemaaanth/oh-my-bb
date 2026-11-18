@@ -3,7 +3,7 @@
 // `npm test` runs this inside an empty network namespace, so nothing can reach api.openai.com.
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -61,9 +61,9 @@ const running = new Set();
 after(() => { running.forEach((stop) => stop()); server.close(); server.closeAllConnections(); });
 
 /** The ~30-line ACP test client. `answer` picks the permission option id. */
-async function startAgent({ args = ["--permission-mode", "accept-edits"], base = baseUrl, answer = "allow_once" } = {}) {
-  const env = { PATH: process.env.PATH, HOME: mkdtempSync(join(tmpdir(), "nca-home-")), MODEL_GATEWAY_TOKEN: "test-token", ...(base ? { NANOCODEX_API_BASE_URL: base } : {}) };
-  const child = spawn(process.execPath, [BIN, "--model", "gpt-6-sol", ...args], { env, stdio: ["pipe", "pipe", "inherit"] });
+async function startAgent({ args = ["--permission-mode", "accept-edits"], base = baseUrl, answer = "allow_once", model = "gpt-6-sol", home = mkdtempSync(join(tmpdir(), "nca-home-")) } = {}) {
+  const env = { PATH: process.env.PATH, HOME: home, MODEL_GATEWAY_TOKEN: "test-token", ...(base ? { NANOCODEX_API_BASE_URL: base } : {}) };
+  const child = spawn(process.execPath, [BIN, "--model", model, ...args], { env, stdio: ["pipe", "pipe", "inherit"] });
   /** @type {string[]} */
   const log = [];
   /** @type {acp.SessionUpdate[]} */
@@ -152,10 +152,70 @@ test("fails closed without NANOCODEX_API_BASE_URL", async () => {
   assert.equal(seen.length, 0);
 });
 
-test("--list-models prints the six nanocodex model ids", () => {
-  const out = execFileSync(process.execPath, [BIN, "--list-models"], { encoding: "utf8" });
-  assert.deepEqual(out.trim().split("\n").map((line) => line.split(" - ")[0]), ["gpt-6-sol", "gpt-6-luna", "gpt-6-astra", "@cf/zai-org/glm-5.3", "kimi-k3", "mimo-v2.6-pro"]);
+test("--list-models includes the current Codex and Claude model ids", () => {
+  const out = execFileSync(process.execPath, [BIN, "--list-models"], {
+    encoding: "utf8", env: { ...process.env, HOME: mkdtempSync(join(tmpdir(), "nca-home-")) },
+  });
+  assert.deepEqual(out.trim().split("\n").map((line) => line.split(" - ")[0]), ["gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra", "@cf/zai-org/glm-5.3", "kimi-k3", "mimo-v2.6-pro", "claude-opus-5-5", "claude-sonnet-5-5"]);
 });
+
+for (const model of ["claude-sonnet-5-5", "DeepSeek-V4.1-Flash-1017"]) {
+  test(`${model} sends a Messages request to the gateway and streams the reply`, async () => {
+    const home = mkdtempSync(join(tmpdir(), "nca-home-"));
+    if (model.startsWith("DeepSeek")) {
+      const dir = join(home, ".config/nanocodex-acp");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "model-gateway.json"), JSON.stringify({
+        managedBy: "bb gateway setup host",
+        models: [{ id: model, name: "DeepSeek Flash", contextWindow: 1048576, maxTokens: 64000 }],
+      }));
+      const listing = execFileSync(process.execPath, [BIN, "--list-models"], {
+        encoding: "utf8", env: { ...process.env, HOME: home },
+      });
+      assert.ok(listing.split("\n").includes(`${model} - DeepSeek Flash`));
+    }
+    /** @type {{url?: string, auth?: string, model: string}[]} */
+    const requests = [];
+    /** @type {import("node:http").RequestListener} */
+    const handler = async (req, res) => {
+      let input = "";
+      for await (const chunk of req) input += chunk;
+      const body = JSON.parse(input);
+      requests.push({ url: req.url, auth: req.headers.authorization, model: body.model });
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      const runTool = model.startsWith("DeepSeek") && requests.length === 1;
+      for (const event of [
+        { type: "message_start", message: { id: "msg_1", type: "message", role: "assistant", content: [], model: body.model, stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+        runTool
+          ? { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "toolu_1", name: "run_command", input: {} } }
+          : { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+        runTool
+          ? { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ cmd: CMD }) } }
+          : { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Model reply" } },
+        { type: "content_block_stop", index: 0 },
+        { type: "message_delta", delta: { stop_reason: runTool ? "tool_use" : "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ]) res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+      res.end();
+    };
+    server.on("request", handler);
+    const agent = await startAgent({ model, home });
+    try {
+      const { result } = await prompt(agent, "say hello");
+      assert.equal((await result).stopReason, "end_turn");
+      const request = { url: "/gw/prefix/v1/messages", auth: "Bearer test-token", model };
+      assert.deepEqual(requests, model.startsWith("DeepSeek") ? [request, request] : [request]);
+      if (model.startsWith("DeepSeek")) {
+        assert.ok(agent.log.some((entry) => entry.startsWith("permission:")));
+        assert.ok(existsSync(join(agent.cwd, "ran.txt")));
+      }
+      assert.ok(agent.updates.some((update) => update.sessionUpdate === "agent_message_chunk" && update.content.type === "text" && update.content.text === "Model reply"));
+    } finally {
+      agent.stop();
+      server.off("request", handler);
+    }
+  });
+}
 
 test("initialize reports the manifest version", async () => {
   const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));

@@ -189,6 +189,7 @@ export function createAccountPoolPlugin(
       now,
       () => bb.realtime.publish(MODEL_GATEWAY_ACCOUNTS_CHANGED, {}),
       (accountId) => hub.refreshUsage(accountId, true),
+      bb.storage.kv,
     );
     const login = new ClaudeOAuthLogin({
       fetch: upstreamFetch,

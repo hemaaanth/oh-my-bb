@@ -2,18 +2,20 @@
 import { promisify } from "node:util";
 import { CapacityCircuits } from "./capacity.js";
 import { gateResponsesPrelude } from "./responses-prelude.js";
-import { gatewayModelDetails } from "./model-catalog.js";
+import { CODEX_MODELS, COMPATIBLE_KEY_MODELS, gatewayModelDetails } from "./model-catalog.js";
 import { zstdDecompress } from "node:zlib";
 import type {
   Account,
   AccountQuota,
   AccountSecret,
+  ApiSpend,
   ModelFamily,
   PoolProvider,
   PoolStatus,
 } from "./contracts.js";
 
 import { createClaudeAdapter } from "./upstreams/claude-adapter.js";
+import { fetchApiSpend, supportsApiSpend } from "./upstreams/api-spend.js";
 import {
   createCodexAdapter,
   DEFAULT_CODEX_REFRESH_URL,
@@ -25,6 +27,7 @@ import {
   CREDIT_BENCH_MS,
   createKeyAdapter,
   isCreditExhausted,
+  isPlanModelMissing,
 } from "./upstreams/apikey-adapter.js";
 import { TransientOAuthRefreshError } from "./upstreams/provider-adapter.js";
 import type {
@@ -276,11 +279,14 @@ export function translateFor(
   }
   let body: unknown;
   try {
-    body = messagesToResponses(json, {
+    const translated = messagesToResponses(json, {
       model: upstreamModel,
       keepSampling: candidate.kind !== "chatgpt-oauth",
       upstream: candidate.replay,
     });
+    body = candidate.kind === "responses-compatible-key"
+      ? fitForCompatibleResponses({ ...translated }, upstreamModel)
+      : translated;
   } catch (error) {
     if (error instanceof TranslateError)
       return Response.json(error.body, { status: error.status });
@@ -461,6 +467,7 @@ export class AccountPoolHub {
   private activeAccounts = new Map<PoolProvider, ActiveAccount>();
   private readonly usageRefreshes = new Map<string, Promise<void>>();
   private readonly lastUsageRefreshAt = new Map<string, number>();
+  private readonly apiSpend = new Map<string, ApiSpend>();
   private readonly drainWaiters = new Set<() => void>();
   /** `threadId|kind` pairs already reported through onDropped. */
   private readonly droppedNoted = new Set<string>();
@@ -517,6 +524,26 @@ export class AccountPoolHub {
     const identity = await this.authenticate(request);
     if (identity === null) {
       return adapter.errorResponse(401, "Invalid Model Gateway bearer token.");
+    }
+    if (identity.harness === "acp-fx" && request.method === "GET" && routePath(request.url) === "/v1/models") {
+      const { modelMap, modelRoutes = {} } = this.options.getSettings();
+      const ids = new Set([
+        "gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-terra",
+        ...Object.keys(CODEX_MODELS),
+        ...Object.values(modelMap["chatgpt-oauth"] ?? {}),
+        ...Object.keys(modelRoutes),
+      ]);
+      return Response.json({
+        models: [...ids].map((slug) => {
+          const { contextWindow, input } = gatewayModelDetails(slug);
+          const efforts = COMPATIBLE_KEY_MODELS[slug]?.reasoningEfforts ?? ["low", "medium", "high"];
+          return {
+            slug, visibility: "list", supported_in_api: true, context_window: contextWindow,
+            input_modalities: input,
+            supported_reasoning_levels: efforts.map((effort) => ({ effort })),
+          };
+        }),
+      });
     }
     if (
       identity.harness === "acp-omp" &&
@@ -703,7 +730,7 @@ export class AccountPoolHub {
     const accounts = (await this.options.accounts.list()).filter(
       (account) =>
         account.enabled &&
-        account.kind === "oauth" &&
+        (account.kind === "oauth" || supportsApiSpend(account)) &&
         (accountId === undefined || account.id === accountId),
     );
     await Promise.all(
@@ -717,7 +744,7 @@ export class AccountPoolHub {
   ): Promise<void> {
     const adapter = this.adapter(account.provider);
     if (
-      adapter.refreshUsage === undefined ||
+      (account.kind === "oauth" && adapter.refreshUsage === undefined) ||
       (this.inFlightByAccount.get(account.id) ?? 0) > 0
     )
       return;
@@ -732,8 +759,9 @@ export class AccountPoolHub {
     const running = this.usageRefreshes.get(account.id);
     if (running !== undefined) return running;
     this.lastUsageRefreshAt.set(account.id, now);
-    const refresh = adapter
-      .refreshUsage({
+    const refresh = (account.kind === "api-key"
+      ? this.refreshApiSpend(account)
+      : adapter.refreshUsage!({
         account,
         freshSecret: () =>
           this.freshSecret(account, adapter, { kind: "normal" }),
@@ -741,11 +769,21 @@ export class AccountPoolHub {
         quotas: this.options.quotas,
         fetch: this.options.fetch,
         now: this.options.now,
-      })
+      }))
       .catch(() => undefined)
       .finally(() => this.usageRefreshes.delete(account.id));
     this.usageRefreshes.set(account.id, refresh);
     return refresh;
+  }
+
+  private async refreshApiSpend(account: Account): Promise<void> {
+    const secret = await this.options.accounts.readSecret(account.id);
+    if (secret.kind !== "api-key") return;
+    const spend = await fetchApiSpend(this.options.fetch, secret.apiKey, this.options.now);
+    if (spend !== null) {
+      this.apiSpend.set(account.id, spend);
+      this.options.onAccountsChanged();
+    }
   }
 
   async stop(): Promise<void> {
@@ -906,6 +944,7 @@ export class AccountPoolHub {
           limitWindows: quota.limitWindows,
           resetCredits: quota.resetCredits,
           apiCreditBenefit: quota.apiCreditBenefit,
+          ...(supportsApiSpend(account) ? { apiSpend: this.apiSpend.get(account.id) ?? null } : {}),
           observedAt: quota.observedAt,
           heldUntil: quota.heldUntil,
           error: quota.error,
@@ -945,6 +984,10 @@ export class AccountPoolHub {
       identity === null ? null : this.options.routes.get(identity.threadId);
     // P5: Jev's pick replaces the client model; the chain then routes it as usual.
     const pinned = settings.modelRoutes?.[requestModel(json)?.replace(/^gw-/u, "") ?? ""];
+    if (harness === "acp-nanocodex" && path === "/v1/messages" &&
+        pinned === undefined && !requestModel(json)?.startsWith("claude-")) {
+      return client.errorResponse(404, "This Nano Codex model needs an active Model Gateway model route.");
+    }
     const auto = countTokens || pinned !== undefined
       ? null
       : await this.autoPick(harness, json, route, entries, allAccounts, signal);
@@ -1478,18 +1521,21 @@ export class AccountPoolHub {
           let upstream: UpstreamResult;
           let nativeNames: ReadonlyMap<string, string> | null = null;
           try {
-            if (candidate.kind === "claude-oauth" && candidate.client.provider === "codex" && translation !== null) {
+            const translatedClaude = candidate.client.provider === "codex" ? translation : null;
+            const nanoClaude = identity?.harness === "acp-nanocodex" && routePath(request.url) === "/v1/messages";
+            if (candidate.kind === "claude-oauth" && candidate.model !== null && (translatedClaude !== null || nanoClaude)) {
+              const inbound = translatedClaude?.request ?? request;
               const native = await prepareNativeClaude({
-                body: translation.body,
-                model: candidate.model!,
-                streaming: translation.request.headers.get("accept")?.includes("text/event-stream") === true,
+                body: translatedClaude?.body ?? parsed.forAccount(selected.account),
+                model: candidate.model,
+                streaming: translatedClaude === null ? undefined : inbound.headers.get("accept")?.includes("text/event-stream") === true,
                 signal,
                 command: this.options.nativeClaudeCommand,
               });
               nativeNames = native.names;
-              const fastBeta = translation.request.headers.get("anthropic-beta");
+              const fastBeta = translatedClaude?.request.headers.get("anthropic-beta");
               if (fastBeta) native.headers.set("anthropic-beta", [native.headers.get("anthropic-beta"), fastBeta].filter(Boolean).join(","));
-              const nativeRequest = new Request(translation.request, { headers: native.headers, signal });
+              const nativeRequest = new Request(inbound.url, { method: inbound.method, headers: native.headers, signal });
               upstream = await this.fetchUpstream(
                 nativeRequest,
                 adapter.parseRequest(bindNativeAccount(native.body, selected.account.accountUuid ?? null), native.headers).forAccount(selected.account),
@@ -1752,6 +1798,19 @@ export class AccountPoolHub {
                 signal,
               );
             }
+            break;
+          }
+          // A ChatGPT plan without this model: try the next account, and keep an
+          // earlier account's real failure, which the harness can retry.
+          // shortcut: re-probes the account on every request; remember per account+model if that shows up in traffic.
+          if (adapter.provider === "codex" && (await isPlanModelMissing(response))) {
+            const message = await this.discardUpstream(upstream, true);
+            failure ??= {
+              status: 400,
+              message,
+              headers: {},
+              cause: fallbackCause(selected.account, "availability", 400, message, this.options.now()),
+            };
             break;
           }
           // Inspect Responses before translation or accepting affinity, and only before output.

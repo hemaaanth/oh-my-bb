@@ -147,6 +147,40 @@ used convention and countdown as subscription limit rows.
 
 ## API-key upstreams (P4)
 
+The Gateway usage footer shows saved OpenAI organization credit grants as a
+dated snapshot. Use the active rows from OpenAI Billing → Credit grants.
+Each grant has `grantedUsd`, `remainingUsd`, and `expiresAt` (Unix milliseconds
+or `null`). Save them against the organization’s OpenAI API account:
+
+```sh
+bb gateway account openai-credit-snapshot <account-id> '<snapshot-json>'
+```
+
+The snapshot JSON contains `organizationName`, `observedAt` (Unix
+milliseconds), and `grants`. Set `ownerAccountId` to the signed-in ChatGPT
+Gateway account ID to show the API bar in that account’s footer row.
+Saving replaces that account’s previous
+snapshot. Footer refresh updates subscription quotas; update the OpenAI
+snapshot after checking Billing.
+
+For a unified X Subscription, the footer can show one weekly usage row for
+Grok and Cursor. Record the dashboard reading with
+`bb gateway x-usage-snapshot '<snapshot-json>'`. The JSON contains `plan`,
+`weeklyUtilization` (from 0 to 1), `resetDate` (YYYY-MM-DD as displayed),
+`observedAt` (Unix milliseconds), `extraSpentUsd`, and `extraBalanceUsd`.
+Run the command without JSON to read the saved snapshot.
+
+For Google Antigravity, record the results from its Models & Quota panel with
+`bb gateway antigravity-usage-snapshot '<snapshot-json>'`. The JSON contains
+`plan`, `observedAt` (Unix milliseconds), and `groups` with `name` and
+`weeklyUtilization` (from 0 to 1) for each model group.
+
+Boundless keys configured with the official API origin show the team credit
+balance, key spend, and optional key limit under Credentials and in
+`bb gateway account list`. Gateway reads Boundless's balance endpoint with the
+existing key. A failed read preserves the last successful snapshot and its
+timestamp for the current Gateway session.
+
 API keys bill per token. Use them as fallbacks, not as the primary, unless
 that is the point.
 
@@ -237,26 +271,35 @@ sets Jev's OpenRouter model id (default `typesafe/jev-1.13`).
 
 ## ACP harnesses and Pi
 
-omp, FX, nanocodex, Prime Agent, and Pi speak OpenAI Responses and default to
-`chatgpt-oauth:*`. Any key kind can follow in their chains. Claude OAuth is
-disabled for these harnesses unless the operator enables the opt-in below.
+OMP, FX, Prime Agent, and Pi speak OpenAI Responses. Nano Codex uses Responses
+for its Codex harness and Messages for its Claude harness. These integrations
+default to `chatgpt-oauth:*`. Claude OAuth requires the opt-in below.
 
 | Harness | Env | Hub token | Setup |
 |---|---|---|---|
 | `acp-omp` | `MODEL_GATEWAY_TOKEN` | `Authorization: Bearer` | `bb gateway setup omp` writes a `model-gateway` provider into `~/.omp/agent/models.yml` (omp cannot read `baseUrl` from env) |
 | `acp-fx` | `FX_E2E_OPENAI_CODEX_RESPONSES_URL`, `FX_E2E_OPENAI_CODEX_MODELS_URL` | query `?gateway_token=` | Optional `fx-acp` adapter; its host-managed auth and loopback relay need no FX login |
-| `acp-nanocodex` | `NANOCODEX_API_BASE_URL`, `MODEL_GATEWAY_TOKEN` | `Authorization: Bearer`, over `WS /v1/responses` | Optional: `bb gateway setup nanocodex` prints standalone `nanocodex-acp` setup |
-| `acp-prime-agent` | `MODEL_GATEWAY_BASE_URL`, `MODEL_GATEWAY_TOKEN` | `Authorization: Bearer` | Optional `prime-agent-acp` adapter and Prime Agent 0.10.0; no host setup file or Prime login |
+| `acp-nanocodex` | `NANOCODEX_API_BASE_URL`, `MODEL_GATEWAY_TOKEN` | `Authorization: Bearer`, over `WS /v1/responses` or `POST /v1/messages` | Optional: `bb gateway setup nanocodex` prints standalone `nanocodex-acp` setup |
+| `acp-prime-agent` | `MODEL_GATEWAY_BASE_URL`, `MODEL_GATEWAY_TOKEN` | `Authorization: Bearer` | Optional `prime-agent-acp` adapter and Prime Agent 0.10.0; no Prime login |
 | `pi` | `MODEL_GATEWAY_BASE_URL`, `MODEL_GATEWAY_TOKEN` | `Authorization: Bearer` | `bb gateway setup pi` writes `~/.pi/agent/extensions/model-gateway.js` (or under `PI_CODING_AGENT_DIR`) |
 
 - FX's token rides in the query because core matches plugin routes by exact
   path. The adapter uses FX's native host-managed auth and private loopback
   endpoints, then relays to the contributed host-reachable URLs. The hub drops
   the query token before the upstream call. No FX OAuth file is needed.
+- FX and Prime Agent read the managed catalog from `bb gateway setup host`
+  to show exact routes in their BB model pickers before a thread exists.
 - Codex sends its token as `x-bb-account-pool-token` (core's pool config); the
   hub also accepts `x-bb-model-gateway-token` and a bearer.
 - omp sees ChatGPT models as `gw-<model>` (omp routes known ids to its
   built-in provider). `GET /v1/models` for an omp token lists them.
+- Nano Codex selects only the matching subscription pool for GPT and Claude
+  models, unless an explicit model route overrides the chain. Put both pools in
+  the chain to use both harnesses.
+- `bb gateway setup host` exports exact model routes to the Nano Codex picker.
+  For models outside Nano Codex's Codex catalog, the adapter sends Messages
+  and the gateway translates to the selected upstream. Refresh host setup
+  after changing routes. The exported catalog contains no credentials.
 - Pi and OMP discovery include the current Claude and Codex catalog, not only
   model-map targets. This includes `gpt-6.1-sol` (500,000 context, 128,000 output)
   and Spark (128,000 context/output, text only). Other current models use
@@ -499,3 +542,11 @@ rejected before saved credentials change.
 The corner usage popup shows account errors with a **Reconnect** button instead
 of stale usage bars. Its timestamp identifies the last successful update. The
 popup displays cached data immediately and checks account status on each open.
+
+### Exact model fallback routes
+
+`bb gateway model-route set MODEL responses-compatible-key:primary responses-compatible-key:backup`
+routes one model through the listed keys in order. Existing single-key routes remain valid.
+Use `model-map` per key when providers use different model IDs. Pre-output upstream
+failures advance to the next key; committed output is never replayed. If every key
+fails, the request fails without using the harness subscription chain.

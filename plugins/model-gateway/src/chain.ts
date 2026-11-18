@@ -36,10 +36,11 @@ export const chainEntrySchema = z
   );
 const chainSchema = z.array(chainEntrySchema).min(1);
 
-/** Exact model pins to one named compatible API key; no subscription fallback. */
+/** Exact model routes use named compatible keys, in fallback order. */
+const modelRouteEntrySchema = z.string().regex(/^(?:anthropic-compatible-key|responses-compatible-key):[A-Za-z0-9._-]+$/u);
 export const modelRoutesSchema = z.record(
   z.string().min(1),
-  z.string().regex(/^(?:anthropic-compatible-key|responses-compatible-key):[A-Za-z0-9._-]+$/u),
+  z.union([modelRouteEntrySchema, z.array(modelRouteEntrySchema).min(1)]),
 );
 export type ModelRoutes = z.infer<typeof modelRoutesSchema>;
 
@@ -166,10 +167,14 @@ export function modelChain(harness: Harness, entries: readonly string[], account
   const chain = [...entries];
   const bare = model?.replace(/^gw-/u, "");
   const pinned = modelRoutes[bare ?? ""];
-  if (pinned !== undefined) return [pinned];
-  if (harness !== "acp-omp" && harness !== "pi") return chain;
+  if (pinned !== undefined) return typeof pinned === "string" ? [pinned] : [...pinned];
   const kind = bare?.startsWith("claude-") ? "claude-oauth" : bare?.startsWith("gpt-") ? "chatgpt-oauth" : null;
   if (kind === null) return chain;
+  if (harness === "acp-nanocodex") {
+    return chain.filter((entry) => entry === `${kind}:*` ||
+      accounts.some((account) => account.id === entry && upstreamKind(account) === kind));
+  }
+  if (harness !== "acp-omp" && harness !== "pi") return chain;
   const kinds = expandChain(chain, accounts).map((group) => group[0] === undefined ? null : upstreamKind(group[0]));
   if (kinds[0] !== "claude-oauth" && kinds[0] !== "chatgpt-oauth") return chain;
   const index = kinds.indexOf(kind);
@@ -463,6 +468,11 @@ export function fitForCompatibleResponses(
   model: string | null = null,
 ): Record<string, unknown> {
   const fitted: Record<string, unknown> = { ...body };
+  // Lyber rejects the Codex verbosity object. Keep an explicit structured
+  // output request so unsupported schemas still fail visibly.
+  if ((model === "kimi-k31-pro-abliterated" || model === "deepseek-v4.1-flash-1017-abliterated") &&
+      isRecord(body.text) && (!isRecord(body.text.format) || body.text.format.type === "text"))
+    delete fitted.text;
   if (Array.isArray(body.input) && body.input.some((item) => isRecord(item) && item.type === undefined && typeof item.role === "string"))
     fitted.input = body.input.map((item) =>
       isRecord(item) && item.type === undefined && typeof item.role === "string"
