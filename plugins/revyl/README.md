@@ -11,3 +11,7 @@ The embed URL is a bearer capability: anyone who has it can start billable sessi
 Use `revyl_show` to reveal a configured Device tab. If both platforms are configured, it shows the requested one. Revyl supplies its own Start, Stop, device controls, and countdown. Closing the BB tab is not a Stop command; stop a running session inside Revyl's iframe before closing the tab.
 
 Run `npm ci`, `npm run typecheck`, `npm test`, and `bb plugin build` from this package directory.
+
+## Build and test privately
+
+Use the authenticated Revyl CLI on the app checkout for private testing. The BB plugin needs no credentials for this workflow. See the [agent skill](skills/revyl-device/SKILL.md#private-builds-and-device-tests) for exact-build selection, session ownership, and cleanup.
