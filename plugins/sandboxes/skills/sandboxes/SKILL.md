@@ -196,7 +196,7 @@ agent-browser, changing required state, or selecting direct egress.
 
 ## Sandbox desktop
 
-To let the user see or use the sandbox's own display, call the `sandbox_desktop` tool and emit `::sandbox-desktop{}` once on its own line in the reply. From a shell in the thread, `bb sandbox desktop [--view-only]` prints a link instead; `--close` ends it. The user can also open the thread's **Desktop** side panel. Links last fifteen minutes. Use view-only when the user only needs to watch. For a Browser window, use `browser_live`.
+To let the user see or use the sandbox's own display, call the `sandbox_desktop` tool and emit `::sandbox-desktop{}` once on its own line in the reply. To show a connected sandbox from a thread on another machine, pass its exact `hostId`. From a shell in the thread, `bb sandbox desktop [--host <host-id>] [--view-only]` prints a link instead; `--close` ends it. The user can also open the thread's **Desktop** side panel. Links last fifteen minutes. Use view-only when the user only needs to watch. For a Browser window, use `browser_live`.
 
 Only one viewer streams per desktop grant. Pop-out transfers ownership; use
 **View here** for explicit return, even after closing the pop-out. A blocked

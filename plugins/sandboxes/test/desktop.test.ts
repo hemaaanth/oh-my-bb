@@ -230,3 +230,37 @@ it.each([null,'https://configured.example'])('carries only this server origins t
  expect(parsed.appOrigins).not.toContain('https://remote-sandbox.getbb.app');
  await expect(fake.harness.behavior.callRpc('desktopOpenV1',{threadId:'thr_fixture',target,appOrigins:['https://other.getbb.app']},caller)).rejects.toThrow();
 });
+
+it('attaches a sandbox desktop to a local thread and keeps that host across mode changes',async()=>{
+ const calls:Array<{hostId:string;method:string}>=[],lookups:string[]=[];
+ const fake=createFakePluginHost({
+  pluginId:'sandboxes',experimental_hostEntry:true,
+  sharedPortTunnelIdentities:{host_boat:{label:'boat-fixture',baseDomain:'getbb.app'}},
+  experimental_callHostRpc:async({hostId,method})=>{
+   calls.push({hostId,method});
+   return method==='openSharedDesktop'?{port:42000,expires:Date.now()+900000}:null;
+  },
+  sdk:{
+   threads:{get:async()=>makeThreadResponse({id:'thr_local',environmentId:'env_local'})},
+   environments:{get:async()=>({hostId:'host_local'}) as never},
+   hosts:{get:async({hostId})=>{
+    lookups.push(hostId);
+    return makeHostResponse({id:hostId,machineProviderId:hostId==='host_boat'?'sandbox-box':null});
+   }},
+  },
+ });
+ dispose.push(()=>fake.harness.lifecycle.dispose());
+ registerDesktops(fake.bb,undefined,connectStatus);
+ const input={threadId:'thr_local'};
+ await expect(fake.harness.behavior.callRpc('openSandboxDesktop',{...input,hostId:'host_local'})).rejects.toThrow('sandbox desktop is required');
+ expect(calls).toEqual([]);
+ const agent=await fake.harness.behavior.callAgentTool('sandbox_desktop',{action:'open',hostId:'host_boat'},input);
+ expect(agent).toContain('::sandbox-desktop{}');
+ expect(await fake.harness.behavior.callRpc('getSandboxDesktop',input)).toMatchObject({kind:'open',agent:true,viewOnly:true});
+ expect(await fake.harness.behavior.callRpc('openSandboxDesktop',{...input,viewOnly:false})).toMatchObject({kind:'open',viewOnly:false});
+ await fake.harness.behavior.callRpc('closeSandboxDesktop',input);
+ await expect(fake.harness.behavior.callRpc('openSandboxDesktop',input)).rejects.toThrow('sandbox desktop is required');
+ expect(lookups).toEqual(['host_local','host_boat','host_boat','host_local']);
+ expect(calls).toEqual(['openSharedDesktop','closeDesktop','openSharedDesktop','closeDesktop'].map(method=>({hostId:'host_boat',method})));
+ expect(fake.harness.inspection.sharedPortDeclarations.at(-1)).toEqual({hostId:'host_boat',ports:[]});
+});

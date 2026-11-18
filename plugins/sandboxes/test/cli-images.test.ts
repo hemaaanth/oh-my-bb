@@ -287,16 +287,18 @@ describe("bb sandbox desktop", () => {
     const view = { kind: "open" as const, url: "https://sbx--4000.getbb.app/#t", expires: Date.now() + 900000, viewOnly: true };
     const { fake } = await cli(settled("build", build([])), {
       desktops: {
-        open: async (threadId, viewOnly) => { calls.push(`open ${threadId} ${viewOnly}`); return view; },
+        open: async (threadId, viewOnly, _agent, hostId) => { calls.push(`open ${threadId} ${viewOnly} ${hostId ?? "default"}`); return view; },
         view: () => view,
         close: async (threadId) => { calls.push(`close ${threadId}`); },
       },
     });
-    expect((await fake.harness.runCli(["desktop"])).stderr).toContain("from a sandbox thread");
+    expect((await fake.harness.runCli(["desktop"])).stderr).toContain("from a BB thread");
     const opened = await fake.harness.runCli(["desktop", "--view-only"], { threadId: "thr_a" });
     expect(opened.stdout).toContain(view.url);
     expect(opened.stdout).toContain("to watch the desktop");
+    const remote = await fake.harness.runCli(["desktop", "--host", "host_boat", "--json"], { threadId: "thr_a" });
+    expect(JSON.parse(remote.stdout!)).toEqual(view);
     expect(JSON.parse((await fake.harness.runCli(["desktop", "--close", "--json"], { threadId: "thr_a" })).stdout!)).toEqual({ kind: "closed" });
-    expect(calls).toEqual(["open thr_a true", "close thr_a"]);
+    expect(calls).toEqual(["open thr_a true default", "open thr_a false host_boat", "close thr_a"]);
   });
 });

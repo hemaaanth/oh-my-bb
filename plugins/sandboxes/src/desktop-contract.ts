@@ -17,8 +17,9 @@ export const desktopRpcContract=defineRpcContract({
 });
 export const sandboxDesktopView=z.discriminatedUnion('kind',[z.object({kind:z.literal('closed')}),z.object({kind:z.literal('open'),url:z.string(),expires:z.number(),viewOnly:z.boolean(),agent:z.boolean().optional()})]);
 export type SandboxDesktopView=z.infer<typeof sandboxDesktopView>;
+export const sandboxDesktopHostId=z.string().regex(/^host_[a-z0-9]+$/).max(128);
 export const sandboxDesktopRpcContract=defineRpcContract({
- openSandboxDesktop:{input:z.object({threadId:z.string(),viewOnly:z.boolean().default(false)}).strict(),output:sandboxDesktopView},
+ openSandboxDesktop:{input:z.object({threadId:z.string(),viewOnly:z.boolean().default(false),hostId:sandboxDesktopHostId.optional()}).strict(),output:sandboxDesktopView},
  getSandboxDesktop:{input:z.object({threadId:z.string()}).strict(),output:sandboxDesktopView},
  closeSandboxDesktop:{input:z.object({threadId:z.string()}).strict(),output:z.null()},
 });

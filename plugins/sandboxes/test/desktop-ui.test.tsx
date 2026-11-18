@@ -12,6 +12,7 @@ it('launches a prepared HTTPS transfer in the user click when the desktop host r
  const openUrl=vi.fn((url:string)=>{expect(inClick).toBe(true);window.open(url,'_blank');return true;});
  const slot=renderSlot(app.messageDirectives.find(value=>value.id==='sandbox-desktop')!,{attributes:{},message:{threadId:'thr_desktop'},source:'::sandbox-desktop{}',openWorkspaceFile:null} as never,{rpc:{getSandboxDesktop:async()=>({kind:'open',url:'https://viewer.example/#grant',expires:Date.now()+60000,viewOnly:true})} as never,openUrl});
  const frame=await slot.findByTitle('Sandbox desktop') as HTMLIFrameElement,button=slot.getByRole('button',{name:'Open in new tab'});
+ await act(async()=>{fireEvent.load(frame);});
  expect(button).toHaveProperty('disabled',true);
  const url='https://viewer.example/#grant&ticket=prepared';announce(frame,{state:'ready',url,expires:Date.now()+60000});
  inClick=true;fireEvent.click(button);fireEvent.click(button);inClick=false;
@@ -23,6 +24,7 @@ it('rejects foreign, stale-grant and expired readiness and retains the stream wh
  const openUrl=vi.fn(()=>false);
  const slot=renderSlot(app.messageDirectives.find(value=>value.id==='sandbox-desktop')!,{attributes:{},message:{threadId:'thr_desktop'},source:'::sandbox-desktop{}',openWorkspaceFile:null} as never,{rpc:{getSandboxDesktop:async()=>({kind:'open',url:'https://viewer.example/#grant',expires:Date.now()+60000,viewOnly:true})} as never,openUrl});
  const frame=await slot.findByTitle('Sandbox desktop') as HTMLIFrameElement,button=slot.getByRole('button',{name:'Open in new tab'}),ready={state:'ready',url:'https://viewer.example/#grant&ticket=prepared',expires:Date.now()+60000};
+ await act(async()=>{fireEvent.load(frame);});
  announce(frame,ready,'https://other.example');announce(frame,ready,undefined,window);
  announce(frame,{...ready,url:'https://other.example/#grant&ticket=prepared'});announce(frame,{...ready,url:'https://viewer.example/#stale&ticket=prepared'});announce(frame,{...ready,expires:Date.now()-1});
  expect(button).toHaveProperty('disabled',true);fireEvent.click(button);expect(openUrl).not.toHaveBeenCalled();

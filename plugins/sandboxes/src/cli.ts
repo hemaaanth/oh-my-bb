@@ -30,6 +30,7 @@ import { harnessNames } from "./upgrade.js";
 import { shQuote } from "./provider/backends/shell-exec.js";
 import type { SandboxSshRecord } from "./ssh.js";
 import type { SandboxDesktops } from "./desktop.js";
+import { sandboxDesktopHostId } from "./desktop-contract.js";
 import type {
   SandboxUpgradeJobStatus,
   SandboxUpgradeOptions,
@@ -499,8 +500,8 @@ export function registerSandboxCli(
       },
       {
         name: "desktop",
-        summary: "Open a 15-minute link to this sandbox thread's desktop, or close it",
-        usage: "bb sandbox desktop [--view-only|--close] [--json]",
+        summary: "Open a 15-minute desktop view for this thread, or close it",
+        usage: "bb sandbox desktop [--host <host-id>] [--view-only|--close] [--json]",
       },
       {
         name: "doctor",
@@ -514,12 +515,13 @@ export function registerSandboxCli(
       const wantsJson = args.includes("--json");
       if (command === "desktop") {
         if (!deps.desktops) throw new Error("Sandbox desktops are unavailable");
-        if (context.threadId === undefined) throw new Error("Run bb sandbox desktop from a sandbox thread");
+        if (context.threadId === undefined) throw new Error("Run bb sandbox desktop from a BB thread");
         if (args.includes("--close")) {
           await deps.desktops.close(context.threadId);
           return wantsJson ? json({ kind: "closed" }) : { exitCode: 0, stdout: "Sandbox desktop closed.\n" };
         }
-        const view = await deps.desktops.open(context.threadId, args.includes("--view-only"), true);
+        const hostId = sandboxDesktopHostId.optional().parse(option(args, "--host"));
+        const view = await deps.desktops.open(context.threadId, args.includes("--view-only"), true, hostId);
         if (wantsJson) return json(view);
         if (view.kind !== "open") throw new Error("The sandbox desktop closed while opening");
         return {

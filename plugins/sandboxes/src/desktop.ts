@@ -4,14 +4,14 @@ import {readFile} from 'node:fs/promises';
 import type {BbPluginApi} from '@get-bb/plugin-sdk';
 import {z} from 'zod';
 import type {NativeIdleSuspendHolds} from './provider/idle-suspend.js';
-import {desktopHostContract,desktopRpcContract,sandboxDesktopRpcContract,type DesktopTarget,type SandboxDesktopView} from './desktop-contract.js';
+import {desktopHostContract,desktopRpcContract,sandboxDesktopRpcContract,sandboxDesktopHostId,type DesktopTarget,type SandboxDesktopView} from './desktop-contract.js';
 
 export const SANDBOX_DESKTOP_DIRECTIVE='sandbox-desktop';
 /** Runs the bb CLI on the server machine. Only the server's own host uses it. */
 export type BbCli=(args:string[])=>Promise<string>;
 const runBb=(args:string[],serverUrl:string)=>new Promise<string>((resolve,reject)=>execFile(process.env.BB_CLI||'bb',args,{timeout:15000,maxBuffer:1024*1024,env:{...process.env,BB_SERVER_URL:serverUrl}},(error,stdout)=>error?reject(error):resolve(stdout)));
 
-export interface SandboxDesktops{open(threadId:string,viewOnly:boolean,agent?:boolean):Promise<SandboxDesktopView>;view(threadId:string):SandboxDesktopView;close(threadId:string):Promise<void>}
+export interface SandboxDesktops{open(threadId:string,viewOnly:boolean,agent?:boolean,hostId?:string):Promise<SandboxDesktopView>;view(threadId:string):SandboxDesktopView;close(threadId:string):Promise<void>}
 
 /**
  * Provider-independent desktop viewing through voxl. Consumers such as Browser
@@ -54,9 +54,13 @@ export function registerDesktops(bb:BbPluginApi,idle:()=>NativeIdleSuspendHolds|
   await stop(value);pending.delete(id);active.delete(id);publish(value.hostId);
   if(grant?.shared)changed(grant.shared);
  };
- const grant=async(id:string,threadId:string,viewOnly:boolean,target?:DesktopTarget,agent=false)=>{
-  const thread=await bb.sdk.threads.get({threadId});if(!thread.environmentId)throw Error('Desktop thread has no host');
-  const {hostId}=await bb.sdk.environments.get({environmentId:thread.environmentId}),host=await bb.sdk.hosts.get({hostId});
+ const grant=async(id:string,threadId:string,viewOnly:boolean,target?:DesktopTarget,agent=false,hostOverride?:string)=>{
+  const thread=await bb.sdk.threads.get({threadId});
+  const hostId=hostOverride ?? (thread.environmentId
+   ?(await bb.sdk.environments.get({environmentId:thread.environmentId})).hostId
+   :undefined);
+  if(!hostId)throw Error('Desktop thread has no host. Specify a connected sandbox machine ID.');
+  const host=await bb.sdk.hosts.get({hostId});
   // A consumer's private display is validated on its host, so a local host qualifies.
   // The shared screen is always a sandbox's own.
   if(host.status!=='connected'||(!target&&!host.machineProviderId?.startsWith('sandbox-')))throw Error('A connected sandbox desktop is required');
@@ -91,7 +95,12 @@ export function registerDesktops(bb:BbPluginApi,idle:()=>NativeIdleSuspendHolds|
  const view=(threadId:string):SandboxDesktopView=>{const value=active.get(sharedId(threadId));return value&&value.expires>Date.now()?{kind:'open',url:value.url,expires:value.expires,viewOnly:value.viewOnly,...(value.agent?{agent:true}:{})}:{kind:'closed'};};
  const desktops:SandboxDesktops={
   // A view the agent opens shows itself in the side panel, even if the reply leaves out the directive.
-  open:async(threadId,viewOnly,agent)=>serialize(sharedId(threadId),async()=>{await grant(sharedId(threadId),threadId,viewOnly,undefined,agent);return view(threadId);}),
+  open:async(threadId,viewOnly,agent,hostId)=>serialize(sharedId(threadId),async()=>{
+   const id=sharedId(threadId),existing=active.get(id);
+   const sharedHostId=hostId ?? (existing&&existing.expires>Date.now()?existing.hostId:undefined);
+   await grant(id,threadId,viewOnly,undefined,agent,sharedHostId);
+   return view(threadId);
+  }),
   view,
   close:threadId=>serialize(sharedId(threadId),()=>close(sharedId(threadId))),
  };
@@ -104,17 +113,17 @@ export function registerDesktops(bb:BbPluginApi,idle:()=>NativeIdleSuspendHolds|
   desktopCloseV1:async({threadId},context)=>{if(context.experimental_caller.kind!=='plugin')throw Error('An installed plugin must release desktop access');const id=idFor(context.experimental_caller.pluginId,threadId);await serialize(id,()=>close(id));return null;},
  });
  bb.rpc.register(sandboxDesktopRpcContract,{
-  openSandboxDesktop:({threadId,viewOnly})=>desktops.open(threadId,viewOnly),
+  openSandboxDesktop:({threadId,viewOnly,hostId})=>desktops.open(threadId,viewOnly,false,hostId),
   getSandboxDesktop:async({threadId})=>view(threadId),
   closeSandboxDesktop:async({threadId})=>{await desktops.close(threadId);return null;},
  });
  bb.agents.registerTool({
   name:'sandbox_desktop',description:'Show or close an inline live view of this sandbox’s own desktop, where GUI apps and computer use draw.',
-  instructions:`Use when the user asks to see or use the sandbox desktop. It opens view only; the user takes control from the card. Pass viewOnly:false only when the user asks to control it now. After opening, emit ::${SANDBOX_DESKTOP_DIRECTIVE}{} exactly once on its own line in the reply. The view also opens in the thread side panel by itself. For a thread’s Browser window use browser_live instead.`,
-  parameters:z.object({action:z.enum(['open','close']).default('open'),viewOnly:z.boolean().default(true)}).strict(),
-  execute:async({action,viewOnly},context)=>{
+  instructions:`Use when the user asks to see or use the sandbox desktop. It opens view only; the user takes control from the card. Pass viewOnly:false only when the user asks to control it now. After opening, emit ::${SANDBOX_DESKTOP_DIRECTIVE}{} exactly once on its own line in the reply. The view also opens in the thread side panel by itself. Pass the exact hostId to show a connected sandbox machine from this thread without moving the thread. For a thread’s Browser window use browser_live instead.`,
+  parameters:z.object({action:z.enum(['open','close']).default('open'),viewOnly:z.boolean().default(true),hostId:sandboxDesktopHostId.optional()}).strict(),
+  execute:async({action,viewOnly,hostId},context)=>{
    if(action==='close'){await desktops.close(context.threadId);return 'Sandbox desktop view closed.';}
-   await desktops.open(context.threadId,viewOnly,true);
+   await desktops.open(context.threadId,viewOnly,true,hostId);
    return `Sandbox desktop opened${viewOnly?' view-only':''}. It closes after 15 minutes.\n::${SANDBOX_DESKTOP_DIRECTIVE}{}`;
   },
  });

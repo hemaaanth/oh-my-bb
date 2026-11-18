@@ -713,6 +713,8 @@ Every sandbox thread can show its own display, the shared Xvfb that GUI apps, `b
 - Ask the agent. Its `sandbox_desktop` tool opens the view and shows it inline in the reply with `::sandbox-desktop{}`.
 - Open the thread's **Desktop** side panel and choose **Show desktop** or **View only**.
 
+To use a sandbox from a thread running on another machine, run `bb sandbox desktop --host <host-id>` from the current thread. Use the exact host ID of a connected BB sandbox. You can also pass `hostId` to the `sandbox_desktop` tool. The Desktop panel stays in the current thread, and switching between viewing and control keeps the same machine. Build and debug commands can target that machine with `bb terminal run --machine <host-id>`. Closing the viewer releases the desktop grant. Stop the sandbox separately when the work is done.
+
 All three share one grant per thread, so the inline view and the panel show the same session. Opening again replaces the grant. The host finds the display itself; callers cannot name another one. It picks this user's Xvfb that has TCP disabled and no authority file, preferring the display that `bb-sandbox-display` recorded. If none runs, it starts one with `bb-sandbox-display start`. The stream, gateway, token, expiry and idle hold work the same as for private desktops below. For a thread's Browser window, use Browser's live view instead.
 
 If the desktop frame asks you to sign in or stays blank, use **Open desktop in browser**. Finish BB Connect sign-in in that browser tab. If sign-in returns to an empty viewer, open the desktop in your browser again from the BB panel.
