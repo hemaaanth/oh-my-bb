@@ -50,20 +50,21 @@ child.once('exit',(code,signal)=>{appendFileSync(process.env.BB_TEST_ENGINE_EXIT
  });
  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
  const address=server.address();if(!address||typeof address==='string')throw Error('Fixture listener unavailable');const url=`http://127.0.0.1:${address.port}`;
- const env={...process.env,BB_BROWSER_HOME:root,BB_BROWSER_BACKEND:'native',BB_BROWSER_DISPLAY:'private',BB_BROWSER_PROFILE:'Brave-native-fixture',BB_BROWSER_EGRESS:'direct',BB_BROWSER_STATE:'',BB_BROWSER_REQUIRED_STATE:'',XDG_CONFIG_HOME:join(root,'config'),BB_BROWSER_EXECUTABLE:supervisor,BB_TEST_REAL_BRAVE:process.env.BB_TEST_BRAVE_EXECUTABLE||'/opt/brave-origin-bin/brave',BB_TEST_CHROME_WRAPPER:process.env.BB_TEST_CHROME_WRAPPER||'/opt/brave-origin-bin/brave-origin',BB_TEST_ENGINE_EXITS:exits};
+ const env={...process.env,BB_BROWSER_HOME:root,BB_PROJECT_ID:'proj_native_fixture',BB_BROWSER_NATIVE_SEED:'default',BB_BROWSER_NATIVE_PROFILE_MODE:'project',BB_BROWSER_BACKEND:'native',BB_BROWSER_DISPLAY:'private',BB_BROWSER_PROFILE:'Brave-native-fixture',BB_BROWSER_EGRESS:'direct',BB_BROWSER_STATE:'',BB_BROWSER_REQUIRED_STATE:'',XDG_CONFIG_HOME:join(root,'config'),BB_BROWSER_EXECUTABLE:supervisor,BB_TEST_REAL_BRAVE:process.env.BB_TEST_BRAVE_EXECUTABLE||'/opt/brave-origin-bin/brave',BB_TEST_CHROME_WRAPPER:process.env.BB_TEST_CHROME_WRAPPER||'/opt/brave-origin-bin/brave-origin',BB_TEST_ENGINE_EXITS:exits};
  const start=(thread:string,args:string[])=>{
-  const result=Promise.withResolvers<string>(),child=spawn('bb-browser',args,{env:{...env,BB_THREAD_ID:thread},stdio:['ignore','pipe','pipe']});let out='',error='';
+  const result=Promise.withResolvers<string>(),child=spawn('bb-browser',args,{env:{...env,BB_THREAD_ID:thread,...(thread==='thr_native_fixture_missing'?{BB_BROWSER_PROFILE:'Brave-native-no-seed-fixture'}:{}),...(thread==='thr_native_disposable'?{BB_BROWSER_NATIVE_PROFILE_MODE:'isolated',BB_BROWSER_NATIVE_SEED:''}:{})},stdio:['ignore','pipe','pipe']});let out='',error='';
   child.stdout.on('data',chunk=>out+=chunk);child.stderr.on('data',chunk=>error+=chunk);child.once('error',result.reject);child.once('close',code=>code===0?result.resolve(out):result.reject(Error(thread+' '+args.join(' ')+': '+error)));
   return {pid:child.pid!,result:result.promise};
  };
  const run=(thread:string,args:string[])=>start(thread,args).result;
- const identity=(thread:string)=>join(root,'native',createHash('sha256').update(legacy+'\0'+thread).digest('hex').slice(0,12));
+ const identity=(thread:string)=>join(root,'native',createHash('sha256').update(thread==='thr_native_disposable'
+  ? 'runtime\0'+thread : 'project\0proj_native_fixture\0'+(thread==='thr_native_fixture_missing'?'Brave-native-no-seed-fixture':'Brave-native-fixture')).digest('hex').slice(0,12));
  const owned:Array<any>=[],disposers:Array<()=>Promise<void>>=[],retirements:Array<unknown>=[];
  const record=async(thread:string)=>{const value=JSON.parse(await readFile(join(identity(thread),'browser.json'),'utf8'));owned.push(value);return value;};
  const value=async(thread:string,expression:string)=>JSON.parse(await run(thread,['--json','eval',expression])).data.result;
  const contents=async(path:string)=>readFile(path,'utf8').catch(error=>{if(error.code==='ENOENT')return null;throw error;});
  const proc=(pid:number)=>contents('/proc/'+pid+'/stat');
- const markers=async(thread:string)=>Promise.all(['seed-initialized','state-applied','state-applied.cookies'].map(name=>contents(join(identity(thread),name))));
+ const markers=async(thread:string)=>{const browser=await record(thread);return Promise.all([contents(join(browser.profile,'../seed-initialized')),...['state-applied','state-applied.cookies'].map(name=>contents(join(identity(thread),name)))]);};
  const seed=async(value:string)=>{await mkdir(join(root,'state'),{recursive:true});await writeFile(join(root,'state/default.json'),JSON.stringify({bbCookieSync:true,cookies:[{name:'fixture',value,domain:'127.0.0.1',path:'/',expires:Math.floor(Date.now()/1000)+3600}],origins:[]}));};
  const retired=async(thread:string,before:any,reason:string)=>{
   const exit=async()=>{const text=await contents(exits);return text?.trim().split('\n').map(line=>JSON.parse(line)).find(entry=>entry.pid===before.pid);};
@@ -82,7 +83,7 @@ child.once('exit',(code,signal)=>{appendFileSync(process.env.BB_TEST_ENGINE_EXIT
   }});
   registerBrowserHandoff(fake.bb,{
    hold(){},release(){},
-   async openDesktop(_host,threadId,watch){expect(threadId).toBe(id);await run(id,['thread','desktop',...(watch?['--watch']:[])]);desktopOwners.add(id);return 'https://viewer.invalid/#owned-fixture';},
+   async openDesktop(){return null;},
    async closeDesktop(threadId){desktopOwners.delete(threadId);},
   },async()=>JSON.stringify({state:'disconnected',url:null}));
   disposers.push(()=>fake.harness.lifecycle.dispose());return {thread,harness:fake.harness};
@@ -96,11 +97,22 @@ child.once('exit',(code,signal)=>{appendFileSync(process.env.BB_TEST_ENGINE_EXIT
   await run(threads[0]!,['close','--all']);await retired(threads[0]!,initial,'first-install fixture profile settled');
   await run(threads[0]!,['open',url+'/?account=A']);await run(threads[1]!,['open',url+'/?account=B']);
   const a=await record(threads[0]!),b=await record(threads[1]!),initialMarkers=await markers(threads[0]!);
-  for(const key of ['profile','pid','windowClass'])expect(a[key]).not.toBe(b[key]);
-  for(const key of ['pid','name','authority','vncSocket'])expect(a.display[key]).not.toBe(b.display[key]);
+  for(const key of ['profile','pid','windowClass'])expect(a[key]).toBe(b[key]);
+  const windows = await Promise.all(threads.slice(0,2).map(thread => readFile(join(root,'threads',thread+'-bb-trusted-native-'+identity(thread).split('/').at(-1)+'.json'),'utf8').then(JSON.parse)));
+  expect(windows[0].windowId).not.toBe(windows[1].windowId);
+  expect(await value(threads[0]!,'location.search')).toBe('?account=A');
+  expect(await value(threads[1]!,'location.search')).toBe('?account=B');
+  for (const [index, thread] of threads.slice(0,2).entries()) {
+   const result=JSON.parse(await run(thread,['tab','list']));
+   expect(result.data.tabs.map((tab:{targetId:string})=>tab.targetId)).toEqual(windows[index].tabOrder);
+  }
+  await expect(run(threads[0]!,['thread','desktop','--watch'])).rejects.toThrow('only supports the thread');
+  await run(threads[1]!,['close','--all']);
+  expect((await record(threads[0]!)).pid).toBe(a.pid);
+  expect(await value(threads[0]!,'location.search')).toBe('?account=A');
   expect(a.display.geometry).toBe('1920x1080');expect(b.display.geometry).toBe('1920x1080');
   await run(threads[0]!,['--session','extra','open',url]);await run(threads[0]!,['--session','extra','close']);
-  expect((await record(threads[0]!)).pid).toBe(a.pid);expect(await value(threads[0]!,'document.cookie')).toBe('fixture=A');
+  expect((await record(threads[0]!)).pid).toBe(a.pid);expect(await value(threads[0]!,'document.cookie')).toBe('fixture=B');
   await seed('seed-two');
   await value(threads[0]!,"document.cookie='fixture=changed-immediately; Path=/; Max-Age=3600';document.cookie='fresh=added-immediately; Path=/; Max-Age=3600';document.cookie='session=restart-not-guaranteed; Path=/';true");
   await run(threads[0]!,['close','--all']);await retired(threads[0]!,a,'close --all after immediate persistent cookie add/change');
@@ -108,7 +120,6 @@ child.once('exit',(code,signal)=>{appendFileSync(process.env.BB_TEST_ENGINE_EXIT
   for(const pid of [reopened.pid,reopened.display.pid,reopened.display.manager.pid])expect([a.pid,a.display.pid,a.display.manager.pid]).not.toContain(pid);
   expect(reopened.profile).toBe(a.profile);expect(await markers(threads[0]!)).toEqual(initialMarkers);
   expect(cookies.split('; ')).toEqual(expect.arrayContaining(['fixture=changed-immediately','fresh=added-immediately']));
-  expect(await value(threads[1]!,'document.cookie')).toBe('fixture=B');expect((await record(threads[1]!)).pid).toBe(b.pid);
   const pageMetrics=await value(threads[0]!,'({width:screen.width,height:screen.height,outerWidth,outerHeight})');
   const query=spawnSync('python',['-c',displayGeometry],{env:{...process.env,DISPLAY:reopened.display.name,XAUTHORITY:reopened.display.authority},encoding:'utf8'});
   if(query.status!==0)throw Error('Owned X11 geometry query failed: '+query.stderr);const geometry=JSON.parse(query.stdout);
@@ -132,32 +143,60 @@ child.once('exit',(code,signal)=>{appendFileSync(process.env.BB_TEST_ENGINE_EXIT
   const leaseCommand=start(threads[0]!,['--json','eval',`fetch(${JSON.stringify(url+'/gate')}).then(()=>({leaseFinished:true}))`]);
   await Promise.race([gateReached.promise,leaseCommand.result.then(()=>{throw Error('Lease command finished before reaching the fixture gate');})]);
   const closing=start(threads[0]!,['close','--all']);
-  await expect.poll(()=>contents(join(identity(threads[0]!),'leases',String(closing.pid))),{timeout:10000}).not.toBeNull();
+  await expect.poll(()=>proc(closing.pid),{timeout:10000}).not.toBeNull();
   expect(await proc(reopened.pid)).not.toBeNull();releaseGate();
   expect(JSON.parse(await leaseCommand.result).data.result).toEqual({leaseFinished:true});await closing.result;
   await retired(threads[0]!,reopened,'close racing a real active command lease');
   await run(threads[0]!,['open',url]);const watched=await record(threads[0]!),events=lifecycle(threads[0]!);
-  expect(await events.harness.behavior.callRpc('openBrowserView',{threadId:events.thread.id})).toMatchObject({kind:'watch'});
-  await events.harness.behavior.emitThreadEvent('thread.idle',{thread:events.thread,lastAssistantText:'Watch stays open'});
-  expect((await record(threads[0]!)).pid).toBe(watched.pid);expect(await proc(watched.pid)).not.toBeNull();
+  expect(await events.harness.behavior.callRpc('openBrowserView',{threadId:events.thread.id})).toMatchObject({kind:'local'});
   await events.harness.behavior.emitThreadEvent('thread.archived',{thread:events.thread});
-  await retired(threads[0]!,watched,'archive revokes watch before terminal native cleanup');
+  await retired(threads[0]!,watched,'archive retires an unheld shared native browser');
   await run(threads[0]!,['open',url]);const held=await record(threads[0]!);
   const handoff=events.harness.behavior.callAgentTool('browser_handoff',{reason:'other',instructions:'Owned fixture only.'},{threadId:events.thread.id});
   await expect.poll(()=>events.harness.pendingInteractions.length).toBe(1);
   await run(threads[0]!,['thread','close']);await events.harness.behavior.emitThreadEvent('thread.idle',{thread:events.thread,lastAssistantText:'Handoff stays paused'});
   expect((await record(threads[0]!)).pid).toBe(held.pid);expect(await contents(join(root,'threads',threads[0]+'.hold'))).not.toBeNull();
-  expect(JSON.parse(await run(threads[0]!,['thread','desktop'])).display).toBe(held.display.name);
+  await expect(run(threads[0]!,['thread','desktop'])).rejects.toThrow('only supports the thread');
   events.harness.behavior.submitInteraction(events.harness.pendingInteractions[0]!.id,{done:false});expect(await handoff).toMatchObject({isError:true});
   await retired(threads[0]!,held,'cancelled handoff discards and retires its held native browser');
-  const other=lifecycle(threads[1]!);await other.harness.behavior.emitThreadEvent('thread.deleted',{thread:other.thread});await retired(threads[1]!,b,'thread deleted');
+  const isolated='thr_native_disposable';
+  await run(isolated,['open',url+'/?account=disposable']);
+  const disposable=await record(isolated);
+  expect(disposable.profile).not.toBe(a.profile);
+  expect(await value(isolated,'document.cookie')).toBe('fixture=disposable');
+  expect(JSON.parse(await run(isolated,['thread','desktop','--watch'])).display).toBe(disposable.display.name);
+  await run(isolated,['close','--all']);await retired(isolated,disposable,'isolated native close');
+  expect(await contents(join(disposable.profile,'Local State'))).toBeNull();
+  await run(threads[0]!,['open',url]);
+  const crashed=await record(threads[0]!);
+  process.kill(crashed.pid,'SIGKILL');
+  await expect.poll(()=>proc(crashed.pid),{timeout:10000}).toBeNull();
+  await run(threads[0]!,['open',url]);
+  const recovered=await record(threads[0]!);
+  expect(recovered.pid).not.toBe(crashed.pid);
+  expect(recovered.profile).toBe(crashed.profile);
+  expect(await value(threads[0]!,'document.cookie')).toContain('fixture=changed-immediately');
+  await run(threads[0]!,['close','--all']);await retired(threads[0]!,recovered,'clean close after crash recovery');
   expect(await readFile(join(legacy,'preserve'),'utf8')).toBe('legacy authentication fixture');
   await rm(join(root,'state/default.json'));await run(threads[2]!,['open',url]);expect(await value(threads[2]!,'document.cookie')).toBe('');
   const missing=await record(threads[2]!),missingMarkers=await markers(threads[2]!);
   await seed('seed-three');await run(threads[2]!,['thread','close']);await retired(threads[2]!,missing,'thread close with no initial seed');
   await run(threads[2]!,['open',url]);expect(await value(threads[2]!,'document.cookie')).toBe('');expect(await markers(threads[2]!)).toEqual(missingMarkers);
+  const sequential = ['thr_native_reuse_1','thr_native_reuse_2','thr_native_reuse_3'];
+  for (const thread of sequential) {
+   await run(thread,['open',url]);
+   const browser=await record(thread);
+   expect(browser.profile).toBe(a.profile);
+   expect(await value(thread,'document.cookie')).toContain('fixture=changed-immediately');
+   await run(thread,['close','--all']);
+   await retired(thread,browser,'sequential thread reused project profile');
+  }
+  const inventory=JSON.parse(await run(threads[0]!,['profiles','list'])).profiles;
+  expect(inventory.filter((row:{kind:string})=>row.kind==='persistent')).toHaveLength(2);
+  expect(inventory.filter((row:{kind:string})=>row.kind==='temporary')).toHaveLength(0);
+  const workload=inventory.map(({kind,bytes}:{kind:string;bytes:number})=>({kind,bytes}));
   const last=await record(threads[2]!);await run(threads[2]!,['thread','discard']);await retired(threads[2]!,last,'explicit thread discard');
-  receipt={nativeA:a,nativeB:b,reopened,geometry,pageMetrics,motion,cookiesAfterActualReplacement:cookies,seedMarkersPreserved:true,missingSeedNotReplaced:true,retirements,legacy:'sentinel unchanged',proof:'Actual bb-browser, Brave, Xvnc and Openbox. Physical motion uses independent FFmpeg after CLI detachment. SDK lifecycle host RPCs execute the real CLI. Watch/hold checks cover lifecycle ownership, not a rendered BB viewer.'};
+  receipt={workload,nativeA:a,nativeB:b,reopened,geometry,pageMetrics,motion,cookiesAfterActualReplacement:cookies,seedMarkersPreserved:true,missingSeedNotReplaced:true,retirements,legacy:'sentinel unchanged',proof:'Actual bb-browser, Brave, Xvnc and Openbox. Physical motion uses independent FFmpeg after CLI detachment. SDK lifecycle host RPCs execute the real CLI. Watch/hold checks cover lifecycle ownership, not a rendered BB viewer.'};
  }catch(error){receipt.error=String(error);throw error;}finally{
   releaseGate();for(const dispose of disposers)await dispose();
   // Emergency fixture cleanup only. Successful proof must leave no process
@@ -176,4 +215,4 @@ child.once('exit',(code,signal)=>{appendFileSync(process.env.BB_TEST_ENGINE_EXIT
   await new Promise<void>(resolve=>server.close(()=>resolve()));await rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:100});
  }
  expect(receipt.emergencyCleanup).toEqual([]);
-},120000);
+},210000);

@@ -975,7 +975,7 @@ console.log(argv[1].includes("hl.window_rule") ? "bb-browser-rule:true" : argv[1
     expect(await calls("agent-browser")).toEqual([]);
   });
 
-  it("gives native thread identities separate persistent profile locations and leaves legacy handoffs intact",async()=>{
+  it("inspects legacy profile locations and leaves legacy handoffs intact",async()=>{
     const a=runNative(["doctor","--offline"],{BB_THREAD_ID:"thr_native_a"}),b=runNative(["doctor","--offline"],{BB_THREAD_ID:"thr_native_b"});
     const aDir=join(home,"native",createHash("sha256").update(profile+"\0thr_native_a").digest("hex").slice(0,12));
     const bDir=join(home,"native",createHash("sha256").update(profile+"\0thr_native_b").digest("hex").slice(0,12));
@@ -991,6 +991,46 @@ console.log(argv[1].includes("hl.window_rule") ? "bb-browser-rule:true" : argv[1
     expect(await readFile(hold,"utf8")).toBe("manual\n");expect(await readFile(recordFile(),"utf8")).toBe(before);expect(isAlive(old.pid)).toBe(true);
     await rm(hold);expect(runNative(["snapshot"],{BB_THREAD_ID:"thr_legacy"}).status).toBe(1);
     expect(await readFile(recordFile(),"utf8")).toBe(before);expect(isAlive(old.pid)).toBe(true);
+  });
+
+  it("archives only an explicitly selected, idle legacy profile and preserves credentials", async () => {
+    const archived = "thr_archived_fixture";
+    const active = "thr_live_fixture";
+    const idle = "thr_idle_fixture";
+    await fake("bb", `console.log(JSON.stringify([
+      {id:"${archived}",projectId:"proj_fixture",archivedAt:"2026-01-01"},
+      {id:"${active}",projectId:"proj_fixture",archivedAt:"2026-01-01"},
+      {id:"${idle}",projectId:"proj_fixture",archivedAt:null}
+    ]));`);
+    const fixtures = await Promise.all([archived, active, idle].map(async thread => {
+      const id = createHash("sha256").update(profile + "\0" + thread).digest("hex").slice(0, 12);
+      const dir = join(home, "native", id, "profile");
+      await mkdir(join(dir, "Default", "Cache"), { recursive: true });
+      await writeFile(join(dir, "Default", "Cookies"), SECRET);
+      await writeFile(join(dir, "Default", "Cache", "cache"), "disposable");
+      return { id, dir };
+    }));
+    const [candidate, live, unarchived] = fixtures as [typeof fixtures[number], typeof fixtures[number], typeof fixtures[number]];
+    await symlink(hostname() + "-" + process.pid, join(live.dir, "SingletonLock"));
+    const listed = runNative(["profiles", "list"]);
+    expect(listed.status).toBe(0);
+    expect(JSON.parse(listed.stdout).profiles).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: candidate.id, owner: archived, action: "archive", cacheBytes: expect.any(Number) }),
+      expect.objectContaining({ id: live.id, action: "preserve" }),
+      expect.objectContaining({ id: unarchived.id, action: "preserve" }),
+    ]));
+    expect(runNative(["profiles", "archive", live.id, "--apply"]).status).toBe(1);
+    expect(runNative(["profiles", "archive", unarchived.id, "--apply"]).status).toBe(1);
+    const dry = runNative(["profiles", "archive", candidate.id]);
+    expect(JSON.parse(dry.stdout).dryRun).toBe(true);
+    expect(dry.stdout).not.toContain(SECRET);
+    expect(await readFile(join(candidate.dir, "Default", "Cookies"), "utf8")).toBe(SECRET);
+    expect(runNative(["profiles", "archive", candidate.id, "--apply"]).status).toBe(0);
+    const archive = join(home, "profile-archives", candidate.id);
+    expect((await stat(archive)).mode & 0o777).toBe(0o700);
+    expect(await readFile(join(archive, "profile", "Default", "Cookies"), "utf8")).toBe(SECRET);
+    await expect(stat(candidate.dir)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(join(live.dir, "Default", "Cookies"), "utf8")).toBe(SECRET);
   });
 
   it("launches the dedicated profile once and reuses it over loopback CDP without UA or state flags", async () => {

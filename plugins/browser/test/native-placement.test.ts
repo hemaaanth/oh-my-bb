@@ -13,7 +13,7 @@ const placementContext=(mode:string,remote:boolean,seat:Seat={},running:unknown=
   readFileSync:(path:string)=>path==='/proc/2/comm'&&seat.locked?'hyprlock\n':'bash\n',
   fail:(message:string)=>{throw Error(message)},
   withNativeLock:(_:unknown,f:()=>unknown)=>f(),liveNativeBrowser:()=>running,
-  existsSync:()=>false,threadHoldPath:()=>'/hold',resetNativeSessions:()=>{},stopNativeBrowser:()=>{},
+  existsSync:()=>false,threadHoldPath:()=>'/hold',resetNativeSessions:()=>{},stopNativeBrowser:()=>{},readNativeBrowser:()=>null,recordedProcessAlive:()=>false,
   launchNativeBrowser:(_:unknown,placement:string)=>{launched.push(placement);return {placement}},
   logNativeLifecycle:(_:unknown,event:string,__:unknown,detail:unknown)=>moves.push([event,detail]),
   addWindowRule:()=>{},checkNativeWindows:()=>1,withThreadLock:(_:unknown,f:()=>unknown)=>f(),retireThreadNativeBrowser:()=>{},
@@ -46,13 +46,13 @@ it('rejects invalid native display settings',()=>{
 it('retires a closed desktop thread without requiring private-display geometry',()=>{
  const removed:string[]=[];
  const retire=source.slice(source.indexOf('function retireThreadNativeBrowser('),source.indexOf('// Under the profile',source.indexOf('function retireThreadNativeBrowser(')));
- runInNewContext(retire+';retireThreadNativeBrowser({thread:"thr_fixture"})',{
+ runInNewContext(retire+';retireThreadNativeBrowser({thread:"thr_fixture",dir:"/fixture"})',{
   existsSync:()=>false,threadHoldPath:()=>'/hold',otherLeases:()=>false,readThreadRecord:()=>null,sessionList:()=>[],
-  readNativeBrowser:()=>({placement:'desktop',pid:1}),liveNativeBrowser:()=>null,alive:()=>false,
-  profileHolder:()=>null,stopPrivateDisplay:()=>{},clearNativeRuntime:()=>{},recordPath:()=>'/browser.json',
+  readNativeBrowser:()=>({placement:'desktop',pid:1}),liveNativeBrowser:()=>null,recordedProcessAlive:()=>false,
+  profileHolder:()=>null,join:(...p:string[])=>p.join("/"),stopPrivateDisplay:()=>{},clearNativeRuntime:()=>{},recordPath:()=>'/browser.json',
   rmSync:(p:string)=>removed.push(p),logNativeLifecycle:()=>{},fail:(s:string)=>{throw Error(s)},
  });
- expect(removed).toEqual(['/browser.json']);
+ expect(removed).toEqual(["/fixture/display.json","/browser.json"]);
 });
 it('tells the handoff card where a paused window is',()=>{
  const pauseOp=source.slice(source.indexOf('  if (op === "pause") {'),source.indexOf('  if (op === "resume") {'));
@@ -60,7 +60,7 @@ it('tells the handoff card where a paused window is',()=>{
   const printed:string[]=[],held:string[]=[];
   runInNewContext(`(function(){const op="pause";${pauseOp}})()`,{
    plannedIdentity:()=>({backend}),threadHoldPath:()=>'/hold',writePrivate:(path:string)=>held.push(path),nativeWorkspace:()=>'8',
-   withNativeBrowser:(_:unknown,launch:boolean,f:(b:unknown)=>unknown)=>{expect(launch).toBe(false);return f(browser);},
+   withNativeBrowser:(_:unknown,launch:boolean,f:(b:unknown)=>unknown)=>{expect(launch).toBe(false);return f(browser);},fail:(m:string)=>{throw Error(m)},
    withNativeLock:(_:unknown,f:()=>unknown)=>f(),withThreadLock:(_:unknown,f:()=>unknown)=>f(),threadCdp:()=>({}),
    console:{log:(line:string)=>printed.push(line)},JSON,
   });
@@ -71,6 +71,44 @@ it('tells the handoff card where a paused window is',()=>{
  expect(pause('native',{placement:'private'})).toEqual({ok:true,workspace:'8',placement:'private'});
  // An old record has no placement. Those browsers always ran on the desktop.
  expect(pause('native',{})).toEqual({ok:true,workspace:'8',placement:'desktop'});
- expect(pause('native',null)).toEqual({ok:true,workspace:'8'});
+ // A handoff with no live browser would show a dead viewer.
+ expect(()=>pause('native',null)).toThrow('no open browser');
  expect(pause('agent',null)).toEqual({ok:true,workspace:'8'});
+});
+it('waits for an exiting browser before giving up on a close',()=>{
+ const retire=source.slice(source.indexOf('function retireThreadNativeBrowser('),source.indexOf('// Under the profile',source.indexOf('function retireThreadNativeBrowser(')));
+ const run=(exits:boolean)=>{
+  const events:string[]=[];let checks=0;
+  runInNewContext(retire+';retireThreadNativeBrowser({thread:"thr_fixture",dir:"/fixture"})',{
+   existsSync:()=>false,threadHoldPath:()=>'/hold',otherLeases:()=>false,readThreadRecord:()=>null,sessionList:()=>[],
+   readNativeBrowser:()=>({placement:'desktop',pid:7}),liveNativeBrowser:()=>null,recordedProcessAlive:()=>!exits||checks++<1,
+   waitFor:(f:()=>unknown)=>f()||f(),profileHolder:()=>null,join:(...p:string[])=>p.join("/"),stopPrivateDisplay:()=>{},clearNativeRuntime:()=>{},recordPath:()=>'/browser.json',
+   rmSync:()=>{},logNativeLifecycle:(_:unknown,e:string)=>events.push(e),fail:(s:string)=>{throw Error(s)},
+  });
+  return events;
+ };
+ expect(run(true)).toEqual(['retired']);
+ expect(()=>run(false)).toThrow('Cannot verify');
+});
+it('logs and reports a thread browser that vanished on its own',()=>{
+ const events:string[]=[],notices:string[]=[];
+ runInNewContext(functions+';withNativeBrowser({thread:"thr_fixture",dir:"/fixture",windowClass:"fixture"},true,b=>b)',{
+  setting:()=>'desktop',env:{},fail:(m:string)=>{throw Error(m)},withNativeLock:(_:unknown,f:()=>unknown)=>f(),liveNativeBrowser:()=>null,
+  existsSync:()=>false,threadHoldPath:()=>'/hold',readNativeBrowser:()=>({pid:9}),recordedProcessAlive:()=>false,resetNativeSessions:()=>{},stopNativeBrowser:()=>{},
+  launchNativeBrowser:()=>({placement:'desktop'}),logNativeLifecycle:(_:unknown,e:string)=>events.push(e),
+  process:{pid:1,stderr:{write:(s:string)=>notices.push(s)}},addWindowRule:()=>{},checkNativeWindows:()=>1,withThreadLock:(_:unknown,f:()=>unknown)=>f(),
+  retireThreadNativeBrowser:()=>{},applyNativeState:()=>{},join:(...p:string[])=>p.join('/'),writePrivate:()=>{},rmSync:()=>{},ensurePrivateDir:()=>{},
+  leasePath:()=>'/lease',processStart:()=>1,otherLeases:()=>true,
+ });
+ expect(events).toEqual(['vanished']);
+ expect(notices[0]).toContain('previous browser was gone');
+});
+it('drops saved windows before every native launch',()=>{
+ const launch=source.slice(source.indexOf('function launchNativeBrowser('),source.indexOf('// Brave Origin opens'));
+ const removed:string[]=[];
+ runInNewContext(launch+';launchNativeBrowser({profile:"/p"})',{
+  mkdirSync:()=>{},chmodSync:()=>{},existsSync:()=>false,profileHolder:()=>null,skipOriginStartup:()=>{},join:(...p:string[])=>p.join('/'),
+  rmSync:(p:string)=>removed.push(p),startNativeBrowser:()=>({pid:1}),alive:()=>false,terminate:()=>{},stopNativeBrowser:()=>{},fail:(m:string)=>{throw Error(m)},
+ });
+ expect(removed).toEqual(['/p/Default/Sessions']);
 });

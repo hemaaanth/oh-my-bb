@@ -1,5 +1,4 @@
-Browser gives native and isolated BB threads separate persistent profiles,
-processes, so threads can use different accounts on one site. Native browsers can use the configured local workspace or a private desktop.
+Browser gives each native BB thread a separately owned Brave window and named tab group. Threads in the same project and browser identity share sign-ins and site storage. Disposable profiles are available for isolated work. Native browsers can use the configured local workspace or a private desktop.
 An optional extension can relay an explicitly paired regular profile, or export
 cookies while that browser stays open. A toolbar popup shows connection and sync
 health. Authentication sharing is off until enabled.
