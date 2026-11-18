@@ -1,6 +1,5 @@
 import {afterEach,expect,it,vi} from 'vitest';
 import {ViewerLease,viewerScript} from '../src/desktop-viewer.js';
-import {embeddedViewerUrl} from '../components/viewer-controls.js';
 import {runInNewContext} from 'node:vm';
 afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();});
 it('rejects automatic contenders and duplicate sockets, then permits a reconnect after pair cleanup',()=>{
@@ -45,12 +44,12 @@ it('binds tickets to generation and expiry, without revoking the owner when a po
 const local='http://127.0.0.1:38886',remote='https://owner.getbb.app',configured='https://configured.example';
 async function wrapper(declared:string,sender:string,sourceIsParent=true,declare=true){
  vi.stubGlobal('location',{href:declared+'/thread',origin:declared});
- const source=embeddedViewerUrl('https://sandbox--40000.getbb.app/#'+'t'.repeat(43));
+ const fragment='#'+'t'.repeat(43)+'&'+new URLSearchParams({parentOrigin:declared});
  const events:Record<string,(event:unknown)=>Promise<void>>={},commands:string[]=[],replies:Array<{data:{id?:string};origin:string}>=[],elements=new Map();
  const element=()=>({hidden:false,replaceChildren(){},remove(){},removeAttribute(){},setAttribute(){}});
  const parent={postMessage:(data:{id?:string},origin:string)=>replies.push({data,origin})};
  runInNewContext(viewerScript([local,remote,configured]),{
-  URLSearchParams,location:{hash:declare?new URL(source).hash:'#'+'t'.repeat(43),pathname:'/',origin:'https://sandbox--40000.getbb.app'},history:{replaceState(){}},
+  URLSearchParams,location:{hash:declare?fragment:'#'+'t'.repeat(43),pathname:'/',origin:'https://sandbox--40000.getbb.app'},history:{replaceState(){}},
   document:{querySelector:(id:string)=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,addEventListener(){}},parent,window:{},
   fetch:async(_path:string,args:{body:string})=>{const body=JSON.parse(args.body);commands.push(body.action);return {status:200,ok:true,json:async()=>body.action==='acquire'?{lease:'l'.repeat(43)}:{ticket:'k'.repeat(43),expires:Date.now()+60000}};},
   addEventListener:(type:string,handler:(event:unknown)=>Promise<void>)=>{events[type]=handler;},setInterval(){},

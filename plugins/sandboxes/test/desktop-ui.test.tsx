@@ -1,49 +1,64 @@
 // @vitest-environment jsdom
-import {act,cleanup,fireEvent} from '@testing-library/react';
-import {afterEach,expect,it,vi} from 'vitest';
-import {loadPluginApp,renderSlot} from '@get-bb/plugin-sdk/testing/app';
-const app=await loadPluginApp(()=>import('../app'));
-afterEach(()=>{cleanup();vi.restoreAllMocks();window.sessionStorage.clear();});
-function announce(frame:HTMLIFrameElement,data:Record<string,unknown>,origin=new URL(frame.src).origin,source:Window|null=frame.contentWindow){
- act(()=>{window.dispatchEvent(new MessageEvent('message',{origin,source,data:{protocol:'bb-desktop-v1',...data}}));});
-}
-it('launches a prepared HTTPS transfer in the user click when the desktop host returns no WindowProxy',async()=>{
- let inClick=false;const nativeOpen=vi.spyOn(window,'open').mockReturnValue(null);
- const openUrl=vi.fn((url:string)=>{expect(inClick).toBe(true);window.open(url,'_blank');return true;});
- const slot=renderSlot(app.messageDirectives.find(value=>value.id==='sandbox-desktop')!,{attributes:{},message:{threadId:'thr_desktop'},source:'::sandbox-desktop{}',openWorkspaceFile:null} as never,{rpc:{getSandboxDesktop:async()=>({kind:'open',url:'https://viewer.example/#grant',expires:Date.now()+60000,viewOnly:true})} as never,openUrl});
- const frame=await slot.findByTitle('Sandbox desktop') as HTMLIFrameElement,button=slot.getByRole('button',{name:'Open in new tab'});
- await act(async()=>{fireEvent.load(frame);});
- expect(button).toHaveProperty('disabled',true);
- const url='https://viewer.example/#grant&ticket=prepared';announce(frame,{state:'ready',url,expires:Date.now()+60000});
- inClick=true;fireEvent.click(button);fireEvent.click(button);inClick=false;
- expect(openUrl.mock.calls).toEqual([[url],[url]]);expect(nativeOpen).toHaveBeenCalledWith(url,'_blank');
- expect(slot.getByTitle('Sandbox desktop')).toBe(frame);expect(slot.queryByRole('alert')).toBeNull();
- announce(frame,{state:'elsewhere'});expect(button).toHaveProperty('disabled',true);
+import { cleanup, fireEvent } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+
+const app = await loadPluginApp(() => import("../app"));
+const card = app.messageDirectives.find((slot) => slot.id === "sandbox-desktop")!;
+const props = {
+  attributes: {},
+  message: { threadId: "thr_desktop" },
+  source: "::sandbox-desktop{}",
+  openWorkspaceFile: null,
+} as never;
+const desktop = (url = "https://viewer.example/#grant", viewOnly = true, expires = Date.now() + 60000) =>
+  ({ kind: "open", url, expires, viewOnly }) as const;
+
+afterEach(cleanup);
+
+it("offers an external link without a sidebar tab, header action or iframe", async () => {
+  const view = desktop();
+  const openUrl = vi.fn();
+  const slot = renderSlot(card, props, { rpc: { getSandboxDesktop: async () => view } as never, openUrl });
+  const link = await slot.findByRole("link", { name: "Open desktop in browser" });
+  expect(link.getAttribute("href")).toBe(view.url);
+  expect(link.getAttribute("target")).toBe("_blank");
+  expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  fireEvent.click(link);
+  expect(openUrl).not.toHaveBeenCalled();
+  expect(document.querySelector("iframe")).toBeNull();
+  expect(app.tabs.some((tab) => tab.id === "desktop")).toBe(false);
+  expect(app.threadHeaderActions.some((action) => action.id === "desktop")).toBe(false);
 });
-it('rejects foreign, stale-grant and expired readiness and retains the stream when launch is rejected',async()=>{
- const openUrl=vi.fn(()=>false);
- const slot=renderSlot(app.messageDirectives.find(value=>value.id==='sandbox-desktop')!,{attributes:{},message:{threadId:'thr_desktop'},source:'::sandbox-desktop{}',openWorkspaceFile:null} as never,{rpc:{getSandboxDesktop:async()=>({kind:'open',url:'https://viewer.example/#grant',expires:Date.now()+60000,viewOnly:true})} as never,openUrl});
- const frame=await slot.findByTitle('Sandbox desktop') as HTMLIFrameElement,button=slot.getByRole('button',{name:'Open in new tab'}),ready={state:'ready',url:'https://viewer.example/#grant&ticket=prepared',expires:Date.now()+60000};
- await act(async()=>{fireEvent.load(frame);});
- announce(frame,ready,'https://other.example');announce(frame,ready,undefined,window);
- announce(frame,{...ready,url:'https://other.example/#grant&ticket=prepared'});announce(frame,{...ready,url:'https://viewer.example/#stale&ticket=prepared'});announce(frame,{...ready,expires:Date.now()-1});
- expect(button).toHaveProperty('disabled',true);fireEvent.click(button);expect(openUrl).not.toHaveBeenCalled();
- announce(frame,ready);fireEvent.click(button);await slot.findByRole('alert');
- expect(slot.getByTitle('Sandbox desktop')).toBe(frame);expect(button).toHaveProperty('disabled',false);
+
+it("updates the browser link after switching control and removes it on close", async () => {
+  const next = desktop("https://viewer.example/#interactive", false);
+  const openSandboxDesktop = vi.fn(async () => next);
+  const closeSandboxDesktop = vi.fn(async () => null);
+  const slot = renderSlot(card, props, {
+    rpc: { getSandboxDesktop: async () => desktop(), openSandboxDesktop, closeSandboxDesktop } as never,
+  });
+  fireEvent.click(await slot.findByRole("button", { name: "Enable control" }));
+  await slot.findByRole("button", { name: "Switch to view only" });
+  expect(openSandboxDesktop).toHaveBeenCalledWith({ threadId: "thr_desktop", viewOnly: false });
+  expect(slot.getByRole("link", { name: "Open desktop in browser" }).getAttribute("href")).toBe(next.url);
+  fireEvent.click(slot.getByRole("button", { name: "Close desktop" }));
+  await slot.findByText("Closed");
+  expect(closeSandboxDesktop).toHaveBeenCalledWith({ threadId: "thr_desktop" });
+  expect(slot.queryByRole("link", { name: "Open desktop in browser" })).toBeNull();
 });
-it('offers a browser recovery path when the embedded viewer never responds',async()=>{
- const url='https://viewer.example/#grant',openUrl=vi.fn(()=>true);
- const slot=renderSlot(app.messageDirectives.find(value=>value.id==='sandbox-desktop')!,{attributes:{},message:{threadId:'thr_desktop'},source:'::sandbox-desktop{}',openWorkspaceFile:null} as never,{rpc:{getSandboxDesktop:async()=>({kind:'open',url,expires:Date.now()+60000,viewOnly:false})} as never,openUrl});
- await slot.findByTitle('Sandbox desktop');
- vi.useFakeTimers();
- try{
-  const frame=slot.getByTitle('Sandbox desktop') as HTMLIFrameElement;
-  fireEvent.load(frame);
-  act(()=>vi.advanceTimersByTime(6000));
-  fireEvent.click(slot.getByRole('button',{name:'Open desktop in browser'}));
-  expect(openUrl).toHaveBeenCalledExactlyOnceWith(url);
-  expect(slot.getByRole('button',{name:'Open in new tab'})).toHaveProperty('disabled',true);
-  announce(frame,{state:'viewing'});
-  expect(slot.queryByRole('button',{name:'Open desktop in browser'})).toBeNull();
- }finally{vi.useRealTimers();}
+
+it("does not offer a browser link for an unsafe or expired grant", async () => {
+  const unsafe = renderSlot(card, props, {
+    rpc: { getSandboxDesktop: async () => desktop("javascript:alert(1)") } as never,
+  });
+  await unsafe.findByText(/View only/);
+  expect(unsafe.queryByRole("link")).toBeNull();
+  unsafe.unmount();
+
+  const expired = renderSlot(card, props, {
+    rpc: { getSandboxDesktop: async () => desktop("https://viewer.example/#expired", true, Date.now() - 1) } as never,
+  });
+  await expired.findByText("Closed");
+  expect(expired.queryByRole("link")).toBeNull();
 });

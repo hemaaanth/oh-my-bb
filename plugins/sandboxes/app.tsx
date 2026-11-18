@@ -1,7 +1,7 @@
 import { SandboxSizeOptions } from "./components/sandbox-size-options.js";
 import { imageTools, defaultImageTools, type ImageRecipe } from "./src/image-tools.js";
 import { ImagePackageTags } from "./components/image-package-tags.js";
-import { SandboxDesktopDirective, SandboxDesktopHeaderAction, SandboxDesktopPanel } from "./components/sandbox-desktop.js";
+import { SandboxDesktopDirective } from "./components/sandbox-desktop.js";
 import type { AttachmentsView } from "./src/attachment-contract.js";
 import {
   useCallback,
@@ -1201,16 +1201,6 @@ export default definePluginApp((app) => {
     component: SandboxInfoSection,
   });
   app.slots.messageDirective({ id: "sandbox-desktop", component: SandboxDesktopDirective });
-  app.slots.experimental_threadHeaderAction({ id: "desktop", title: "Sandbox desktop", component: SandboxDesktopHeaderAction });
-  app.slots.experimental_tab({
-    context: { kind: "thread" },
-    availability: "action",
-    id: "desktop",
-    title: "Desktop",
-    icon: "Monitor",
-    layout: "flush",
-    component: SandboxDesktopPanel,
-  });
   // Manual size override in the composer for every sandbox provider. Leaving it
   // on "Project default" applies the project's pinned size (resolved server-side).
   for (const provider of sandboxProviderValues) {

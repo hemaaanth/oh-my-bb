@@ -118,13 +118,13 @@ export function registerDesktops(bb:BbPluginApi,idle:()=>NativeIdleSuspendHolds|
   closeSandboxDesktop:async({threadId})=>{await desktops.close(threadId);return null;},
  });
  bb.agents.registerTool({
-  name:'sandbox_desktop',description:'Show or close an inline live view of this sandbox’s own desktop, where GUI apps and computer use draw.',
-  instructions:`Use when the user asks to see or use the sandbox desktop. It opens view only; the user takes control from the card. Pass viewOnly:false only when the user asks to control it now. After opening, emit ::${SANDBOX_DESKTOP_DIRECTIVE}{} exactly once on its own line in the reply. The view also opens in the thread side panel by itself. Pass the exact hostId to show a connected sandbox machine from this thread without moving the thread. For a thread’s Browser window use browser_live instead.`,
+  name:'sandbox_desktop',description:'Open or close a sandbox desktop link for the user’s external browser.',
+  instructions:`Use when the user asks to see or use the sandbox desktop. It opens view only; the user takes control from the card. Pass viewOnly:false only when the user asks to control it now. After opening, emit ::${SANDBOX_DESKTOP_DIRECTIVE}{} exactly once on its own line in the reply. The chat card opens the desktop in the user’s external browser. Pass the exact hostId to show a connected sandbox machine from this thread without moving the thread. For a thread’s Browser window use browser_live instead.`,
   parameters:z.object({action:z.enum(['open','close']).default('open'),viewOnly:z.boolean().default(true),hostId:sandboxDesktopHostId.optional()}).strict(),
   execute:async({action,viewOnly,hostId},context)=>{
    if(action==='close'){await desktops.close(context.threadId);return 'Sandbox desktop view closed.';}
    await desktops.open(context.threadId,viewOnly,true,hostId);
-   return `Sandbox desktop opened${viewOnly?' view-only':''}. It closes after 15 minutes.\n::${SANDBOX_DESKTOP_DIRECTIVE}{}`;
+   return `Sandbox desktop opened${viewOnly?' view-only':''}. Open it from the chat card. The link expires after 15 minutes.\n::${SANDBOX_DESKTOP_DIRECTIVE}{}`;
   },
  });
  const sweep=setInterval(()=>{for(const [id,value]of active)if(value.expires<=Date.now())void serialize(id,()=>close(id)).catch(()=>{});},10000);sweep.unref();
