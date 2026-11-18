@@ -611,7 +611,9 @@ function cacheFooterUsage(snapshot: FooterUsageSnapshot): void {
 }
 
 function XUsagePanel({ usage }: { usage: XUsageSnapshot }) {
-  const reset = shortDate(Date.parse(`${usage.resetDate}T12:00:00`));
+  const resetAt = usage.resetAt ?? (usage.resetDate === undefined ? null : Date.parse(`${usage.resetDate}T12:00:00`));
+  const creditText = usage.extraBalanceUsd === undefined ? null : `${usd(usage.extraBalanceUsd)} extra credits`;
+  const spentText = usage.extraSpentUsd === undefined ? null : `${usd(usage.extraSpentUsd)} used this month`;
   return <details className="group px-3 py-2">
     <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
       <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">Grok + Cursor</span>
@@ -619,16 +621,16 @@ function XUsagePanel({ usage }: { usage: XUsageSnapshot }) {
       <Icon name="ChevronDown" className="size-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
     </summary>
     <div className="mt-1.5 space-y-1">
-      <FooterUsageBar label="7d" account="Grok + Cursor" utilization={usage.weeklyUtilization} resetAt={null}
-        title={`Shared weekly usage · Reset shown in dashboard: ${reset}`} />
-      <p className="text-2xs text-muted-foreground">
-        {usd(usage.extraBalanceUsd)} extra credits · {usd(usage.extraSpentUsd)} used this month
-      </p>
+      <FooterUsageBar label="7d" account="Grok + Cursor" utilization={usage.weeklyUtilization} resetAt={resetAt}
+        title="Shared weekly usage" />
+      {creditText === null && spentText === null ? null : <p className="text-2xs text-muted-foreground">
+        {[creditText, spentText].filter(Boolean).join(" · ")}
+      </p>}
       <p className="flex justify-between gap-2 text-2xs text-muted-foreground">
         <a href="https://grok.com/dashboard/usage" target="_blank" rel="noreferrer" className="underline">
-          Snapshot · {shortDate(usage.observedAt)}
+          {usage.source === "grok" ? `Checked ${relative(usage.observedAt)}` : `Snapshot · ${shortDate(usage.observedAt)}`}
         </a>
-        <span>Reset shown · {reset}</span>
+        {resetAt === null ? null : <span>Reset · {shortDate(resetAt)}</span>}
       </p>
     </div>
   </details>;
@@ -644,8 +646,8 @@ function AntigravityUsagePanel({ usage }: { usage: AntigravityUsageSnapshot }) {
     </summary>
     <div className="mt-1.5 space-y-1">
       {usage.groups.map((group) => <FooterUsageBar key={group.name} label={group.name} account="Antigravity"
-        utilization={group.weeklyUtilization} resetAt={null} title={`${group.name} shared weekly quota`} />)}
-      <p className="text-2xs text-muted-foreground">Snapshot · {shortDate(usage.observedAt)}</p>
+        utilization={group.weeklyUtilization} resetAt={group.resetAt ?? null} title={`${group.name} shared weekly quota`} />)}
+      <p className="text-2xs text-muted-foreground">{usage.source === "agy" ? `Checked ${relative(usage.observedAt)}` : `Snapshot · ${shortDate(usage.observedAt)}`}</p>
     </div>
   </details>;
 }

@@ -170,7 +170,34 @@ Grok and Cursor. Record the dashboard reading with
 `observedAt` (Unix milliseconds), `extraSpentUsd`, and `extraBalanceUsd`.
 Run the command without JSON to read the saved snapshot.
 
-For Google Antigravity, record the results from its Models & Quota panel with
+`bb gateway x-usage-refresh` reads the same shared weekly allowance through
+the signed-in local Grok CLI. Enable a five-minute refresh with
+`bb gateway config set xUsageRefresh true`. This uses Grok's local ACP billing
+method and does not make a model request. A failed refresh keeps the last
+successful reading.
+
+To offer Grok 4.7 Build Fast through the Gateway, sign in with Grok Build
+on the Gateway server and run `bb gateway grok-build-connect` followed by
+`bb gateway setup host`. This route uses the local Grok Build credential and
+the Grok Build Responses backend. It does not add an API key or configure a
+fallback. The native CLI owns the sign-in and token renewal. The backend is
+CLI-specific, so the route may require updates when Grok Build changes.
+
+To offer Composer 2.5 through the Gateway, sign in with Cursor Agent and run
+`bb gateway cursor-composer-connect` followed by `bb gateway setup host`.
+The Gateway launches the official Cursor ACP server with Composer pinned at
+startup. Nano Codex tools are exposed through a package-owned MCP bridge. Tool
+calls return to the harness for approval and execution. Cursor never executes
+the harness tools itself. No Magpie package, service, or installation is used.
+
+For Google Antigravity, `bb gateway antigravity-usage-refresh` reads the
+signed-in local `agy` CLI and updates the weekly quota bars and reset times.
+Enable a five-minute refresh on the Gateway server with
+`bb gateway config set antigravityUsageRefresh true`. Turn it off with the
+same command and `false`. This requires a signed-in `agy` on that server's
+PATH. A failed refresh keeps the last successful reading.
+
+You can also record results from the Models & Quota panel with
 `bb gateway antigravity-usage-snapshot '<snapshot-json>'`. The JSON contains
 `plan`, `observedAt` (Unix milliseconds), and `groups` with `name` and
 `weeklyUtilization` (from 0 to 1) for each model group.

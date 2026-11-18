@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add native Cursor Composer 2.5 routing through Cursor Agent's official ACP interface. Keep the session in an isolated temporary workspace, return tool calls to the originating Responses client for approval and execution, and expose the route to BB, Nano Codex, OMP, and Pi without depending on Magpie or another gateway.
+
+- Refresh X subscription usage from Grok's official ACP billing method and Google Antigravity usage from the signed-in local client. Show both in the Gateway usage footer, preserve the last successful snapshot when refresh fails, and keep either background refresh independently configurable.
+
 - Advertise a routed model's own limits, and clamp a harness reasoning effort the routed model rejects. `COMPATIBLE_KEY_MODELS` now carries the context window, output ceiling and accepted `reasoning.effort` values for models that a `responses-compatible-key` serves verbatim; `GET /v1/models`, the OMP block and the Pi extension all read it. A level outside a model's documented list (`medium` or `minimal` where the vendor accepts only `none`, `low`, `high`, `xhigh` and `max`) is clamped to the nearest documented level, tie upward, instead of failing every request with a 400. Models without a list keep the client's effort unchanged.
 
 - Use picker-style names for routed models, as 0.3.1 did for catalog models. `COMPATIBLE_KEY_MODELS` entries take an optional `displayName`, and `GET /v1/models` returns it as `name`; OMP labels a discovered model by that field, so a routed model showed its raw vendor ID in the picker. Transport IDs and routes are unchanged.

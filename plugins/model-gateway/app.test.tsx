@@ -594,7 +594,7 @@ describe("Model usage footer", () => {
     fireEvent.click(heading.closest("summary")!);
     expect(slot.getByRole("progressbar", { name: "Grok + Cursor 7d usage" }).getAttribute("aria-valuenow")).toBe("26");
     expect(slot.getByText("$0.00 extra credits · $0.02 used this month")).toBeTruthy();
-    expect(slot.getByText("Reset shown · Nov 18")).toBeTruthy();
+    expect(slot.getByText("Reset · Nov 18")).toBeTruthy();
   });
 
   it("shows Antigravity weekly quotas by model group without requiring a routing account", async () => {

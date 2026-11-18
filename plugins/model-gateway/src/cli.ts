@@ -1,5 +1,9 @@
 // Ported from the core Account Pooler (account-pool), MIT, Michael Yong 2026.
 import type { BbPluginApi, PluginCliResult } from "@get-bb/plugin-sdk";
+import { GROK_BUILD_CREDENTIAL, GROK_BUILD_LABEL, GROK_BUILD_URL, grokBuildHeaders } from "./upstreams/grok-build.js";
+import { CURSOR_COMPOSER_CREDENTIAL, CURSOR_COMPOSER_LABEL, CURSOR_COMPOSER_MODEL, CURSOR_COMPOSER_URL, assertCursorComposer } from "./upstreams/cursor-composer.js";
+import { readAntigravityUsage } from "./antigravity-usage.js";
+import { readXUsage } from "./x-usage.js";
 import { homedir } from "node:os";
 import path from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
@@ -84,6 +88,10 @@ const HELP = [
   "  bb gateway account billing-connect <id> --key-stdin | billing-disconnect <id>",
   "  bb gateway account openai-credit-snapshot <id> <json>",
   "  bb gateway x-usage-snapshot [<json>]",
+  "  bb gateway x-usage-refresh",
+  "  bb gateway grok-build-connect",
+  "  bb gateway cursor-composer-connect",
+  "  bb gateway antigravity-usage-refresh",
   "  bb gateway antigravity-usage-snapshot [<json>]",
   "  bb gateway account remove <id>",
   "  bb gateway account enable <id>",
@@ -107,7 +115,7 @@ const HELP = [
   "  bb gateway account hold <id> --until <+1h|ISO time> | --clear   Test hook: treat the account as exhausted",
   "  bb gateway routing <claude|codex|acp-omp|acp-fx|acp-nanocodex|acp-prime-agent|pi> [--off]",
   "  bb gateway config",
-  "  bb gateway config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|allowClaudeOAuthAcrossHarnesses> <value>",
+  "  bb gateway config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|allowClaudeOAuthAcrossHarnesses|xUsageRefresh|antigravityUsageRefresh> <value>",
   "  bb gateway token rotate --machine <id-or-name>",
   "  bb gateway bypass <thread-id> [--off]",
   "  bb gateway doctor",
@@ -310,6 +318,8 @@ function formatConfig(config: AccountPoolConfig): string {
     `codexUpstreamBaseUrl: ${config.codexUpstreamBaseUrl}`,
     `switchThreshold: ${config.switchThreshold}`,
     `allowClaudeOAuthAcrossHarnesses: ${config.allowClaudeOAuthAcrossHarnesses}`,
+    `xUsageRefresh: ${config.xUsageRefresh}`,
+    `antigravityUsageRefresh: ${config.antigravityUsageRefresh}`,
   ].join("\n");
 }
 
@@ -328,9 +338,9 @@ function parseConfigUpdate(
       codexUpstreamBaseUrl: value,
     });
   }
-  if (key === "allowClaudeOAuthAcrossHarnesses") {
+  if (key === "allowClaudeOAuthAcrossHarnesses" || key === "xUsageRefresh" || key === "antigravityUsageRefresh") {
     if (value !== "true" && value !== "false") throw new Error("Expected true or false.");
-    return accountPoolConfigSetInputSchema.parse({ allowClaudeOAuthAcrossHarnesses: value === "true" });
+    return accountPoolConfigSetInputSchema.parse({ [key]: value === "true" });
   }
   if (key === "switchThreshold") {
     return accountPoolConfigSetInputSchema.parse({
@@ -552,7 +562,7 @@ export function registerPoolCli(
         name: "config-set",
         summary: "Update one Model Gateway routing configuration value",
         usage:
-          "bb gateway config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|allowClaudeOAuthAcrossHarnesses> <value>",
+          "bb gateway config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|allowClaudeOAuthAcrossHarnesses|xUsageRefresh|antigravityUsageRefresh> <value>",
       },
       {
         name: "token-rotate",
@@ -598,6 +608,52 @@ export function registerPoolCli(
           if (argv[1]!.startsWith("billing-balance")) await operations.connectBillingBalance(accountId, disconnect ? null : key!);
           else await operations.connectBilling(accountId, disconnect ? null : key!);
           return { exitCode: 0, stdout: disconnect ? "Billing session removed.\n" : "Subscription API credits connected.\n" };
+        }
+        if (argv[0] === "grok-build-connect" && argv.length === 1) {
+          await grokBuildHeaders();
+          const existing = (await operations.list()).find((account) => account.label === GROK_BUILD_LABEL);
+          if (existing && (existing.baseUrl !== GROK_BUILD_URL || !existing.enabled))
+            throw new Error("The Grok Build subscription label is already used by another account or disabled.");
+          const model = "grok-4.7-build-fast";
+          if (config.get().modelRoutes[model] !== undefined &&
+              config.get().modelRoutes[model] !== `responses-compatible-key:${GROK_BUILD_LABEL}`)
+            throw new Error("A route already exists for Grok 4.7 Build Fast.");
+          if (!existing) await operations.addKey({
+            kind: "responses-compatible-key", label: GROK_BUILD_LABEL, baseUrl: GROK_BUILD_URL,
+            apiKey: GROK_BUILD_CREDENTIAL, priority: 100,
+          });
+          await config.set({ modelRoutes: { ...config.get().modelRoutes, [model]: `responses-compatible-key:${GROK_BUILD_LABEL}` } });
+          return { exitCode: 0, stdout: "Grok Build sign-in linked. Run bb gateway setup host to update the model pickers.\n" };
+        }
+        if (argv[0] === "cursor-composer-connect" && argv.length === 1) {
+          await assertCursorComposer();
+          const existing = (await operations.list()).find((account) => account.label === CURSOR_COMPOSER_LABEL);
+          if (existing && (existing.baseUrl !== CURSOR_COMPOSER_URL || !existing.enabled))
+            throw new Error("The Cursor subscription label is already used by another account or disabled.");
+          if (config.get().modelRoutes[CURSOR_COMPOSER_MODEL] !== undefined &&
+              config.get().modelRoutes[CURSOR_COMPOSER_MODEL] !== `responses-compatible-key:${CURSOR_COMPOSER_LABEL}`)
+            throw new Error("A route already exists for Composer 2.5.");
+          if (!existing) await operations.addKey({
+            kind: "responses-compatible-key", label: CURSOR_COMPOSER_LABEL, baseUrl: CURSOR_COMPOSER_URL,
+            apiKey: CURSOR_COMPOSER_CREDENTIAL, priority: 100,
+          });
+          await config.set({ modelRoutes: { ...config.get().modelRoutes,
+            [CURSOR_COMPOSER_MODEL]: `responses-compatible-key:${CURSOR_COMPOSER_LABEL}` } });
+          return { exitCode: 0, stdout: "Cursor Composer sign-in linked. Run bb gateway setup host to update the model pickers.\n" };
+        }
+        if (argv[0] === "antigravity-usage-refresh" && argv.length === 1) {
+          const snapshot = await readAntigravityUsage().catch(() => {
+            throw new Error("Could not read weekly quota from the local signed-in Antigravity CLI.");
+          });
+          await operations.saveAntigravityUsageSnapshot(snapshot);
+          return { exitCode: 0, stdout: JSON.stringify(snapshot) + "\n" };
+        }
+        if (argv[0] === "x-usage-refresh" && argv.length === 1) {
+          const snapshot = await readXUsage().catch(() => {
+            throw new Error("Could not read shared X usage from the local signed-in Grok CLI.");
+          });
+          await operations.saveXUsageSnapshot(snapshot);
+          return { exitCode: 0, stdout: JSON.stringify(snapshot) + "\n" };
         }
         if (argv[0] === "antigravity-usage-snapshot") {
           if (argv.length === 1) return { exitCode: 0, stdout: JSON.stringify(await operations.antigravityUsageSnapshot()) + "\n" };

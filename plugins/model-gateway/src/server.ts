@@ -4,6 +4,9 @@ import {
   transportErrorCode,
 } from "./upstreams/upstream-transport.js";
 import path from "node:path";
+import { setTimeout as wait } from "node:timers/promises";
+import { readAntigravityUsage } from "./antigravity-usage.js";
+import { readXUsage } from "./x-usage.js";
 import type {
   BbPluginApi,
   ExperimentalPluginProviderEnvEntry,
@@ -548,6 +551,31 @@ export function createAccountPoolPlugin(
     );
     bb.http.route("HEAD", "/api/hello", () => helloResponse(), {
       auth: "none",
+    });
+    bb.background.service("external-usage", {
+      start: async (signal) => {
+        while (!signal.aborted) {
+          if (config.get().xUsageRefresh) {
+            try {
+              const snapshot = await readXUsage(signal);
+              if (!signal.aborted && config.get().xUsageRefresh)
+                await operations.saveXUsageSnapshot(snapshot);
+            } catch {
+              if (!signal.aborted) bb.log.warn("Model Gateway could not refresh shared X usage from the local Grok CLI.");
+            }
+          }
+          if (config.get().antigravityUsageRefresh) {
+            try {
+              const snapshot = await readAntigravityUsage(signal);
+              if (!signal.aborted && config.get().antigravityUsageRefresh)
+                await operations.saveAntigravityUsageSnapshot(snapshot);
+            } catch {
+              if (!signal.aborted) bb.log.warn("Model Gateway could not refresh Antigravity quota from the local CLI.");
+            }
+          }
+          await wait(5 * 60_000, undefined, { signal }).catch(() => {});
+        }
+      },
     });
     bb.background.service("hub", {
       start: (signal) => hub.start(signal),

@@ -43,6 +43,8 @@ export const accountPoolConfigSchema = z
       DEFAULT_MODEL_GATEWAY_CONFIG.switchThreshold,
     ),
     allowClaudeOAuthAcrossHarnesses: z.boolean().default(false),
+    xUsageRefresh: z.boolean().default(false),
+    antigravityUsageRefresh: z.boolean().default(false),
     chains: chainsSchema.default(DEFAULT_CHAINS),
     threadChains: threadChainsSchema.default({}),
     modelMap: modelMapSchema.default(DEFAULT_MODEL_MAP),
@@ -59,6 +61,8 @@ export const accountPoolConfigSetInputSchema = z
     codexUpstreamBaseUrl: httpUrlSchema.optional(),
     switchThreshold: switchThresholdSchema.optional(),
     allowClaudeOAuthAcrossHarnesses: z.boolean().optional(),
+    xUsageRefresh: z.boolean().optional(),
+    antigravityUsageRefresh: z.boolean().optional(),
     chains: chainsSchema.optional(),
     threadChains: threadChainsSchema.optional(),
     modelMap: modelMapSchema.optional(),
@@ -161,18 +165,22 @@ export type ApiCreditSnapshot = z.infer<typeof apiCreditSnapshotSchema>;
 export const xUsageSnapshotSchema = z.object({
   plan: z.string().trim().min(1).max(40),
   weeklyUtilization: z.number().min(0).max(1),
-  resetDate: z.string().date(),
+  resetDate: z.string().date().optional(),
+  resetAt: z.number().int().nonnegative().optional(),
   observedAt: z.number().int().nonnegative(),
-  extraSpentUsd: z.number().nonnegative(),
-  extraBalanceUsd: z.number(),
+  extraSpentUsd: z.number().nonnegative().optional(),
+  extraBalanceUsd: z.number().optional(),
+  source: z.literal("grok").optional(),
 }).strict();
 export type XUsageSnapshot = z.infer<typeof xUsageSnapshotSchema>;
 export const antigravityUsageSnapshotSchema = z.object({
   plan: z.string().trim().min(1).max(80),
   observedAt: z.number().int().nonnegative(),
+  source: z.literal("agy").optional(),
   groups: z.array(z.object({
     name: z.string().trim().min(1).max(60),
     weeklyUtilization: z.number().min(0).max(1),
+    resetAt: z.number().int().nonnegative().optional(),
   }).strict()).min(1).max(8),
 }).strict();
 export type AntigravityUsageSnapshot = z.infer<typeof antigravityUsageSnapshotSchema>;

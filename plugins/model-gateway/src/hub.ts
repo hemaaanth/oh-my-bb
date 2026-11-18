@@ -15,6 +15,8 @@ import type {
 } from "./contracts.js";
 
 import { createClaudeAdapter } from "./upstreams/claude-adapter.js";
+import { GROK_BUILD_CREDENTIAL, GROK_BUILD_URL, grokBuildHeaders } from "./upstreams/grok-build.js";
+import { CURSOR_COMPOSER_CREDENTIAL, CURSOR_COMPOSER_URL, cursorComposerResponse } from "./upstreams/cursor-composer.js";
 import { fetchApiSpend, supportsApiSpend } from "./upstreams/api-spend.js";
 import {
   createCodexAdapter,
@@ -2285,8 +2287,28 @@ export class AccountPoolHub {
         account,
       );
       const headers = adapter.requestHeaders(request.headers, account, secret);
+      const localCursor = account.baseUrl === CURSOR_COMPOSER_URL && secret.kind === "api-key" && secret.apiKey === CURSOR_COMPOSER_CREDENTIAL;
+      if (localCursor) {
+        if (request.method !== "POST" || url.href !== `${CURSOR_COMPOSER_URL}/responses`)
+          throw new UpstreamConnectionError("Cursor Composer only accepts the Responses endpoint.");
+        const response = await cursorComposerResponse(body, controller.signal).catch((cause: unknown) => {
+          throw new UpstreamConnectionError("Cursor Composer local sign-in is unavailable.", { cause });
+        });
+        return { response, controller, release };
+      }
+      const localGrok = account.baseUrl === GROK_BUILD_URL && secret.kind === "api-key" && secret.apiKey === GROK_BUILD_CREDENTIAL;
+      if (localGrok) {
+        if (request.method !== "POST" || url.href !== `${GROK_BUILD_URL}/responses`)
+          throw new UpstreamConnectionError("Grok Build only accepts the Responses endpoint.");
+        const native = await grokBuildHeaders().catch((cause: unknown) => {
+          throw new UpstreamConnectionError("Grok Build local sign-in is unavailable.", { cause });
+        });
+        controller.signal.throwIfAborted();
+        for (const [name, value] of Object.entries(native)) headers.set(name, value);
+      }
       const response = await this.options
         .fetch(url, {
+          ...(localGrok ? { redirect: "error" as const } : {}),
           method: request.method,
           headers,
           ...(request.method === "GET" || request.method === "HEAD"

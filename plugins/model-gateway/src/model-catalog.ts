@@ -47,6 +47,9 @@ export interface CompatibleKeyModel {
  */
 
 export const COMPATIBLE_KEY_MODELS: Record<string, CompatibleKeyModel> = {
+  "composer-2.5": {
+    contextWindow: 200000, maxTokens: 64000, input: ["text"], displayName: "Composer 2.5 (Cursor)",
+  },
   "openai-api-gpt-6.2-sol": {
     contextWindow: 1050000, maxTokens: 128000, input: ["text", "image"], displayName: "6.2-Sol (OpenAI API)",
   },

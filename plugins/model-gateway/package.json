@@ -32,6 +32,7 @@
     "icons/gateway.svg",
     "skills/model-gateway/SKILL.md",
     "scripts/apply-setup-files.mjs",
+    "scripts/cursor-tool-proxy.mjs",
     "LICENSE",
     "THIRD_PARTY.md",
     "README.md",
