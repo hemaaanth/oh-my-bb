@@ -9,7 +9,7 @@ const sidebar = { component: app.navPanels.find(({ id }) => id === "waterfall")!
 
 const base: PluginSidebarThread = {
   id: "thr_one", projectId: "proj_alpha", title: "First run", titleFallback: null, displayTitle: "First run",
-  parentThreadId: null, parentNotifications: "all", lifecycleOwnerThreadId: null, sourceThreadId: null, sectionId: null,
+  parentThreadId: null, parentNotifications: "auto", lifecycleOwnerThreadId: null, sourceThreadId: null, sectionId: null,
   originKind: null, originPluginId: null, providerId: "codex", status: "idle", runtimeStatus: "idle",
   queuedWork: "none", hasPendingInteraction: false,
   activity: { workflows: 0, backgroundAgents: 0, backgroundCommands: 0, planMode: 0 },
