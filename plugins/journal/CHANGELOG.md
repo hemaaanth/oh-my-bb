@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Drop the unused legacy `journal_feed_events` table. Traces reads BB's own thread events, so Journal no longer keeps a copy.
+
 - Stop hidden workspace catch-up requests; cache by content, coalesce concurrent requests, and throttle automatic generation to once per 15 minutes. Reserve 100 of the 500 automatic attempts for thread summaries and use incremental conversation for updates.
 
 - Make the Summary refresh button generate an update, with a standard icon, progress/errors, visible generation age, and an explanation when automatic summaries hit the daily cap.

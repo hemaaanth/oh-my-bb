@@ -595,6 +595,8 @@ export default async function plugin(bb: BbPluginApi) {
     CREATE TABLE IF NOT EXISTS journal_brief_pending (thread_id TEXT PRIMARY KEY, idle_at INTEGER NOT NULL);`,
     `ALTER TABLE journal_ai_usage ADD COLUMN usage_unknown INTEGER NOT NULL DEFAULT 0;`,
     `ALTER TABLE journal_auto_ai_budget ADD COLUMN brief_attempts INTEGER NOT NULL DEFAULT 0;`,
+    // The legacy Traces feed is no longer written or read; Traces reads BB's own events instead.
+    `DROP TABLE IF EXISTS journal_feed_events;`,
   ]);
 
   // Side chats are forks: BB records their owner in sourceThreadId, not parentThreadId.
