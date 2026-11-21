@@ -171,16 +171,24 @@ export const xUsageSnapshotSchema = z.object({
   extraSpentUsd: z.number().nonnegative().optional(),
   extraBalanceUsd: z.number().optional(),
   source: z.literal("grok").optional(),
+  /** Signed-in Grok account, read from the Grok CLI login. */
+  email: z.string().email().optional(),
 }).strict();
 export type XUsageSnapshot = z.infer<typeof xUsageSnapshotSchema>;
 export const antigravityUsageSnapshotSchema = z.object({
-  plan: z.string().trim().min(1).max(80),
+  /** The agy report names no plan. Older snapshots stored a placeholder here. */
+  plan: z.string().trim().min(1).max(80).optional(),
   observedAt: z.number().int().nonnegative(),
   source: z.literal("agy").optional(),
+  /** Signed-in Google account, read from the agy sign-in log line. */
+  email: z.string().email().optional(),
   groups: z.array(z.object({
     name: z.string().trim().min(1).max(60),
     weeklyUtilization: z.number().min(0).max(1),
     resetAt: z.number().int().nonnegative().optional(),
+    /** Present only when agy reports a five-hour bucket for the group. */
+    fiveHourUtilization: z.number().min(0).max(1).optional(),
+    fiveHourResetAt: z.number().int().nonnegative().optional(),
   }).strict()).min(1).max(8),
 }).strict();
 export type AntigravityUsageSnapshot = z.infer<typeof antigravityUsageSnapshotSchema>;

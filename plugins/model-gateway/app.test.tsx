@@ -590,11 +590,34 @@ describe("Model usage footer", () => {
     } as never });
     const heading = await slot.findByText("Grok + Cursor");
     expect(heading.closest("details")?.open).toBe(false);
-    expect(slot.getByText("Premium · 26% used")).toBeTruthy();
+    const summary = heading.closest("summary")!;
+    expect(summary.textContent).toBe("Grok + CursorPremium·26%");
+    expect(summary.querySelector(".group-open\\:inline")?.textContent).toBe("Premium");
+    expect((summary.querySelector(".bg-warning, .bg-success, .bg-destructive") as HTMLElement).style.width).toBe("26%");
     fireEvent.click(heading.closest("summary")!);
     expect(slot.getByRole("progressbar", { name: "Grok + Cursor 7d usage" }).getAttribute("aria-valuenow")).toBe("26");
     expect(slot.getByText("$0.00 extra credits · $0.02 used this month")).toBeTruthy();
-    expect(slot.getByText("Reset · Nov 18")).toBeTruthy();
+    expect(slot.getByText(/^Updated /u)).toBeTruthy();
+    expect(slot.queryByText(/Reset ·|Checked/u)).toBeNull();
+    expect(heading.closest("details")?.querySelector("a")).toBeNull();
+  });
+
+  it("names Grok and Antigravity panels by their signed-in email", async () => {
+    const footer = app.experimentalSidebarFooterItems.find((item) => item.id === "gateway-usage");
+    if (footer?.kind !== "disclosure") throw new Error("Missing Gateway usage disclosure");
+    const slot = renderSlot(footer, { dismiss: () => {} }, { rpc: {
+      "account.list": () => [],
+      "usage.xSnapshot": () => ({ plan: "SuperGrok", weeklyUtilization: 0.12, observedAt: Date.now(), email: "grok@example.com" }),
+      "usage.antigravitySnapshot": () => ({
+        plan: "Weekly quota", observedAt: Date.now(), email: "google@example.com",
+        groups: [{ name: "Gemini Models", weeklyUtilization: 0.01 }],
+      }),
+    } as never });
+    expect(await slot.findByText("grok@example.com")).toBeTruthy();
+    expect(slot.getByText("google@example.com")).toBeTruthy();
+    expect(slot.queryByText("Grok + Cursor")).toBeNull();
+    expect(slot.queryByText(/Weekly quota/u)).toBeNull();
+    expect(slot.getByText("google@example.com").closest("summary")?.textContent).toBe("google@example.com1%");
   });
 
   it("shows Antigravity weekly quotas by model group without requiring a routing account", async () => {
@@ -604,14 +627,19 @@ describe("Model usage footer", () => {
       "account.list": () => [],
       "usage.antigravitySnapshot": () => ({
         plan: "Starter", observedAt: Date.now(),
-        groups: [{ name: "Gemini", weeklyUtilization: 0 }, { name: "Claude/GPT", weeklyUtilization: 0.14 }],
+        groups: [
+          { name: "Gemini Models", weeklyUtilization: 0, fiveHourUtilization: 0.3 },
+          { name: "Claude and GPT models", weeklyUtilization: 0.14 },
+        ],
       }),
     } as never });
     const heading = await slot.findByText("Google Antigravity");
-    expect(slot.getByText("Starter · 14% used")).toBeTruthy();
+    expect(heading.closest("summary")?.textContent).toBe("Google AntigravityStarter·30%");
     fireEvent.click(heading.closest("summary")!);
-    expect(slot.getByRole("progressbar", { name: "Antigravity Gemini usage" }).getAttribute("aria-valuenow")).toBe("0");
-    expect(slot.getByRole("progressbar", { name: "Antigravity Claude/GPT usage" }).getAttribute("aria-valuenow")).toBe("14");
+    expect(slot.getByRole("progressbar", { name: "Antigravity Gemini 5h usage" }).getAttribute("aria-valuenow")).toBe("30");
+    expect(slot.getByRole("progressbar", { name: "Antigravity Gemini 7d usage" }).getAttribute("aria-valuenow")).toBe("0");
+    expect(slot.getByRole("progressbar", { name: "Antigravity Other usage" }).getAttribute("aria-valuenow")).toBe("14");
+    expect(slot.getByText(/^Updated /u)).toBeTruthy();
   });
 
   it("shows Codex one-off reset credits", async () => {

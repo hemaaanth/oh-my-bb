@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { antigravityUsageSnapshotSchema } from "./contracts.js";
@@ -20,21 +23,42 @@ const usageReport = z.object({
   }),
 });
 
-export function parseAntigravityUsageReport(value: unknown, observedAt: number) {
+/** agy logs "OAuth: authenticated successfully as <email>" when it signs in. */
+export function antigravityEmailFromLog(log: string): string | undefined {
+  const email = /authenticated successfully as (\S+@\S+)/u.exec(log)?.[1];
+  return email !== undefined && z.string().email().safeParse(email).success ? email : undefined;
+}
+
+export function parseAntigravityUsageReport(value: unknown, observedAt: number, email?: string) {
   const { command } = usageReport.parse(value);
   const groups = command.data.groups.flatMap(({ name, buckets }) => {
-    const weekly = buckets.find((bucket) => bucket.window === "weekly" && bucket.remaining_fraction !== undefined);
+    const bucket = (window: string) => buckets.find((candidate) => candidate.window === window && candidate.remaining_fraction !== undefined);
+    const time = (value: string | undefined) => { const at = Date.parse(value ?? ""); return Number.isFinite(at) ? at : undefined; };
+    const weekly = bucket("weekly");
     if (weekly?.remaining_fraction === undefined) return [];
-    const resetAt = Date.parse(weekly.reset_time ?? "");
-    return [{ name, weeklyUtilization: 1 - weekly.remaining_fraction, resetAt: Number.isFinite(resetAt) ? resetAt : undefined }];
+    const fiveHour = bucket("five_hour");
+    return [{
+      name, weeklyUtilization: 1 - weekly.remaining_fraction, resetAt: time(weekly.reset_time),
+      ...(fiveHour?.remaining_fraction === undefined ? {} : {
+        fiveHourUtilization: 1 - fiveHour.remaining_fraction, fiveHourResetAt: time(fiveHour.reset_time),
+      }),
+    }];
   });
   // The CLI report has no plan identifier.
-  return antigravityUsageSnapshotSchema.parse({ plan: "Weekly quota", observedAt, groups, source: "agy" });
+  return antigravityUsageSnapshotSchema.parse({ observedAt, groups, source: "agy", ...(email === undefined ? {} : { email }) });
 }
 
 export async function readAntigravityUsage(signal?: AbortSignal) {
-  const { stdout } = await exec("agy", ["-p", "/usage", "--output-format", "json", "--print-timeout", "12s"], {
-    signal, timeout: 15_000, maxBuffer: 256_000,
-  });
-  return parseAntigravityUsageReport(JSON.parse(stdout), Date.now());
+  // A private log file gives the signed-in email; the usage report omits it.
+  const directory = await mkdtemp(join(tmpdir(), "model-gateway-agy-"));
+  const logFile = join(directory, "agy.log");
+  try {
+    const { stdout } = await exec("agy", ["-p", "/usage", "--output-format", "json", "--print-timeout", "12s", "--log-file", logFile], {
+      signal, timeout: 15_000, maxBuffer: 256_000,
+    });
+    const email = antigravityEmailFromLog(await readFile(logFile, "utf8").catch(() => ""));
+    return parseAntigravityUsageReport(JSON.parse(stdout), Date.now(), email);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }

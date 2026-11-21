@@ -33,7 +33,7 @@ import {
   useRpc,
 } from "@get-bb/plugin-sdk/app";
 import { modelDisplayName } from "./src/model-catalog.js";
-import { FxIcon, GatewayChatGPTIcon, GatewayClaudeIcon, NanocodexIcon } from "./provider-icons";
+import { FxIcon, GatewayAntigravityIcon, GatewayChatGPTIcon, GatewayClaudeIcon, GatewayGrokIcon, NanocodexIcon } from "./provider-icons";
 import "./app.css";
 import { GatewaySetup, GATEWAY_ICON } from "./gateway-setup.js";
 import { Button } from "@/components/ui/button";
@@ -459,7 +459,7 @@ function footerWindows(account: AccountSummary): Array<{ label: string; utilizat
     { label: "5h", utilization: account.fiveHourUtilization, resetAt: account.fiveHourResetAt },
     { label: "7d", utilization: account.sevenDayUtilization, resetAt: account.sevenDayResetAt },
     ...MODEL_FAMILIES.map((family) => ({
-      label: `7d · ${capitalize(family)}`,
+      label: capitalize(family),
       utilization: account.familyWeekly[family]?.utilization ?? null,
       resetAt: account.familyWeekly[family]?.resetAt ?? null,
     })),
@@ -470,8 +470,9 @@ function usagePercent(utilization: number | null): number | null {
   return utilization === null ? null : Math.min(100, Math.max(0, Math.round(utilization * 100)));
 }
 
+/** Green under 60% used, yellow under 90%, red from 90%. */
 function UsageFill({ used }: { used: number | null }) {
-  return <div className={cn("h-full rounded-full", used !== null && used >= 98 ? "bg-destructive" : "bg-warning")}
+  return <div className={cn("h-full rounded-full", used === null || used < 60 ? "bg-success" : used < 90 ? "bg-warning" : "bg-destructive")}
     style={{ width: `${used ?? 0}%` }} />;
 }
 
@@ -488,7 +489,7 @@ function FooterUsageBar({ label, utilization, resetAt, resetVerb = "Resets", acc
   })();
   return (
     <div className="flex items-center gap-2 text-2xs tabular-nums" title={title}>
-      <span className="w-12 shrink-0 text-muted-foreground">{label}</span>
+      <span className="w-14 shrink-0 truncate whitespace-nowrap text-muted-foreground">{label}</span>
       <div role="progressbar" aria-label={`${account} ${label} usage`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={used ?? undefined}
         className={cn("h-1 min-w-0 flex-1", segments === undefined ? "overflow-hidden rounded-full bg-muted" : "flex gap-0.5")}>
         {segments === undefined ? <UsageFill used={used} /> : segments.map((segment, index) =>
@@ -540,6 +541,55 @@ function resetCreditsLabel({ available }: ResetCredits): string {
   return `${available} ${available === 1 ? "reset" : "resets"} available`;
 }
 
+/**
+ * One usage panel layout for every provider:
+ * header = icon, account email, "Plan · peak%"; rows = label, bar, percent, countdown;
+ * footer = provider extras on the left, "Updated …" on the right.
+ */
+function UsagePanel({ icon, name, title, summary, startOpen = false, note = null, observedAt, observedLabel = "Updated", children }: {
+  icon: ReactNode; name: string; title?: string; summary: ReactNode; startOpen?: boolean;
+  note?: ReactNode; observedAt: number | null; observedLabel?: string; children: ReactNode;
+}) {
+  return (
+    <details className="group px-3 py-2" open={startOpen}>
+      <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+        {icon}
+        <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground" title={title ?? name}>{name}</span>
+        {summary === null ? null : <span className="flex shrink-0 items-center gap-1.5 text-2xs tabular-nums text-muted-foreground">{summary}</span>}
+        <Icon name="ChevronDown" className="size-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+      {children}
+      {note === null && observedAt === null ? null : <div className="mt-1.5 flex justify-between gap-2 text-2xs text-muted-foreground">
+        <span className="min-w-0 truncate">{note}</span>
+        {observedAt === null ? null : <span className="shrink-0">{observedLabel} {relative(observedAt)}</span>}
+      </div>}
+    </details>
+  );
+}
+
+/**
+ * Header summary: a small bar and percentage for the most-used window.
+ * The plan name ("Max") shows only while the panel is open.
+ */
+function usageSummary(plan: string | null | undefined, utilizations: Array<number | null>): ReactNode {
+  const known = utilizations.filter((value): value is number => value !== null);
+  const peak = known.length === 0 ? null : usagePercent(Math.max(...known));
+  if (!plan && peak === null) return null;
+  return <>
+    {plan ? <span className="hidden group-open:inline">{capitalize(plan)}</span> : null}
+    {plan && peak !== null ? <span className="hidden group-open:inline">·</span> : null}
+    {peak === null ? null : <>
+      <span aria-hidden="true" className="h-1 w-8 overflow-hidden rounded-full bg-muted"><UsageFill used={peak} /></span>
+      <span className="w-7 text-right">{peak}%</span>
+    </>}
+  </>;
+}
+
+/** Antigravity reports long group names ("Claude and GPT models"). Rows show "Gemini" or "Other". */
+function antigravityGroupLabel(name: string): string {
+  return /gemini/iu.test(name) ? "Gemini" : "Other";
+}
+
 function GatewayAccountPanel({ account, reconnect, startOpen, linkedCredits = [] }: {
   account: AccountSummary; reconnect: () => void; startOpen: boolean; linkedCredits?: ApiCreditSnapshot[];
 }) {
@@ -547,18 +597,18 @@ function GatewayAccountPanel({ account, reconnect, startOpen, linkedCredits = []
   const apiCredits = account.provider === "claude" ? account.apiCreditBenefit : null;
   const snapshot = account.apiCreditSnapshot;
   const grants = snapshot?.grants.filter((grant) => grant.expiresAt === null || grant.expiresAt > Date.now()) ?? [];
-  const summary = account.error ? "Needs attention" : snapshot ? `${usd(grants.reduce((sum, grant) => sum + grant.remainingUsd, 0))} API` : quotaSummary(account);
+  const summary = account.error ? "Needs attention"
+    : snapshot ? `${usd(grants.reduce((sum, grant) => sum + grant.remainingUsd, 0))} API`
+      : usageSummary(account.subscriptionType, windows.map((window) => window.utilization));
   // Snapshots cached before reset credits existed have no such field.
   const resetCredits = account.resetCredits ?? null;
+  const name = snapshot?.organizationName ?? account.email ?? account.label;
   return (
-    <details className="group px-3 py-2" open={startOpen}>
-      <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
-        {account.provider === "claude" ? <GatewayClaudeIcon className="size-4 shrink-0" /> :
-            <GatewayChatGPTIcon className="size-4 shrink-0" />}
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground" title={snapshot?.organizationName ?? account.email ?? account.label}>{snapshot?.organizationName ?? account.email ?? account.label}</span>
-        {summary === null ? null : <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">{summary}</span>}
-        <Icon name="ChevronDown" className="size-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
-      </summary>
+    <UsagePanel name={name} summary={summary} startOpen={startOpen} observedAt={account.observedAt}
+      observedLabel={account.error === null ? "Updated" : "Last successful update"}
+      icon={account.provider === "claude" ? <GatewayClaudeIcon className="size-4 shrink-0" /> : <GatewayChatGPTIcon className="size-4 shrink-0" />}
+      note={resetCredits === null ? null :
+        <span title="One-off resets that set a usage limit back to zero">{resetCreditsLabel(resetCredits)}</span>}>
       {snapshot ? <div className="mt-1.5">
         <CreditGrantBar grants={grants} account={account.label} title={snapshot.organizationName}
           note={` · Billing snapshot ${shortDate(snapshot.observedAt)}`} />
@@ -580,13 +630,7 @@ function GatewayAccountPanel({ account, reconnect, startOpen, linkedCredits = []
           account={account.label} title={credit.organizationName}
           note={` · Billing snapshot ${shortDate(credit.observedAt)}`} />)}
       </div>}
-      {account.observedAt === null && resetCredits === null ? null : <div className="mt-1.5 flex justify-between gap-2 text-2xs text-muted-foreground">
-        <span title={resetCredits === null ? undefined : "One-off resets that set a usage limit back to zero"}>
-          {resetCredits === null ? null : resetCreditsLabel(resetCredits)}
-        </span>
-        {account.observedAt === null ? null : <span>{account.error === null ? "Updated" : "Last successful update"} {relative(account.observedAt)}</span>}
-      </div>}
-    </details>
+    </UsagePanel>
   );
 }
 
@@ -614,42 +658,38 @@ function XUsagePanel({ usage }: { usage: XUsageSnapshot }) {
   const resetAt = usage.resetAt ?? (usage.resetDate === undefined ? null : Date.parse(`${usage.resetDate}T12:00:00`));
   const creditText = usage.extraBalanceUsd === undefined ? null : `${usd(usage.extraBalanceUsd)} extra credits`;
   const spentText = usage.extraSpentUsd === undefined ? null : `${usd(usage.extraSpentUsd)} used this month`;
-  return <details className="group px-3 py-2">
-    <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
-      <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">Grok + Cursor</span>
-      <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">{usage.plan} · {usagePercent(usage.weeklyUtilization)}% used</span>
-      <Icon name="ChevronDown" className="size-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
-    </summary>
+  const note = [creditText, spentText].filter(Boolean).join(" · ");
+  return <UsagePanel icon={<GatewayGrokIcon className="size-4 shrink-0" />} name={usage.email ?? "Grok + Cursor"}
+    title={`${usage.email === undefined ? "" : `${usage.email} · `}Grok and Cursor share this weekly usage`}
+    summary={usageSummary(usage.plan, [usage.weeklyUtilization])} note={note === "" ? null : note} observedAt={usage.observedAt}>
     <div className="mt-1.5 space-y-1">
       <FooterUsageBar label="7d" account="Grok + Cursor" utilization={usage.weeklyUtilization} resetAt={resetAt}
-        title="Shared weekly usage" />
-      {creditText === null && spentText === null ? null : <p className="text-2xs text-muted-foreground">
-        {[creditText, spentText].filter(Boolean).join(" · ")}
-      </p>}
-      <p className="flex justify-between gap-2 text-2xs text-muted-foreground">
-        <a href="https://grok.com/dashboard/usage" target="_blank" rel="noreferrer" className="underline">
-          {usage.source === "grok" ? `Checked ${relative(usage.observedAt)}` : `Snapshot · ${shortDate(usage.observedAt)}`}
-        </a>
-        {resetAt === null ? null : <span>Reset · {shortDate(resetAt)}</span>}
-      </p>
+        title="Shared Grok and Cursor weekly usage" />
     </div>
-  </details>;
+  </UsagePanel>;
 }
 
 function AntigravityUsagePanel({ usage }: { usage: AntigravityUsageSnapshot }) {
-  const highest = Math.max(...usage.groups.map(({ weeklyUtilization }) => weeklyUtilization));
-  return <details className="group px-3 py-2">
-    <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
-      <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">Google Antigravity</span>
-      <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">{usage.plan} · {usagePercent(highest)}% used</span>
-      <Icon name="ChevronDown" className="size-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
-    </summary>
+  // Snapshots saved before the reader dropped it carry a placeholder plan.
+  const plan = usage.plan === "Weekly quota" ? null : usage.plan;
+  return <UsagePanel icon={<GatewayAntigravityIcon className="size-4 shrink-0" />} name={usage.email ?? "Google Antigravity"}
+    title={`${usage.email === undefined ? "" : `${usage.email} · `}Google Antigravity weekly quota`}
+    summary={usageSummary(plan, usage.groups.flatMap((group) => [group.weeklyUtilization, group.fiveHourUtilization ?? null]))}
+    observedAt={usage.observedAt}>
     <div className="mt-1.5 space-y-1">
-      {usage.groups.map((group) => <FooterUsageBar key={group.name} label={group.name} account="Antigravity"
-        utilization={group.weeklyUtilization} resetAt={group.resetAt ?? null} title={`${group.name} shared weekly quota`} />)}
-      <p className="text-2xs text-muted-foreground">{usage.source === "agy" ? `Checked ${relative(usage.observedAt)}` : `Snapshot · ${shortDate(usage.observedAt)}`}</p>
+      {usage.groups.flatMap((group) => {
+        const label = antigravityGroupLabel(group.name);
+        // A group with a five-hour window gets "Gemini 5h" and "Gemini 7d" rows; otherwise one "Gemini" row.
+        const weekly = <FooterUsageBar key={`${group.name}:7d`} label={group.fiveHourUtilization === undefined ? label : `${label} 7d`}
+          account="Antigravity" utilization={group.weeklyUtilization} resetAt={group.resetAt ?? null} title={`${group.name}: weekly quota`} />;
+        return group.fiveHourUtilization === undefined ? [weekly] : [
+          <FooterUsageBar key={`${group.name}:5h`} label={`${label} 5h`} account="Antigravity"
+            utilization={group.fiveHourUtilization} resetAt={group.fiveHourResetAt ?? null} title={`${group.name}: five-hour quota`} />,
+          weekly,
+        ];
+      })}
     </div>
-  </details>;
+  </UsagePanel>;
 }
 
 function GatewayUsageFooter({ dismiss }: { dismiss: () => void }) {

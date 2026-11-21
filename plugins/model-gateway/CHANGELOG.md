@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Collapsed usage panels show a small colored bar beside the peak percentage and hide the plan name until opened. Usage bars are green under 60% used, yellow under 90%, and red from 90%.
+
+- Show Antigravity five-hour windows when agy reports them, as `Gemini 5h` and `Gemini 7d` rows.
+
+- Give every Gateway usage panel the same layout. The header shows the provider icon, the signed-in email, and `Plan · peak%`. Each row shows a short label, the bar, the percentage, and the reset countdown. The footer shows provider extras on the left and `Updated … ago` on the right. Grok and Antigravity now show their signed-in email and icon. Antigravity rows read `Gemini` and `Other`. Grok drops the separate reset date and the underlined dashboard link.
+
 - Add native Cursor Composer 2.5 routing through Cursor Agent's official ACP interface. Keep the session in an isolated temporary workspace, return tool calls to the originating Responses client for approval and execution, and expose the route to BB, Nano Codex, OMP, and Pi without depending on Magpie or another gateway.
 
 - Refresh X subscription usage from Grok's official ACP billing method and Google Antigravity usage from the signed-in local client. Show both in the Gateway usage footer, preserve the last successful snapshot when refresh fails, and keep either background refresh independently configurable.
