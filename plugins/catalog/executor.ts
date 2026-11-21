@@ -169,13 +169,15 @@ export class McpConnectionClient {
   private session: Promise<string> | null = null;
   private nextId = 1;
 
-  constructor(readonly url: string, private readonly token: TokenProvider, private readonly fetcher: typeof fetch = fetch) {}
+  constructor(readonly url: string, private readonly token: TokenProvider, private readonly fetcher: typeof fetch = fetch,
+    private readonly unauthorized?: (accessToken: string) => void) {}
 
   private async post(message: Record<string, unknown>, sessionId: string | null, signal?: AbortSignal, refresh = false) {
+    const accessToken = await this.token({ refresh });
     const response = await this.fetcher(this.url, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${await this.token({ refresh })}`,
+        authorization: `Bearer ${accessToken}`,
         "content-type": "application/json",
         accept: "application/json, text/event-stream",
         "mcp-protocol-version": PROTOCOL_VERSION,
@@ -184,14 +186,16 @@ export class McpConnectionClient {
       body: JSON.stringify({ jsonrpc: "2.0", ...message }),
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(CALL_TIMEOUT_MS)]) : AbortSignal.timeout(CALL_TIMEOUT_MS),
     });
-    return { response, body: await response.text() };
+    return { response, body: await response.text(), accessToken };
   }
 
   /** A 401 can mean the access token just expired, so refresh once and try again. */
   private async authorized(message: Record<string, unknown>, sessionId: string | null, signal?: AbortSignal) {
     const first = await this.post(message, sessionId, signal);
     if (first.response.status !== 401) return first;
-    return this.post(message, sessionId, signal, true);
+    const retried = await this.post(message, sessionId, signal, true);
+    if (retried.response.status === 401) this.unauthorized?.(retried.accessToken);
+    return retried;
   }
 
   private open(signal?: AbortSignal): Promise<string> {

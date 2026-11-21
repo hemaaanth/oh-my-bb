@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Mark a connection signed out when MCP still returns 401 after a successful token refresh. Persist that state across plugin reloads.
+
 ## 0.3.1
 
 - Remove the one-time `scripts/executor-skill-apps.mjs` migration script. The move to Executor 2 is complete.

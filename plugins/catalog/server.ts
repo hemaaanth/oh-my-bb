@@ -325,7 +325,10 @@ export default async function plugin(bb: BbPluginApi) {
       if (!grant) throw signInAgain(connection);
       if (!refresh && grant.expiresAt - Date.now() > TOKEN_MARGIN_MS) return grant.accessToken;
       return (await refreshGrant(connection, grant)).accessToken;
-    }, globalFetch);
+    }, globalFetch, (rejectedToken) => {
+      // A sign-in may have replaced this grant while the request was in flight.
+      if (currentGrant(connection)?.accessToken === rejectedToken) forgetGrant(connection);
+    });
     clients.set(connection, client);
     return client;
   }

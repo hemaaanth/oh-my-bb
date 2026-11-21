@@ -142,6 +142,47 @@ describe("Catalog Executor connections", () => {
       expect((await harness.behavior.callRpc("executorOverview", null, { experimental_caller: { kind: "client" } })).connections[0]!.connected).toBe(false);
     });
 
+    it("clears a connection when MCP refuses even a successfully refreshed token", async () => {
+      const executor = fakeExecutor({ connections: ["gtm"] });
+      let refuse = false;
+      vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
+        if (refuse && new URL(String(input)).pathname === "/mcp") return Promise.resolve(new Response(null, { status: 401 }));
+        return executor.fetcher(input, init);
+      });
+      let host = catalogHost();
+      await plugin(host.bb);
+      await host.harness.behavior.runCli(["executor", "use", "gtm", "--global"]);
+      await signIn(host.harness, executor, "gtm");
+      refuse = true;
+      await expect(host.harness.behavior.callAgentTool("executor_execute", { code: "x" }, { threadId: "thr", projectId: "proj_gtm" })).rejects.toThrow(/401/);
+      expect((await host.harness.behavior.callRpc("executorOverview", null, { experimental_caller: { kind: "client" } })).connections[0]!.connected).toBe(false);
+      host = await host.harness.lifecycle.reload(plugin);
+      expect((await host.harness.behavior.runCli(["executor", "status"])).stdout).toContain("connection\tgtm\tnot signed in");
+    });
+
+    it("preserves a new sign-in when an older in-flight token is rejected", async () => {
+      const executor = fakeExecutor({ connections: ["gtm"] });
+      const host = catalogHost();
+      let refuse = false;
+      let refusals = 0;
+      vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) => {
+        if (refuse && new URL(String(input)).pathname === "/mcp") {
+          if (++refusals === 2) await signIn(host.harness, executor, "gtm");
+          return new Response(null, { status: 401 });
+        }
+        return executor.fetcher(input, init);
+      });
+      await plugin(host.bb);
+      await host.harness.behavior.runCli(["executor", "use", "gtm", "--global"]);
+      await signIn(host.harness, executor, "gtm");
+      refuse = true;
+      const context = { threadId: "thr", projectId: "proj_gtm" };
+      await expect(host.harness.behavior.callAgentTool("executor_execute", { code: "x" }, context)).rejects.toThrow(/401/);
+      expect((await host.harness.behavior.callRpc("executorOverview", null, { experimental_caller: { kind: "client" } })).connections[0]!.connected).toBe(true);
+      refuse = false;
+      expect(await host.harness.behavior.callAgentTool("executor_execute", { code: "x" }, context)).toBe("ran execute");
+    });
+
     it("keeps the grant across a restart, refreshes it, and asks for a new sign-in when Executor refuses", async () => {
       const executor = fakeExecutor({ connections: ["gtm"] });
       vi.stubGlobal("fetch", executor.fetcher);
