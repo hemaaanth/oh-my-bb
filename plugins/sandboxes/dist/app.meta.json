@@ -1,12 +1,12 @@
 {
   "sdkMajor": 0,
-  "sdkVersion": "0.6.132",
+  "sdkVersion": "0.6.157",
   "artifactFormatVersion": 1,
   "pluginId": "sandboxes",
   "pluginVersion": "0.3.2",
   "builtWith": {
-    "bbVersion": "0.49.0",
-    "pluginSdkVersion": "0.6.132"
+    "bbVersion": "0.50.1",
+    "pluginSdkVersion": "0.6.157"
   },
   "runtimeSlots": [
     "classVarianceAuthority",
@@ -17,6 +17,7 @@
     "radixSelect",
     "react",
     "reactDom",
-    "tailwindMerge"
+    "tailwindMerge",
+    "zod"
   ]
 }
