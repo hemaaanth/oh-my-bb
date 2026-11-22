@@ -33,6 +33,7 @@ export default function plugin(bb: BbPluginApi) {
   const cache = new Map<string, CacheEntry>();
   const pending = new Map<string, Promise<CacheEntry>>();
   const signalTimers = new Map<string, NodeJS.Timeout>();
+  let stopped = false;
   const promptHost = bb.hosts.experimental_client({ contract: promptHostContract });
   const fleet = registerFleet(bb);
   let epoch = 0;
@@ -164,10 +165,16 @@ export default function plugin(bb: BbPluginApi) {
     }
   }
   function signal(threadId: string) {
-    if (signalTimers.has(threadId)) return;
+    if (stopped || signalTimers.has(threadId)) return;
     signalTimers.set(threadId, setTimeout(() => {
       signalTimers.delete(threadId);
-      bb.realtime.publish(CHANNEL, { threadId });
+      try { bb.realtime.publish(CHANNEL, { threadId }); }
+      catch (error) {
+        // BB can discard a failed load without running onDispose. Stop here, or the
+        // leaked thread:changed subscription throws on every thread change.
+        if (error instanceof Error && error.name === "PluginContextStaleError") stop();
+        else throw error;
+      }
     }, SIGNAL_DELAY_MS));
   }
   function invalidate(ids: readonly (string | null)[], threadId: string, parentThreadId: string | null, rewritten = false) {
@@ -197,7 +204,12 @@ export default function plugin(bb: BbPluginApi) {
     if (hard || changes.some((change) => change === "events-appended" || change === "status-changed" || change === "title-changed" || change === "environment-changed"))
       invalidate([id], id, null, hard);
   } });
-  bb.onDispose(() => { unsubscribe(); for (const timer of signalTimers.values()) clearTimeout(timer); signalTimers.clear(); cache.clear(); pending.clear(); });
+  function stop() {
+    if (stopped) return;
+    stopped = true;
+    unsubscribe(); for (const timer of signalTimers.values()) clearTimeout(timer); signalTimers.clear(); cache.clear(); pending.clear();
+  }
+  bb.onDispose(stop);
   bb.rpc.register(rpcContract, { traces_thread: ({ threadId, includeChildren, reveal }) => trace(threadId, includeChildren, reveal),
     traces_prompt: ({ threadId, call, reveal }) => prompt(threadId, call, reveal) });
 

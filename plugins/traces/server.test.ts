@@ -56,6 +56,29 @@ describe("SDK trace RPC and CLI", () => {
     expect(reads).toBe(readsBeforeAppend + 1); // The appended page starts after the cached last sequence.
     await harness.lifecycle.dispose();
   });
+  it("unsubscribes when BB discards the instance without running onDispose", async () => {
+    let notify: ((event: { id?: string; changes: readonly string[] }) => void) | null = null;
+    const { bb, harness } = createFakePluginHost({ pluginId: "traces" });
+    harness.sdk.stub("subscribe", ({ callback }) => { notify = callback as typeof notify; return () => { notify = null; }; });
+    let discarded = false;
+    let publishes = 0;
+    // BB's failed-load path invalidates the handle but skips dispose hooks.
+    const stale = new Proxy(bb, { get: (target, key) => key !== "realtime" ? Reflect.get(target, key) : { ...target.realtime,
+      publish: (...args: Parameters<typeof bb.realtime.publish>) => {
+        publishes++;
+        if (discarded) throw Object.assign(new Error("stale API handle"), { name: "PluginContextStaleError" });
+        return target.realtime.publish(...args);
+      } } });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      plugin(stale);
+      discarded = true;
+      notify!({ id: "thr_zombie", changes: ["events-appended"] });
+      await vi.advanceTimersByTimeAsync(350);
+      expect(publishes).toBe(1);
+      expect(notify).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
   it("coalesces append bursts and rereads rewritten or gapped histories", async () => {
     const thread = makeThreadResponse({ id: "thr_live", providerId: "pi", title: "Live", environmentId: null });
     let events: TraceEvent[] = [{ id: "start", threadId: thread.id, seq: 1, scope: { kind: "turn", turnId: "t1" },
