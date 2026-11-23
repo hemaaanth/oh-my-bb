@@ -11,6 +11,16 @@ export function evidenceAssets(name: string, props: Record<string, unknown>): st
     return typeof image === "string" && image.trim() ? [image.trim()] : [];
   });
   if (name === "Transcript") return typeof props.audio === "string" ? [props.audio] : [];
+  if (name === "BeforeAfter" && Array.isArray(props.items)) return props.items.flatMap(item => {
+    const src = item && typeof item === "object" ? (item as Record<string, unknown>).src : null;
+    return typeof src === "string" && src.trim() && !src.trim().startsWith("data:") && !/^https?:\/\//iu.test(src.trim()) ? [src.trim()] : [];
+  });
+  if (name === "Video") {
+    const out: string[] = [];
+    if (typeof props.src === "string" && props.src.trim() && !/^https?:\/\//iu.test(props.src.trim())) out.push(props.src.trim());
+    if (typeof props.poster === "string" && props.poster.trim()) out.push(props.poster.trim());
+    return out;
+  }
   if (name === "Compare" && !Array.isArray(props.rows)) {
     const read = readCompare(props.options as Value);
     return read.ok ? read.images.map(image => image.src) : [];

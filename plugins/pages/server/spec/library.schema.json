@@ -224,6 +224,9 @@
   "Hotspot": {
    "$ref": "#/$defs/Hotspot"
   },
+  "Video": {
+   "$ref": "#/$defs/Video"
+  },
   "ImageSearch": {
    "$ref": "#/$defs/ImageSearch"
   },
@@ -402,6 +405,7 @@
   "BeforeAfter",
   "Hotspots",
   "Hotspot",
+  "Video",
   "ImageSearch",
   "Scene",
   "Shader",
@@ -2751,6 +2755,31 @@
    ],
    "additionalProperties": false,
    "description": "One numbered point of Hotspots: x and y are percent across and down the picture (0 to 100), title names it, and text (Markdown) shows when it is picked."
+  },
+  "Video": {
+   "type": "object",
+   "properties": {
+    "src": {
+     "type": "string"
+    },
+    "caption": {
+     "type": "string"
+    },
+    "poster": {
+     "type": "string"
+    },
+    "loop": {
+     "type": "boolean"
+    },
+    "muted": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "src"
+   ],
+   "additionalProperties": false,
+   "description": "A video player with native playback controls for short recordings (MP4, WebM, MOV, OGV). src is a workspace/thread-storage file path, a data: video URL, or (on a published page) an http(s) URL. Optional caption sits below the player, and poster sets a preview frame."
   },
   "ImageSearch": {
    "type": "object",

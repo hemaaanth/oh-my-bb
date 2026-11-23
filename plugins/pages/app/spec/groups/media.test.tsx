@@ -62,6 +62,20 @@ describe("lightbox", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
     expect(document.activeElement).toBe(tile);
   });
+
+  it("loads local BeforeAfter images through host.loadImage", async () => {
+    const host: Host = {
+      ...fallbackHost,
+      loadImage: vi.fn(async (src: string) => ({ ok: true as const, url: `${pixel}#${src}` })),
+    };
+    const { container } = show(`BeforeAfter([{"label": "Before", "src": "proof/before.png", "alt": "Before state"}, {"label": "After", "src": "proof/after.png", "alt": "After state"}])`, host);
+    await vi.waitFor(() => {
+      const imgs = [...container.querySelectorAll("img")].map((img) => img.getAttribute("src"));
+      expect(imgs).toEqual([`${pixel}#proof/before.png`, `${pixel}#proof/after.png`]);
+    });
+    expect(host.loadImage).toHaveBeenCalledWith("proof/before.png");
+    expect(host.loadImage).toHaveBeenCalledWith("proof/after.png");
+  });
 });
 
 describe("Map", () => {
@@ -73,4 +87,43 @@ describe("Map", () => {
     expect(screen.getByRole("dialog", { name: "Here" }).textContent).toContain("A note.");
   });
 
+});
+
+describe("Video", () => {
+  const mp4 = "data:video/mp4;base64,AAAA";
+
+  it("renders a data: video with controls and caption", () => {
+    const { container } = show(`Video("${mp4}", "After fix")`);
+    const video = container.querySelector("video");
+    expect(video?.getAttribute("src")).toBe(mp4);
+    expect(video?.hasAttribute("controls")).toBe(true);
+    expect(screen.getByText("After fix")).toBeTruthy();
+  });
+
+  it("loads a local video file through host.loadAsset", async () => {
+    const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:proof-clip");
+    const revokeUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const host: Host = {
+      ...fallbackHost,
+      loadAsset: vi.fn(async () => ({ ok: true as const, type: "video/mp4", bytes: new Uint8Array([0, 0, 0, 1]).buffer })),
+    };
+    const { container, unmount } = show(`Video("out/demo.mp4", "Demo clip")`, host);
+    await vi.waitFor(() => {
+      expect(container.querySelector("video")?.getAttribute("src")).toBe("blob:proof-clip");
+    });
+    expect(host.loadAsset).toHaveBeenCalledWith("out/demo.mp4");
+    unmount();
+    expect(revokeUrl).toHaveBeenCalledWith("blob:proof-clip");
+    createUrl.mockRestore();
+    revokeUrl.mockRestore();
+  });
+
+  it("blocks remote video URLs in chat but allows them on published pages", () => {
+    const { container: chat } = show(`Video("https://example.test/demo.mp4")`, { ...fallbackHost, kind: "chat" });
+    expect(chat.querySelector("video")).toBeNull();
+    expect(chat.textContent).toContain("Remote video URLs are not loaded in chat");
+    cleanup();
+    const { container: page } = show(`Video("https://example.test/demo.mp4")`, { ...fallbackHost, kind: "page" });
+    expect(page.querySelector("video")?.getAttribute("src")).toBe("https://example.test/demo.mp4");
+  });
 });

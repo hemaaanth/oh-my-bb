@@ -293,6 +293,7 @@ Props marked `$binding<type>` accept a `$variable` reference for two-way binding
 - BeforeAfter: pictures side by side to compare
 - Hotspots: picture with numbered points
 - Hotspot: one point of Hotspots
+- Video: video player for short recordings
 - ImageSearch: photos found on the web for a query
 
 ### 3D & shaders (references/openui/gpu.md)

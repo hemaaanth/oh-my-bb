@@ -62,22 +62,39 @@ function useAsk<T>(method: WebMethod, input: Record<string, unknown> | null): { 
 }
 
 const dataImage = /^data:image\/[a-z0-9.+-]+[;,]/iu;
+const dataVideo = /^data:(?:video\/[a-z0-9.+-]+|audio\/webm)[;,]/iu;
 function webHref(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   try { const url = new URL(raw.trim()); return (url.protocol === "http:" || url.protocol === "https:") && url.hostname ? url.href : null; } catch { return null; }
 }
 const openWith = (openUrl: (url: string) => void, href: string) => (event: MouseEvent) => { event.preventDefault(); openUrl(href); };
 
-/** A picture src to show: a data: image as is; http(s) through the Pages image lookup, except on a published page, which has no lookups and loads it directly. */
+/** A picture src to show: a data: image as is; http(s) through the Pages image lookup (direct on a published page); local paths through host.loadImage. */
 function useImage(raw: unknown): { src?: string; error?: string } {
   const host = useHost();
   const text = typeof raw === "string" ? raw.trim() : "";
-  const remote = !dataImage.test(text) && webHref(text) !== null;
+  const isData = dataImage.test(text);
+  const remote = !isData && webHref(text) !== null;
+  const isLocal = Boolean(text && !isData && !remote);
   const proxy = remote && host.kind !== "page";
   const answer = useAsk<{ dataUrl?: unknown }>("image", proxy ? { url: text } : null);
+  const [local, setLocal] = useState<{ path: string; src?: string; error?: string }>();
+  useEffect(() => {
+    if (!isLocal) return;
+    let active = true;
+    void host.loadImage(text).then(
+      (result) => { if (active) setLocal(result.ok ? { path: text, src: result.url } : { path: text, error: result.error }); },
+      (error: unknown) => { if (active) setLocal({ path: text, error: error instanceof Error ? error.message : "Could not load this image." }); },
+    );
+    return () => { active = false; };
+  }, [isLocal, text, host.loadImage]);
   if (!text) return {};
-  if (!proxy) return remote || dataImage.test(text) ? { src: text } : { error: "That picture isn't an http(s) or data: image." };
-  return typeof answer.value?.dataUrl === "string" ? { src: answer.value.dataUrl } : { error: answer.error };
+  if (isData) return { src: text };
+  if (remote) {
+    if (!proxy) return { src: text };
+    return typeof answer.value?.dataUrl === "string" ? { src: answer.value.dataUrl } : { error: answer.error };
+  }
+  return local?.path === text ? { src: local.src, error: local.error } : {};
 }
 
 /** An image that may need the lookup. While it loads, a muted box of the same shape (`box`, else `className`); if it fails, the box says so, or nothing when `quiet`. */
@@ -536,6 +553,82 @@ function Credit({ image }: { image: Found }) {
   </p>;
 }
 
+const Video = defineComponent({
+  name: "Video",
+  props: z.object({
+    src: z.string(),
+    caption: z.string().optional(),
+    poster: z.string().optional(),
+    loop: z.boolean().optional(),
+    muted: z.boolean().optional(),
+  }),
+  description: "A video player with native playback controls for short recordings (MP4, WebM, MOV, OGV). src is a workspace/thread-storage file path, a data: video URL, or (on a published page) an http(s) URL. Optional caption sits below the player, and poster sets a preview frame.",
+  component: ({ props }) => {
+    const host = useHost();
+    const streaming = useIsStreaming();
+    const raw = typeof props.src === "string" ? props.src.trim() : "";
+    const isData = dataVideo.test(raw);
+    const remote = !isData ? webHref(raw) : null;
+    const isLocal = Boolean(raw && !isData && !remote);
+    const [loaded, setLoaded] = useState<{ path: string; url?: string; error?: string }>();
+    const [broken, setBroken] = useState<string>();
+    const poster = useImage(props.poster);
+
+    useEffect(() => {
+      if (!isLocal || streaming) return;
+      let active = true, url: string | undefined;
+      void host.loadAsset(raw).then((asset) => {
+        if (!active) return;
+        if (!asset.ok) { setLoaded({ path: raw, error: asset.error }); return; }
+        if (!asset.type.startsWith("video/") && asset.type !== "audio/webm") {
+          setLoaded({ path: raw, error: "This file is not a supported video." });
+          return;
+        }
+        const mime = asset.type === "audio/webm" ? "video/webm" : asset.type;
+        url = URL.createObjectURL(new Blob([asset.bytes], { type: mime }));
+        setLoaded({ path: raw, url });
+      }, (error: unknown) => {
+        if (active) setLoaded({ path: raw, error: error instanceof Error ? error.message : "Could not load this video." });
+      });
+      return () => { active = false; if (url) URL.revokeObjectURL(url); };
+    }, [isLocal, streaming, raw, host.loadAsset]);
+
+    let src: string | undefined;
+    let error: string | undefined;
+    if (isData) src = raw;
+    else if (remote) {
+      if (host.kind === "page") src = remote;
+      else error = "Remote video URLs are not loaded in chat. Use a local workspace file or publish a page.";
+    } else if (isLocal) {
+      if (loaded?.path === raw) { src = loaded.url; error = loaded.error; }
+    } else {
+      error = "Video src is empty.";
+    }
+
+    const failed = error !== undefined || (src !== undefined && broken === src);
+    return <figure className="m-0 flex min-w-0 flex-col gap-1.5">
+      {src && broken !== src ? (
+        <video
+          src={src}
+          poster={poster.src}
+          controls
+          playsInline
+          preload="metadata"
+          loop={props.loop ?? false}
+          muted={props.muted ?? false}
+          onError={() => setBroken(src)}
+          className="block max-h-[32rem] w-full rounded-md bg-muted"
+        />
+      ) : (
+        <div role="img" aria-label={props.caption || "Video"} aria-busy={failed ? undefined : true} className="flex aspect-video w-full items-center justify-center rounded-md bg-muted p-3 text-center text-sm text-muted-foreground">
+          {failed ? (error || "Video unavailable.") : "Loading video…"}
+        </div>
+      )}
+      {props.caption ? <figcaption className="text-sm text-muted-foreground">{props.caption}</figcaption> : null}
+    </figure>;
+  },
+});
+
 const ImageSearch = defineComponent({
   name: "ImageSearch",
   props: z.object({ query: z.string(), count: z.number().optional(), aspect: z.enum(["wide", "square", "tall"]).optional() }),
@@ -605,6 +698,10 @@ export const group: Group = {
       { name: "Parts of a building", code: `root = Hotspots("${pena}", [Hotspot(22, 20, "Dome tower", "The yellow tower with the grey dome, the **New Palace** side."), Hotspot(67, 26, "Clock tower", "The red tower belongs to the old monastery the palace grew from."), Hotspot(54, 32, "Golden domes", "Two small domes that echo the big one."), Hotspot(40, 66, "Battlements", "Crenellated walls wrap the whole hilltop.")], "Pena Palace in Sintra, yellow and red towers above the trees")` },
     ] },
     { component: Hotspot, summary: "one point of Hotspots", part: true, examples: [] },
+    { component: Video, summary: "video player for short recordings", examples: [
+      { name: "Local recording", code: `root = Video("out/flow.mp4", "Checkout flow after fix")` },
+      { name: "Looping muted clip", code: `root = Video("out/hover.webm", "Hover state transition", null, true, true)` },
+    ] },
     { component: ImageSearch, summary: "photos found on the web for a query", examples: [
       { name: "One photo", code: `root = ImageSearch("Pena Palace Sintra")` },
       { name: "A few, square", code: `root = ImageSearch("Lisbon tram 28", 4, "square")` },

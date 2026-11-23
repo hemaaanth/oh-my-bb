@@ -157,12 +157,13 @@ const ASSET_TYPES: Record<string, string> = {
   ".glb": "model/gltf-binary", ".gltf": "model/gltf+json", ".hdr": "image/vnd.radiance",
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif", ".avif": "image/avif", ".svg": "image/svg+xml",
   ".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".ogg": "audio/ogg", ".flac": "audio/flac", ".webm": "audio/webm",
+  ".mp4": "video/mp4", ".mov": "video/quicktime", ".ogv": "video/ogg",
 };
 
 async function readAsset(sdk: Sdk, threadId: string, raw: unknown, only?: readonly ReadRoot[]) {
   const { file, result } = await scopedFile(sdk, threadId, raw, only);
   const type = ASSET_TYPES[path.posix.extname(file).toLowerCase()];
-  if (!type) throw new SpecError(`${file} is not a supported image, audio, model, or environment file.`);
+  if (!type) throw new SpecError(`${file} is not a supported image, audio, video, model, or environment file.`);
   if (result.sizeBytes > 10 * 1024 * 1024) throw new SpecError(`${file} is larger than the 10 MB asset limit.`);
   const body = Buffer.from(result.content, result.contentEncoding === "base64" ? "base64" : "utf8");
   return { dataUrl: `data:${type};base64,${body.toString("base64")}` };

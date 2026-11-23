@@ -1068,6 +1068,22 @@
   "examples": []
  },
  {
+  "name": "Video",
+  "group": "media",
+  "description": "A video player with native playback controls for short recordings (MP4, WebM, MOV, OGV). src is a workspace/thread-storage file path, a data: video URL, or (on a published page) an http(s) URL. Optional caption sits below the player, and poster sets a preview frame.",
+  "signature": "Video(src: string, caption?: string, poster?: string, loop?: boolean, muted?: boolean)",
+  "examples": [
+   {
+    "name": "Local recording",
+    "code": "root = Video(\"out/flow.mp4\", \"Checkout flow after fix\")"
+   },
+   {
+    "name": "Looping muted clip",
+    "code": "root = Video(\"out/hover.webm\", \"Hover state transition\", null, true, true)"
+   }
+  ]
+ },
+ {
   "name": "ImageSearch",
   "group": "media",
   "description": "Photos found on the web for query, from Wikimedia Commons, each credited with its author and licence. Use it to show what a place, landmark, plant, animal, or object looks like when you have no image URL. count is 1 (default) to 8. aspect \"wide\" (default), \"square\", or \"tall\" crops them alike. Clicking one opens it full size.",

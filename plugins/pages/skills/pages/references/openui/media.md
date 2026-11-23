@@ -104,6 +104,24 @@ root = Hotspots("https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Sintr
 
 One numbered point of Hotspots: x and y are percent across and down the picture (0 to 100), title names it, and text (Markdown) shows when it is picked.
 
+## Video
+
+`Video(src: string, caption?: string, poster?: string, loop?: boolean, muted?: boolean)`
+
+A video player with native playback controls for short recordings (MP4, WebM, MOV, OGV). src is a workspace/thread-storage file path, a data: video URL, or (on a published page) an http(s) URL. Optional caption sits below the player, and poster sets a preview frame.
+
+Local recording:
+
+```openui-lang
+root = Video("out/flow.mp4", "Checkout flow after fix")
+```
+
+Looping muted clip:
+
+```openui-lang
+root = Video("out/hover.webm", "Hover state transition", null, true, true)
+```
+
 ## ImageSearch
 
 `ImageSearch(query: string, count?: number, aspect?: "wide" | "square" | "tall")`
