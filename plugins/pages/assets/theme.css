@@ -77,6 +77,23 @@
   --bb-space-block: 1.5rem;      /* paragraph → paragraph, figure, table */
   --bb-space-sub: 2rem;          /* before a subsection */
   --bb-space-section: 3rem;      /* before a section, after the header */
+
+  scrollbar-width: thin;
+  scrollbar-color: var(--bb-scrollbar) transparent;
+}
+
+:where(:root)::-webkit-scrollbar { width: 8px; height: 8px; }
+:where(:root)::-webkit-scrollbar-track { background: transparent; }
+:where(:root)::-webkit-scrollbar-thumb {
+  background: var(--bb-scrollbar);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+:where(:root)::-webkit-scrollbar-thumb:hover {
+  background: var(--bb-muted);
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
 /* Narrow panes (side panel, inline chat card): same scale, one step tighter. */

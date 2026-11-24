@@ -1035,6 +1035,15 @@ function RunInlineBadge({ task, onOpenProof }: { task: Task; onOpenProof?: (task
   </span>;
 }
 
+const proofWidthKey = "task-workspaces:proof-panel-width";
+
+function readProofWidth(): number | null {
+  try {
+    const raw = Number(localStorage.getItem(proofWidthKey));
+    return Number.isFinite(raw) && raw >= 420 ? raw : null;
+  } catch { return null; }
+}
+
 function ProofSidePanel({ task, onClose, onApproveProof, onResolveProposal }: {
   task: Task;
   onClose: () => void;
@@ -1046,18 +1055,59 @@ function ProofSidePanel({ task, onClose, onApproveProof, onResolveProposal }: {
   const external = fullHref ? /^https?:\/\//iu.test(fullHref) : false;
   const proposed = task.run?.proposedStatus ?? null;
   const awaitingProofApproval = task.run?.phase === "waiting" && Boolean(embedUrl) && task.threadIds.length > 0;
+  const [panelWidth, setPanelWidth] = useState<number | null>(() => readProofWidth());
+  const [resizing, setResizing] = useState(false);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
+  const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const minW = 420;
+    const maxW = Math.max(minW, window.innerWidth - 48);
+    setResizing(true);
+    let latest = panelWidth;
+    const onMove = (moveEvent: PointerEvent) => {
+      const next = Math.round(Math.min(maxW, Math.max(minW, window.innerWidth - moveEvent.clientX)));
+      latest = next;
+      setPanelWidth(next);
+    };
+    const onUp = () => {
+      setResizing(false);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (latest !== null) {
+        try { localStorage.setItem(proofWidthKey, String(latest)); } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+  const resetWidth = () => {
+    setPanelWidth(null);
+    try { localStorage.removeItem(proofWidthKey); } catch { /* ignore */ }
+  };
   if (!embedUrl) return null;
-  return <div className="fixed inset-0 z-40 flex justify-end bg-black/35 backdrop-blur-[1px]" onClick={onClose}>
+  return <div className={`fixed inset-0 z-40 flex justify-end bg-black/35 backdrop-blur-[1px] ${resizing ? "cursor-col-resize select-none" : ""}`} onClick={onClose}>
     <aside
       aria-label={`Proof: ${task.title}`}
-      className="relative flex h-full w-full max-w-[min(92vw,52rem)] flex-col border-l border-border/50 bg-background shadow-2xl"
+      style={panelWidth ? { width: `min(94vw, ${panelWidth}px)` } : undefined}
+      className={`relative flex h-full flex-col border-l border-border/50 bg-background shadow-2xl ${panelWidth ? "" : "w-[min(92vw,68rem)]"}`}
       onClick={(event) => event.stopPropagation()}
     >
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize proof panel"
+        title="Drag to resize (double-click to reset)"
+        onPointerDown={startResize}
+        onDoubleClick={resetWidth}
+        className="group absolute inset-y-0 -left-1.5 z-20 hidden w-3 cursor-col-resize items-center justify-center md:flex"
+      >
+        <span className={`h-full w-0.5 transition-colors ${resizing ? "bg-primary/70" : "bg-transparent group-hover:bg-primary/45"}`} />
+      </div>
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-background/85 p-1 shadow-sm ring-1 ring-border/60 backdrop-blur-md">
         {awaitingProofApproval ? <Button size="sm" className="h-6 rounded-full px-2.5 text-xs" onClick={() => onApproveProof(task)}>
           Approve &amp; merge
@@ -1077,7 +1127,7 @@ function ProofSidePanel({ task, onClose, onApproveProof, onResolveProposal }: {
           </Button>
         </span>
       </div>
-      <iframe title={`Proof: ${task.title}`} src={embedUrl} className="min-h-0 h-full w-full flex-1 border-0 bg-background" />
+      <iframe title={`Proof: ${task.title}`} src={embedUrl} className={`min-h-0 h-full w-full flex-1 border-0 bg-background ${resizing ? "pointer-events-none" : ""}`} />
     </aside>
   </div>;
 }

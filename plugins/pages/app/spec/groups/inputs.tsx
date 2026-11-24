@@ -315,6 +315,8 @@ function OptionCard({ option, on, locked, pick }: { option: Option; on: boolean;
   </div>;
 }
 
+const FREEFORM_OPTION_RE = /\b(other|request changes?|changes|feedback|something else|custom|specify)\b/iu;
+
 const OptionCards = defineComponent({
   name: "OptionCards",
   props: z.object({
@@ -328,8 +330,22 @@ const OptionCards = defineComponent({
   component: ({ props }) => {
     const list = optionsOf(props.options);
     const { chosen, pick, locked } = usePick(props.name, list, props.multiple, props.value);
+    const form = useFormName();
+    const needsNote = Boolean(form) && list.some((o) => chosen.has(o.value) && (FREEFORM_OPTION_RE.test(o.label) || FREEFORM_OPTION_RE.test(o.value)));
+    const note = useField(`${props.name}_feedback`, undefined as string | undefined);
     return <Titled label={props.label} name={props.name}>
       <div className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(11rem,100%),1fr))] gap-2">{list.map(option => <OptionCard key={option.value} option={option} on={chosen.has(option.value)} locked={locked} pick={() => pick(option.value)} />)}</div>
+      {needsNote ? <textarea
+        className={`${field} mt-2 min-h-16 resize-y`}
+        rows={2}
+        name={note.name}
+        aria-label="Feedback or details"
+        placeholder="Add your feedback or requested changes…"
+        value={note.value ?? ""}
+        disabled={locked}
+        autoFocus={!locked}
+        onChange={(event) => note.setValue(event.target.value)}
+      /> : null}
     </Titled>;
   },
 });
