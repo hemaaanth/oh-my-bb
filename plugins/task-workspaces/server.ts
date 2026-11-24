@@ -136,6 +136,23 @@ const providerSettingsSchema = z.object({
   })),
 });
 
+const sandboxProviderOptionSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  label: z.string(),
+  enabled: z.boolean(),
+  configured: z.boolean(),
+  ready: z.boolean(),
+});
+
+const sandboxPreferencesSchema = z.object({
+  available: z.boolean(),
+  selectedProviderId: z.string().nullable(),
+  effectiveProviderId: z.string().nullable(),
+  effectiveLabel: z.string().nullable(),
+  providers: z.array(sandboxProviderOptionSchema),
+});
+
 const linearSourcesSchema = z.object({
   configured: z.boolean(),
   sources: z.array(z.object({
@@ -276,6 +293,10 @@ export const rpcContract = defineRpcContract({
     input: z.object({ taskId: z.string(), accept: z.boolean() }).strict(),
     output: taskSchema,
   },
+  approveTaskProof: {
+    input: z.object({ taskId: z.string() }).strict(),
+    output: taskSchema,
+  },
   archivePrompt: {
     input: z.null(),
     output: taskSchema.nullable(),
@@ -339,6 +360,14 @@ export const rpcContract = defineRpcContract({
   setProviderEnabled: {
     input: z.object({ provider: providerSchema, enabled: z.boolean() }).strict(),
     output: providerSettingsSchema,
+  },
+  sandboxPreferences: {
+    input: z.null(),
+    output: sandboxPreferencesSchema,
+  },
+  setDefaultSandboxProvider: {
+    input: z.object({ providerId: z.string().min(1).nullable() }).strict(),
+    output: sandboxPreferencesSchema,
   },
   providerHealth: {
     input: z.null(),
@@ -734,6 +763,67 @@ export default async function plugin(bb: BbPluginApi) {
     };
   }
 
+  const sandboxProviderLabels: Record<string, string> = {
+    box: "Boat Sandbox",
+    daytona: "Daytona Sandbox",
+    modal: "Modal Sandbox",
+    e2b: "E2B Sandbox",
+    freestyle: "Freestyle Sandbox",
+  };
+  const sandboxProvidersRpcOutput = z.array(z.object({
+    provider: z.string(),
+    configured: z.boolean(),
+    enabled: z.boolean(),
+  }));
+
+  async function sandboxPreferencesState() {
+    const stored = await bb.storage.kv.get<unknown>("default-sandbox-provider");
+    const selectedProviderId = typeof stored === "string" && stored.trim() ? stored.trim() : null;
+    try {
+      const raw = await bb.sdk.plugins.callRpc({
+        pluginId: "sandboxes",
+        method: "providers",
+        input: null,
+        outputSchema: sandboxProvidersRpcOutput,
+      });
+      const options = raw.map((entry) => ({
+        id: `sandbox-${entry.provider}`,
+        provider: entry.provider,
+        label: sandboxProviderLabels[entry.provider] ?? `${entry.provider} Sandbox`,
+        enabled: entry.enabled,
+        configured: entry.configured,
+        ready: entry.enabled && entry.configured,
+      }));
+      const ready = options.filter((entry) => entry.ready);
+      const effective = (selectedProviderId ? ready.find((entry) => entry.id === selectedProviderId) : null)
+        ?? ready.find((entry) => entry.id === "sandbox-box")
+        ?? ready[0]
+        ?? null;
+      return {
+        available: true,
+        selectedProviderId,
+        effectiveProviderId: effective?.id ?? null,
+        effectiveLabel: effective?.label ?? null,
+        providers: options,
+      };
+    } catch {
+      return {
+        available: false,
+        selectedProviderId,
+        effectiveProviderId: null,
+        effectiveLabel: null,
+        providers: [],
+      };
+    }
+  }
+
+  async function setDefaultSandboxProvider(providerId: string | null) {
+    if (providerId) await bb.storage.kv.set("default-sandbox-provider", providerId);
+    else await bb.storage.kv.delete("default-sandbox-provider");
+    bb.realtime.publish("tasks-changed", { reason: "settings" });
+    return sandboxPreferencesState();
+  }
+
   function removeProviderReferences(provider: Provider) {
     return db.transaction(() => {
       const refs = db.prepare("DELETE FROM task_refs WHERE provider = ?").run(provider).changes;
@@ -957,6 +1047,19 @@ export default async function plugin(bb: BbPluginApi) {
       return taskDto(getDbTask(taskId));
     }
     return setTaskRun(taskId, { proposedStatus: null });
+  }
+
+  async function approveTaskProof(taskId: string) {
+    getDbTask(taskId);
+    const newest = taskThreads(taskId)[0];
+    if (!newest?.thread_id) throw new Error("This task has no linked chat to approve.");
+    await bb.sdk.threads.unarchive({ threadId: newest.thread_id }).catch(() => undefined);
+    await bb.sdk.threads.send({
+      threadId: newest.thread_id,
+      mode: "auto",
+      input: [{ type: "text", text: "Approve & merge", mentions: [] }],
+    });
+    return setTaskRun(taskId, { phase: "deploying", summary: "Approved — merging and deploying.", proposedStatus: null });
   }
 
   function taskRows() {
@@ -3690,6 +3793,7 @@ export default async function plugin(bb: BbPluginApi) {
     startTaskThread: ({ taskId, request }) => startTaskThread(taskId, request),
     answerArchived: ({ taskId, decision }) => answerArchived(taskId, decision),
     resolveRunProposal: ({ taskId, accept }) => resolveRunProposal(taskId, accept),
+    approveTaskProof: ({ taskId }) => approveTaskProof(taskId),
     archivePrompt: () => archivePrompt(),
     projectMappings: async () => projectMappings(),
     setProjectMapping: ({ sourceKey, projectId }) => setProjectMapping(sourceKey, projectId),
@@ -3706,6 +3810,8 @@ export default async function plugin(bb: BbPluginApi) {
     setAllAkiflowSourcesEnabled: ({ enabled }) => setAllAkiflowSourcesEnabled(enabled),
     providerSettings: async () => providerSettingsState(),
     setProviderEnabled: ({ provider, enabled }) => setProviderEnabled(provider, enabled),
+    sandboxPreferences: async () => sandboxPreferencesState(),
+    setDefaultSandboxProvider: ({ providerId }) => setDefaultSandboxProvider(providerId),
     providerHealth: () => providerHealth(),
     createTaskOptions,
     createTask,

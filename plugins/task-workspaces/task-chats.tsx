@@ -119,15 +119,18 @@ type AttachPatch = (patch: Record<string, Pick<Task, "threadIds">>, call: () => 
 
 // A new chat starts in the task's project. Its message names the task, links its GitHub or
 // Linear page, and prefills the factory workflow instruction (editable before sending).
-function newChatSeed(task: ChatTask): NewChatSeed {
+function newChatSeed(task: ChatTask, sandbox?: { id: string; label: string } | null): NewChatSeed {
   const links = task.refs.filter((ref) => (ref.provider === "github" || ref.provider === "linear") && ref.url).map((ref) => ref.url);
+  const sandboxNote = sandbox
+    ? `Use ${sandbox.label} (${sandbox.id}) by default for all child sandboxes.`
+    : "Use Boat Sandbox (sandbox-box) by default for all child sandboxes if available.";
   return {
     projectId: task.effectiveProjectId ?? task.projectId ?? undefined,
     prompt: [
       `Work on ${task.identifier}: ${task.title}`,
       ...links,
       "",
-      "Use the factory skill (catalog-hstack-factory) to run this end to end in sandboxes. Keep this task's phase, summary, and proof updated with worktask_run, and propose completion (never auto-archive this thread or mark the task done).",
+      `Use the factory skill (catalog-hstack-factory) to run this end to end in sandboxes. ${sandboxNote} Keep this task's phase, summary, and proof updated with worktask_run, and propose completion (never auto-archive this thread or mark the task done).`,
     ].join("\n"),
   };
 }
@@ -159,7 +162,17 @@ export function useChatPopup(tasks: readonly Task[], mutate: AttachPatch) {
   // A title opens its task's chats. A task without an open chat has nothing to open.
   const opener = useCallback((task: ChatTask) => openChats(task).length ? () => show(task) : undefined, [openChats, show]);
   const attach = useCallback((task: ChatTask) => setView({ taskId: task.id, title: task.title, chatIds: [], pane: "attach", from: "menu" }), []);
-  const compose = useCallback((task: ChatTask) => setView({ taskId: task.id, title: task.title, chatIds: [], pane: "new", from: "menu", seed: newChatSeed(task) }), []);
+  const [defaultSandbox, setDefaultSandbox] = useState<{ id: string; label: string } | null>(null);
+  const refreshSandboxPref = useCallback(() => {
+    void rpc.call("sandboxPreferences").then((pref) => {
+      setDefaultSandbox(pref.effectiveProviderId ? { id: pref.effectiveProviderId, label: pref.effectiveLabel ?? pref.effectiveProviderId } : null);
+    }, () => undefined);
+  }, [rpc]);
+  useEffect(() => { refreshSandboxPref(); }, [refreshSandboxPref]);
+  const compose = useCallback((task: ChatTask) => {
+    refreshSandboxPref();
+    setView({ taskId: task.id, title: task.title, chatIds: [], pane: "new", from: "menu", seed: newChatSeed(task, defaultSandbox) });
+  }, [defaultSandbox, refreshSandboxPref]);
   const peek = useCallback((threadId: string, title: string, assign?: () => void) => setView({ taskId: null, title, chatIds: [threadId], assign }), []);
   // The chat leaves the task at once and waits under Unassigned threads. The server also keeps
   // it from joining the task again by itself. Undo attaches it again.
@@ -194,7 +207,7 @@ export function useChatPopup(tasks: readonly Task[], mutate: AttachPatch) {
   };
   const openPane = (pane: ChatView["pane"]) => view && setView({
     ...view, pane, from: pane ? view.pane ? view.from : "popup" : undefined,
-    seed: pane === "new" ? view.seed ?? (task ? newChatSeed(task) : { prompt: "" }) : view.seed,
+    seed: pane === "new" ? view.seed ?? (task ? newChatSeed(task, defaultSandbox) : { prompt: "" }) : view.seed,
   });
   const popup = view ? <ChatPopup key={view.taskId ?? view.chatIds?.[0]} view={view} available={task ? openChats(task) : view.chatIds ?? []} byId={byId} stateOf={stateOf}
     pane={view.pane === "attach" ? <ThreadPicker status={status} threads={threads} projects={projects} attached={task?.threadIds ?? []} stateOf={stateOf} onPick={attachThread} />

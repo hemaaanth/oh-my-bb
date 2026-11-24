@@ -50,10 +50,10 @@ export function ThreadTaskChip({ threadId }: PluginThreadHeaderActionProps) {
             <TaskSummary task={task} />
             {proposed ? <>
               <DropdownMenuItem className="text-blue-600 dark:text-blue-400" onSelect={() => void rpc.call("resolveRunProposal", { taskId: task.id, accept: true })}>
-                <Icon className="size-3.5" name="Check" aria-hidden />Accept: Mark {statusLabels[proposed]}
+                <Icon className="size-3.5" name="Check" aria-hidden />Mark {statusLabels[proposed]}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void rpc.call("resolveRunProposal", { taskId: task.id, accept: false })}>
-                <Icon className="size-3.5" name="X" aria-hidden />Reject suggestion
+                <Icon className="size-3.5" name="X" aria-hidden />Keep {statusLabels[task.status]}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </> : null}

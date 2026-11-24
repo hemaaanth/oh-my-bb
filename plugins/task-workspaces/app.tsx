@@ -79,6 +79,13 @@ type AkiflowSources = {
 type ProviderSettings = {
   providers: Array<{ provider: Provider; enabled: boolean; configured: boolean }>;
 };
+type SandboxPreferences = {
+  available: boolean;
+  selectedProviderId: string | null;
+  effectiveProviderId: string | null;
+  effectiveLabel: string | null;
+  providers: Array<{ id: string; provider: string; label: string; enabled: boolean; configured: boolean; ready: boolean }>;
+};
 
 
 type TaskPatch = Partial<Pick<Task, "title" | "status" | "projectId" | "effectiveProjectId" | "refs" | "position" | "threadIds">>;
@@ -243,6 +250,7 @@ function SettingsPanel() {
   const [linear, setLinear] = useState<LinearSources>({ configured: false, sources: [] });
   const [akiflow, setAkiflow] = useState<AkiflowSources>({ configured: false, sources: [] });
   const [providerSettings, setProviderSettings] = useState<ProviderSettings>({ providers: [] });
+  const [sandboxPrefs, setSandboxPrefs] = useState<SandboxPreferences | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [refreshingGithub, setRefreshingGithub] = useState(false);
   const [refreshingLinear, setRefreshingLinear] = useState(false);
@@ -250,18 +258,20 @@ function SettingsPanel() {
   const [akiflowQuery, setAkiflowQuery] = useState("");
   const [linearQuery, setLinearQuery] = useState("");
   const load = useCallback(async () => {
-    const [nextMappings, nextGithub, nextLinear, nextProviderSettings, nextAkiflow] = await Promise.all([
+    const [nextMappings, nextGithub, nextLinear, nextProviderSettings, nextAkiflow, nextSandboxPrefs] = await Promise.all([
       rpc.call("projectMappings"),
       rpc.call("githubRepositories"),
       rpc.call("linearSources"),
       rpc.call("providerSettings"),
       rpc.call("akiflowSources"),
+      rpc.call("sandboxPreferences").catch(() => null),
     ]);
     setMappings(nextMappings);
     setGithub(nextGithub);
     setLinear(nextLinear);
     setProviderSettings(nextProviderSettings);
     setAkiflow(nextAkiflow);
+    setSandboxPrefs(nextSandboxPrefs);
   }, [rpc]);
   useEffect(() => { void load().catch((error) => toast.error(<span data-bb-demo-sensitive>{String(error)}</span>)); }, [load]);
   useRealtime("tasks-changed", () => { void load().catch((error) => toast.error(<span data-bb-demo-sensitive>{String(error)}</span>)); });
@@ -459,9 +469,52 @@ function SettingsPanel() {
     );
   }
 
+  async function chooseSandboxProvider(value: string) {
+    const providerId = value === "__auto__" ? null : value;
+    setBusy("sandbox-provider");
+    try {
+      setSandboxPrefs(await rpc.call("setDefaultSandboxProvider", { providerId }));
+    } catch (error) {
+      toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const readySandboxes = sandboxPrefs?.providers.filter((entry) => entry.ready) ?? [];
+
   return (
     <div className="space-y-4">
       <h2 className="text-sm font-medium">Preferences</h2>
+      {sandboxPrefs?.available ? <section className="overflow-hidden rounded-md border border-border bg-surface-recessed/70 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-medium">Default sandbox</h3>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
+              {readySandboxes.length
+                ? `Used by default when starting factory runs from Tasks. Live options come from your configured Sandboxes providers.${sandboxPrefs.effectiveLabel ? ` Active default: ${sandboxPrefs.effectiveLabel}.` : ""}`
+                : "No sandbox providers are currently enabled and configured in the Sandboxes plugin."}
+            </p>
+          </div>
+          {readySandboxes.length ? <div className="w-52 shrink-0">
+            <Select
+              value={sandboxPrefs.selectedProviderId ?? "__auto__"}
+              onValueChange={(value) => void chooseSandboxProvider(value)}
+              disabled={busy === "sandbox-provider"}
+            >
+              <SelectTrigger aria-label="Default sandbox provider" className="h-8 px-2.5 text-xs">
+                <SelectValue placeholder="Auto (Boat first)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__auto__">Auto (Boat first)</SelectItem>
+                {readySandboxes.map((entry) => (
+                  <SelectItem key={entry.id} value={entry.id}>{entry.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div> : null}
+        </div>
+      </section> : null}
       <section className="overflow-hidden rounded-md border border-border bg-surface-recessed/70">
         {providerHeader("akiflow", "Choose projects to sync.")}
         {akiflowEnabled ? <div className="space-y-3 p-3">
@@ -797,13 +850,13 @@ function StatusPicker({ task, onStage, onResolveProposal }: {
     >
       {proposed ? <>
         <DropdownMenuLabel className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
-          Suggested: {statusLabels[proposed]}
+          Suggested stage: {statusLabels[proposed]}
         </DropdownMenuLabel>
         <DropdownMenuItem className="text-blue-600 dark:text-blue-400" onSelect={() => onResolveProposal(true)}>
-          <Icon name="Check" className="size-3.5" aria-hidden />Accept ({statusLabels[proposed]})
+          <Icon name="Check" className="size-3.5" aria-hidden />Move to {statusLabels[proposed]}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onResolveProposal(false)}>
-          <Icon name="X" className="size-3.5" aria-hidden />Reject suggestion
+          <Icon name="X" className="size-3.5" aria-hidden />Keep {statusLabels[task.status]}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
       </> : null}
@@ -982,50 +1035,59 @@ function RunInlineBadge({ task, onOpenProof }: { task: Task; onOpenProof?: (task
   </span>;
 }
 
-function ProofSidePanel({ task, onClose, onResolveProposal }: {
+function ProofSidePanel({ task, onClose, onApproveProof, onResolveProposal }: {
   task: Task;
   onClose: () => void;
+  onApproveProof: (task: Task) => void;
   onResolveProposal: (task: Task, accept: boolean) => void;
 }) {
   const embedUrl = proofEmbedUrl(task.run?.proofPageId);
   const fullHref = proofHref(task.run?.proofPageId);
   const external = fullHref ? /^https?:\/\//iu.test(fullHref) : false;
   const proposed = task.run?.proposedStatus ?? null;
+  const awaitingProofApproval = task.run?.phase === "waiting" && Boolean(embedUrl) && task.threadIds.length > 0;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
   if (!embedUrl) return null;
-  return <aside aria-label={`Proof: ${task.title}`} className="fixed inset-0 z-40 flex flex-col border-l border-border bg-background md:static md:z-auto md:w-[min(52vw,46rem)] md:shrink-0">
-    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
-      <span className="inline-flex shrink-0 items-center rounded-full border border-border bg-surface-recessed/80 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">Proof</span>
-      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"><span data-bb-demo-sensitive>{task.title}</span></span>
-      {proposed ? <Button size="sm" className="h-7 px-2.5 text-xs" onClick={() => onResolveProposal(task, true)}>
-        Accept ({statusLabels[proposed]})
-      </Button> : null}
-      {fullHref ? <span title="Open full page" className="flex">
-        <Button asChild variant="ghost" size="icon" className="size-7 text-muted-foreground">
-          <a href={fullHref} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} aria-label="Open full proof page">
-            <Icon name="ExternalLink" className="size-4" aria-hidden />
-          </a>
-        </Button>
-      </span> : null}
-      <span title="Close proof panel" className="flex">
-        <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" aria-label="Close proof panel" onClick={onClose}>
-          <Icon name="X" className="size-4" aria-hidden />
-        </Button>
-      </span>
-    </div>
-    <iframe title={`Proof: ${task.title}`} src={embedUrl} className="min-h-0 w-full flex-1 border-0 bg-background" />
-  </aside>;
+  return <div className="fixed inset-0 z-40 flex justify-end bg-black/35 backdrop-blur-[1px]" onClick={onClose}>
+    <aside
+      aria-label={`Proof: ${task.title}`}
+      className="relative flex h-full w-full max-w-[min(92vw,52rem)] flex-col border-l border-border/50 bg-background shadow-2xl"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-background/85 p-1 shadow-sm ring-1 ring-border/60 backdrop-blur-md">
+        {awaitingProofApproval ? <Button size="sm" className="h-6 rounded-full px-2.5 text-xs" onClick={() => onApproveProof(task)}>
+          Approve &amp; merge
+        </Button> : proposed ? <Button size="sm" className="h-6 rounded-full px-2.5 text-xs" onClick={() => onResolveProposal(task, true)}>
+          Mark {statusLabels[proposed]}
+        </Button> : null}
+        {fullHref ? <span title="Open full page" className="flex">
+          <Button asChild variant="ghost" size="icon" className="size-6 rounded-full text-muted-foreground hover:text-foreground">
+            <a href={fullHref} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} aria-label="Open full proof page">
+              <Icon name="ExternalLink" className="size-3.5" aria-hidden />
+            </a>
+          </Button>
+        </span> : null}
+        <span title="Close proof panel" className="flex">
+          <Button variant="ghost" size="icon" className="size-6 rounded-full text-muted-foreground hover:text-foreground" aria-label="Close proof panel" onClick={onClose}>
+            <Icon name="X" className="size-3.5" aria-hidden />
+          </Button>
+        </span>
+      </div>
+      <iframe title={`Proof: ${task.title}`} src={embedUrl} className="min-h-0 h-full w-full flex-1 border-0 bg-background" />
+    </aside>
+  </div>;
 }
 
-function NeedsYouSection({ tasks, projectName, chats, onOpenProof, onResolveProposal }: {
+function NeedsYouSection({ tasks, projectName, chats, onOpenProof, onApproveProof, onResolveProposal }: {
   tasks: Task[];
   projectName: (task: Task) => string | undefined;
   chats: ChatPopupController;
   onOpenProof: (task: Task) => void;
+  onApproveProof: (task: Task) => void;
   onResolveProposal: (task: Task, accept: boolean) => void;
 }) {
   if (!tasks.length) return null;
@@ -1035,13 +1097,14 @@ function NeedsYouSection({ tasks, projectName, chats, onOpenProof, onResolveProp
       {tasks.map((task) => {
         const hasProof = Boolean(proofEmbedUrl(task.run?.proofPageId));
         const proposed = task.run?.proposedStatus ?? null;
+        const awaitingProofApproval = task.run?.phase === "waiting" && hasProof && task.threadIds.length > 0;
         const openChat = chats.opener(task);
         const project = projectName(task);
         const age = task.run?.updatedAt ? formatRunAge(task.run.updatedAt) : "";
         const meta = [project, age].filter(Boolean).join(" · ");
-        const summary = task.run?.summary || (proposed ? `Suggested moving to ${statusLabels[proposed]}.` : hasProof ? "Proof ready for your approval." : task.run?.phase === "blocked" ? "Blocked — needs your input." : "Waiting for your decision.");
+        const summary = task.run?.summary || (awaitingProofApproval ? "Proof ready for your approval." : proposed ? `Ready to move to ${statusLabels[proposed]}.` : task.run?.phase === "blocked" ? "Blocked — needs your input." : "Waiting for your decision.");
         const isBlocked = task.run?.phase === "blocked";
-        const borderTone = isBlocked ? "border-destructive/40" : proposed ? "border-blue-500/40" : "border-warning/40";
+        const borderTone = isBlocked ? "border-destructive/40" : awaitingProofApproval ? "border-warning/40" : proposed ? "border-blue-500/40" : "border-warning/40";
         return <article key={task.id} data-needs-you={task.id} className={`flex flex-col justify-between gap-3 rounded-lg border bg-card p-3.5 ${borderTone}`}>
           <div className="space-y-1">
             <div className="flex items-start justify-between gap-3">
@@ -1051,11 +1114,14 @@ function NeedsYouSection({ tasks, projectName, chats, onOpenProof, onResolveProp
             <p className="m-0 text-xs leading-5 text-muted-foreground">{summary}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {proposed ? <>
-              <Button size="sm" onClick={() => onResolveProposal(task, true)}>Accept: Mark {statusLabels[proposed]}</Button>
-              <Button variant="outline" size="sm" onClick={() => onResolveProposal(task, false)}>Dismiss</Button>
-            </> : null}
-            {hasProof ? <Button variant={proposed ? "outline" : "default"} size="sm" onClick={() => onOpenProof(task)}>View proof</Button> : null}
+            {awaitingProofApproval ? <>
+              <Button size="sm" onClick={() => onOpenProof(task)}>View proof</Button>
+              <Button variant="outline" size="sm" onClick={() => onApproveProof(task)}>Approve &amp; merge</Button>
+            </> : proposed ? <>
+              <Button size="sm" onClick={() => onResolveProposal(task, true)}>Mark {statusLabels[proposed]}</Button>
+              <Button variant="outline" size="sm" onClick={() => onResolveProposal(task, false)}>Keep {statusLabels[task.status]}</Button>
+              {hasProof ? <Button variant="outline" size="sm" onClick={() => onOpenProof(task)}>View proof</Button> : null}
+            </> : hasProof ? <Button size="sm" onClick={() => onOpenProof(task)}>View proof</Button> : null}
             {openChat ? <Button variant={hasProof || proposed ? "outline" : "default"} size="sm" onClick={openChat}>{hasProof || proposed ? "Open chat" : "Answer in chat"}</Button> : null}
           </div>
         </article>;
@@ -1552,6 +1618,11 @@ function TasksScreen() {
       });
     }
   };
+  const approveProof = (task: Task) => {
+    if (proofTaskId === task.id) setProofTaskId(null);
+    mutate({}, () => rpc.call("approveTaskProof", { taskId: task.id }));
+    toast.success("Approved — sent to chat", { description: <span data-bb-demo-sensitive>{task.title}</span> });
+  };
   const promote = (task: Task) => <RowAction label="Move to Now" icon="ArrowUp" task={task} onClick={() => moves.priority(task, "urgent")} />;
   const cards = (list: ProjectColumn[]) => <div className="flex items-start gap-3">{stacks(list).map((stack, index) => <div key={index} className="flex min-w-0 flex-1 flex-col gap-3">
     {stack.map((column) => <ProjectCard key={column.id} column={column} expanded={expanded.has(column.id)} onExpand={() => toggleExpanded(column.id)}
@@ -1587,7 +1658,7 @@ function TasksScreen() {
         <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-recessed/70"><PluginIcon name={tasksIcon} className="size-5" /></div>
         <div className="min-w-0"><h1 className="text-base font-semibold leading-5">Tasks</h1><p className="text-xs leading-4 text-muted-foreground">Plan work across your task sources.</p></div>
       </header>
-      <NeedsYouSection tasks={personal.filter((task) => !isDraft(task) && needsAttention(task))} projectName={projectName} chats={chats} onOpenProof={openProof} onResolveProposal={resolveProposal} />
+      <NeedsYouSection tasks={personal.filter((task) => !isDraft(task) && needsAttention(task))} projectName={projectName} chats={chats} onOpenProof={openProof} onApproveProof={approveProof} onResolveProposal={resolveProposal} />
       <section ref={dnd.zoneRef.urgent} aria-label="Now">
         <SectionHeader title="Now" count={loading ? undefined : now.length}>
           <div className="flex items-center">
@@ -1660,7 +1731,7 @@ function TasksScreen() {
             onPick={(task) => assign(assigning.thread!, task)} onCreate={(title) => setAssigning((current) => ({ ...current, title }))} />
         </DialogContent> : null}
     </Dialog>
-  </div>{proofTask ? <ProofSidePanel task={proofTask} onClose={() => setProofTaskId(null)} onResolveProposal={resolveProposal} /> : null}</div><ProviderHealthFooter /></div>;
+  </div>{proofTask ? <ProofSidePanel task={proofTask} onClose={() => setProofTaskId(null)} onApproveProof={approveProof} onResolveProposal={resolveProposal} /> : null}</div><ProviderHealthFooter /></div>;
 }
 
 function NowHomeCard({ projectId }: { projectId: string | null }) {

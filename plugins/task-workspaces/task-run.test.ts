@@ -61,4 +61,56 @@ describe("task run state", () => {
     expect(JSON.parse(cleared.stdout).run).toBeUndefined();
     await harness.lifecycle.dispose();
   });
+
+  it("reads live sandbox providers on demand, defaults to Boat (sandbox-box), and persists override", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "task-workspaces",
+      experimental_declaredIconNames: ["tasks"],
+      sdk: {
+        plugins: {
+          callRpc: async ({ pluginId, method }: { pluginId: string; method: string }) => {
+            if (pluginId === "sandboxes" && method === "providers") {
+              return [
+                { provider: "daytona", enabled: true, configured: true },
+                { provider: "box", enabled: true, configured: true },
+                { provider: "modal", enabled: false, configured: false },
+              ];
+            }
+            throw new Error(`unexpected rpc ${pluginId}.${method}`);
+          },
+        },
+      },
+    });
+    await plugin(bb);
+    // Zero startup RPCs.
+    expect(harness.inspection.sdk.callsTo("plugins.callRpc")).toEqual([]);
+
+    const initial = await harness.behavior.callRpc("sandboxPreferences", null) as {
+      available: boolean;
+      selectedProviderId: string | null;
+      effectiveProviderId: string | null;
+      effectiveLabel: string | null;
+      providers: Array<{ id: string; ready: boolean }>;
+    };
+    expect(initial.available).toBe(true);
+    expect(initial.selectedProviderId).toBeNull();
+    expect(initial.effectiveProviderId).toBe("sandbox-box");
+    expect(initial.effectiveLabel).toBe("Boat Sandbox");
+    expect(initial.providers.filter((p) => p.ready).map((p) => p.id)).toEqual(["sandbox-daytona", "sandbox-box"]);
+
+    const overridden = await harness.behavior.callRpc("setDefaultSandboxProvider", { providerId: "sandbox-daytona" }) as {
+      selectedProviderId: string | null;
+      effectiveProviderId: string | null;
+    };
+    expect(overridden.selectedProviderId).toBe("sandbox-daytona");
+    expect(overridden.effectiveProviderId).toBe("sandbox-daytona");
+
+    const reset = await harness.behavior.callRpc("setDefaultSandboxProvider", { providerId: null }) as {
+      selectedProviderId: string | null;
+      effectiveProviderId: string | null;
+    };
+    expect(reset.selectedProviderId).toBeNull();
+    expect(reset.effectiveProviderId).toBe("sandbox-box");
+    await harness.lifecycle.dispose();
+  });
 });
