@@ -33,18 +33,30 @@ export function ThreadTaskChip({ threadId }: PluginThreadHeaderActionProps) {
   const attached = state?.attachedTasks ?? [];
   if (attached.length) {
     const identifiers = attached.map((task) => task.identifier).join(", ");
+    const hasProposal = attached.some((task) => Boolean(task.run?.proposedStatus));
     return <DropdownMenu>
-      <span data-bb-demo-label title={identifiers}><DropdownMenuTrigger asChild>
-        <Button data-bb-demo-label aria-label={`Attached tasks: ${identifiers}`} className={HEADER_BUTTON_CLASS} size="icon" variant="ghost">
+      <span data-bb-demo-label title={hasProposal ? `${identifiers} · Suggested stage update` : identifiers}><DropdownMenuTrigger asChild>
+        <Button data-bb-demo-label aria-label={`Attached tasks: ${identifiers}`} className={`${HEADER_BUTTON_CLASS} ${hasProposal ? "relative text-blue-500 ring-1 ring-blue-500/50 bg-blue-500/10 hover:text-blue-400" : ""}`} size="icon" variant="ghost">
           <PluginIcon className="size-3.5" name="task-workspaces/tasks" aria-hidden />
+          {hasProposal ? <span aria-hidden className="absolute right-1 top-1 size-1.5 rounded-full bg-blue-500" /> : null}
         </Button>
       </DropdownMenuTrigger></span>
       <DropdownMenuContent align="end" mobileTitle={attached.length === 1 ? "Attached task" : "Attached tasks"} className="min-w-56">
         {attached.map((task, index) => {
           const link = task.refs.find((ref) => ref.url);
+          const proposed = task.run?.proposedStatus ?? null;
           return <Fragment key={task.id}>
             {index ? <DropdownMenuSeparator /> : null}
             <TaskSummary task={task} />
+            {proposed ? <>
+              <DropdownMenuItem className="text-blue-600 dark:text-blue-400" onSelect={() => void rpc.call("resolveRunProposal", { taskId: task.id, accept: true })}>
+                <Icon className="size-3.5" name="Check" aria-hidden />Accept: Mark {statusLabels[proposed]}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void rpc.call("resolveRunProposal", { taskId: task.id, accept: false })}>
+                <Icon className="size-3.5" name="X" aria-hidden />Reject suggestion
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </> : null}
             {link?.url ? <DropdownMenuItem onSelect={() => navigate.openUrl(link.url!)}>
               <Icon className="size-3.5" name="ExternalLink" aria-hidden />Open in {providerNames[link.provider] ?? link.provider}
             </DropdownMenuItem> : null}

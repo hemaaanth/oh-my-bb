@@ -207,4 +207,6 @@ export const MIGRATIONS = [
       proof_page_id TEXT,
       updated_at TEXT NOT NULL
     );`,
+  // Optional agent-proposed stage change (e.g. 'done') waiting for owner accept/reject.
+  `ALTER TABLE task_runs ADD COLUMN proposed_status TEXT CHECK (proposed_status IN ('triage','backlog','todo','doing','blocked','review','done','cancelled'));`,
 ] as const;

@@ -2,9 +2,9 @@
 // failed call shows its message in the component instead of breaking the fence.
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { rpcContract, type SpecResult } from "../../contract.js";
-import { resolveRoot, type FileSource } from "../files.js";
+import { containedPath, resolveRoot, type FileSource } from "../files.js";
 import { bakeSpecs } from "./bake.js";
-import { runTool } from "./data.js";
+import { runTool, type ReadRoot } from "./data.js";
 import { SpecError } from "./errors.js";
 import { runWeb } from "./web.js";
 import type { PageSettings } from "../settings.js";
@@ -28,7 +28,7 @@ async function answer(log: BbPluginApi["log"], run: () => Promise<unknown>): Pro
 const WORKSPACE_TOOLS = new Set(["changes", "commits", "pull_request"]);
 
 /** Bakes a page's openui-lang blocks for a publish from `source` in a thread. */
-export type SpecBaker = (html: string, from: { threadId: string; source: FileSource }) => Promise<string>;
+export type SpecBaker = (html: string, from: { threadId: string; source: FileSource; baseDir?: string }) => Promise<string>;
 
 export function registerSpec(bb: BbPluginApi, settings: PageSettings): { bake: SpecBaker } {
   bb.rpc.register(specRpcContract, {
@@ -41,10 +41,15 @@ export function registerSpec(bb: BbPluginApi, settings: PageSettings): { bake: S
   });
   // A published page reads only what its publish could: Query("file") inside the root the page came from,
   // and the workspace's git tools when it came from the workspace. Other threads and environments are left out.
-  const bake: SpecBaker = async (html, { threadId, source }) => {
+  const bake: SpecBaker = async (html, { threadId, source, baseDir }) => {
     const { webLookups, mapboxToken, animations } = await settings.get();
     const root = await resolveRoot(bb.sdk, threadId, source);
-    const roots = [{ name: source === "workspace" ? "workspace" : "thread storage", rootPath: root.rootPath, hostId: root.hostId }];
+    const sourceName = source === "workspace" ? "workspace" : "thread storage";
+    const roots: ReadRoot[] = [];
+    if (baseDir && baseDir !== ".") {
+      roots.push({ name: `${sourceName} (${baseDir})`, rootPath: containedPath(root.rootPath, baseDir), hostId: root.hostId });
+    }
+    roots.push({ name: sourceName, rootPath: root.rootPath, hostId: root.hostId });
     return bakeSpecs(html, {
       tool: (tool, args) => tool === "file" || tool === "asset" || tool === "read_text" || (source === "workspace" && WORKSPACE_TOOLS.has(tool)) ? answer(bb.log, () => runTool(bb, { threadId, tool, args, roots })) : null,
       web: webLookups ? (method, input) => answer(bb.log, () => runWeb(bb, method, input, mapboxToken?.trim())) : null,

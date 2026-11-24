@@ -9,6 +9,7 @@ describe("task run state", () => {
     expect(needsAttention({ status: "doing", run: { phase: "waiting", summary: "2 scope questions waiting.", proofPageId: null, updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
     expect(needsAttention({ status: "blocked", run: { phase: "blocked", summary: "Needs Mac.", proofPageId: null, updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
     expect(needsAttention({ status: "review", run: { phase: null, summary: null, proofPageId: "6f807a6d-7754-4a44-8305-2051bb02c713", updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
+    expect(needsAttention({ status: "doing", run: { phase: "live", summary: "Ready to close.", proofPageId: null, proposedStatus: "done", updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
     const now = Date.parse("2026-11-23T12:00:00Z");
     expect(formatRunAge("2026-11-23T11:59:40Z", now)).toBe("just now");
     expect(formatRunAge("2026-11-23T11:45:00Z", now)).toBe("15m");
@@ -31,17 +32,29 @@ describe("task run state", () => {
     db.prepare("INSERT INTO akiflow_identifiers (number,external_id) VALUES (7,'ext-1')").run();
 
     const updated = await harness.behavior.runCli([
-      "run", "AKI-7", "--phase", "waiting", "--summary", "Proof ready — independent check passed.", "--proof", "6f807a6d-7754-4a44-8305-2051bb02c713",
+      "run", "AKI-7", "--phase", "waiting", "--summary", "Proof ready — independent check passed.", "--proof", "6f807a6d-7754-4a44-8305-2051bb02c713", "--propose-status", "done",
     ]);
     expect(updated.exitCode).toBe(0);
     expect(JSON.parse(updated.stdout).run).toMatchObject({
       phase: "waiting",
       summary: "Proof ready — independent check passed.",
       proofPageId: "6f807a6d-7754-4a44-8305-2051bb02c713",
+      proposedStatus: "done",
     });
 
-    const board = await harness.behavior.callRpc("boardTasks", null) as { tasks: Array<{ id: string; run?: { phase: string } }> };
-    expect(board.tasks.find((t) => t.id === "t1")?.run).toMatchObject({ phase: "waiting" });
+    const board = await harness.behavior.callRpc("boardTasks", null) as { tasks: Array<{ id: string; run?: { phase: string; proposedStatus?: string | null } }> };
+    expect(board.tasks.find((t) => t.id === "t1")?.run).toMatchObject({ phase: "waiting", proposedStatus: "done" });
+
+    // Rejecting keeps the task open and clears the proposal.
+    const rejected = await harness.behavior.callRpc("resolveRunProposal", { taskId: "t1", accept: false }) as { status: string; run?: { proposedStatus?: string | null } };
+    expect(rejected.status).toBe("doing");
+    expect(rejected.run?.proposedStatus).toBeNull();
+
+    // Re-proposing and accepting moves the task to done and clears run state.
+    await harness.behavior.runCli(["run", "AKI-7", "--propose-status", "done"]);
+    const accepted = await harness.behavior.callRpc("resolveRunProposal", { taskId: "t1", accept: true }) as { status: string; run?: unknown };
+    expect(accepted.status).toBe("done");
+    expect(accepted.run).toBeUndefined();
 
     const cleared = await harness.behavior.runCli(["run", "AKI-7", "--clear"]);
     expect(cleared.exitCode).toBe(0);

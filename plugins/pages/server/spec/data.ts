@@ -123,12 +123,23 @@ async function threadRoots(sdk: Sdk, threadId: string): Promise<ReadRoot[]> {
 async function scopedFile(sdk: Sdk, threadId: string, raw: unknown, only?: readonly ReadRoot[]) {
   const roots = only ?? await threadRoots(sdk, threadId);
   const { root, file } = locate(roots, raw);
-  // rootPath makes the host realpath both sides, so a symlink cannot lead out of the root.
-  const result = await sdk.files.read({ path: containedPath(root.rootPath, file), rootPath: root.rootPath, hostId: root.hostId }).catch((error: unknown) => {
-    if (typeof error === "object" && error !== null && "status" in error && error.status === 404) throw new SpecError(`No file at ${file} in the ${root.name}.`);
-    throw error;
-  });
-  return { root, file, result };
+  const given = typeof raw === "string" ? raw.trim() : "";
+  const candidates = !path.posix.isAbsolute(given) && only && only.length > 1 ? only : [root];
+  let notFound: SpecError | null = null;
+  for (const candidate of candidates) {
+    try {
+      // rootPath makes the host realpath both sides, so a symlink cannot lead out of the root.
+      const result = await sdk.files.read({ path: containedPath(candidate.rootPath, file), rootPath: candidate.rootPath, hostId: candidate.hostId });
+      return { root: candidate, file, result };
+    } catch (error: unknown) {
+      if (typeof error === "object" && error !== null && "status" in error && error.status === 404) {
+        notFound ??= new SpecError(`No file at ${file} in the ${candidate.name}.`);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw notFound ?? new SpecError(`No file at ${file} in the ${root.name}.`);
 }
 
 async function readText(sdk: Sdk, threadId: string, raw: unknown, only?: readonly ReadRoot[]): Promise<string> {

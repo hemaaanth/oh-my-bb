@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { taskCommandPaletteActions } from "./command-palette.js";
-import { byChatState, byPosition, formatRunAge, isOpenPersonalTask, masonry, needsAttention, organizeTasks, placeTask, runPhaseLabels, statusLabels, taskPriority, type ChatState, type Task } from "./task-layout.js";
+import { byChatState, byPosition, formatRunAge, isOpenPersonalTask, masonry, needsAttention, organizeTasks, placeTask, runPhaseLabels, statusLabels, taskPriority, type ChatState, type RunPhase, type Task } from "./task-layout.js";
 import { useTaskDrag, type DropSlot } from "./task-drag.js";
 import { MoreSettings } from "./settings";
 
@@ -738,9 +738,9 @@ function ArchivedTaskPrompt() {
 
 const priorityLabels: Record<ReturnType<typeof taskPriority>, string> = { urgent: "Now", high: "Later", medium: "Medium", low: "Low", none: "No priority" };
 
-function StatusGlyph({ status }: { status: Task["status"] }) {
+function StatusGlyph({ status, highlighted = false }: { status: Task["status"]; highlighted?: boolean }) {
   const slice = status === "doing" ? "M7 7V3.5A3.5 3.5 0 0 1 7 10.5Z" : status === "review" ? "M7 7V3.5A3.5 3.5 0 1 1 3.5 7Z" : status === "done" ? "M7 3.5A3.5 3.5 0 1 1 7 10.5A3.5 3.5 0 1 1 7 3.5Z" : null;
-  const tone = status === "blocked" ? "text-destructive-text" : slice ? "text-foreground" : "text-subtle-foreground";
+  const tone = highlighted ? "text-blue-500" : status === "blocked" ? "text-destructive-text" : slice ? "text-foreground" : "text-subtle-foreground";
   return <span title={statusLabels[status]} className={`flex size-4 shrink-0 items-center justify-center ${tone}`}>
     <svg role="img" aria-label={statusLabels[status]} viewBox="0 0 14 14" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
       <circle cx="7" cy="7" r="6" strokeDasharray={status === "backlog" || status === "triage" ? "2 2" : undefined} />
@@ -748,6 +748,73 @@ function StatusGlyph({ status }: { status: Task["status"] }) {
       {status === "blocked" ? <path d="M4.5 7h5" strokeLinecap="round" /> : null}
     </svg>
   </span>;
+}
+
+function StatusPicker({ task, onStage, onResolveProposal }: {
+  task: Task;
+  onStage: (status: Task["status"]) => void;
+  onResolveProposal: (accept: boolean) => void;
+}) {
+  const proposed = task.run?.proposedStatus ?? null;
+  const [open, setOpen] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setHover = (next: boolean, delay: number) => (event: { pointerType: string }) => {
+    if (!proposed || event.pointerType !== "mouse") return;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setOpen(next), delay);
+  };
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const label = proposed
+    ? `${statusLabels[task.status]} — suggested: ${statusLabels[proposed]}`
+    : `Change stage (${statusLabels[task.status]})`;
+  return <DropdownMenu open={open} onOpenChange={(next) => { if (timer.current) clearTimeout(timer.current); setOpen(next); }} modal={false}>
+    <span data-no-drag="" title={label} className="flex shrink-0">
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`${label}: ${task.title}`}
+          onClick={(event) => event.stopPropagation()}
+          onPointerEnter={setHover(true, 100)}
+          onPointerLeave={setHover(false, 180)}
+          className={`flex size-6 items-center justify-center rounded-full outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring ${
+            proposed
+              ? "bg-blue-500/15 ring-2 ring-blue-500/60 hover:bg-blue-500/25"
+              : "hover:bg-state-hover"
+          }`}
+        >
+          <StatusGlyph status={task.status} highlighted={Boolean(proposed)} />
+        </button>
+      </DropdownMenuTrigger>
+    </span>
+    <DropdownMenuContent
+      data-no-drag=""
+      data-bb-demo-label
+      align="start"
+      mobileTitle={task.title}
+      className="min-w-44"
+      onPointerEnter={setHover(true, 0)}
+      onPointerLeave={setHover(false, 180)}
+    >
+      {proposed ? <>
+        <DropdownMenuLabel className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
+          Suggested: {statusLabels[proposed]}
+        </DropdownMenuLabel>
+        <DropdownMenuItem className="text-blue-600 dark:text-blue-400" onSelect={() => onResolveProposal(true)}>
+          <Icon name="Check" className="size-3.5" aria-hidden />Accept ({statusLabels[proposed]})
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onResolveProposal(false)}>
+          <Icon name="X" className="size-3.5" aria-hidden />Reject suggestion
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+      </> : null}
+      {menuStages.map((value) => (
+        <MenuChoice key={value} current={value === task.status} onSelect={() => onStage(value)}>
+          <span aria-hidden className="flex"><StatusGlyph status={value} /></span>
+          {statusLabels[value]}
+        </MenuChoice>
+      ))}
+    </DropdownMenuContent>
+  </DropdownMenu>;
 }
 
 function RowAction({ label, icon, task, onClick, disabled }: {
@@ -877,44 +944,105 @@ function proofHref(proofPageId: string | null | undefined): string | null {
   return null;
 }
 
-function RunInlineBadge({ task }: { task: Task }) {
-  const href = proofHref(task.run?.proofPageId);
-  if (href) {
-    const external = /^https?:\/\//iu.test(href);
-    return <a
-      data-no-drag=""
-      href={href}
-      target={external ? "_blank" : undefined}
-      rel={external ? "noopener noreferrer" : undefined}
-      onClick={(event) => event.stopPropagation()}
-      className="shrink-0 text-xs font-medium text-primary hover:underline"
-    >Proof ↗</a>;
-  }
-  const phase = task.run?.phase;
-  if (!phase) return null;
-  const tone = phase === "blocked" ? "text-destructive-text" : phase === "waiting" ? "text-warning" : "text-muted-foreground";
-  return <span className={`shrink-0 text-xs ${tone}`}>{runPhaseLabels[phase]}</span>;
+function proofEmbedUrl(proofPageId: string | null | undefined): string | null {
+  const value = proofPageId?.trim();
+  if (!value) return null;
+  if (UUID_RE.test(value)) return `/api/v1/plugins/pages/http/p?id=${encodeURIComponent(value.toLowerCase())}`;
+  if (/^https?:\/\//iu.test(value)) return value;
+  return null;
 }
 
-function NeedsYouSection({ tasks, projectName, chats }: {
+const phasePillClasses: Record<RunPhase, string> = {
+  scoping: "border-border/70 bg-muted/70 text-muted-foreground",
+  building: "border-blue-500/25 bg-blue-500/12 text-blue-600 dark:text-blue-400",
+  capturing: "border-violet-500/25 bg-violet-500/12 text-violet-600 dark:text-violet-400",
+  checking: "border-cyan-500/25 bg-cyan-500/12 text-cyan-600 dark:text-cyan-400",
+  waiting: "border-amber-500/30 bg-amber-500/12 text-amber-600 dark:text-amber-400",
+  deploying: "border-teal-500/25 bg-teal-500/12 text-teal-600 dark:text-teal-400",
+  live: "border-emerald-500/25 bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
+  blocked: "border-destructive/30 bg-destructive/12 text-destructive-text",
+};
+
+function RunInlineBadge({ task, onOpenProof }: { task: Task; onOpenProof?: (task: Task) => void }) {
+  const phase = task.run?.phase ?? null;
+  const hasProof = Boolean(proofEmbedUrl(task.run?.proofPageId));
+  if (!phase && !hasProof) return null;
+  return <span data-no-drag="" className="flex shrink-0 items-center gap-1.5">
+    {phase ? <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4 ${phasePillClasses[phase]}`}>
+      {runPhaseLabels[phase]}
+    </span> : null}
+    {hasProof && onOpenProof ? <button
+      type="button"
+      onClick={(event) => { event.stopPropagation(); onOpenProof(task); }}
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-surface-recessed/80 px-2 py-0.5 text-[11px] font-medium leading-4 text-foreground transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <Icon name="Eye" className="size-3 text-muted-foreground" aria-hidden />
+      Proof
+    </button> : null}
+  </span>;
+}
+
+function ProofSidePanel({ task, onClose, onResolveProposal }: {
+  task: Task;
+  onClose: () => void;
+  onResolveProposal: (task: Task, accept: boolean) => void;
+}) {
+  const embedUrl = proofEmbedUrl(task.run?.proofPageId);
+  const fullHref = proofHref(task.run?.proofPageId);
+  const external = fullHref ? /^https?:\/\//iu.test(fullHref) : false;
+  const proposed = task.run?.proposedStatus ?? null;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+  if (!embedUrl) return null;
+  return <aside aria-label={`Proof: ${task.title}`} className="fixed inset-0 z-40 flex flex-col border-l border-border bg-background md:static md:z-auto md:w-[min(52vw,46rem)] md:shrink-0">
+    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
+      <span className="inline-flex shrink-0 items-center rounded-full border border-border bg-surface-recessed/80 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">Proof</span>
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"><span data-bb-demo-sensitive>{task.title}</span></span>
+      {proposed ? <Button size="sm" className="h-7 px-2.5 text-xs" onClick={() => onResolveProposal(task, true)}>
+        Accept ({statusLabels[proposed]})
+      </Button> : null}
+      {fullHref ? <span title="Open full page" className="flex">
+        <Button asChild variant="ghost" size="icon" className="size-7 text-muted-foreground">
+          <a href={fullHref} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} aria-label="Open full proof page">
+            <Icon name="ExternalLink" className="size-4" aria-hidden />
+          </a>
+        </Button>
+      </span> : null}
+      <span title="Close proof panel" className="flex">
+        <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" aria-label="Close proof panel" onClick={onClose}>
+          <Icon name="X" className="size-4" aria-hidden />
+        </Button>
+      </span>
+    </div>
+    <iframe title={`Proof: ${task.title}`} src={embedUrl} className="min-h-0 w-full flex-1 border-0 bg-background" />
+  </aside>;
+}
+
+function NeedsYouSection({ tasks, projectName, chats, onOpenProof, onResolveProposal }: {
   tasks: Task[];
   projectName: (task: Task) => string | undefined;
   chats: ChatPopupController;
+  onOpenProof: (task: Task) => void;
+  onResolveProposal: (task: Task, accept: boolean) => void;
 }) {
   if (!tasks.length) return null;
   return <section aria-label="Needs you">
     <SectionHeader title="Needs you" count={tasks.length} />
     <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
       {tasks.map((task) => {
-        const href = proofHref(task.run?.proofPageId);
-        const external = href ? /^https?:\/\//iu.test(href) : false;
+        const hasProof = Boolean(proofEmbedUrl(task.run?.proofPageId));
+        const proposed = task.run?.proposedStatus ?? null;
         const openChat = chats.opener(task);
         const project = projectName(task);
         const age = task.run?.updatedAt ? formatRunAge(task.run.updatedAt) : "";
         const meta = [project, age].filter(Boolean).join(" · ");
-        const summary = task.run?.summary || (href ? "Proof ready for your approval." : task.run?.phase === "blocked" ? "Blocked — needs your input." : "Waiting for your decision.");
+        const summary = task.run?.summary || (proposed ? `Suggested moving to ${statusLabels[proposed]}.` : hasProof ? "Proof ready for your approval." : task.run?.phase === "blocked" ? "Blocked — needs your input." : "Waiting for your decision.");
         const isBlocked = task.run?.phase === "blocked";
-        return <article key={task.id} data-needs-you={task.id} className={`flex flex-col justify-between gap-3 rounded-lg border bg-card p-3.5 ${isBlocked ? "border-destructive/40" : "border-warning/40"}`}>
+        const borderTone = isBlocked ? "border-destructive/40" : proposed ? "border-blue-500/40" : "border-warning/40";
+        return <article key={task.id} data-needs-you={task.id} className={`flex flex-col justify-between gap-3 rounded-lg border bg-card p-3.5 ${borderTone}`}>
           <div className="space-y-1">
             <div className="flex items-start justify-between gap-3">
               <span className="min-w-0 text-sm font-medium leading-5 text-foreground"><span data-bb-demo-sensitive>{task.title}</span></span>
@@ -923,8 +1051,12 @@ function NeedsYouSection({ tasks, projectName, chats }: {
             <p className="m-0 text-xs leading-5 text-muted-foreground">{summary}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {href ? <Button asChild size="sm"><a href={href} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined}>Open proof ↗</a></Button> : null}
-            {openChat ? <Button variant={href ? "outline" : "default"} size="sm" onClick={openChat}>{href ? "Open chat" : "Answer in chat"}</Button> : null}
+            {proposed ? <>
+              <Button size="sm" onClick={() => onResolveProposal(task, true)}>Accept: Mark {statusLabels[proposed]}</Button>
+              <Button variant="outline" size="sm" onClick={() => onResolveProposal(task, false)}>Dismiss</Button>
+            </> : null}
+            {hasProof ? <Button variant={proposed ? "outline" : "default"} size="sm" onClick={() => onOpenProof(task)}>View proof</Button> : null}
+            {openChat ? <Button variant={hasProof || proposed ? "outline" : "default"} size="sm" onClick={openChat}>{hasProof || proposed ? "Open chat" : "Answer in chat"}</Button> : null}
           </div>
         </article>;
       })}
@@ -932,17 +1064,19 @@ function NeedsYouSection({ tasks, projectName, chats }: {
   </section>;
 }
 
-function TaskRow({ task, project, chat, onOpen, onRename, handle, active, children }: {
-  task: Task; project?: string; chat: ChatState | null; onOpen?: () => void; onRename: (title: string) => void; handle: RowHandle; active: boolean; children: ReactNode;
+function TaskRow({ task, project, chat, onOpen, onRename, onStage, onResolveProposal, onOpenProof, handle, active, children }: {
+  task: Task; project?: string; chat: ChatState | null; onOpen?: () => void; onRename: (title: string) => void;
+  onStage: (status: Task["status"]) => void; onResolveProposal: (accept: boolean) => void; onOpenProof: (task: Task) => void;
+  handle: RowHandle; active: boolean; children: ReactNode;
 }) {
   if (isDraft(task)) return <li aria-busy className="flex min-w-0 items-center gap-3 py-1.5 pe-2 ps-3 opacity-50">
     <StatusGlyph status={task.status} />
     <span className="min-w-0 flex-1 truncate py-1 text-sm leading-5"><span data-bb-demo-sensitive>{task.title}</span></span>
   </li>;
-  return <li {...handle} data-flip={task.id} style={chatTint(chat)} className={`group flex min-w-0 items-center gap-3 py-1.5 pe-2 ps-3 hover:bg-state-hover ${active ? "bg-state-hover" : ""} ${draggable}`}>
-    <StatusGlyph status={task.status} />
+  return <li {...handle} data-flip={task.id} style={chatTint(chat)} className={`group flex min-w-0 items-center gap-2.5 py-1.5 pe-2 ps-2 hover:bg-state-hover ${active ? "bg-state-hover" : ""} ${draggable}`}>
+    <StatusPicker task={task} onStage={onStage} onResolveProposal={onResolveProposal} />
     <TaskTitle data-bb-demo-label title={task.title} onRename={onRename} onOpen={onOpen} className="min-w-0 flex-1 py-1 text-sm leading-5" clamp="block truncate" />
-    <RunInlineBadge task={task} />
+    <RunInlineBadge task={task} onOpenProof={onOpenProof} />
     {project ? <span className="hidden max-w-40 shrink-0 truncate text-xs text-subtle-foreground sm:block"><span data-bb-demo-sensitive>{project}</span></span> : null}
     <div data-no-drag="" className="flex shrink-0 items-center">{children}</div>
   </li>;
@@ -1108,9 +1242,13 @@ function useWidth() {
 
 // Clicking the header folds a card into a single bar with its count, like a project without tasks.
 // A card that takes drops gets `dropRef`. It lights up while a task from another project is over it.
-function ProjectCard({ column, expanded, onExpand, folded, onFold, onRename, onCreate, onMenu, menuOpen, actions, handle, draggingId, landing, menuId, dropRef, over }: {
+function ProjectCard({ column, expanded, onExpand, folded, onFold, onRename, onStage, onResolveProposal, onOpenProof, onCreate, onMenu, menuOpen, actions, handle, draggingId, landing, menuId, dropRef, over }: {
   column: ProjectColumn; expanded: boolean; onExpand: () => void; folded: boolean; onFold: () => void;
-  onRename: (task: Task, title: string) => void; onCreate?: () => void;
+  onRename: (task: Task, title: string) => void;
+  onStage: (task: Task, status: Task["status"]) => void;
+  onResolveProposal: (task: Task, accept: boolean) => void;
+  onOpenProof: (task: Task) => void;
+  onCreate?: () => void;
   onMenu: (event: ReactMouseEvent<HTMLElement>) => void; menuOpen: boolean;
   actions: (task: Task) => ReactNode; handle: (task: Task) => RowHandle; draggingId: string | null; landing: boolean; menuId?: string;
   dropRef?: (element: HTMLElement | null) => void; over: boolean;
@@ -1140,10 +1278,10 @@ function ProjectCard({ column, expanded, onExpand, folded, onFold, onRename, onC
               <span className="mt-0.5"><StatusGlyph status={task.status} /></span>
               <span className="line-clamp-2 min-w-0 flex-1 text-sm leading-5"><span data-bb-demo-sensitive>{task.title}</span></span>
             </li>
-            : <li key={task.id} {...handle(task)} data-task={task.id} className={`group flex items-start gap-2 rounded-md px-2 py-1.5 transition-opacity hover:bg-state-hover ${draggable} ${task.id === draggingId ? landing ? "opacity-0" : "opacity-40" : ""} ${task.id === menuId ? "bg-state-hover" : ""}`}>
-              <span className="mt-0.5"><StatusGlyph status={task.status} /></span>
+            : <li key={task.id} {...handle(task)} data-task={task.id} className={`group flex items-start gap-1.5 rounded-md px-1.5 py-1.5 transition-opacity hover:bg-state-hover ${draggable} ${task.id === draggingId ? landing ? "opacity-0" : "opacity-40" : ""} ${task.id === menuId ? "bg-state-hover" : ""}`}>
+              <StatusPicker task={task} onStage={(status) => onStage(task, status)} onResolveProposal={(accept) => onResolveProposal(task, accept)} />
               <TaskTitle data-bb-demo-label title={task.title} onRename={(title) => onRename(task, title)} className="min-w-0 flex-1 text-sm leading-5" clamp="line-clamp-2" />
-              <span className="mt-0.5 flex items-center"><RunInlineBadge task={task} /></span>
+              <span className="mt-0.5 flex items-center"><RunInlineBadge task={task} onOpenProof={onOpenProof} /></span>
               <span data-no-drag="" className="-my-1 flex">{actions(task)}</span>
             </li>)}</ul>
         </div> : null;
@@ -1396,10 +1534,29 @@ function TasksScreen() {
     catch (error) { toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>); }
     finally { setBusy(null); }
   };
+  const [proofTaskId, setProofTaskId] = useState<string | null>(null);
+  const proofTask = proofTaskId ? tasks.find((task) => task.id === proofTaskId) ?? null : null;
+  const openProof = (task: Task) => setProofTaskId(task.id);
+  const resolveProposal = (task: Task, accept: boolean) => {
+    const proposed = task.run?.proposedStatus;
+    if (!proposed) return;
+    mutate(
+      accept ? { [task.id]: { status: proposed } } : {},
+      () => rpc.call("resolveRunProposal", { taskId: task.id, accept }),
+    );
+    if (accept && proposed === "done") {
+      if (proofTaskId === task.id) setProofTaskId(null);
+      toast("Task marked done", {
+        description: <span data-bb-demo-sensitive>{task.title}</span>,
+        action: { label: "Undo", onClick: () => moveStage(task, task.status) },
+      });
+    }
+  };
   const promote = (task: Task) => <RowAction label="Move to Now" icon="ArrowUp" task={task} onClick={() => moves.priority(task, "urgent")} />;
   const cards = (list: ProjectColumn[]) => <div className="flex items-start gap-3">{stacks(list).map((stack, index) => <div key={index} className="flex min-w-0 flex-1 flex-col gap-3">
     {stack.map((column) => <ProjectCard key={column.id} column={column} expanded={expanded.has(column.id)} onExpand={() => toggleExpanded(column.id)}
       folded={folded.has(column.id)} onFold={() => toggleFolded(column.id)} onRename={rename}
+      onStage={moves.stage} onResolveProposal={resolveProposal} onOpenProof={openProof}
       onCreate={column.id ? () => openNewTask(column.id) : undefined}
       onMenu={(event) => { event.preventDefault(); setContextMenu({ projectId: column.id, x: event.clientX, y: event.clientY }); }} menuOpen={contextMenu?.projectId === column.id}
       handle={row} draggingId={dnd.draggingId} landing={dnd.landing} menuId={contextMenu?.taskId}
@@ -1407,7 +1564,7 @@ function TasksScreen() {
       actions={(task) => <>{promote(task)}{menu(task)}</>} />)}
   </div>)}</div>;
   // During a drag the page ignores the pointer, so rows under the card do not light up.
-  return <div className="flex h-full flex-col text-foreground"><div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+  return <div className="flex h-full flex-col text-foreground"><div className="flex min-h-0 flex-1 overflow-hidden"><div ref={scroller} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
     <div ref={measure} className={`mx-auto w-full max-w-5xl space-y-8 px-4 pb-12 pt-6 ${dnd.draggingId ? "pointer-events-none" : ""}`}>
       <Dialog open={deleting !== null} onOpenChange={(open) => { if (!open) setDeleting(null); }}>
         <DialogContent onOpenAutoFocus={(event) => { event.preventDefault(); cancelDelete.current?.focus(); }}
@@ -1430,7 +1587,7 @@ function TasksScreen() {
         <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-recessed/70"><PluginIcon name={tasksIcon} className="size-5" /></div>
         <div className="min-w-0"><h1 className="text-base font-semibold leading-5">Tasks</h1><p className="text-xs leading-4 text-muted-foreground">Plan work across your task sources.</p></div>
       </header>
-      <NeedsYouSection tasks={personal.filter((task) => !isDraft(task) && needsAttention(task))} projectName={projectName} chats={chats} />
+      <NeedsYouSection tasks={personal.filter((task) => !isDraft(task) && needsAttention(task))} projectName={projectName} chats={chats} onOpenProof={openProof} onResolveProposal={resolveProposal} />
       <section ref={dnd.zoneRef.urgent} aria-label="Now">
         <SectionHeader title="Now" count={loading ? undefined : now.length}>
           <div className="flex items-center">
@@ -1439,7 +1596,7 @@ function TasksScreen() {
           </div>
         </SectionHeader>
         <ul ref={dnd.listRef.urgent} className={`relative mt-2 ${listCard}`}>
-          {dnd.items("urgent", now).map((task) => task ? <TaskRow key={task.id} task={task} project={projectName(task)} chat={taskState(task)} onOpen={chats.opener(task)} onRename={(title) => rename(task, title)} handle={row(task)} active={task.id === contextMenu?.taskId}>
+          {dnd.items("urgent", now).map((task) => task ? <TaskRow key={task.id} task={task} project={projectName(task)} chat={taskState(task)} onOpen={chats.opener(task)} onRename={(title) => rename(task, title)} onStage={(status) => moves.stage(task, status)} onResolveProposal={(accept) => resolveProposal(task, accept)} onOpenProof={openProof} handle={row(task)} active={task.id === contextMenu?.taskId || task.id === proofTaskId}>
             <RowAction label="Move to Later" icon="Clock" task={task} onClick={() => moves.priority(task, "high")} />
             <ChatMenu task={task} chats={chats} />
             {menu(task)}
@@ -1450,7 +1607,7 @@ function TasksScreen() {
       <section ref={dnd.zoneRef.high} aria-label="Later">
         <SectionHeader title="Later" count={loading ? undefined : later.length} open={laterOpen} onToggle={toggleLater} highlight={dnd.overLaterHeader} />
         {laterOpen ? <ul ref={dnd.listRef.high} className={`relative mt-2 ${listCard}`}>
-          {dnd.items("high", later).map((task) => task ? <TaskRow key={task.id} task={task} project={projectName(task)} chat={taskState(task)} onOpen={chats.opener(task)} onRename={(title) => rename(task, title)} handle={row(task)} active={task.id === contextMenu?.taskId}>{promote(task)}<ChatMenu task={task} chats={chats} />{menu(task)}</TaskRow> : <DropSlotRow key="slot" />)}
+          {dnd.items("high", later).map((task) => task ? <TaskRow key={task.id} task={task} project={projectName(task)} chat={taskState(task)} onOpen={chats.opener(task)} onRename={(title) => rename(task, title)} onStage={(status) => moves.stage(task, status)} onResolveProposal={(accept) => resolveProposal(task, accept)} onOpenProof={openProof} handle={row(task)} active={task.id === contextMenu?.taskId || task.id === proofTaskId}>{promote(task)}<ChatMenu task={task} chats={chats} />{menu(task)}</TaskRow> : <DropSlotRow key="slot" />)}
           {!dnd.items("high", later).length ? <li className="px-4 py-3 text-sm text-muted-foreground">{loading ? "Loading tasks…" : "Nothing in Later."}</li> : null}
         </ul> : null}
       </section>
@@ -1503,7 +1660,7 @@ function TasksScreen() {
             onPick={(task) => assign(assigning.thread!, task)} onCreate={(title) => setAssigning((current) => ({ ...current, title }))} />
         </DialogContent> : null}
     </Dialog>
-  </div><ProviderHealthFooter /></div>;
+  </div>{proofTask ? <ProofSidePanel task={proofTask} onClose={() => setProofTaskId(null)} onResolveProposal={resolveProposal} /> : null}</div><ProviderHealthFooter /></div>;
 }
 
 function NowHomeCard({ projectId }: { projectId: string | null }) {

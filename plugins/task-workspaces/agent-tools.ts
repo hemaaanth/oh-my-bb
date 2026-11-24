@@ -64,6 +64,7 @@ type TaskAgentDeps = {
     phase?: typeof runPhaseValues[number] | null;
     summary?: string | null;
     proofPageId?: string | null;
+    proposedStatus?: TaskStatus | null;
     clear?: boolean;
   }) => TaskView;
   create: (input: {
@@ -205,7 +206,7 @@ export function registerTaskAgentIntegration(bb: BbPluginApi, deps: TaskAgentDep
 
   bb.agents.registerTool({
     name: toolNames.run,
-    description: "Update a task's live factory run phase, short plain-English attention summary, or BB Pages proof page ID.",
+    description: "Update a task's live factory run phase, short plain-English attention summary, BB Pages proof page ID, or proposed stage change for the user to accept/reject.",
     presentation: {
       label: { pending: "Updating task run state", completed: "Updated task run state" },
       icon: { glyph: "Workflow" },
@@ -215,12 +216,13 @@ export function registerTaskAgentIntegration(bb: BbPluginApi, deps: TaskAgentDep
       phase: z.enum(runPhaseValues).nullable().optional(),
       summary: z.string().trim().max(240).nullable().optional(),
       proofPageId: z.string().trim().max(200).nullable().optional(),
+      proposedStatus: z.enum(statusValues).nullable().optional(),
       clear: z.boolean().optional(),
     }).strict(),
-    execute: async ({ task, phase, summary, proofPageId, clear }, ctx) => {
+    execute: async ({ task, phase, summary, proofPageId, proposedStatus, clear }, ctx) => {
       requireWriteLevel("workflow");
       const id = (await deps.taskForProject(task, ctx.projectId)).id;
-      return JSON.stringify(deps.setRun(id, { phase, summary, proofPageId, clear }), null, 2);
+      return JSON.stringify(deps.setRun(id, { phase, summary, proofPageId, proposedStatus, clear }), null, 2);
     },
   });
 

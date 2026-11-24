@@ -154,7 +154,7 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
   };
 
   /** The page with its openui-lang blocks' data baked in. Compared baked, so new data adds a version. */
-  const baked = (html: string, input: PublishFileInput) => bake && hasSpecBlocks(html) ? bake(html, { threadId: input.threadId, source: input.source }) : Promise.resolve(html);
+  const baked = (html: string, input: PublishFileInput, baseDir?: string) => bake && hasSpecBlocks(html) ? bake(html, { threadId: input.threadId, source: input.source, baseDir }) : Promise.resolve(html);
 
   /** What a publish stores: the page HTML, a folder's other files, and the digest that decides "unchanged". */
   async function readContent(input: PublishFileInput) {
@@ -164,7 +164,7 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
         ...[...lintPageComposition(folder.index), ...lintPageStyles(folder.index)].map(issue => ({ ...issue, file: "index.html" })),
         ...folder.files.filter(file => /^text\/html\b/i.test(file.contentType)).flatMap(file => lintPageStyles(Buffer.from(file.bytes).toString("utf8")).map(issue => ({ ...issue, file: file.path }))),
       ];
-      const index = await baked(folder.index, input);
+      const index = await baked(folder.index, input, folder.dir);
       const manifest = folder.files.map((file) => `${file.path}\0${file.contentType}\0${createHash("sha256").update(file.bytes).digest("hex")}`);
       return { html: index, files: folder.files, sourceKey: folder.sourceKey, sourcePath: folder.dir, digest: sha256([index, ...manifest].join("\0\0")), styleIssues };
     }
@@ -176,7 +176,8 @@ export function createPageService({ sdk, store, changed, versionCreated, pageDel
       ? [...lintPageComposition(source.content), ...lintPageStyles(source.content)].map(issue => ({ ...issue, file: source.file }))
       : lintPageComposition(rendered).filter(issue => issue.rule === "no-components").map(issue => ({ ...issue, offset: 0, line: 1, column: 1, file: source.file }));
     // Stored and compared with local images inlined, so an image change adds a version. Folders store their images as files.
-    const html = await baked(await inlineLocalImages(sdk, input.threadId, source, rendered, { strict: true }), input);
+    const dir = path.posix.dirname(source.file);
+    const html = await baked(await inlineLocalImages(sdk, input.threadId, source, rendered, { strict: true }), input, dir === "." ? undefined : dir);
     return { html, files: [], sourceKey: source.sourceKey, sourcePath: source.file, digest: sha256(html), styleIssues };
   }
 

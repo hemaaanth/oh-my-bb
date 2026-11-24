@@ -5,6 +5,7 @@ export type TaskRun = {
   phase: RunPhase | null;
   summary: string | null;
   proofPageId: string | null;
+  proposedStatus?: Task["status"] | null;
   updatedAt: string;
 };
 
@@ -36,6 +37,7 @@ export type Task = {
 export function needsAttention(task: Pick<Task, "status" | "run">): boolean {
   const phase = task.run?.phase;
   if (phase === "waiting" || phase === "blocked") return true;
+  if (task.run?.proposedStatus) return true;
   return task.status === "review" && Boolean(task.run?.proofPageId);
 }
 

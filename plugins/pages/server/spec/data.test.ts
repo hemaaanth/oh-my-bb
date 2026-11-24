@@ -45,4 +45,29 @@ describe("runTool", () => {
     await expect(runTool(bb, { tool: "nope", args: {} })).rejects.toThrow(/Unknown tool "nope"/u);
     await expect(runTool(bb, { tool: "commits", args: {} })).rejects.toThrow(/needs a thread/u);
   });
+
+  it("resolves relative assets against the page directory first and falls back to the source root", async () => {
+    const files = new Map<string, { content: string; contentEncoding: "base64" | "utf8"; sizeBytes: number }>([
+      ["/store/proof/before.png", { content: "AAAA", contentEncoding: "base64", sizeBytes: 3 }],
+      ["/store/shared/logo.png", { content: "BBBB", contentEncoding: "base64", sizeBytes: 3 }],
+    ]);
+    const fakeBb = {
+      sdk: {
+        files: {
+          read: async ({ path: filePath }: { path: string }) => {
+            const hit = files.get(filePath);
+            if (!hit) throw Object.assign(new Error("not found"), { status: 404 });
+            return hit;
+          },
+        },
+      },
+    } as never;
+    const roots: ReadRoot[] = [
+      { name: "thread storage (proof)", rootPath: "/store/proof", hostId: "h" },
+      { name: "thread storage", rootPath: "/store", hostId: "h" },
+    ];
+    expect(await runTool(fakeBb, { threadId: "t1", tool: "asset", args: { path: "./before.png" }, roots })).toEqual({ dataUrl: "data:image/png;base64,AAAA" });
+    expect(await runTool(fakeBb, { threadId: "t1", tool: "asset", args: { path: "proof/before.png" }, roots })).toEqual({ dataUrl: "data:image/png;base64,AAAA" });
+    expect(await runTool(fakeBb, { threadId: "t1", tool: "asset", args: { path: "shared/logo.png" }, roots })).toEqual({ dataUrl: "data:image/png;base64,BBBB" });
+  });
 });

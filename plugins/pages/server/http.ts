@@ -67,6 +67,13 @@ export function registerRoutes(bb: BbPluginApi, store: PageStore) {
     return servePage(c, stored, "index.html", stored.html, stored.hasCharts);
   });
 
+  bb.http.route("GET", "/p", (c) => {
+    const page = store.livePage(c.req.query("id") ?? "");
+    const stored = page ? store.storedHtml(page.currentVersionId) : null;
+    if (!stored) return text(404, "Page not found.");
+    return servePage(c, stored, "index.html", stored.html, stored.hasCharts);
+  });
+
   bb.http.route("GET", "/a", (c) => {
     const stored = store.storedHtml(c.req.query("id") ?? "");
     if (!stored) return text(404, "Page version not found.");

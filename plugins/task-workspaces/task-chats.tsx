@@ -117,11 +117,19 @@ type ChatView = { taskId: string | null; title: string; chatIds: string[] | null
 type NewChatSeed = { projectId?: string; prompt: string };
 type AttachPatch = (patch: Record<string, Pick<Task, "threadIds">>, call: () => Promise<unknown>) => void;
 
-// A new chat starts in the task's project. Its message names the task and links the task's
-// GitHub or Linear page, which holds the details.
+// A new chat starts in the task's project. Its message names the task, links its GitHub or
+// Linear page, and prefills the factory workflow instruction (editable before sending).
 function newChatSeed(task: ChatTask): NewChatSeed {
   const links = task.refs.filter((ref) => (ref.provider === "github" || ref.provider === "linear") && ref.url).map((ref) => ref.url);
-  return { projectId: task.effectiveProjectId ?? task.projectId ?? undefined, prompt: [`Work on ${task.identifier}: ${task.title}`, ...links].join("\n") };
+  return {
+    projectId: task.effectiveProjectId ?? task.projectId ?? undefined,
+    prompt: [
+      `Work on ${task.identifier}: ${task.title}`,
+      ...links,
+      "",
+      "Use the factory skill (catalog-hstack-factory) to run this end to end in sandboxes. Keep this task's phase, summary, and proof updated with worktask_run, and propose completion (never auto-archive this thread or mark the task done).",
+    ].join("\n"),
+  };
 }
 
 /** Opens a task's chats in a popup instead of leaving the page. */
@@ -350,7 +358,7 @@ type Sidebar = ReturnType<typeof useSidebarThreads>;
 function NewChat({ taskId, seed, onSubmit }: { taskId: string; seed: NewChatSeed; onSubmit: (request: NewThreadRequest) => Promise<void> }) {
   const compact = useIsCompactViewport();
   return <div className="min-h-0 flex-1 overflow-y-auto p-3">
-    <NewThreadComposer defaultProjectId={seed.projectId} initialPrompt={seed.prompt} draftKey={`task-workspaces:new-chat:${taskId}`}
+    <NewThreadComposer defaultProjectId={seed.projectId} defaultPermissionMode="full" initialPrompt={seed.prompt} draftKey={`task-workspaces:new-chat:${taskId}`}
       layout="document" placeholder="What should the agent do?" focusRequest={compact ? undefined : 1} onSubmit={onSubmit} />
   </div>;
 }
