@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { taskCommandPaletteActions } from "./command-palette.js";
-import { byChatState, byPosition, isOpenPersonalTask, masonry, organizeTasks, placeTask, statusLabels, taskPriority, type ChatState, type Task } from "./task-layout.js";
+import { byChatState, byPosition, formatRunAge, isOpenPersonalTask, masonry, needsAttention, organizeTasks, placeTask, runPhaseLabels, statusLabels, taskPriority, type ChatState, type Task } from "./task-layout.js";
 import { useTaskDrag, type DropSlot } from "./task-drag.js";
 import { MoreSettings } from "./settings";
 
@@ -867,6 +867,71 @@ function TaskTitle({ title, onRename, onOpen, className, clamp }: {
   }} onKeyDown={(event) => { if (event.key === "F2") { event.preventDefault(); setEditing(true); } }}><span className={clamp}><span data-bb-demo-sensitive>{title}</span></span></button>;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+function proofHref(proofPageId: string | null | undefined): string | null {
+  const value = proofPageId?.trim();
+  if (!value) return null;
+  if (UUID_RE.test(value)) return `/plugins/pages/pages/${encodeURIComponent(value.toLowerCase())}`;
+  if (/^https?:\/\//iu.test(value)) return value;
+  return null;
+}
+
+function RunInlineBadge({ task }: { task: Task }) {
+  const href = proofHref(task.run?.proofPageId);
+  if (href) {
+    const external = /^https?:\/\//iu.test(href);
+    return <a
+      data-no-drag=""
+      href={href}
+      target={external ? "_blank" : undefined}
+      rel={external ? "noopener noreferrer" : undefined}
+      onClick={(event) => event.stopPropagation()}
+      className="shrink-0 text-xs font-medium text-primary hover:underline"
+    >Proof ↗</a>;
+  }
+  const phase = task.run?.phase;
+  if (!phase) return null;
+  const tone = phase === "blocked" ? "text-destructive-text" : phase === "waiting" ? "text-warning" : "text-muted-foreground";
+  return <span className={`shrink-0 text-xs ${tone}`}>{runPhaseLabels[phase]}</span>;
+}
+
+function NeedsYouSection({ tasks, projectName, chats }: {
+  tasks: Task[];
+  projectName: (task: Task) => string | undefined;
+  chats: ChatPopupController;
+}) {
+  if (!tasks.length) return null;
+  return <section aria-label="Needs you">
+    <SectionHeader title="Needs you" count={tasks.length} />
+    <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+      {tasks.map((task) => {
+        const href = proofHref(task.run?.proofPageId);
+        const external = href ? /^https?:\/\//iu.test(href) : false;
+        const openChat = chats.opener(task);
+        const project = projectName(task);
+        const age = task.run?.updatedAt ? formatRunAge(task.run.updatedAt) : "";
+        const meta = [project, age].filter(Boolean).join(" · ");
+        const summary = task.run?.summary || (href ? "Proof ready for your approval." : task.run?.phase === "blocked" ? "Blocked — needs your input." : "Waiting for your decision.");
+        const isBlocked = task.run?.phase === "blocked";
+        return <article key={task.id} data-needs-you={task.id} className={`flex flex-col justify-between gap-3 rounded-lg border bg-card p-3.5 ${isBlocked ? "border-destructive/40" : "border-warning/40"}`}>
+          <div className="space-y-1">
+            <div className="flex items-start justify-between gap-3">
+              <span className="min-w-0 text-sm font-medium leading-5 text-foreground"><span data-bb-demo-sensitive>{task.title}</span></span>
+              {meta ? <span className="shrink-0 text-xs tabular-nums text-muted-foreground"><span data-bb-demo-sensitive>{meta}</span></span> : null}
+            </div>
+            <p className="m-0 text-xs leading-5 text-muted-foreground">{summary}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {href ? <Button asChild size="sm"><a href={href} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined}>Open proof ↗</a></Button> : null}
+            {openChat ? <Button variant={href ? "outline" : "default"} size="sm" onClick={openChat}>{href ? "Open chat" : "Answer in chat"}</Button> : null}
+          </div>
+        </article>;
+      })}
+    </div>
+  </section>;
+}
+
 function TaskRow({ task, project, chat, onOpen, onRename, handle, active, children }: {
   task: Task; project?: string; chat: ChatState | null; onOpen?: () => void; onRename: (title: string) => void; handle: RowHandle; active: boolean; children: ReactNode;
 }) {
@@ -877,6 +942,7 @@ function TaskRow({ task, project, chat, onOpen, onRename, handle, active, childr
   return <li {...handle} data-flip={task.id} style={chatTint(chat)} className={`group flex min-w-0 items-center gap-3 py-1.5 pe-2 ps-3 hover:bg-state-hover ${active ? "bg-state-hover" : ""} ${draggable}`}>
     <StatusGlyph status={task.status} />
     <TaskTitle data-bb-demo-label title={task.title} onRename={onRename} onOpen={onOpen} className="min-w-0 flex-1 py-1 text-sm leading-5" clamp="block truncate" />
+    <RunInlineBadge task={task} />
     {project ? <span className="hidden max-w-40 shrink-0 truncate text-xs text-subtle-foreground sm:block"><span data-bb-demo-sensitive>{project}</span></span> : null}
     <div data-no-drag="" className="flex shrink-0 items-center">{children}</div>
   </li>;
@@ -1077,6 +1143,7 @@ function ProjectCard({ column, expanded, onExpand, folded, onFold, onRename, onC
             : <li key={task.id} {...handle(task)} data-task={task.id} className={`group flex items-start gap-2 rounded-md px-2 py-1.5 transition-opacity hover:bg-state-hover ${draggable} ${task.id === draggingId ? landing ? "opacity-0" : "opacity-40" : ""} ${task.id === menuId ? "bg-state-hover" : ""}`}>
               <span className="mt-0.5"><StatusGlyph status={task.status} /></span>
               <TaskTitle data-bb-demo-label title={task.title} onRename={(title) => onRename(task, title)} className="min-w-0 flex-1 text-sm leading-5" clamp="line-clamp-2" />
+              <span className="mt-0.5 flex items-center"><RunInlineBadge task={task} /></span>
               <span data-no-drag="" className="-my-1 flex">{actions(task)}</span>
             </li>)}</ul>
         </div> : null;
@@ -1363,6 +1430,7 @@ function TasksScreen() {
         <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-recessed/70"><PluginIcon name={tasksIcon} className="size-5" /></div>
         <div className="min-w-0"><h1 className="text-base font-semibold leading-5">Tasks</h1><p className="text-xs leading-4 text-muted-foreground">Plan work across your task sources.</p></div>
       </header>
+      <NeedsYouSection tasks={personal.filter((task) => !isDraft(task) && needsAttention(task))} projectName={projectName} chats={chats} />
       <section ref={dnd.zoneRef.urgent} aria-label="Now">
         <SectionHeader title="Now" count={loading ? undefined : now.length}>
           <div className="flex items-center">

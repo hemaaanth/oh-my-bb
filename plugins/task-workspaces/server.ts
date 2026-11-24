@@ -60,6 +60,16 @@ const refSchema = z.object({
   tags: z.array(z.string()),
 });
 
+const runPhaseSchema = z.enum(["scoping", "building", "capturing", "checking", "waiting", "deploying", "live", "blocked"]);
+type RunPhase = z.infer<typeof runPhaseSchema>;
+
+const taskRunSchema = z.object({
+  phase: runPhaseSchema.nullable(),
+  summary: z.string().nullable(),
+  proofPageId: z.string().nullable(),
+  updatedAt: z.string(),
+});
+
 const taskSchema = z.object({
   id: z.string(),
   identifier: z.string(),
@@ -82,6 +92,7 @@ const taskSchema = z.object({
   mergePending: z.boolean(),
   position: z.number().int().nullable(),
   refs: z.array(refSchema),
+  run: taskRunSchema.nullable().optional(),
 });
 
 const attachmentCandidateSchema = z.object({
@@ -170,6 +181,7 @@ const boardTaskSchema = z.object({
   owner: z.object({ isMe: z.boolean() }).nullable(),
   position: z.number().int().nullable(),
   refs: z.array(refSchema.pick({ provider: true, priority: true, url: true })),
+  run: taskRunSchema.nullable().optional(),
 });
 const createTaskPrioritySchema = z.enum(["urgent", "high", "medium", "low"]);
 const createTaskInputSchema = z.object({
@@ -863,6 +875,7 @@ export default async function plugin(bb: BbPluginApi) {
     });
     const identifiers = refDtos.map((ref) => ref.identifier);
     const threads = taskThreads(task.id);
+    const run = taskRun(task.id);
     return {
       id: task.id,
       identifier: identifiers[0] ?? task.id,
@@ -878,7 +891,42 @@ export default async function plugin(bb: BbPluginApi) {
       mergePending: Boolean(task.merge_pending),
       position: task.list_position,
       refs: refDtos,
+      ...(run ? { run } : {}),
     };
+  }
+
+  function taskRun(taskId: string) {
+    const row = db.prepare("SELECT phase, summary, proof_page_id, updated_at FROM task_runs WHERE task_id = ?").get(taskId) as
+      | { phase: RunPhase | null; summary: string | null; proof_page_id: string | null; updated_at: string }
+      | undefined;
+    if (!row) return null;
+    return { phase: row.phase, summary: row.summary, proofPageId: row.proof_page_id, updatedAt: row.updated_at };
+  }
+
+  function setTaskRun(taskId: string, input: { phase?: RunPhase | null; summary?: string | null; proofPageId?: string | null; clear?: boolean }) {
+    getDbTask(taskId);
+    if (input.clear) {
+      db.prepare("DELETE FROM task_runs WHERE task_id = ?").run(taskId);
+      bb.realtime.publish("tasks-changed", { reason: "run", taskId });
+      return taskDto(getDbTask(taskId));
+    }
+    const existing = taskRun(taskId);
+    const phase = input.phase !== undefined ? input.phase : existing?.phase ?? null;
+    const summary = input.summary !== undefined ? (input.summary?.trim() || null) : existing?.summary ?? null;
+    const proofPageId = input.proofPageId !== undefined ? (input.proofPageId?.trim() || null) : existing?.proofPageId ?? null;
+    if (!phase && !summary && !proofPageId) {
+      db.prepare("DELETE FROM task_runs WHERE task_id = ?").run(taskId);
+    } else {
+      db.prepare(`INSERT INTO task_runs (task_id, phase, summary, proof_page_id, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(task_id) DO UPDATE SET
+          phase = excluded.phase,
+          summary = excluded.summary,
+          proof_page_id = excluded.proof_page_id,
+          updated_at = excluded.updated_at`).run(taskId, phase, summary, proofPageId, now());
+    }
+    bb.realtime.publish("tasks-changed", { reason: "run", taskId });
+    return taskDto(getDbTask(taskId));
   }
 
   function taskRows() {
@@ -911,6 +959,7 @@ export default async function plugin(bb: BbPluginApi) {
       owner: dto.owner && { isMe: dto.owner.isMe },
       position: dto.position,
       refs: dto.refs.map(({ provider, priority, url }) => ({ provider, priority, url })),
+      ...(dto.run ? { run: dto.run } : {}),
     };
   }
 
@@ -3675,6 +3724,7 @@ export default async function plugin(bb: BbPluginApi) {
     move: setStatus,
     priority: setPriority,
     assign: (taskId, owner) => setOwner(taskId, resolveOwner(owner)),
+    setRun: setTaskRun,
     create: async ({ owner, ...input }, projectId) => {
       await assertDestinationProject(input.provider, input.destinationId, projectId);
       const ownerId = owner ? resolveOwner(owner) : null;
@@ -3699,6 +3749,7 @@ export default async function plugin(bb: BbPluginApi) {
       { name: "move", summary: "Move a task through the workflow without starting a chat", usage: "bb worktasks move <identifier> <status>" },
       { name: "priority", summary: "Set a task's normalized priority across its linked sources", usage: "bb worktasks priority <identifier> <none|low|medium|high|urgent>" },
       { name: "assign", summary: "Assign a task's owner (syncs the Linear assignee)", usage: "bb worktasks assign <identifier> <me|none|<id>|<name>>" },
+      { name: "run", summary: "Update a task's live factory run phase, attention summary, or proof page ID", usage: "bb worktasks run <identifier> [--phase scoping|building|capturing|checking|waiting|deploying|live|blocked|none] [--summary text] [--proof pageId|none] [--clear]" },
       { name: "attach", summary: "Explicitly start or resume a chat attached to a task", usage: "bb worktasks attach <identifier>" },
       { name: "link", summary: "Link two source tasks", usage: "bb worktasks link <identifier> <other-identifier>" },
       { name: "destinations", summary: "List enabled upstream destinations for new tasks", usage: "bb worktasks destinations" },
@@ -3780,6 +3831,19 @@ export default async function plugin(bb: BbPluginApi) {
         if (command === "assign" && args[0] && args[1]) {
           requireCliWrite("workflow");
           return { exitCode: 0, stdout: JSON.stringify(await setOwner((await scopedTask(args[0])).id, resolveOwner(args[1])), null, 2) };
+        }
+        if (command === "run" && args[0]) {
+          requireCliWrite("workflow");
+          const { positional, flags } = parseCliFlags(args);
+          if (positional.length !== 1) throw new Error("Provide one task identifier");
+          const task = await scopedTask(positional[0]!);
+          if (flags.clear !== undefined) {
+            return { exitCode: 0, stdout: JSON.stringify(setTaskRun(task.id, { clear: true }), null, 2) };
+          }
+          const phase = flags.phase === undefined ? undefined : flags.phase === "none" ? null : runPhaseSchema.parse(flags.phase);
+          const summary = flags.summary === undefined ? undefined : flags.summary === "none" ? null : flags.summary;
+          const proofPageId = flags.proof === undefined ? undefined : flags.proof === "none" ? null : flags.proof;
+          return { exitCode: 0, stdout: JSON.stringify(setTaskRun(task.id, { phase, summary, proofPageId }), null, 2) };
         }
         if (command === "show" && args[0]) {
           const { flags, positional } = parseCliFlags(args);

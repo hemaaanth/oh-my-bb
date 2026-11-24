@@ -1,3 +1,24 @@
+export const runPhases = ["scoping", "building", "capturing", "checking", "waiting", "deploying", "live", "blocked"] as const;
+export type RunPhase = typeof runPhases[number];
+
+export type TaskRun = {
+  phase: RunPhase | null;
+  summary: string | null;
+  proofPageId: string | null;
+  updatedAt: string;
+};
+
+export const runPhaseLabels: Record<RunPhase, string> = {
+  scoping: "Scoping",
+  building: "Building",
+  capturing: "Capturing",
+  checking: "Checking",
+  waiting: "Waiting",
+  deploying: "Deploying",
+  live: "Live",
+  blocked: "Blocked",
+};
+
 export type Task = {
   id: string;
   identifier: string;
@@ -9,7 +30,25 @@ export type Task = {
   owner: { isMe: boolean } | null;
   position?: number | null;
   refs: Array<{ provider?: string; priority: "urgent" | "high" | "medium" | "low" | null; url: string | null }>;
+  run?: TaskRun | null;
 };
+
+export function needsAttention(task: Pick<Task, "status" | "run">): boolean {
+  const phase = task.run?.phase;
+  if (phase === "waiting" || phase === "blocked") return true;
+  return task.status === "review" && Boolean(task.run?.proofPageId);
+}
+
+export function formatRunAge(iso: string, nowMs = Date.now()): string {
+  const ts = Date.parse(iso);
+  if (!Number.isFinite(ts)) return "";
+  const mins = Math.max(0, Math.floor((nowMs - ts) / 60_000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
 
 export const statusLabels: Record<Task["status"], string> = {
   triage: "Triage", backlog: "Backlog", todo: "Todo", doing: "In progress", blocked: "Blocked", review: "In review", done: "Done", cancelled: "Cancelled",

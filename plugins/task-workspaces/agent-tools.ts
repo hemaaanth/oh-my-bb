@@ -10,13 +10,15 @@ const toolNames = {
   move: "worktask_move",
   priority: "worktask_priority",
   assign: "worktask_assign",
+  run: "worktask_run",
   create: "worktask_create",
   link: "worktask_link",
 } as const;
 const readTools = [toolNames.current, toolNames.get, toolNames.list, toolNames.search];
-const workflowTools = [toolNames.move, toolNames.priority, toolNames.assign];
+const workflowTools = [toolNames.move, toolNames.priority, toolNames.assign, toolNames.run];
 const fullTools = [toolNames.create, toolNames.link];
 const statusValues = ["triage", "backlog", "todo", "doing", "blocked", "review", "done", "cancelled"] as const;
+const runPhaseValues = ["scoping", "building", "capturing", "checking", "waiting", "deploying", "live", "blocked"] as const;
 const providerValues = ["akiflow", "linear", "github"] as const;
 const priorityValues = ["urgent", "high", "medium", "low"] as const;
 const priorityFilterValues = [...priorityValues, "none"] as const;
@@ -58,6 +60,12 @@ type TaskAgentDeps = {
   move: (taskId: string, status: TaskStatus) => Promise<TaskView>;
   priority: (taskId: string, priority: TaskPriority | null) => Promise<TaskView>;
   assign: (taskId: string, owner: string) => Promise<TaskView>;
+  setRun: (taskId: string, input: {
+    phase?: typeof runPhaseValues[number] | null;
+    summary?: string | null;
+    proofPageId?: string | null;
+    clear?: boolean;
+  }) => TaskView;
   create: (input: {
     provider: TaskProvider;
     destinationId: string;
@@ -192,6 +200,27 @@ export function registerTaskAgentIntegration(bb: BbPluginApi, deps: TaskAgentDep
     execute: async ({ task, owner }, ctx) => {
       requireWriteLevel("workflow");
       return JSON.stringify(await deps.assign((await deps.taskForProject(task, ctx.projectId)).id, owner), null, 2);
+    },
+  });
+
+  bb.agents.registerTool({
+    name: toolNames.run,
+    description: "Update a task's live factory run phase, short plain-English attention summary, or BB Pages proof page ID.",
+    presentation: {
+      label: { pending: "Updating task run state", completed: "Updated task run state" },
+      icon: { glyph: "Workflow" },
+    },
+    parameters: z.object({
+      task: z.string().min(1),
+      phase: z.enum(runPhaseValues).nullable().optional(),
+      summary: z.string().trim().max(240).nullable().optional(),
+      proofPageId: z.string().trim().max(200).nullable().optional(),
+      clear: z.boolean().optional(),
+    }).strict(),
+    execute: async ({ task, phase, summary, proofPageId, clear }, ctx) => {
+      requireWriteLevel("workflow");
+      const id = (await deps.taskForProject(task, ctx.projectId)).id;
+      return JSON.stringify(deps.setRun(id, { phase, summary, proofPageId, clear }), null, 2);
     },
   });
 

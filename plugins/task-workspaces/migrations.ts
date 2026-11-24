@@ -199,4 +199,12 @@ export const MIGRATIONS = [
       FROM project_mappings WHERE source_key LIKE 'akiflow:project:%';
     INSERT OR IGNORE INTO akiflow_sources (source_key, name, enabled, updated_at)
       VALUES ('akiflow:inbox', 'Inbox', 0, CURRENT_TIMESTAMP);`,
+  // Optional lightweight run status for tasks driven by agents or the factory.
+  `CREATE TABLE IF NOT EXISTS task_runs (
+      task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+      phase TEXT CHECK (phase IN ('scoping','building','capturing','checking','waiting','deploying','live','blocked')),
+      summary TEXT,
+      proof_page_id TEXT,
+      updated_at TEXT NOT NULL
+    );`,
 ] as const;

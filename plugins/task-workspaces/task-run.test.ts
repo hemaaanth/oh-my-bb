@@ -1,0 +1,51 @@
+import { describe, expect, it } from "vitest";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import plugin from "./server";
+import { formatRunAge, needsAttention } from "./task-layout";
+
+describe("task run state", () => {
+  it("detects when a task needs attention and formats age", () => {
+    expect(needsAttention({ status: "doing", run: { phase: "building", summary: null, proofPageId: null, updatedAt: "2026-11-23T00:00:00Z" } })).toBe(false);
+    expect(needsAttention({ status: "doing", run: { phase: "waiting", summary: "2 scope questions waiting.", proofPageId: null, updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
+    expect(needsAttention({ status: "blocked", run: { phase: "blocked", summary: "Needs Mac.", proofPageId: null, updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
+    expect(needsAttention({ status: "review", run: { phase: null, summary: null, proofPageId: "6f807a6d-7754-4a44-8305-2051bb02c713", updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
+    const now = Date.parse("2026-11-23T12:00:00Z");
+    expect(formatRunAge("2026-11-23T11:59:40Z", now)).toBe("just now");
+    expect(formatRunAge("2026-11-23T11:45:00Z", now)).toBe("15m");
+    expect(formatRunAge("2026-11-23T09:00:00Z", now)).toBe("3h");
+  });
+
+  it("updates and clears task run metadata through bb worktasks run and exposes it on boardTasks", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "task-workspaces",
+      experimental_declaredIconNames: ["tasks"],
+      settings: { agentWrites: "workflow", allowWrites: false },
+      sdk: {
+        projects: { list: async () => [{ id: "proj-1", name: "Site", kind: "standard", gitRemoteUrl: null, sources: [], createdAt: 0, updatedAt: 0 }] },
+      },
+    });
+    await plugin(bb);
+    const db = bb.storage.database();
+    db.prepare("INSERT INTO tasks (id,title,status,project_id,created_at,updated_at) VALUES ('t1','Uniform audio bars','doing','proj-1','2026-11-23','2026-11-23')").run();
+    db.prepare("INSERT INTO task_refs VALUES ('t1','akiflow','ext-1','Uniform audio bars',NULL,'{}','2026-11-23')").run();
+    db.prepare("INSERT INTO akiflow_identifiers (number,external_id) VALUES (7,'ext-1')").run();
+
+    const updated = await harness.behavior.runCli([
+      "run", "AKI-7", "--phase", "waiting", "--summary", "Proof ready — independent check passed.", "--proof", "6f807a6d-7754-4a44-8305-2051bb02c713",
+    ]);
+    expect(updated.exitCode).toBe(0);
+    expect(JSON.parse(updated.stdout).run).toMatchObject({
+      phase: "waiting",
+      summary: "Proof ready — independent check passed.",
+      proofPageId: "6f807a6d-7754-4a44-8305-2051bb02c713",
+    });
+
+    const board = await harness.behavior.callRpc("boardTasks", null) as { tasks: Array<{ id: string; run?: { phase: string } }> };
+    expect(board.tasks.find((t) => t.id === "t1")?.run).toMatchObject({ phase: "waiting" });
+
+    const cleared = await harness.behavior.runCli(["run", "AKI-7", "--clear"]);
+    expect(cleared.exitCode).toBe(0);
+    expect(JSON.parse(cleared.stdout).run).toBeUndefined();
+    await harness.lifecycle.dispose();
+  });
+});
