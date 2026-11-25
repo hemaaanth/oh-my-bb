@@ -2158,10 +2158,6 @@ function TasksScreen() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <header className="flex items-center gap-3">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-recessed/70"><PluginIcon name={tasksIcon} className="size-5" /></div>
-        <div className="min-w-0"><h1 className="text-base font-semibold leading-5">Tasks</h1><p className="text-xs leading-4 text-muted-foreground">Plan work across your task sources.</p></div>
-      </header>
       <NeedsYouSection tasks={personal.filter((task) => !isDraft(task) && needsAttention(task))} projectName={projectName} chats={chats} onOpenProof={openProof} onApproveProof={approveProof} onCompleteWithoutMerge={completeWithoutMerge} onDismissAttention={dismissAttention} onResolveProposal={resolveProposal} />
       <section ref={dnd.zoneRef.urgent} aria-label="Now">
         <SectionHeader title="Now" count={loading ? undefined : now.length}>
