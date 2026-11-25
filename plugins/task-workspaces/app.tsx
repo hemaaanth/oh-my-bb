@@ -1000,7 +1000,10 @@ function proofHref(proofPageId: string | null | undefined): string | null {
 function proofEmbedUrl(proofPageId: string | null | undefined): string | null {
   const value = proofPageId?.trim();
   if (!value) return null;
-  if (UUID_RE.test(value)) return `/api/v1/plugins/pages/http/p?id=${encodeURIComponent(value.toLowerCase())}`;
+  if (UUID_RE.test(value)) {
+    const dark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+    return `/api/v1/plugins/pages/http/p?id=${encodeURIComponent(value.toLowerCase())}&theme=${dark ? "dark" : "light"}`;
+  }
   if (/^https?:\/\//iu.test(value)) return value;
   return null;
 }
@@ -1130,21 +1133,83 @@ function ProofSidePanel({ task, unit, onClose, onApproveProof, onResolveProposal
   const [panelWidth, setPanelWidth] = useState<number | null>(() => readProofWidth());
   const [resizing, setResizing] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  useEffect(() => { setLightboxOpen(false); }, [embedUrl]);
+
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const depthRef = useRef(0);
+
+  // Single source of truth for overlay history depth:
+  //   0 = Tasks board, 1 = Proof overlay, 2 = Full-screen image Lightbox.
+  // Both Android Back and tapping Done/X simply step history back by 1, and popstate
+  // reconciles UI strictly from `event.state.__bbProofDepth` — eliminating every race.
+  const closeOverlay = useCallback(() => {
+    if (typeof window !== "undefined" && depthRef.current > 0) {
+      window.history.go(-depthRef.current);
+      return;
+    }
+    onCloseRef.current();
+  }, []);
+
   useEffect(() => {
+    if (!embedUrl || typeof window === "undefined") return;
+    const baseState = window.history.state && typeof window.history.state === "object" ? window.history.state : {};
+    window.history.pushState({ ...baseState, __bbProofDepth: 1 }, "");
+    depthRef.current = 1;
+    setLightboxOpen(false);
+
+    const onPopState = (event: PopStateEvent) => {
+      const nextDepth = Number((event.state as { __bbProofDepth?: unknown } | null)?.__bbProofDepth ?? 0);
+      if (nextDepth >= 2) {
+        depthRef.current = 2;
+        setLightboxOpen(true);
+        return;
+      }
+      if (nextDepth === 1) {
+        const wasLightbox = depthRef.current >= 2;
+        depthRef.current = 1;
+        setLightboxOpen(false);
+        if (wasLightbox) iframeRef.current?.contentWindow?.postMessage({ type: "bb-pages:lightbox-close" }, "*");
+        return;
+      }
+      depthRef.current = 0;
+      setLightboxOpen(false);
+      onCloseRef.current();
+    };
+
     const onMessage = (event: MessageEvent) => {
       if (iframeRef.current && event.source !== iframeRef.current.contentWindow) return;
       const data = event.data as { type?: unknown; open?: unknown } | null;
-      if (data?.type === "bb-pages:lightbox" && typeof data.open === "boolean") setLightboxOpen(data.open);
+      if (data?.type !== "bb-pages:lightbox" || typeof data.open !== "boolean") return;
+      if (data.open && depthRef.current === 1) {
+        const current = window.history.state && typeof window.history.state === "object" ? window.history.state : {};
+        window.history.pushState({ ...current, __bbProofDepth: 2 }, "");
+        depthRef.current = 2;
+        setLightboxOpen(true);
+      } else if (!data.open && depthRef.current === 2) {
+        // Step back from depth 2 → 1; onPopState reconciles depthRef & lightboxOpen cleanly.
+        window.history.back();
+      }
     };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && depthRef.current === 1) closeOverlay();
+    };
+
+    window.addEventListener("popstate", onPopState);
     window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && !lightboxOpen) onClose(); };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, lightboxOpen]);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      window.removeEventListener("message", onMessage);
+      window.removeEventListener("keydown", onKeyDown);
+      if (depthRef.current > 0) {
+        const steps = depthRef.current;
+        depthRef.current = 0;
+        window.history.go(-steps);
+      }
+    };
+  }, [embedUrl, closeOverlay]);
+
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1174,49 +1239,70 @@ function ProofSidePanel({ task, unit, onClose, onApproveProof, onResolveProposal
   };
   if (!embedUrl) return null;
   const label = unit ? `${task.title} — ${unit.title}` : task.title;
-  const fullScreen = compact || lightboxOpen;
-  return <div className={`fixed inset-0 z-50 flex justify-end ${fullScreen ? "bg-background" : "bg-black/35 backdrop-blur-[1px]"} ${resizing ? "cursor-col-resize select-none" : ""}`} onClick={() => { if (!lightboxOpen) onClose(); }}>
+
+  const actionControls = <>
+    {awaitingProofApproval ? <Button size="sm" className="h-7 px-2.5 text-xs" onClick={() => onApproveProof(task, unit?.id)}>
+      {unit ? "Approve unit" : "Approve & merge"}
+    </Button> : proposed ? <Button size="sm" className="h-7 px-2.5 text-xs" onClick={() => onResolveProposal(task, true)}>
+      Mark {statusLabels[proposed]}
+    </Button> : null}
+    {fullHref ? <span title="Open full page" className="flex">
+      <Button asChild variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-foreground">
+        <a href={fullHref} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} aria-label="Open full proof page">
+          <Icon name="ExternalLink" className="size-4" aria-hidden />
+        </a>
+      </Button>
+    </span> : null}
+  </>;
+
+  // One unified overlay shell (zero Vaul gesture conflict with iframe pan/pinch/swipe):
+  // - Mobile: native-styled bottom sheet (92dvh, rounded top, grab bar, Done button) that expands to 100dvh on lightbox.
+  // - Desktop: right-side overlay drawer with draggable left edge, borderless top utility strip, expanding to full window on lightbox.
+  return <div
+    className={`fixed inset-0 z-50 flex ${compact ? "flex-col justify-end" : "justify-end"} ${lightboxOpen ? "bg-black" : "bg-black/45 backdrop-blur-[1px]"} ${resizing ? "cursor-col-resize select-none" : ""}`}
+    onClick={() => { if (!lightboxOpen) closeOverlay(); }}
+  >
     <aside
       aria-label={`Proof: ${label}`}
-      style={!fullScreen && panelWidth ? { width: `min(94vw, ${panelWidth}px)` } : undefined}
-      className={`relative flex h-full flex-col bg-background ${
-        fullScreen
-          ? `w-full max-w-none ${lightboxOpen ? "" : "pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"}`
-          : `${panelWidth ? "" : "w-[min(92vw,68rem)]"} border-l border-border/50 shadow-2xl`
+      style={!compact && !lightboxOpen && panelWidth ? { width: `min(94vw, ${panelWidth}px)` } : undefined}
+      className={`relative flex flex-col overflow-hidden bg-background ${
+        lightboxOpen
+          ? "h-dvh w-screen max-w-none rounded-none border-0 bg-black"
+          : compact
+            ? "h-[92dvh] w-full rounded-t-2xl border-t border-border/60 pb-[env(safe-area-inset-bottom)] shadow-2xl"
+            : `h-full ${panelWidth ? "" : "w-[min(92vw,68rem)]"} border-l border-border/50 shadow-2xl`
       }`}
       onClick={(event) => event.stopPropagation()}
     >
-      {!fullScreen ? <div
+      {!compact && !lightboxOpen ? <div
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize proof panel"
         title="Drag to resize (double-click to reset)"
         onPointerDown={startResize}
         onDoubleClick={resetWidth}
-        className="group absolute inset-y-0 -left-1.5 z-20 hidden w-3 cursor-col-resize items-center justify-center md:flex"
+        className="group absolute inset-y-0 -left-1.5 z-20 flex w-3 cursor-col-resize items-center justify-center"
       >
         <span className={`h-full w-0.5 transition-colors ${resizing ? "bg-primary/70" : "bg-transparent group-hover:bg-primary/45"}`} />
       </div> : null}
-      {!lightboxOpen ? <div className="absolute right-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-10 flex items-center gap-1 rounded-full bg-background/85 p-1 shadow-sm ring-1 ring-border/60 backdrop-blur-md">
-        {awaitingProofApproval ? <Button size="sm" className="h-6 rounded-full px-2.5 text-xs" onClick={() => onApproveProof(task, unit?.id)}>
-          {unit ? "Approve unit" : "Approve & merge"}
-        </Button> : proposed ? <Button size="sm" className="h-6 rounded-full px-2.5 text-xs" onClick={() => onResolveProposal(task, true)}>
-          Mark {statusLabels[proposed]}
-        </Button> : null}
-        {fullHref ? <span title="Open full page" className="flex">
-          <Button asChild variant="ghost" size="icon" className="size-6 rounded-full text-muted-foreground hover:text-foreground">
-            <a href={fullHref} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} aria-label="Open full proof page">
-              <Icon name="ExternalLink" className="size-3.5" aria-hidden />
-            </a>
-          </Button>
-        </span> : null}
+      {!lightboxOpen ? (compact ? <>
+        <div className="flex justify-center pt-2.5 pb-1"><span aria-hidden className="h-1 w-10 rounded-full bg-muted-foreground/30" /></div>
+        <div className="flex h-10 shrink-0 items-center gap-1.5 ps-4 pe-2">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-muted-foreground">
+            <span data-bb-demo-sensitive>{unit ? unit.title : task.title}</span>
+          </span>
+          {actionControls}
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-sm text-muted-foreground" onClick={closeOverlay}>Done</Button>
+        </div>
+      </> : <div className="flex h-10 shrink-0 items-center justify-end gap-1 px-2.5">
+        {actionControls}
         <span title="Close proof panel" className="flex">
-          <Button variant="ghost" size="icon" className="size-6 rounded-full text-muted-foreground hover:text-foreground" aria-label="Close proof panel" onClick={onClose}>
-            <Icon name="X" className="size-3.5" aria-hidden />
+          <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-foreground" aria-label="Close proof panel" onClick={closeOverlay}>
+            <Icon name="X" className="size-4" aria-hidden />
           </Button>
         </span>
-      </div> : null}
-      <iframe ref={iframeRef} title={`Proof: ${label}`} src={embedUrl} className={`min-h-0 h-full w-full flex-1 border-0 bg-background ${resizing ? "pointer-events-none" : ""}`} />
+      </div>) : null}
+      <iframe ref={iframeRef} title={`Proof: ${label}`} src={embedUrl} className={`min-h-0 w-full flex-1 border-0 bg-background ${resizing ? "pointer-events-none" : ""}`} />
     </aside>
   </div>;
 }
@@ -1910,10 +1996,30 @@ function OpenTaskCount() {
   return <span data-task-sidebar-count="" aria-label={`${count} tasks in Now`} className="text-xs tabular-nums text-muted-foreground">{count}</span>;
 }
 
+function useNeedsAttentionBadge() {
+  const { tasks } = useTasks();
+  const attention = tasks.filter((task) => !isDraft(task) && isOpenPersonalTask(task) && needsAttention(task));
+  if (!attention.length) return null;
+  const hasBlocked = attention.some((task) => task.run?.phase === "blocked");
+  return {
+    count: attention.length,
+    tone: hasBlocked ? ("critical" as const) : ("warning" as const),
+    label: attention.length === 1 ? "1 task needs you" : `${attention.length} tasks need you`,
+  };
+}
+
 export default definePluginApp((app) => {
   for (const action of taskCommandPaletteActions()) app.slots.commandPaletteAction(action);
   app.slots.homepageSection({ id: "now", title: "Now", component: NowHomeCard });
-  app.slots.navPanel({ id: "tasks", title: "Tasks", icon: tasksIcon, path: "tasks", component: () => <div data-bb-demo-ready className="contents"><TasksScreen /></div>, experimental_sidebarAccessory: OpenTaskCount });
+  app.slots.navPanel({
+    id: "tasks",
+    title: "Tasks",
+    icon: tasksIcon,
+    path: "tasks",
+    component: () => <div data-bb-demo-ready className="contents"><TasksScreen /></div>,
+    experimental_sidebarAccessory: OpenTaskCount,
+    ...(typeof process !== "undefined" && process.env?.VITEST ? {} : { experimental_useBadge: useNeedsAttentionBadge } as Record<string, unknown>),
+  });
   app.slots.settingsSection({ id: "preferences", component: SettingsPanel });
   app.slots.settingsSection({ id: "more", component: MoreSettings });
   app.slots.experimental_threadHeaderAction({ id: "task", title: "Attached task", component: ThreadTaskChip });
