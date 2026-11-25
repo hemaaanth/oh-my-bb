@@ -223,4 +223,6 @@ export const MIGRATIONS = [
       SELECT task_id, phase, summary, proof_page_id, proposed_status, updated_at FROM task_runs;
     DROP TABLE task_runs;
     ALTER TABLE task_runs_rebuild RENAME TO task_runs;`,
+  // Allow dismissing a task from "Needs you" without changing its status, threads, or proof link.
+  `ALTER TABLE task_runs ADD COLUMN dismissed_at TEXT;`,
 ] as const;

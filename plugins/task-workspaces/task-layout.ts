@@ -20,6 +20,7 @@ export type TaskRun = {
   proofPageId: string | null;
   proposedStatus?: Task["status"] | null;
   units?: TaskUnit[] | null;
+  dismissedAt?: string | null;
   updatedAt: string;
 };
 
@@ -50,6 +51,7 @@ export type Task = {
 };
 
 export function needsAttention(task: Pick<Task, "status" | "run">): boolean {
+  if (task.run?.dismissedAt) return false;
   const phase = task.run?.phase;
   if (phase === "waiting" || phase === "blocked") return true;
   if (task.run?.proposedStatus === "done" && task.status !== "done") return true;

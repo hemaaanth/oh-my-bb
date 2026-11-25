@@ -119,16 +119,18 @@ type AttachPatch = (patch: Record<string, Pick<Task, "threadIds">>, call: () => 
 
 // A new chat starts in the task's project. Its message names the task, links its GitHub or
 // Linear page, and prefills the factory workflow instruction (editable before sending).
-function newChatSeed(task: ChatTask, sandbox?: { id: string; label: string } | null): NewChatSeed {
+function newChatSeed(task: ChatTask, sandbox?: { id: string; label: string } | null, description?: string): NewChatSeed {
   const links = task.refs.filter((ref) => (ref.provider === "github" || ref.provider === "linear") && ref.url).map((ref) => ref.url);
   const sandboxNote = sandbox
     ? `Use ${sandbox.label} (${sandbox.id}) by default for all child sandboxes.`
     : "Use Boat Sandbox (sandbox-box) by default for all child sandboxes if available.";
+  const body = description?.trim();
   return {
     projectId: task.effectiveProjectId ?? task.projectId ?? undefined,
     prompt: [
       `Work on ${task.identifier}: ${task.title}`,
       ...links,
+      ...(body ? ["", body] : []),
       "",
       `Use the factory skill (catalog-hstack-factory) to run this end to end in sandboxes. ${sandboxNote} Keep this task's phase, summary, and proof updated with worktask_run, and propose completion (never auto-archive this thread or mark the task done).`,
     ].join("\n"),
@@ -169,9 +171,9 @@ export function useChatPopup(tasks: readonly Task[], mutate: AttachPatch) {
     }, () => undefined);
   }, [rpc]);
   useEffect(() => { refreshSandboxPref(); }, [refreshSandboxPref]);
-  const compose = useCallback((task: ChatTask) => {
+  const compose = useCallback((task: ChatTask, description?: string) => {
     refreshSandboxPref();
-    setView({ taskId: task.id, title: task.title, chatIds: [], pane: "new", from: "menu", seed: newChatSeed(task, defaultSandbox) });
+    setView({ taskId: task.id, title: task.title, chatIds: [], pane: "new", from: "menu", seed: newChatSeed(task, defaultSandbox, description) });
   }, [defaultSandbox, refreshSandboxPref]);
   const peek = useCallback((threadId: string, title: string, assign?: () => void) => setView({ taskId: null, title, chatIds: [threadId], assign }), []);
   // The chat leaves the task at once and waits under Unassigned threads. The server also keeps

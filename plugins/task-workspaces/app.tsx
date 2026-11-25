@@ -201,19 +201,38 @@ function hideBoardProject(rpc: TasksRpc, projectId: string, hidden: boolean) {
 // A new task shows at once as a draft row. The created task replaces it.
 // With a threadId, the task is made for that chat and links it. With a priority, it starts in Now or Later.
 const isDraft = (task: Task) => task.id.startsWith("draft:");
-function createBoardTask(rpc: TasksRpc, projectId: string, destinationId: string, title: string, threadId?: string, priority?: NewTaskPriority) {
+type TaskImageAttachment = { name: string; dataUrl: string };
+
+function createBoardTask(
+  rpc: TasksRpc,
+  projectId: string,
+  destinationId: string,
+  title: string,
+  options?: { threadId?: string; priority?: NewTaskPriority; description?: string; images?: TaskImageAttachment[] },
+): Promise<(Task & { description?: string }) | null> {
+  const { threadId, priority, description, images } = options ?? {};
   const draft: Task = {
     id: `draft:${++nextPatchKey}`, identifier: "", title, status: "todo", projectId, effectiveProjectId: projectId,
     threadIds: threadId ? [threadId] : [], owner: { isMe: true }, position: null, refs: priority ? [{ priority, url: null }] : [],
   };
   const withoutDraft = () => board.drafts.filter((item) => item !== draft);
   setBoard({ drafts: [...board.drafts, draft] });
-  rpc.call("createProjectTask", { projectId, destinationId, title, ...(threadId ? { threadId } : {}), ...(priority ? { priority } : {}) }).then((created) => {
+  return rpc.call("createProjectTask", {
+    projectId,
+    destinationId,
+    title,
+    ...(description?.trim() ? { description: description.trim() } : {}),
+    ...(images?.length ? { images } : {}),
+    ...(threadId ? { threadId } : {}),
+    ...(priority ? { priority } : {}),
+  }).then((created) => {
     setBoard({ drafts: withoutDraft() });
     setBoardTasks([...(board.tasks ?? []).filter((task) => task.id !== created.id), created]);
+    return created;
   }, (error) => {
     setBoard({ drafts: withoutDraft() });
     toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>);
+    return null;
   });
 }
 
@@ -1115,11 +1134,41 @@ function readProofWidth(): number | null {
   } catch { return null; }
 }
 
-function ProofSidePanel({ task, unit, onClose, onApproveProof, onResolveProposal }: {
+function AttentionIconAction({ icon, label, primary = false, tone = "default", tooltipSide = "top", onClick, href, external }: {
+  icon: Parameters<typeof Icon>[0]["name"];
+  label: string;
+  primary?: boolean;
+  tone?: "default" | "positive" | "subtle";
+  tooltipSide?: "top" | "bottom";
+  onClick?: () => void;
+  href?: string;
+  external?: boolean;
+}) {
+  const toneClass = primary
+    ? "bg-foreground/[0.08] text-foreground hover:bg-foreground/[0.14]"
+    : tone === "positive"
+      ? "text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400"
+      : tone === "subtle"
+        ? "text-subtle-foreground hover:bg-state-hover hover:text-foreground"
+        : "text-muted-foreground hover:bg-state-hover hover:text-foreground";
+  const tipPos = tooltipSide === "bottom" ? "top-full right-0 mt-1" : "bottom-full left-1/2 -translate-x-1/2 mb-1";
+  const btnClass = `inline-flex size-7 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${toneClass}`;
+  return <span className="group/tip relative inline-flex">
+    {href
+      ? <a href={href} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} aria-label={label} className={btnClass}><Icon name={icon} className="size-3.5" aria-hidden /></a>
+      : <button type="button" aria-label={label} onClick={onClick} className={btnClass}><Icon name={icon} className="size-3.5" aria-hidden /></button>}
+    <span role="tooltip" className={`pointer-events-none absolute ${tipPos} z-40 hidden whitespace-nowrap rounded border border-border/80 bg-popover px-1.5 py-0.5 text-[11px] leading-4 text-popover-foreground opacity-0 shadow-sm transition-opacity duration-100 sm:block group-hover/tip:opacity-100 group-focus-within/tip:opacity-100`}>
+      {label}
+    </span>
+  </span>;
+}
+
+function ProofSidePanel({ task, unit, onClose, onApproveProof, onCompleteWithoutMerge, onResolveProposal }: {
   task: Task;
   unit?: TaskUnit | null;
   onClose: () => void;
   onApproveProof: (task: Task, unitId?: string) => void;
+  onCompleteWithoutMerge: (task: Task) => void;
   onResolveProposal: (task: Task, accept: boolean) => void;
 }) {
   const compact = useIsCompactViewport();
@@ -1241,18 +1290,43 @@ function ProofSidePanel({ task, unit, onClose, onApproveProof, onResolveProposal
   const label = unit ? `${task.title} — ${unit.title}` : task.title;
 
   const actionControls = <>
-    {awaitingProofApproval ? <Button size="sm" className="h-7 px-2.5 text-xs" onClick={() => onApproveProof(task, unit?.id)}>
-      {unit ? "Approve unit" : "Approve & merge"}
-    </Button> : proposed ? <Button size="sm" className="h-7 px-2.5 text-xs" onClick={() => onResolveProposal(task, true)}>
-      Mark {statusLabels[proposed]}
-    </Button> : null}
-    {fullHref ? <span title="Open full page" className="flex">
-      <Button asChild variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-foreground">
-        <a href={fullHref} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} aria-label="Open full proof page">
-          <Icon name="ExternalLink" className="size-4" aria-hidden />
-        </a>
-      </Button>
-    </span> : null}
+    {awaitingProofApproval ? <>
+      <AttentionIconAction
+        icon={unit ? "Check" : "GitMerge"}
+        label={unit ? "Approve unit" : "Approve & merge"}
+        tone="positive"
+        primary
+        tooltipSide="bottom"
+        onClick={() => onApproveProof(task, unit?.id)}
+      />
+      {!unit ? <AttentionIconAction
+        icon="CircleCheck"
+        label="Complete without merging"
+        tone="positive"
+        tooltipSide="bottom"
+        onClick={() => onCompleteWithoutMerge(task)}
+      /> : null}
+    </> : proposed ? <AttentionIconAction
+      icon="CircleCheck"
+      label="Mark done & archive"
+      tone="positive"
+      primary
+      tooltipSide="bottom"
+      onClick={() => onResolveProposal(task, true)}
+    /> : <AttentionIconAction
+      icon="CircleCheck"
+      label="Complete without merging"
+      tone="positive"
+      tooltipSide="bottom"
+      onClick={() => onCompleteWithoutMerge(task)}
+    />}
+    {fullHref ? <AttentionIconAction
+      icon="ExternalLink"
+      label="Open full page"
+      tooltipSide="bottom"
+      href={fullHref}
+      external={external}
+    /> : null}
   </>;
 
   // One unified overlay shell (zero Vaul gesture conflict with iframe pan/pinch/swipe):
@@ -1307,18 +1381,20 @@ function ProofSidePanel({ task, unit, onClose, onApproveProof, onResolveProposal
   </div>;
 }
 
-function NeedsYouSection({ tasks, projectName, chats, onOpenProof, onApproveProof, onResolveProposal }: {
+function NeedsYouSection({ tasks, projectName, chats, onOpenProof, onApproveProof, onCompleteWithoutMerge, onDismissAttention, onResolveProposal }: {
   tasks: Task[];
   projectName: (task: Task) => string | undefined;
   chats: ChatPopupController;
   onOpenProof: (task: Task, unitId?: string) => void;
   onApproveProof: (task: Task, unitId?: string) => void;
+  onCompleteWithoutMerge: (task: Task) => void;
+  onDismissAttention: (task: Task) => void;
   onResolveProposal: (task: Task, accept: boolean) => void;
 }) {
   if (!tasks.length) return null;
   return <section aria-label="Needs you">
     <SectionHeader title="Needs you" count={tasks.length} />
-    <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+    <div className="mt-2 grid grid-cols-1 gap-2.5 md:grid-cols-2">
       {tasks.map((task) => {
         const waitingUnit = task.run?.units?.find((unit) => unit.status === "waiting") ?? null;
         const activeProofId = waitingUnit?.proofPageId ?? task.run?.proofPageId;
@@ -1331,28 +1407,63 @@ function NeedsYouSection({ tasks, projectName, chats, onOpenProof, onApproveProo
         const meta = [project, age].filter(Boolean).join(" · ");
         const summary = waitingUnit?.summary || task.run?.summary || (waitingUnit ? `${waitingUnit.title} is ready for approval.` : awaitingProofApproval ? "Proof ready for your approval." : proposed ? "Live and ready to mark done." : task.run?.phase === "blocked" ? "Blocked — needs your input." : "Waiting for your decision.");
         const isBlocked = task.run?.phase === "blocked";
-        const borderTone = isBlocked ? "border-destructive/40" : awaitingProofApproval ? "border-warning/40" : proposed ? "border-blue-500/40" : "border-warning/40";
-        return <article key={task.id} data-needs-you={task.id} className={`flex flex-col justify-between gap-3 rounded-lg border bg-card p-3.5 ${borderTone}`}>
+        const dotClass = isBlocked ? "bg-destructive" : proposed ? "bg-emerald-500" : "bg-amber-500";
+        const stateLabel = isBlocked ? "Blocked" : waitingUnit ? "Unit ready" : awaitingProofApproval ? "Proof ready" : proposed ? "Ready to finish" : hasProof ? "Proof ready" : "Needs input";
+        return <article key={task.id} data-needs-you={task.id} className="flex flex-col justify-between gap-2.5 rounded-lg border border-border/80 bg-surface-recessed/70 px-3.5 py-3 transition-colors hover:border-border">
           <div className="space-y-1">
-            <div className="flex items-start justify-between gap-3">
-              <span className="min-w-0 text-sm font-medium leading-5 text-foreground">
-                <span data-bb-demo-sensitive>{task.title}</span>
-                {waitingUnit ? <span className="font-normal text-muted-foreground"> · <span data-bb-demo-sensitive>{waitingUnit.title}</span></span> : null}
-              </span>
-              {meta ? <span className="shrink-0 text-xs tabular-nums text-muted-foreground"><span data-bb-demo-sensitive>{meta}</span></span> : null}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${dotClass}`} />
+                <span className="min-w-0 truncate text-sm font-medium leading-5 text-foreground">
+                  <span data-bb-demo-sensitive>{task.title}</span>
+                  {waitingUnit ? <span className="font-normal text-muted-foreground"> · <span data-bb-demo-sensitive>{waitingUnit.title}</span></span> : null}
+                </span>
+              </div>
+              {meta ? <span className="shrink-0 text-xs tabular-nums text-subtle-foreground"><span data-bb-demo-sensitive>{meta}</span></span> : null}
             </div>
-            <p className="m-0 text-xs leading-5 text-muted-foreground">{summary}</p>
+            <p title={summary} className="m-0 line-clamp-2 ps-3.5 text-xs leading-[1.45] text-muted-foreground">{summary}</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {awaitingProofApproval ? <>
-              <Button size="sm" onClick={() => onOpenProof(task, waitingUnit?.id)}>View proof</Button>
-              <Button variant="outline" size="sm" onClick={() => onApproveProof(task, waitingUnit?.id)}>{waitingUnit ? "Approve unit" : "Approve & merge"}</Button>
-            </> : proposed ? <>
-              <Button size="sm" onClick={() => onResolveProposal(task, true)}>Mark {statusLabels[proposed]}</Button>
-              <Button variant="outline" size="sm" onClick={() => onResolveProposal(task, false)}>Keep {statusLabels[task.status]}</Button>
-              {hasProof ? <Button variant="outline" size="sm" onClick={() => onOpenProof(task)}>View proof</Button> : null}
-            </> : hasProof ? <Button size="sm" onClick={() => onOpenProof(task, waitingUnit?.id)}>View proof</Button> : null}
-            {openChat ? <Button variant={hasProof || proposed ? "outline" : "default"} size="sm" onClick={openChat}>{hasProof || proposed ? "Open chat" : "Answer in chat"}</Button> : null}
+          <div className="flex items-center justify-between gap-2 ps-3.5 pt-0.5">
+            <span className="text-[11px] font-medium text-subtle-foreground">{stateLabel}</span>
+            <div className="flex items-center gap-0.5">
+              {hasProof ? <AttentionIconAction
+                icon="Eye"
+                label={waitingUnit ? "View unit proof" : "View proof"}
+                primary={awaitingProofApproval || !isBlocked}
+                onClick={() => onOpenProof(task, waitingUnit?.id)}
+              /> : null}
+              {awaitingProofApproval ? <AttentionIconAction
+                icon={waitingUnit ? "Check" : "GitMerge"}
+                label={waitingUnit ? "Approve unit" : "Approve & merge"}
+                tone="positive"
+                onClick={() => onApproveProof(task, waitingUnit?.id)}
+              /> : null}
+              {proposed ? <AttentionIconAction
+                icon="CircleCheck"
+                label="Mark done & archive"
+                tone="positive"
+                primary={!hasProof}
+                onClick={() => onResolveProposal(task, true)}
+              /> : !waitingUnit ? <AttentionIconAction
+                icon="CircleCheck"
+                label="Complete without merging"
+                tone="positive"
+                onClick={() => onCompleteWithoutMerge(task)}
+              /> : null}
+              {openChat ? <AttentionIconAction
+                icon="MessageSquare"
+                label={isBlocked || (!hasProof && !proposed) ? "Answer in chat" : "Open chat"}
+                primary={isBlocked || (!hasProof && !proposed)}
+                onClick={openChat}
+              /> : null}
+              <span aria-hidden className="mx-0.5 h-3.5 w-px bg-border/70" />
+              <AttentionIconAction
+                icon="X"
+                label="Dismiss"
+                tone="subtle"
+                onClick={() => onDismissAttention(task)}
+              />
+            </div>
           </div>
         </article>;
       })}
@@ -1445,15 +1556,34 @@ const lastDestinationKey = (projectId: string) => `task-workspaces:new-task-in:$
 
 type NewTaskPriority = "urgent" | "high";
 
+function readImageFiles(files: ArrayLike<File>, onAdd: (items: TaskImageAttachment[]) => void) {
+  const images = Array.from(files).filter((file) => /^image\/(png|jpeg|jpg|webp|gif)$/iu.test(file.type)).slice(0, 6);
+  if (!images.length) return;
+  void Promise.all(images.map((file) => new Promise<TaskImageAttachment | null>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? { name: file.name || "screenshot.png", dataUrl: reader.result } : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  }))).then((loaded) => {
+    const valid = loaded.filter((item): item is TaskImageAttachment => item !== null);
+    if (valid.length) onAdd(valid);
+  });
+}
+
 // With a thread, the new task links that chat. With priority urgent, it starts in Now.
-function NewTaskForm({ projects, initialProjectId, initialTitle = "", thread, priority, onDone }: {
+function NewTaskForm({ projects, initialProjectId, initialTitle = "", thread, priority, onDone, onCreatedAndStartChat }: {
   projects: ReadonlyArray<{ id: string; name: string }>; initialProjectId: string | null; initialTitle?: string;
   thread?: { id: string; title: string }; priority?: NewTaskPriority; onDone: () => void;
+  onCreatedAndStartChat?: (task: Task, description?: string) => void;
 }) {
   const rpc = useRpc<typeof rpcContract>();
   const [all, setAll] = useState(destinations);
   const [failure, setFailure] = useState<string | null>(null);
   const [title, setTitle] = useState(initialTitle);
+  const [description, setDescription] = useState("");
+  const [images, setImages] = useState<TaskImageAttachment[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [projectId, setProjectId] = useState(() => {
     const last = localStorage.getItem(lastProjectKey);
     return initialProjectId ?? (projects.some((project) => project.id === last) ? last! : projects[0]?.id ?? "");
@@ -1469,21 +1599,80 @@ function NewTaskForm({ projects, initialProjectId, initialTitle = "", thread, pr
     );
     return () => { live = false; };
   }, [rpc]);
-  const submit = () => {
-    if (!title.trim() || !destination) return;
+  const canStartChat = !thread && Boolean(onCreatedAndStartChat);
+  const canSubmit = Boolean(title.trim() && destination && !submitting);
+  const appendImages = (added: TaskImageAttachment[]) => setImages((current) => [...current, ...added].slice(0, 6));
+  const submit = async (startChat: boolean) => {
+    if (!title.trim() || !destination || submitting) return;
     localStorage.setItem(lastProjectKey, projectId);
     localStorage.setItem(lastDestinationKey(projectId), destination.id);
-    createBoardTask(rpc, projectId, destination.id, title.trim(), thread?.id, priority);
+    if (!startChat) {
+      void createBoardTask(rpc, projectId, destination.id, title.trim(), {
+        threadId: thread?.id,
+        priority,
+        description,
+        images,
+      });
+      onDone();
+      return;
+    }
+    setSubmitting(true);
+    const created = await createBoardTask(rpc, projectId, destination.id, title.trim(), {
+      priority,
+      description,
+      images,
+    });
+    setSubmitting(false);
+    if (!created) return;
     onDone();
+    onCreatedAndStartChat?.(created, created.description ?? (description.trim() || undefined));
   };
-  return <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); submit(); }}>
+  return <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); void submit(canStartChat); }}>
     <DialogHeader>
       <DialogTitle>{priority === "urgent" ? "New task in Now" : "New task"}</DialogTitle>
       {thread
         ? <DialogDescription className="flex min-w-0 items-center gap-1.5"><Icon name="MessageSquare" className="size-3.5 shrink-0" aria-hidden /><span className="sr-only">Links the chat</span><span className="truncate"><span data-bb-demo-sensitive>{thread.title}</span></span></DialogDescription>
-        : <DialogDescription className="sr-only">Name the task, then choose its project and where it is created.</DialogDescription>}
+        : <DialogDescription className="sr-only">Name the task, optionally add details or screenshots, then choose its project and source.</DialogDescription>}
     </DialogHeader>
     <Input data-bb-demo-sensitive autoFocus aria-label="Task title" placeholder="Task title" value={title} onChange={(event) => setTitle(event.target.value)} />
+    <textarea
+      data-bb-demo-sensitive
+      aria-label="Task details"
+      placeholder="Add details, context, or paste screenshots…"
+      rows={3}
+      value={description}
+      onChange={(event) => setDescription(event.target.value)}
+      onPaste={(event) => {
+        const files = Array.from(event.clipboardData.items)
+          .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+          .map((item) => item.getAsFile())
+          .filter((file): file is File => file !== null);
+        if (files.length) {
+          event.preventDefault();
+          readImageFiles(files, appendImages);
+        }
+      }}
+      onKeyDown={(event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+          event.preventDefault();
+          void submit(canStartChat);
+        }
+      }}
+      className={`min-h-[4.5rem] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm leading-5 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${COARSE_POINTER_TEXT_BASE_CLASS}`}
+    />
+    {images.length ? <div className="flex flex-wrap gap-2">
+      {images.map((image, index) => <div key={`${image.name}-${index}`} className="group relative h-12 w-16 overflow-hidden rounded-md border border-border bg-muted/40">
+        <img src={image.dataUrl} alt={image.name} className="size-full object-cover" />
+        <button
+          type="button"
+          aria-label={`Remove ${image.name}`}
+          onClick={() => setImages((current) => current.filter((_, i) => i !== index))}
+          className="absolute right-0.5 top-0.5 inline-flex size-4 items-center justify-center rounded-full bg-black/75 text-white opacity-80 transition-opacity hover:opacity-100"
+        >
+          <Icon name="X" className="size-2.5" aria-hidden />
+        </button>
+      </div>)}
+    </div> : null}
     <div className="grid gap-2 sm:grid-cols-2">
       <Select value={projectId} onValueChange={(next) => { if (projects.some((project) => project.id === next)) { setProjectId(next); setChosen(null); } }}>
         <SelectTrigger data-bb-demo-sensitive aria-label="Project"><SelectValue placeholder="Project" /></SelectTrigger>
@@ -1496,7 +1685,71 @@ function NewTaskForm({ projects, initialProjectId, initialTitle = "", thread, pr
         </SelectItem>)}</SelectContent>
       </Select>
     </div>
-    <DialogFooter><Button type="button" variant="outline" onClick={onDone}>Cancel</Button><Button type="submit" disabled={!title.trim() || !destination}>Create task</Button></DialogFooter>
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept="image/png,image/jpeg,image/webp,image/gif"
+      multiple
+      className="hidden"
+      onChange={(event) => {
+        if (event.target.files) readImageFiles(event.target.files, appendImages);
+        event.target.value = "";
+      }}
+    />
+    <div className="flex items-center justify-between pt-1">
+      <AttentionIconAction
+        icon="Paperclip"
+        label={images.length >= 6 ? "Max 6 screenshots" : "Attach screenshot"}
+        onClick={() => { if (images.length < 6) fileInputRef.current?.click(); }}
+      />
+      <div className="flex items-center gap-1.5">
+        {canStartChat ? <>
+          <span className="group/tip relative inline-flex">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={!canSubmit}
+              aria-label="Create task"
+              onClick={() => void submit(false)}
+              className="size-8 text-muted-foreground hover:text-foreground"
+            >
+              <Icon name="Check" className="size-4" aria-hidden />
+            </Button>
+            <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded border border-border/80 bg-popover px-1.5 py-0.5 text-[11px] leading-4 text-popover-foreground opacity-0 shadow-sm transition-opacity duration-100 sm:block group-hover/tip:opacity-100 group-focus-within/tip:opacity-100">
+              Create task
+            </span>
+          </span>
+          <span className="group/tip relative inline-flex">
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!canSubmit}
+              aria-label="Create & start chat"
+              className="size-8"
+            >
+              <Icon name={submitting ? "Loading" : "MessageSquarePlus"} className={`size-4 ${submitting ? "animate-spin" : ""}`} aria-hidden />
+            </Button>
+            <span role="tooltip" className="pointer-events-none absolute bottom-full right-0 z-40 mb-1 hidden whitespace-nowrap rounded border border-border/80 bg-popover px-1.5 py-0.5 text-[11px] leading-4 text-popover-foreground opacity-0 shadow-sm transition-opacity duration-100 sm:block group-hover/tip:opacity-100 group-focus-within/tip:opacity-100">
+              Create &amp; start chat
+            </span>
+          </span>
+        </> : <span className="group/tip relative inline-flex">
+          <Button
+            type="submit"
+            size="icon"
+            disabled={!canSubmit}
+            aria-label="Create task"
+            className="size-8"
+          >
+            <Icon name="Check" className="size-4" aria-hidden />
+          </Button>
+          <span role="tooltip" className="pointer-events-none absolute bottom-full right-0 z-40 mb-1 hidden whitespace-nowrap rounded border border-border/80 bg-popover px-1.5 py-0.5 text-[11px] leading-4 text-popover-foreground opacity-0 shadow-sm transition-opacity duration-100 sm:block group-hover/tip:opacity-100 group-focus-within/tip:opacity-100">
+            Create task
+          </span>
+        </span>}
+      </div>
+    </div>
   </form>;
 }
 
@@ -1703,8 +1956,8 @@ function ProviderHealthFooter() {
   }, [connection, load]));
   const shown = health.filter((entry) => entry.enabled);
   if (!shown.length) return null;
-  return <footer aria-label="Source sync" className="shrink-0 border-t border-border-hairline">
-    <div className="mx-auto flex h-8 w-full max-w-5xl items-center gap-3 px-4 text-xs">
+  return <footer aria-label="Source sync" className="border-t border-border-hairline pt-4">
+    <div className="flex items-center gap-3 text-xs">
       {shown.map((entry) => <span role="img" aria-label={`${providerLabels[entry.provider]}: ${healthLabel(entry)}`} key={entry.provider} className="flex shrink-0 items-center gap-1.5 text-muted-foreground" title={`${providerLabels[entry.provider]}: ${healthLabel(entry)}`}>
         <span aria-hidden className="size-1.5 rounded-full" style={{ background: healthColor[entry.status] }} />
         <ProviderIcon provider={entry.provider} />
@@ -1862,6 +2115,18 @@ function TasksScreen() {
     mutate({}, () => rpc.call("approveTaskProof", { taskId: task.id, ...(unitId ? { unitId } : {}) }));
     toast.success(unitId ? "Unit approved — sent to chat" : "Approved — sent to chat", { description: <span data-bb-demo-sensitive>{task.title}</span> });
   };
+  const completeWithoutMerge = (task: Task) => {
+    if (proofTarget?.taskId === task.id) setProofTarget(null);
+    mutate({ [task.id]: { status: "done" } }, () => rpc.call("completeTaskWithoutMerge", { taskId: task.id }));
+    toast("Completed without merging", {
+      description: <span data-bb-demo-sensitive>{task.title}</span>,
+      action: { label: "Undo", onClick: () => moveStage(task, task.status) },
+    });
+  };
+  const dismissAttention = (task: Task) => {
+    mutate({}, () => rpc.call("dismissTaskAttention", { taskId: task.id }));
+    toast("Dismissed from Needs you", { description: <span data-bb-demo-sensitive>{task.title}</span> });
+  };
   const promote = (task: Task) => <RowAction label="Move to Now" icon="ArrowUp" task={task} onClick={() => moves.priority(task, "urgent")} />;
   const cards = (list: ProjectColumn[]) => <div className="flex items-start gap-3">{stacks(list).map((stack, index) => <div key={index} className="flex min-w-0 flex-1 flex-col gap-3">
     {stack.map((column) => <ProjectCard key={column.id} column={column} expanded={expanded.has(column.id)} onExpand={() => toggleExpanded(column.id)}
@@ -1897,7 +2162,7 @@ function TasksScreen() {
         <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-recessed/70"><PluginIcon name={tasksIcon} className="size-5" /></div>
         <div className="min-w-0"><h1 className="text-base font-semibold leading-5">Tasks</h1><p className="text-xs leading-4 text-muted-foreground">Plan work across your task sources.</p></div>
       </header>
-      <NeedsYouSection tasks={personal.filter((task) => !isDraft(task) && needsAttention(task))} projectName={projectName} chats={chats} onOpenProof={openProof} onApproveProof={approveProof} onResolveProposal={resolveProposal} />
+      <NeedsYouSection tasks={personal.filter((task) => !isDraft(task) && needsAttention(task))} projectName={projectName} chats={chats} onOpenProof={openProof} onApproveProof={approveProof} onCompleteWithoutMerge={completeWithoutMerge} onDismissAttention={dismissAttention} onResolveProposal={resolveProposal} />
       <section ref={dnd.zoneRef.urgent} aria-label="Now">
         <SectionHeader title="Now" count={loading ? undefined : now.length}>
           <div className="flex items-center">
@@ -1937,6 +2202,7 @@ function TasksScreen() {
         <SectionHeader title="Hidden" count={hiddenColumns.length} open={hiddenOpen} onToggle={toggleHidden} />
         {hiddenOpen ? <div className="mt-2">{cards(hiddenColumns)}</div> : null}
       </section> : null}
+      <ProviderHealthFooter />
     </div>
     {chats.popup}
     {contextMenu && contextTask ? <PointMenu key={`${contextMenu.x},${contextMenu.y}`} at={contextMenu} onClose={() => setContextMenu(null)}>
@@ -1951,7 +2217,7 @@ function TasksScreen() {
     </PointMenu> : null}
     <Dialog open={newTask.open} onOpenChange={(open) => { if (!open) closeNewTask(); }}>
       <DialogContent>
-        <NewTaskForm key={newTask.key} projects={projects} initialProjectId={newTask.projectId} priority={newTask.priority} onDone={closeNewTask} />
+        <NewTaskForm key={newTask.key} projects={projects} initialProjectId={newTask.projectId} priority={newTask.priority} onDone={closeNewTask} onCreatedAndStartChat={(created, desc) => chats.compose(created, desc)} />
       </DialogContent>
     </Dialog>
     <Dialog open={assigning.open} onOpenChange={(open) => { if (!open) closeAssigning(); }}>
@@ -1970,7 +2236,7 @@ function TasksScreen() {
             onPick={(task) => assign(assigning.thread!, task)} onCreate={(title) => setAssigning((current) => ({ ...current, title }))} />
         </DialogContent> : null}
     </Dialog>
-  </div>{proofTask ? <ProofSidePanel task={proofTask} unit={proofUnit} onClose={() => setProofTarget(null)} onApproveProof={approveProof} onResolveProposal={resolveProposal} /> : null}</div><ProviderHealthFooter /></div>;
+  </div>{proofTask ? <ProofSidePanel task={proofTask} unit={proofUnit} onClose={() => setProofTarget(null)} onApproveProof={approveProof} onCompleteWithoutMerge={completeWithoutMerge} onResolveProposal={resolveProposal} /> : null}</div></div>;
 }
 
 function NowHomeCard({ projectId }: { projectId: string | null }) {

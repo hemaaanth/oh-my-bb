@@ -12,6 +12,7 @@ describe("task run state", () => {
     expect(needsAttention({ status: "review", run: { phase: "babysitting", summary: "Watching Maestro", proofPageId: "6f807a6d-7754-4a44-8305-2051bb02c713", updatedAt: "2026-11-23T00:00:00Z" } })).toBe(false);
     expect(needsAttention({ status: "doing", run: { phase: "live", summary: "Ready to close.", proofPageId: null, proposedStatus: "done", updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
     expect(needsAttention({ status: "doing", run: { phase: "building", summary: null, proofPageId: null, units: [{ id: "u1", title: "Unit 1", status: "waiting", proofPageId: "6f807a6d-7754-4a44-8305-2051bb02c713" }], updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
+    expect(needsAttention({ status: "review", run: { phase: "waiting", summary: "Proof ready.", proofPageId: "6f807a6d-7754-4a44-8305-2051bb02c713", dismissedAt: "2026-11-24T00:00:00Z", updatedAt: "2026-11-24T00:00:00Z" } })).toBe(false);
     const now = Date.parse("2026-11-23T12:00:00Z");
     expect(formatRunAge("2026-11-23T11:59:40Z", now)).toBe("just now");
     expect(formatRunAge("2026-11-23T11:45:00Z", now)).toBe("15m");
@@ -118,6 +119,53 @@ describe("task run state", () => {
     };
     expect(reset.selectedProviderId).toBeNull();
     expect(reset.effectiveProviderId).toBe("sandbox-box");
+    await harness.lifecycle.dispose();
+  });
+
+  it("supports dismissing attention without changing task/thread and completing without merging", async () => {
+    const archivedThreads: string[] = [];
+    const sentMessages: unknown[] = [];
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "task-workspaces",
+      experimental_declaredIconNames: ["tasks"],
+      settings: { agentWrites: "workflow", allowWrites: false },
+      sdk: {
+        projects: { list: async () => [{ id: "proj-1", name: "Repo", kind: "standard", gitRemoteUrl: null, sources: [], createdAt: 0, updatedAt: 0 }] },
+        threads: {
+          archive: async ({ threadId }: { threadId: string }) => { archivedThreads.push(threadId); return { archivedThreadIds: [threadId] }; },
+          send: async (args: unknown) => { sentMessages.push(args); return {}; },
+        },
+      },
+    });
+    await plugin(bb);
+    const db = bb.storage.database();
+    db.prepare("INSERT INTO tasks (id,title,status,project_id,created_at,updated_at) VALUES ('t2','Open PR upstream','review','proj-1','2026-11-24','2026-11-24')").run();
+    db.prepare("INSERT INTO task_refs VALUES ('t2','akiflow','ext-2','Open PR upstream',NULL,'{}','2026-11-24')").run();
+    db.prepare("INSERT INTO akiflow_identifiers (number,external_id) VALUES (8,'ext-2')").run();
+    db.prepare("INSERT INTO task_threads (task_id,thread_id,environment_id,started_by_task,attached_at) VALUES ('t2','thr_upstream',NULL,1,'2026-11-24')").run();
+
+    await harness.behavior.runCli(["run", "AKI-8", "--phase", "waiting", "--summary", "PR ready for review.", "--proof", "6f807a6d-7754-4a44-8305-2051bb02c713"]);
+
+    // Dismiss hides from Needs you without changing task status, proof link, or threads.
+    const dismissed = await harness.behavior.callRpc("dismissTaskAttention", { taskId: "t2" }) as { status: string; run?: { dismissedAt?: string | null; proofPageId?: string | null } };
+    expect(dismissed.status).toBe("review");
+    expect(dismissed.run?.proofPageId).toBe("6f807a6d-7754-4a44-8305-2051bb02c713");
+    expect(dismissed.run?.dismissedAt).toBeTruthy();
+    expect(needsAttention(dismissed as never)).toBe(false);
+    expect(archivedThreads).toEqual([]);
+    expect(sentMessages).toEqual([]);
+
+    // A fresh agent run update clears the dismissal so new attention resurfaces.
+    const resurfaced = await harness.behavior.runCli(["run", "AKI-8", "--phase", "waiting", "--summary", "Updated after feedback."]);
+    expect(JSON.parse(resurfaced.stdout).run.dismissedAt).toBeNull();
+    expect(needsAttention(JSON.parse(resurfaced.stdout))).toBe(true);
+
+    // Complete without merging marks done, clears run, archives thread, and does NOT send a merge message.
+    const completed = await harness.behavior.callRpc("completeTaskWithoutMerge", { taskId: "t2" }) as { status: string; run?: unknown };
+    expect(completed.status).toBe("done");
+    expect(completed.run).toBeUndefined();
+    expect(archivedThreads).toEqual(["thr_upstream"]);
+    expect(sentMessages).toEqual([]);
     await harness.lifecycle.dispose();
   });
 });

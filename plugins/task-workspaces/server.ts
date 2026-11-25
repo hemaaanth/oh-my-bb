@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import type { NewThreadRequest } from "@get-bb/plugin-sdk/app";
 import { z } from "zod";
@@ -81,6 +84,7 @@ const taskRunSchema = z.object({
   proofPageId: z.string().nullable(),
   proposedStatus: statusSchema.nullable().optional(),
   units: z.array(taskUnitSchema).nullable().optional(),
+  dismissedAt: z.string().nullable().optional(),
   updatedAt: z.string(),
 });
 
@@ -310,6 +314,14 @@ export const rpcContract = defineRpcContract({
     input: z.object({ taskId: z.string(), unitId: z.string().optional() }).strict(),
     output: taskSchema,
   },
+  completeTaskWithoutMerge: {
+    input: z.object({ taskId: z.string() }).strict(),
+    output: taskSchema,
+  },
+  dismissTaskAttention: {
+    input: z.object({ taskId: z.string() }).strict(),
+    output: taskSchema,
+  },
   archivePrompt: {
     input: z.null(),
     output: taskSchema.nullable(),
@@ -408,10 +420,15 @@ export const rpcContract = defineRpcContract({
       projectId: z.string().min(1),
       destinationId: z.string().min(1).max(500),
       title: z.string().trim().min(1).max(500),
+      description: z.string().max(50_000).optional(),
+      images: z.array(z.object({
+        name: z.string().max(200),
+        dataUrl: z.string().max(15_000_000),
+      }).strict()).max(6).optional(),
       threadId: z.string().min(1).optional(),
       priority: z.enum(["urgent", "high"]).optional(),
     }).strict(),
-    output: boardTaskSchema,
+    output: boardTaskSchema.extend({ description: z.string().optional() }),
   },
   setProject: {
     input: z.object({ taskId: z.string(), projectId: z.string() }).strict(),
@@ -1012,8 +1029,8 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   function taskRun(taskId: string) {
-    const row = db.prepare("SELECT phase, summary, proof_page_id, proposed_status, units_json, updated_at FROM task_runs WHERE task_id = ?").get(taskId) as
-      | { phase: RunPhase | null; summary: string | null; proof_page_id: string | null; proposed_status: Status | null; units_json: string | null; updated_at: string }
+    const row = db.prepare("SELECT phase, summary, proof_page_id, proposed_status, units_json, dismissed_at, updated_at FROM task_runs WHERE task_id = ?").get(taskId) as
+      | { phase: RunPhase | null; summary: string | null; proof_page_id: string | null; proposed_status: Status | null; units_json: string | null; dismissed_at: string | null; updated_at: string }
       | undefined;
     if (!row) return null;
     return {
@@ -1022,6 +1039,7 @@ export default async function plugin(bb: BbPluginApi) {
       proofPageId: row.proof_page_id,
       proposedStatus: row.proposed_status ?? null,
       units: parseUnitsJson(row.units_json),
+      dismissedAt: row.dismissed_at ?? null,
       updatedAt: row.updated_at,
     };
   }
@@ -1045,14 +1063,16 @@ export default async function plugin(bb: BbPluginApi) {
     if (!phase && !summary && !proofPageId && !proposedStatus && !units) {
       db.prepare("DELETE FROM task_runs WHERE task_id = ?").run(taskId);
     } else {
-      db.prepare(`INSERT INTO task_runs (task_id, phase, summary, proof_page_id, proposed_status, units_json, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+      // Any fresh run update clears a prior dismissal so new attention surfaces.
+      db.prepare(`INSERT INTO task_runs (task_id, phase, summary, proof_page_id, proposed_status, units_json, dismissed_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, NULL, ?)
         ON CONFLICT(task_id) DO UPDATE SET
           phase = excluded.phase,
           summary = excluded.summary,
           proof_page_id = excluded.proof_page_id,
           proposed_status = excluded.proposed_status,
           units_json = excluded.units_json,
+          dismissed_at = NULL,
           updated_at = excluded.updated_at`).run(taskId, phase, summary, proofPageId, proposedStatus, unitsJson, now());
     }
     bb.realtime.publish("tasks-changed", { reason: "run", taskId });
@@ -1094,6 +1114,27 @@ export default async function plugin(bb: BbPluginApi) {
       return setTaskRun(taskId, { phase: "building", summary: `${unit.title} approved — continuing.`, proposedStatus: null, units: nextUnits });
     }
     return setTaskRun(taskId, { phase: "deploying", summary: "Approved — merging and deploying.", proposedStatus: null });
+  }
+
+  async function completeTaskWithoutMerge(taskId: string) {
+    // Marks the task done and archives its linked chat(s)/worktree without instructing the agent to merge.
+    await finalizeTask(taskId, "done");
+    db.prepare("DELETE FROM task_runs WHERE task_id = ?").run(taskId);
+    bb.realtime.publish("tasks-changed", { reason: "done-no-merge", taskId });
+    return taskDto(getDbTask(taskId));
+  }
+
+  function dismissTaskAttention(taskId: string) {
+    getDbTask(taskId);
+    const ts = now();
+    const existing = taskRun(taskId);
+    if (existing) {
+      db.prepare("UPDATE task_runs SET dismissed_at = ?, updated_at = ? WHERE task_id = ?").run(ts, ts, taskId);
+    } else {
+      db.prepare("INSERT INTO task_runs (task_id, phase, summary, proof_page_id, proposed_status, units_json, dismissed_at, updated_at) VALUES (?, NULL, NULL, NULL, NULL, NULL, ?, ?)").run(taskId, ts, ts);
+    }
+    bb.realtime.publish("tasks-changed", { reason: "dismiss-attention", taskId });
+    return taskDto(getDbTask(taskId));
   }
 
   function taskRows() {
@@ -2346,23 +2387,54 @@ export default async function plugin(bb: BbPluginApi) {
   // A Linear issue is assigned to me, because Tasks shows only the Linear issues that are mine.
   // A task made from a chat is linked to it. The chat is read first, so a missing chat makes no task.
   // With priority, the task starts in Now (urgent) or Later (high).
-  async function createProjectTask(projectId: string, destinationId: string, title: string, threadId?: string, priority?: "urgent" | "high") {
+  function saveTaskImages(images?: Array<{ name: string; dataUrl: string }>): string[] {
+    if (!images?.length) return [];
+    const baseDir = db.name && db.name !== ":memory:" ? join(dirname(db.name), "attachments") : join(tmpdir(), "bb-task-attachments");
+    mkdirSync(baseDir, { recursive: true });
+    const paths: string[] = [];
+    for (const img of images) {
+      const match = /^data:image\/(png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=\s]+)$/iu.exec(img.dataUrl.trim());
+      if (!match) continue;
+      const ext = match[1]!.toLowerCase() === "jpeg" ? "jpg" : match[1]!.toLowerCase();
+      const safeBase = img.name.replace(/\.[^.]+$/u, "").replace(/[^a-zA-Z0-9._-]+/gu, "-").replace(/^-+|-+$/gu, "").slice(0, 48) || "screenshot";
+      const filePath = join(baseDir, `${safeBase}-${randomUUID().slice(0, 8)}.${ext}`);
+      writeFileSync(filePath, Buffer.from(match[2]!, "base64"));
+      paths.push(filePath);
+    }
+    return paths;
+  }
+
+  async function createProjectTask(
+    projectId: string,
+    destinationId: string,
+    title: string,
+    threadId?: string,
+    priority?: "urgent" | "high",
+    description?: string,
+    images?: Array<{ name: string; dataUrl: string }>,
+  ) {
     const provider = providers.find((name) => destinationId.startsWith(`${name}:`));
     if (!provider) throw new Error("Choose where to create the task");
     const projects = await projectsWith(projectId);
     const thread = threadId ? await topLevelThread(threadId) : null;
+    const savedPaths = saveTaskImages(images);
+    const bodyParts = [
+      description?.trim() || "",
+      savedPaths.length ? `Screenshots:\n${savedPaths.map((p) => `- ${p}`).join("\n")}` : "",
+    ].filter(Boolean);
+    const fullDescription = bodyParts.join("\n\n");
     const created = await createTask({
       provider,
       destinationId,
       title,
-      description: "",
+      description: fullDescription,
       priority: priority ?? null,
       ownerId: provider === "linear" ? currentOwnerId() : null,
     });
     // The first chat places a task in its project. Here the chosen project wins over the chat's.
     if (thread) await persistTaskAttachment(created.id, { ...thread, projectId, startedByTask: false });
     placeInProject(created.id, projectId, projects);
-    return boardTask(getDbTask(created.id), projects);
+    return { ...boardTask(getDbTask(created.id), projects), ...(fullDescription ? { description: fullDescription } : {}) };
   }
 
   function createdTask(item: ExternalTask) {
@@ -3828,6 +3900,8 @@ export default async function plugin(bb: BbPluginApi) {
     answerArchived: ({ taskId, decision }) => answerArchived(taskId, decision),
     resolveRunProposal: ({ taskId, accept }) => resolveRunProposal(taskId, accept),
     approveTaskProof: ({ taskId, unitId }) => approveTaskProof(taskId, unitId),
+    completeTaskWithoutMerge: ({ taskId }) => completeTaskWithoutMerge(taskId),
+    dismissTaskAttention: ({ taskId }) => dismissTaskAttention(taskId),
     archivePrompt: () => archivePrompt(),
     projectMappings: async () => projectMappings(),
     setProjectMapping: ({ sourceKey, projectId }) => setProjectMapping(sourceKey, projectId),
@@ -3849,7 +3923,7 @@ export default async function plugin(bb: BbPluginApi) {
     providerHealth: () => providerHealth(),
     createTaskOptions,
     createTask,
-    createProjectTask: ({ projectId, destinationId, title, threadId, priority }) => createProjectTask(projectId, destinationId, title, threadId, priority),
+    createProjectTask: ({ projectId, destinationId, title, description, images, threadId, priority }) => createProjectTask(projectId, destinationId, title, threadId, priority, description, images),
     setProject: ({ taskId, projectId }) => setProject(taskId, projectId),
     arrangeTasks: ({ priority, taskIds }) => arrangeTasks(priority, taskIds),
   });
