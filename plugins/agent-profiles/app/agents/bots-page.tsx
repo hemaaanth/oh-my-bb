@@ -256,7 +256,7 @@ export function BotsPage({ subPath }: PluginNavPanelProps) {
   }
 
   return (
-    <div key={threadId} className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
+    <div key={threadId} className="bots-chat flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <ThreadChat threadId={threadId} />
     </div>
   );

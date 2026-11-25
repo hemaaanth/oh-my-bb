@@ -426,3 +426,19 @@
 .agent-settings-editor .bot-section { overflow: visible; }
 .agent-settings-editor .bot-detail-title-row > div { min-width: 0; }
 .agent-settings-editor .bot-detail-actions { flex-wrap: wrap; }
+
+/* Standalone Bots rail chat: match BB's native PageShell reading width (max-w-[760px])
+   for the embedded ThreadChat composer, and hide repo/workspace footer chips. */
+.bots-chat [data-scroll-footer] > div > div:last-child {
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+  padding-top: 0;
+  padding-bottom: max(0px, calc(1rem - var(--bb-content-bottom-inset, 0px)));
+}
+.bots-chat [data-follow-up-composer-footer] > :first-child > * {
+  display: none;
+}
+.bots-chat [data-follow-up-composer-footer]:has(> :last-child:empty) {
+  display: none;
+}
