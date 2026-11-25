@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { taskCommandPaletteActions } from "./command-palette.js";
-import { byChatState, byPosition, formatRunAge, isOpenPersonalTask, masonry, needsAttention, organizeTasks, placeTask, runPhaseLabels, statusLabels, taskPriority, type ChatState, type RunPhase, type Task } from "./task-layout.js";
+import { byChatState, byPosition, formatRunAge, isOpenPersonalTask, masonry, needsAttention, organizeTasks, placeTask, runPhaseLabels, statusLabels, taskPriority, type ChatState, type RunPhase, type Task, type TaskUnit } from "./task-layout.js";
 import { useTaskDrag, type DropSlot } from "./task-drag.js";
 import { MoreSettings } from "./settings";
 
@@ -1011,20 +1011,37 @@ const phasePillClasses: Record<RunPhase, string> = {
   capturing: "border-violet-500/25 bg-violet-500/12 text-violet-600 dark:text-violet-400",
   checking: "border-cyan-500/25 bg-cyan-500/12 text-cyan-600 dark:text-cyan-400",
   waiting: "border-amber-500/30 bg-amber-500/12 text-amber-600 dark:text-amber-400",
+  babysitting: "border-indigo-500/25 bg-indigo-500/12 text-indigo-600 dark:text-indigo-400",
   deploying: "border-teal-500/25 bg-teal-500/12 text-teal-600 dark:text-teal-400",
   live: "border-emerald-500/25 bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
   blocked: "border-destructive/30 bg-destructive/12 text-destructive-text",
 };
 
-function RunInlineBadge({ task, onOpenProof }: { task: Task; onOpenProof?: (task: Task) => void }) {
+function RunInlineBadge({ task, onOpenProof, unitsOpen, onToggleUnits }: {
+  task: Task;
+  onOpenProof?: (task: Task, unitId?: string) => void;
+  unitsOpen?: boolean;
+  onToggleUnits?: () => void;
+}) {
   const phase = task.run?.phase ?? null;
+  const units = task.run?.units ?? null;
+  const doneUnits = units ? units.filter((unit) => unit.status === "done").length : 0;
   const hasProof = Boolean(proofEmbedUrl(task.run?.proofPageId));
-  if (!phase && !hasProof) return null;
+  if (!phase && !hasProof && !units?.length) return null;
   return <span data-no-drag="" className="flex shrink-0 items-center gap-1.5">
+    {units?.length && onToggleUnits ? <button
+      type="button"
+      onClick={(event) => { event.stopPropagation(); onToggleUnits(); }}
+      title={`${doneUnits} of ${units.length} units done`}
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/70 bg-surface-recessed/70 px-2 py-0.5 text-[11px] font-medium tabular-nums leading-4 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+    >
+      <span>{doneUnits}/{units.length}</span>
+      <Icon name={unitsOpen ? "ChevronDown" : "ChevronRight"} className="size-3" aria-hidden />
+    </button> : null}
     {phase ? <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4 ${phasePillClasses[phase]}`}>
       {runPhaseLabels[phase]}
     </span> : null}
-    {hasProof && onOpenProof ? <button
+    {hasProof && onOpenProof && !units?.length ? <button
       type="button"
       onClick={(event) => { event.stopPropagation(); onOpenProof(task); }}
       className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-surface-recessed/80 px-2 py-0.5 text-[11px] font-medium leading-4 text-foreground transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -1033,6 +1050,57 @@ function RunInlineBadge({ task, onOpenProof }: { task: Task; onOpenProof?: (task
       Proof
     </button> : null}
   </span>;
+}
+
+function UnitStatusIcon({ status }: { status: TaskUnit["status"] }) {
+  if (status === "done") return <Icon name="Check" className="size-3.5 shrink-0 text-emerald-500" aria-hidden />;
+  if (status === "waiting") return <span aria-hidden className="size-2 shrink-0 rounded-full bg-amber-500" />;
+  if (status === "active") return <span aria-hidden className="size-2 shrink-0 animate-pulse rounded-full bg-blue-500" />;
+  if (status === "blocked") return <Icon name="Clock" className="size-3 shrink-0 text-muted-foreground/70" aria-hidden />;
+  return <span aria-hidden className="size-2 shrink-0 rounded-full border border-muted-foreground/50" />;
+}
+
+function TaskUnitsList({ task, units, onOpenProof, onApproveProof }: {
+  task: Task;
+  units: TaskUnit[];
+  onOpenProof: (task: Task, unitId?: string) => void;
+  onApproveProof: (task: Task, unitId?: string) => void;
+}) {
+  return <ul aria-label={`${task.title} units`} className="border-t border-border/50 bg-surface-recessed/40 divide-y divide-border/40">
+    {units.map((unit) => {
+      const hasProof = Boolean(proofEmbedUrl(unit.proofPageId));
+      const waiting = unit.status === "waiting";
+      const muted = unit.status === "blocked" || unit.status === "pending";
+      return <li key={unit.id} className="flex min-w-0 items-center gap-2.5 py-1.5 pe-3 ps-9 text-xs">
+        <span className="flex size-4 shrink-0 items-center justify-center"><UnitStatusIcon status={unit.status} /></span>
+        <span className={`min-w-0 flex-1 truncate ${unit.status === "done" ? "text-muted-foreground line-through decoration-muted-foreground/40" : muted ? "text-muted-foreground" : "text-foreground"}`}>
+          <span data-bb-demo-sensitive>{unit.title}</span>
+        </span>
+        <span data-no-drag="" className="flex shrink-0 items-center gap-1.5">
+          {unit.status === "blocked" && unit.blockedBy ? <span className="inline-flex shrink-0 items-center rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-[10px] font-medium leading-4 text-muted-foreground">
+            Blocked by {unit.blockedBy}
+          </span> : unit.phase ? <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium leading-4 ${phasePillClasses[unit.phase]}`}>
+            {runPhaseLabels[unit.phase]}
+          </span> : null}
+          {hasProof ? <button
+            type="button"
+            onClick={(event) => { event.stopPropagation(); onOpenProof(task, unit.id); }}
+            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background/80 px-2 py-0.5 text-[10px] font-medium leading-4 text-foreground transition-colors hover:bg-state-hover"
+          >
+            <Icon name="Eye" className="size-2.5 text-muted-foreground" aria-hidden />
+            Proof
+          </button> : null}
+          {waiting && task.threadIds.length > 0 ? <button
+            type="button"
+            onClick={(event) => { event.stopPropagation(); onApproveProof(task, unit.id); }}
+            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium leading-4 text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            Approve
+          </button> : null}
+        </span>
+      </li>;
+    })}
+  </ul>;
 }
 
 const proofWidthKey = "task-workspaces:proof-panel-width";
@@ -1044,17 +1112,19 @@ function readProofWidth(): number | null {
   } catch { return null; }
 }
 
-function ProofSidePanel({ task, onClose, onApproveProof, onResolveProposal }: {
+function ProofSidePanel({ task, unit, onClose, onApproveProof, onResolveProposal }: {
   task: Task;
+  unit?: TaskUnit | null;
   onClose: () => void;
-  onApproveProof: (task: Task) => void;
+  onApproveProof: (task: Task, unitId?: string) => void;
   onResolveProposal: (task: Task, accept: boolean) => void;
 }) {
-  const embedUrl = proofEmbedUrl(task.run?.proofPageId);
-  const fullHref = proofHref(task.run?.proofPageId);
+  const pageId = unit?.proofPageId ?? task.run?.proofPageId;
+  const embedUrl = proofEmbedUrl(pageId);
+  const fullHref = proofHref(pageId);
   const external = fullHref ? /^https?:\/\//iu.test(fullHref) : false;
-  const proposed = task.run?.proposedStatus ?? null;
-  const awaitingProofApproval = task.run?.phase === "waiting" && Boolean(embedUrl) && task.threadIds.length > 0;
+  const proposed = task.run?.proposedStatus === "done" && task.status !== "done" ? "done" : null;
+  const awaitingProofApproval = (unit ? unit.status === "waiting" : task.run?.phase === "waiting") && Boolean(embedUrl) && task.threadIds.length > 0;
   const [panelWidth, setPanelWidth] = useState<number | null>(() => readProofWidth());
   const [resizing, setResizing] = useState(false);
   useEffect(() => {
@@ -1090,9 +1160,10 @@ function ProofSidePanel({ task, onClose, onApproveProof, onResolveProposal }: {
     try { localStorage.removeItem(proofWidthKey); } catch { /* ignore */ }
   };
   if (!embedUrl) return null;
+  const label = unit ? `${task.title} — ${unit.title}` : task.title;
   return <div className={`fixed inset-0 z-40 flex justify-end bg-black/35 backdrop-blur-[1px] ${resizing ? "cursor-col-resize select-none" : ""}`} onClick={onClose}>
     <aside
-      aria-label={`Proof: ${task.title}`}
+      aria-label={`Proof: ${label}`}
       style={panelWidth ? { width: `min(94vw, ${panelWidth}px)` } : undefined}
       className={`relative flex h-full flex-col border-l border-border/50 bg-background shadow-2xl ${panelWidth ? "" : "w-[min(92vw,68rem)]"}`}
       onClick={(event) => event.stopPropagation()}
@@ -1109,8 +1180,8 @@ function ProofSidePanel({ task, onClose, onApproveProof, onResolveProposal }: {
         <span className={`h-full w-0.5 transition-colors ${resizing ? "bg-primary/70" : "bg-transparent group-hover:bg-primary/45"}`} />
       </div>
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-background/85 p-1 shadow-sm ring-1 ring-border/60 backdrop-blur-md">
-        {awaitingProofApproval ? <Button size="sm" className="h-6 rounded-full px-2.5 text-xs" onClick={() => onApproveProof(task)}>
-          Approve &amp; merge
+        {awaitingProofApproval ? <Button size="sm" className="h-6 rounded-full px-2.5 text-xs" onClick={() => onApproveProof(task, unit?.id)}>
+          {unit ? "Approve unit" : "Approve & merge"}
         </Button> : proposed ? <Button size="sm" className="h-6 rounded-full px-2.5 text-xs" onClick={() => onResolveProposal(task, true)}>
           Mark {statusLabels[proposed]}
         </Button> : null}
@@ -1127,7 +1198,7 @@ function ProofSidePanel({ task, onClose, onApproveProof, onResolveProposal }: {
           </Button>
         </span>
       </div>
-      <iframe title={`Proof: ${task.title}`} src={embedUrl} className={`min-h-0 h-full w-full flex-1 border-0 bg-background ${resizing ? "pointer-events-none" : ""}`} />
+      <iframe title={`Proof: ${label}`} src={embedUrl} className={`min-h-0 h-full w-full flex-1 border-0 bg-background ${resizing ? "pointer-events-none" : ""}`} />
     </aside>
   </div>;
 }
@@ -1136,8 +1207,8 @@ function NeedsYouSection({ tasks, projectName, chats, onOpenProof, onApproveProo
   tasks: Task[];
   projectName: (task: Task) => string | undefined;
   chats: ChatPopupController;
-  onOpenProof: (task: Task) => void;
-  onApproveProof: (task: Task) => void;
+  onOpenProof: (task: Task, unitId?: string) => void;
+  onApproveProof: (task: Task, unitId?: string) => void;
   onResolveProposal: (task: Task, accept: boolean) => void;
 }) {
   if (!tasks.length) return null;
@@ -1145,33 +1216,38 @@ function NeedsYouSection({ tasks, projectName, chats, onOpenProof, onApproveProo
     <SectionHeader title="Needs you" count={tasks.length} />
     <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
       {tasks.map((task) => {
-        const hasProof = Boolean(proofEmbedUrl(task.run?.proofPageId));
-        const proposed = task.run?.proposedStatus ?? null;
-        const awaitingProofApproval = task.run?.phase === "waiting" && hasProof && task.threadIds.length > 0;
+        const waitingUnit = task.run?.units?.find((unit) => unit.status === "waiting") ?? null;
+        const activeProofId = waitingUnit?.proofPageId ?? task.run?.proofPageId;
+        const hasProof = Boolean(proofEmbedUrl(activeProofId));
+        const proposed = task.run?.proposedStatus === "done" && task.status !== "done" ? "done" : null;
+        const awaitingProofApproval = (waitingUnit ? true : task.run?.phase === "waiting") && hasProof && task.threadIds.length > 0;
         const openChat = chats.opener(task);
         const project = projectName(task);
         const age = task.run?.updatedAt ? formatRunAge(task.run.updatedAt) : "";
         const meta = [project, age].filter(Boolean).join(" · ");
-        const summary = task.run?.summary || (awaitingProofApproval ? "Proof ready for your approval." : proposed ? `Ready to move to ${statusLabels[proposed]}.` : task.run?.phase === "blocked" ? "Blocked — needs your input." : "Waiting for your decision.");
+        const summary = waitingUnit?.summary || task.run?.summary || (waitingUnit ? `${waitingUnit.title} is ready for approval.` : awaitingProofApproval ? "Proof ready for your approval." : proposed ? "Live and ready to mark done." : task.run?.phase === "blocked" ? "Blocked — needs your input." : "Waiting for your decision.");
         const isBlocked = task.run?.phase === "blocked";
         const borderTone = isBlocked ? "border-destructive/40" : awaitingProofApproval ? "border-warning/40" : proposed ? "border-blue-500/40" : "border-warning/40";
         return <article key={task.id} data-needs-you={task.id} className={`flex flex-col justify-between gap-3 rounded-lg border bg-card p-3.5 ${borderTone}`}>
           <div className="space-y-1">
             <div className="flex items-start justify-between gap-3">
-              <span className="min-w-0 text-sm font-medium leading-5 text-foreground"><span data-bb-demo-sensitive>{task.title}</span></span>
+              <span className="min-w-0 text-sm font-medium leading-5 text-foreground">
+                <span data-bb-demo-sensitive>{task.title}</span>
+                {waitingUnit ? <span className="font-normal text-muted-foreground"> · <span data-bb-demo-sensitive>{waitingUnit.title}</span></span> : null}
+              </span>
               {meta ? <span className="shrink-0 text-xs tabular-nums text-muted-foreground"><span data-bb-demo-sensitive>{meta}</span></span> : null}
             </div>
             <p className="m-0 text-xs leading-5 text-muted-foreground">{summary}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {awaitingProofApproval ? <>
-              <Button size="sm" onClick={() => onOpenProof(task)}>View proof</Button>
-              <Button variant="outline" size="sm" onClick={() => onApproveProof(task)}>Approve &amp; merge</Button>
+              <Button size="sm" onClick={() => onOpenProof(task, waitingUnit?.id)}>View proof</Button>
+              <Button variant="outline" size="sm" onClick={() => onApproveProof(task, waitingUnit?.id)}>{waitingUnit ? "Approve unit" : "Approve & merge"}</Button>
             </> : proposed ? <>
               <Button size="sm" onClick={() => onResolveProposal(task, true)}>Mark {statusLabels[proposed]}</Button>
               <Button variant="outline" size="sm" onClick={() => onResolveProposal(task, false)}>Keep {statusLabels[task.status]}</Button>
               {hasProof ? <Button variant="outline" size="sm" onClick={() => onOpenProof(task)}>View proof</Button> : null}
-            </> : hasProof ? <Button size="sm" onClick={() => onOpenProof(task)}>View proof</Button> : null}
+            </> : hasProof ? <Button size="sm" onClick={() => onOpenProof(task, waitingUnit?.id)}>View proof</Button> : null}
             {openChat ? <Button variant={hasProof || proposed ? "outline" : "default"} size="sm" onClick={openChat}>{hasProof || proposed ? "Open chat" : "Answer in chat"}</Button> : null}
           </div>
         </article>;
@@ -1180,21 +1256,29 @@ function NeedsYouSection({ tasks, projectName, chats, onOpenProof, onApproveProo
   </section>;
 }
 
-function TaskRow({ task, project, chat, onOpen, onRename, onStage, onResolveProposal, onOpenProof, handle, active, children }: {
+function TaskRow({ task, project, chat, onOpen, onRename, onStage, onResolveProposal, onOpenProof, onApproveProof, handle, active, children }: {
   task: Task; project?: string; chat: ChatState | null; onOpen?: () => void; onRename: (title: string) => void;
-  onStage: (status: Task["status"]) => void; onResolveProposal: (accept: boolean) => void; onOpenProof: (task: Task) => void;
+  onStage: (status: Task["status"]) => void; onResolveProposal: (accept: boolean) => void;
+  onOpenProof: (task: Task, unitId?: string) => void; onApproveProof: (task: Task, unitId?: string) => void;
   handle: RowHandle; active: boolean; children: ReactNode;
 }) {
+  const units = task.run?.units ?? null;
+  const hasActiveUnit = Boolean(units?.some((unit) => unit.status === "active" || unit.status === "waiting"));
+  const [unitsToggled, setUnitsToggled] = useState<boolean | null>(null);
+  const unitsOpen = unitsToggled ?? hasActiveUnit;
   if (isDraft(task)) return <li aria-busy className="flex min-w-0 items-center gap-3 py-1.5 pe-2 ps-3 opacity-50">
     <StatusGlyph status={task.status} />
     <span className="min-w-0 flex-1 truncate py-1 text-sm leading-5"><span data-bb-demo-sensitive>{task.title}</span></span>
   </li>;
-  return <li {...handle} data-flip={task.id} style={chatTint(chat)} className={`group flex min-w-0 items-center gap-2.5 py-1.5 pe-2 ps-2 hover:bg-state-hover ${active ? "bg-state-hover" : ""} ${draggable}`}>
-    <StatusPicker task={task} onStage={onStage} onResolveProposal={onResolveProposal} />
-    <TaskTitle data-bb-demo-label title={task.title} onRename={onRename} onOpen={onOpen} className="min-w-0 flex-1 py-1 text-sm leading-5" clamp="block truncate" />
-    <RunInlineBadge task={task} onOpenProof={onOpenProof} />
-    {project ? <span className="hidden max-w-40 shrink-0 truncate text-xs text-subtle-foreground sm:block"><span data-bb-demo-sensitive>{project}</span></span> : null}
-    <div data-no-drag="" className="flex shrink-0 items-center">{children}</div>
+  return <li {...handle} data-flip={task.id} style={chatTint(chat)} className={`flex flex-col ${draggable}`}>
+    <div className={`group flex min-w-0 items-center gap-2.5 py-1.5 pe-2 ps-2 hover:bg-state-hover ${active ? "bg-state-hover" : ""}`}>
+      <StatusPicker task={task} onStage={onStage} onResolveProposal={onResolveProposal} />
+      <TaskTitle data-bb-demo-label title={task.title} onRename={onRename} onOpen={onOpen} className="min-w-0 flex-1 py-1 text-sm leading-5" clamp="block truncate" />
+      <RunInlineBadge task={task} onOpenProof={onOpenProof} unitsOpen={unitsOpen} onToggleUnits={units?.length ? () => setUnitsToggled(!unitsOpen) : undefined} />
+      {project ? <span className="hidden max-w-40 shrink-0 truncate text-xs text-subtle-foreground sm:block"><span data-bb-demo-sensitive>{project}</span></span> : null}
+      <div data-no-drag="" className="flex shrink-0 items-center">{children}</div>
+    </div>
+    {units?.length && unitsOpen ? <TaskUnitsList task={task} units={units} onOpenProof={onOpenProof} onApproveProof={onApproveProof} /> : null}
   </li>;
 }
 
@@ -1650,9 +1734,10 @@ function TasksScreen() {
     catch (error) { toast.error(<span data-bb-demo-sensitive>{error instanceof Error ? error.message : String(error)}</span>); }
     finally { setBusy(null); }
   };
-  const [proofTaskId, setProofTaskId] = useState<string | null>(null);
-  const proofTask = proofTaskId ? tasks.find((task) => task.id === proofTaskId) ?? null : null;
-  const openProof = (task: Task) => setProofTaskId(task.id);
+  const [proofTarget, setProofTarget] = useState<{ taskId: string; unitId?: string } | null>(null);
+  const proofTask = proofTarget ? tasks.find((task) => task.id === proofTarget.taskId) ?? null : null;
+  const proofUnit = proofTask && proofTarget?.unitId ? proofTask.run?.units?.find((unit) => unit.id === proofTarget.unitId) ?? null : null;
+  const openProof = (task: Task, unitId?: string) => setProofTarget({ taskId: task.id, unitId });
   const resolveProposal = (task: Task, accept: boolean) => {
     const proposed = task.run?.proposedStatus;
     if (!proposed) return;
@@ -1661,17 +1746,17 @@ function TasksScreen() {
       () => rpc.call("resolveRunProposal", { taskId: task.id, accept }),
     );
     if (accept && proposed === "done") {
-      if (proofTaskId === task.id) setProofTaskId(null);
+      if (proofTarget?.taskId === task.id) setProofTarget(null);
       toast("Task marked done", {
         description: <span data-bb-demo-sensitive>{task.title}</span>,
         action: { label: "Undo", onClick: () => moveStage(task, task.status) },
       });
     }
   };
-  const approveProof = (task: Task) => {
-    if (proofTaskId === task.id) setProofTaskId(null);
-    mutate({}, () => rpc.call("approveTaskProof", { taskId: task.id }));
-    toast.success("Approved — sent to chat", { description: <span data-bb-demo-sensitive>{task.title}</span> });
+  const approveProof = (task: Task, unitId?: string) => {
+    if (proofTarget?.taskId === task.id) setProofTarget(null);
+    mutate({}, () => rpc.call("approveTaskProof", { taskId: task.id, ...(unitId ? { unitId } : {}) }));
+    toast.success(unitId ? "Unit approved — sent to chat" : "Approved — sent to chat", { description: <span data-bb-demo-sensitive>{task.title}</span> });
   };
   const promote = (task: Task) => <RowAction label="Move to Now" icon="ArrowUp" task={task} onClick={() => moves.priority(task, "urgent")} />;
   const cards = (list: ProjectColumn[]) => <div className="flex items-start gap-3">{stacks(list).map((stack, index) => <div key={index} className="flex min-w-0 flex-1 flex-col gap-3">
@@ -1717,7 +1802,7 @@ function TasksScreen() {
           </div>
         </SectionHeader>
         <ul ref={dnd.listRef.urgent} className={`relative mt-2 ${listCard}`}>
-          {dnd.items("urgent", now).map((task) => task ? <TaskRow key={task.id} task={task} project={projectName(task)} chat={taskState(task)} onOpen={chats.opener(task)} onRename={(title) => rename(task, title)} onStage={(status) => moves.stage(task, status)} onResolveProposal={(accept) => resolveProposal(task, accept)} onOpenProof={openProof} handle={row(task)} active={task.id === contextMenu?.taskId || task.id === proofTaskId}>
+          {dnd.items("urgent", now).map((task) => task ? <TaskRow key={task.id} task={task} project={projectName(task)} chat={taskState(task)} onOpen={chats.opener(task)} onRename={(title) => rename(task, title)} onStage={(status) => moves.stage(task, status)} onResolveProposal={(accept) => resolveProposal(task, accept)} onOpenProof={openProof} onApproveProof={approveProof} handle={row(task)} active={task.id === contextMenu?.taskId || task.id === proofTarget?.taskId}>
             <RowAction label="Move to Later" icon="Clock" task={task} onClick={() => moves.priority(task, "high")} />
             <ChatMenu task={task} chats={chats} />
             {menu(task)}
@@ -1728,7 +1813,7 @@ function TasksScreen() {
       <section ref={dnd.zoneRef.high} aria-label="Later">
         <SectionHeader title="Later" count={loading ? undefined : later.length} open={laterOpen} onToggle={toggleLater} highlight={dnd.overLaterHeader} />
         {laterOpen ? <ul ref={dnd.listRef.high} className={`relative mt-2 ${listCard}`}>
-          {dnd.items("high", later).map((task) => task ? <TaskRow key={task.id} task={task} project={projectName(task)} chat={taskState(task)} onOpen={chats.opener(task)} onRename={(title) => rename(task, title)} onStage={(status) => moves.stage(task, status)} onResolveProposal={(accept) => resolveProposal(task, accept)} onOpenProof={openProof} handle={row(task)} active={task.id === contextMenu?.taskId || task.id === proofTaskId}>{promote(task)}<ChatMenu task={task} chats={chats} />{menu(task)}</TaskRow> : <DropSlotRow key="slot" />)}
+          {dnd.items("high", later).map((task) => task ? <TaskRow key={task.id} task={task} project={projectName(task)} chat={taskState(task)} onOpen={chats.opener(task)} onRename={(title) => rename(task, title)} onStage={(status) => moves.stage(task, status)} onResolveProposal={(accept) => resolveProposal(task, accept)} onOpenProof={openProof} onApproveProof={approveProof} handle={row(task)} active={task.id === contextMenu?.taskId || task.id === proofTarget?.taskId}>{promote(task)}<ChatMenu task={task} chats={chats} />{menu(task)}</TaskRow> : <DropSlotRow key="slot" />)}
           {!dnd.items("high", later).length ? <li className="px-4 py-3 text-sm text-muted-foreground">{loading ? "Loading tasks…" : "Nothing in Later."}</li> : null}
         </ul> : null}
       </section>
@@ -1781,7 +1866,7 @@ function TasksScreen() {
             onPick={(task) => assign(assigning.thread!, task)} onCreate={(title) => setAssigning((current) => ({ ...current, title }))} />
         </DialogContent> : null}
     </Dialog>
-  </div>{proofTask ? <ProofSidePanel task={proofTask} onClose={() => setProofTaskId(null)} onApproveProof={approveProof} onResolveProposal={resolveProposal} /> : null}</div><ProviderHealthFooter /></div>;
+  </div>{proofTask ? <ProofSidePanel task={proofTask} unit={proofUnit} onClose={() => setProofTarget(null)} onApproveProof={approveProof} onResolveProposal={resolveProposal} /> : null}</div><ProviderHealthFooter /></div>;
 }
 
 function NowHomeCard({ projectId }: { projectId: string | null }) {

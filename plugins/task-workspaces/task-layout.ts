@@ -1,11 +1,25 @@
-export const runPhases = ["scoping", "building", "capturing", "checking", "waiting", "deploying", "live", "blocked"] as const;
+export const runPhases = ["scoping", "building", "capturing", "checking", "waiting", "babysitting", "deploying", "live", "blocked"] as const;
 export type RunPhase = typeof runPhases[number];
+
+export const unitStatuses = ["pending", "blocked", "active", "waiting", "done"] as const;
+export type TaskUnitStatus = typeof unitStatuses[number];
+
+export type TaskUnit = {
+  id: string;
+  title: string;
+  status: TaskUnitStatus;
+  blockedBy?: string | null;
+  phase?: RunPhase | null;
+  proofPageId?: string | null;
+  summary?: string | null;
+};
 
 export type TaskRun = {
   phase: RunPhase | null;
   summary: string | null;
   proofPageId: string | null;
   proposedStatus?: Task["status"] | null;
+  units?: TaskUnit[] | null;
   updatedAt: string;
 };
 
@@ -15,6 +29,7 @@ export const runPhaseLabels: Record<RunPhase, string> = {
   capturing: "Capturing",
   checking: "Checking",
   waiting: "Waiting",
+  babysitting: "PR Review",
   deploying: "Deploying",
   live: "Live",
   blocked: "Blocked",
@@ -37,8 +52,9 @@ export type Task = {
 export function needsAttention(task: Pick<Task, "status" | "run">): boolean {
   const phase = task.run?.phase;
   if (phase === "waiting" || phase === "blocked") return true;
-  if (task.run?.proposedStatus) return true;
-  return task.status === "review" && Boolean(task.run?.proofPageId);
+  if (task.run?.proposedStatus === "done" && task.status !== "done") return true;
+  if (task.run?.units?.some((unit) => unit.status === "waiting")) return true;
+  return task.status === "review" && Boolean(task.run?.proofPageId) && phase !== "babysitting";
 }
 
 export function formatRunAge(iso: string, nowMs = Date.now()): string {

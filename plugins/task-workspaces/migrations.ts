@@ -209,4 +209,18 @@ export const MIGRATIONS = [
     );`,
   // Optional agent-proposed stage change (e.g. 'done') waiting for owner accept/reject.
   `ALTER TABLE task_runs ADD COLUMN proposed_status TEXT CHECK (proposed_status IN ('triage','backlog','todo','doing','blocked','review','done','cancelled'));`,
+  // Add 'babysitting' phase and JSON units list for multi-unit visibility on Tasks.
+  `CREATE TABLE task_runs_rebuild (
+      task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+      phase TEXT CHECK (phase IN ('scoping','building','capturing','checking','waiting','babysitting','deploying','live','blocked')),
+      summary TEXT,
+      proof_page_id TEXT,
+      proposed_status TEXT CHECK (proposed_status IN ('triage','backlog','todo','doing','blocked','review','done','cancelled')),
+      units_json TEXT,
+      updated_at TEXT NOT NULL
+    );
+    INSERT INTO task_runs_rebuild (task_id, phase, summary, proof_page_id, proposed_status, updated_at)
+      SELECT task_id, phase, summary, proof_page_id, proposed_status, updated_at FROM task_runs;
+    DROP TABLE task_runs;
+    ALTER TABLE task_runs_rebuild RENAME TO task_runs;`,
 ] as const;

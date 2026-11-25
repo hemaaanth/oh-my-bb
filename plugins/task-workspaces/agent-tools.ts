@@ -18,7 +18,17 @@ const readTools = [toolNames.current, toolNames.get, toolNames.list, toolNames.s
 const workflowTools = [toolNames.move, toolNames.priority, toolNames.assign, toolNames.run];
 const fullTools = [toolNames.create, toolNames.link];
 const statusValues = ["triage", "backlog", "todo", "doing", "blocked", "review", "done", "cancelled"] as const;
-const runPhaseValues = ["scoping", "building", "capturing", "checking", "waiting", "deploying", "live", "blocked"] as const;
+const runPhaseValues = ["scoping", "building", "capturing", "checking", "waiting", "babysitting", "deploying", "live", "blocked"] as const;
+const unitStatusValues = ["pending", "blocked", "active", "waiting", "done"] as const;
+const taskUnitInputSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  title: z.string().trim().min(1).max(200),
+  status: z.enum(unitStatusValues),
+  blockedBy: z.string().trim().max(120).nullable().optional(),
+  phase: z.enum(runPhaseValues).nullable().optional(),
+  proofPageId: z.string().trim().max(200).nullable().optional(),
+  summary: z.string().trim().max(240).nullable().optional(),
+}).strict();
 const providerValues = ["akiflow", "linear", "github"] as const;
 const priorityValues = ["urgent", "high", "medium", "low"] as const;
 const priorityFilterValues = [...priorityValues, "none"] as const;
@@ -65,6 +75,7 @@ type TaskAgentDeps = {
     summary?: string | null;
     proofPageId?: string | null;
     proposedStatus?: TaskStatus | null;
+    units?: Array<z.infer<typeof taskUnitInputSchema>> | null;
     clear?: boolean;
   }) => TaskView;
   create: (input: {
@@ -206,7 +217,7 @@ export function registerTaskAgentIntegration(bb: BbPluginApi, deps: TaskAgentDep
 
   bb.agents.registerTool({
     name: toolNames.run,
-    description: "Update a task's live factory run phase, short plain-English attention summary, BB Pages proof page ID, or proposed stage change for the user to accept/reject.",
+    description: "Update a task's live factory run phase, short plain-English attention summary, BB Pages proof page ID, multi-unit plan/progress list, or proposed completion ('done') for the user to confirm.",
     presentation: {
       label: { pending: "Updating task run state", completed: "Updated task run state" },
       icon: { glyph: "Workflow" },
@@ -217,12 +228,13 @@ export function registerTaskAgentIntegration(bb: BbPluginApi, deps: TaskAgentDep
       summary: z.string().trim().max(240).nullable().optional(),
       proofPageId: z.string().trim().max(200).nullable().optional(),
       proposedStatus: z.enum(statusValues).nullable().optional(),
+      units: z.array(taskUnitInputSchema).max(20).nullable().optional(),
       clear: z.boolean().optional(),
     }).strict(),
-    execute: async ({ task, phase, summary, proofPageId, proposedStatus, clear }, ctx) => {
+    execute: async ({ task, phase, summary, proofPageId, proposedStatus, units, clear }, ctx) => {
       requireWriteLevel("workflow");
       const id = (await deps.taskForProject(task, ctx.projectId)).id;
-      return JSON.stringify(deps.setRun(id, { phase, summary, proofPageId, proposedStatus, clear }), null, 2);
+      return JSON.stringify(deps.setRun(id, { phase, summary, proofPageId, proposedStatus, units, clear }), null, 2);
     },
   });
 

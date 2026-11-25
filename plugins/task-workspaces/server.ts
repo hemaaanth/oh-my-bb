@@ -60,14 +60,27 @@ const refSchema = z.object({
   tags: z.array(z.string()),
 });
 
-const runPhaseSchema = z.enum(["scoping", "building", "capturing", "checking", "waiting", "deploying", "live", "blocked"]);
+const runPhaseSchema = z.enum(["scoping", "building", "capturing", "checking", "waiting", "babysitting", "deploying", "live", "blocked"]);
 type RunPhase = z.infer<typeof runPhaseSchema>;
+
+const unitStatusSchema = z.enum(["pending", "blocked", "active", "waiting", "done"]);
+const taskUnitSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: unitStatusSchema,
+  blockedBy: z.string().nullable().optional(),
+  phase: runPhaseSchema.nullable().optional(),
+  proofPageId: z.string().nullable().optional(),
+  summary: z.string().nullable().optional(),
+});
+type TaskUnit = z.infer<typeof taskUnitSchema>;
 
 const taskRunSchema = z.object({
   phase: runPhaseSchema.nullable(),
   summary: z.string().nullable(),
   proofPageId: z.string().nullable(),
   proposedStatus: statusSchema.nullable().optional(),
+  units: z.array(taskUnitSchema).nullable().optional(),
   updatedAt: z.string(),
 });
 
@@ -294,7 +307,7 @@ export const rpcContract = defineRpcContract({
     output: taskSchema,
   },
   approveTaskProof: {
-    input: z.object({ taskId: z.string() }).strict(),
+    input: z.object({ taskId: z.string(), unitId: z.string().optional() }).strict(),
     output: taskSchema,
   },
   archivePrompt: {
@@ -990,9 +1003,17 @@ export default async function plugin(bb: BbPluginApi) {
     };
   }
 
+  function parseUnitsJson(raw: string | null): TaskUnit[] | null {
+    if (!raw) return null;
+    try {
+      const parsed = z.array(taskUnitSchema).safeParse(JSON.parse(raw));
+      return parsed.success && parsed.data.length ? parsed.data : null;
+    } catch { return null; }
+  }
+
   function taskRun(taskId: string) {
-    const row = db.prepare("SELECT phase, summary, proof_page_id, proposed_status, updated_at FROM task_runs WHERE task_id = ?").get(taskId) as
-      | { phase: RunPhase | null; summary: string | null; proof_page_id: string | null; proposed_status: Status | null; updated_at: string }
+    const row = db.prepare("SELECT phase, summary, proof_page_id, proposed_status, units_json, updated_at FROM task_runs WHERE task_id = ?").get(taskId) as
+      | { phase: RunPhase | null; summary: string | null; proof_page_id: string | null; proposed_status: Status | null; units_json: string | null; updated_at: string }
       | undefined;
     if (!row) return null;
     return {
@@ -1000,12 +1021,13 @@ export default async function plugin(bb: BbPluginApi) {
       summary: row.summary,
       proofPageId: row.proof_page_id,
       proposedStatus: row.proposed_status ?? null,
+      units: parseUnitsJson(row.units_json),
       updatedAt: row.updated_at,
     };
   }
 
-  function setTaskRun(taskId: string, input: { phase?: RunPhase | null; summary?: string | null; proofPageId?: string | null; proposedStatus?: Status | null; clear?: boolean }) {
-    getDbTask(taskId);
+  function setTaskRun(taskId: string, input: { phase?: RunPhase | null; summary?: string | null; proofPageId?: string | null; proposedStatus?: Status | null; units?: TaskUnit[] | null; clear?: boolean }) {
+    const task = getDbTask(taskId);
     if (input.clear) {
       db.prepare("DELETE FROM task_runs WHERE task_id = ?").run(taskId);
       bb.realtime.publish("tasks-changed", { reason: "run", taskId });
@@ -1015,18 +1037,23 @@ export default async function plugin(bb: BbPluginApi) {
     const phase = input.phase !== undefined ? input.phase : existing?.phase ?? null;
     const summary = input.summary !== undefined ? (input.summary?.trim() || null) : existing?.summary ?? null;
     const proofPageId = input.proofPageId !== undefined ? (input.proofPageId?.trim() || null) : existing?.proofPageId ?? null;
-    const proposedStatus = input.proposedStatus !== undefined ? input.proposedStatus : existing?.proposedStatus ?? null;
-    if (!phase && !summary && !proofPageId && !proposedStatus) {
+    // Only propose 'done' (and never propose a status the task is already in).
+    const rawProposed = input.proposedStatus !== undefined ? input.proposedStatus : existing?.proposedStatus ?? null;
+    const proposedStatus = rawProposed === "done" && task.status !== "done" ? "done" : null;
+    const units = input.units !== undefined ? (input.units && input.units.length ? input.units : null) : existing?.units ?? null;
+    const unitsJson = units ? JSON.stringify(units) : null;
+    if (!phase && !summary && !proofPageId && !proposedStatus && !units) {
       db.prepare("DELETE FROM task_runs WHERE task_id = ?").run(taskId);
     } else {
-      db.prepare(`INSERT INTO task_runs (task_id, phase, summary, proof_page_id, proposed_status, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+      db.prepare(`INSERT INTO task_runs (task_id, phase, summary, proof_page_id, proposed_status, units_json, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(task_id) DO UPDATE SET
           phase = excluded.phase,
           summary = excluded.summary,
           proof_page_id = excluded.proof_page_id,
           proposed_status = excluded.proposed_status,
-          updated_at = excluded.updated_at`).run(taskId, phase, summary, proofPageId, proposedStatus, now());
+          units_json = excluded.units_json,
+          updated_at = excluded.updated_at`).run(taskId, phase, summary, proofPageId, proposedStatus, unitsJson, now());
     }
     bb.realtime.publish("tasks-changed", { reason: "run", taskId });
     return taskDto(getDbTask(taskId));
@@ -1049,16 +1076,23 @@ export default async function plugin(bb: BbPluginApi) {
     return setTaskRun(taskId, { proposedStatus: null });
   }
 
-  async function approveTaskProof(taskId: string) {
+  async function approveTaskProof(taskId: string, unitId?: string) {
     getDbTask(taskId);
     const newest = taskThreads(taskId)[0];
     if (!newest?.thread_id) throw new Error("This task has no linked chat to approve.");
+    const existing = taskRun(taskId);
+    const unit = unitId ? existing?.units?.find((entry) => entry.id === unitId) : undefined;
     await bb.sdk.threads.unarchive({ threadId: newest.thread_id }).catch(() => undefined);
+    const message = unit ? `Approve ${unit.title} & continue` : "Approve & merge";
     await bb.sdk.threads.send({
       threadId: newest.thread_id,
       mode: "auto",
-      input: [{ type: "text", text: "Approve & merge", mentions: [] }],
+      input: [{ type: "text", text: message, mentions: [] }],
     });
+    if (unit && existing?.units) {
+      const nextUnits = existing.units.map((entry) => entry.id === unit.id ? { ...entry, status: "done" as const, phase: "live" as const } : entry);
+      return setTaskRun(taskId, { phase: "building", summary: `${unit.title} approved — continuing.`, proposedStatus: null, units: nextUnits });
+    }
     return setTaskRun(taskId, { phase: "deploying", summary: "Approved — merging and deploying.", proposedStatus: null });
   }
 
@@ -3793,7 +3827,7 @@ export default async function plugin(bb: BbPluginApi) {
     startTaskThread: ({ taskId, request }) => startTaskThread(taskId, request),
     answerArchived: ({ taskId, decision }) => answerArchived(taskId, decision),
     resolveRunProposal: ({ taskId, accept }) => resolveRunProposal(taskId, accept),
-    approveTaskProof: ({ taskId }) => approveTaskProof(taskId),
+    approveTaskProof: ({ taskId, unitId }) => approveTaskProof(taskId, unitId),
     archivePrompt: () => archivePrompt(),
     projectMappings: async () => projectMappings(),
     setProjectMapping: ({ sourceKey, projectId }) => setProjectMapping(sourceKey, projectId),

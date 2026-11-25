@@ -9,7 +9,9 @@ describe("task run state", () => {
     expect(needsAttention({ status: "doing", run: { phase: "waiting", summary: "2 scope questions waiting.", proofPageId: null, updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
     expect(needsAttention({ status: "blocked", run: { phase: "blocked", summary: "Needs Mac.", proofPageId: null, updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
     expect(needsAttention({ status: "review", run: { phase: null, summary: null, proofPageId: "6f807a6d-7754-4a44-8305-2051bb02c713", updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
+    expect(needsAttention({ status: "review", run: { phase: "babysitting", summary: "Watching Maestro", proofPageId: "6f807a6d-7754-4a44-8305-2051bb02c713", updatedAt: "2026-11-23T00:00:00Z" } })).toBe(false);
     expect(needsAttention({ status: "doing", run: { phase: "live", summary: "Ready to close.", proofPageId: null, proposedStatus: "done", updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
+    expect(needsAttention({ status: "doing", run: { phase: "building", summary: null, proofPageId: null, units: [{ id: "u1", title: "Unit 1", status: "waiting", proofPageId: "6f807a6d-7754-4a44-8305-2051bb02c713" }], updatedAt: "2026-11-23T00:00:00Z" } })).toBe(true);
     const now = Date.parse("2026-11-23T12:00:00Z");
     expect(formatRunAge("2026-11-23T11:59:40Z", now)).toBe("just now");
     expect(formatRunAge("2026-11-23T11:45:00Z", now)).toBe("15m");
@@ -30,6 +32,11 @@ describe("task run state", () => {
     db.prepare("INSERT INTO tasks (id,title,status,project_id,created_at,updated_at) VALUES ('t1','Uniform audio bars','doing','proj-1','2026-11-23','2026-11-23')").run();
     db.prepare("INSERT INTO task_refs VALUES ('t1','akiflow','ext-1','Uniform audio bars',NULL,'{}','2026-11-23')").run();
     db.prepare("INSERT INTO akiflow_identifiers (number,external_id) VALUES (7,'ext-1')").run();
+
+    // Non-'done' proposals like 'review' are ignored so users never get noisy stage-change prompts.
+    const reviewProposal = await harness.behavior.runCli(["run", "AKI-7", "--phase", "babysitting", "--propose-status", "review"]);
+    expect(reviewProposal.exitCode).toBe(0);
+    expect(JSON.parse(reviewProposal.stdout).run).toMatchObject({ phase: "babysitting", proposedStatus: null });
 
     const updated = await harness.behavior.runCli([
       "run", "AKI-7", "--phase", "waiting", "--summary", "Proof ready — independent check passed.", "--proof", "6f807a6d-7754-4a44-8305-2051bb02c713", "--propose-status", "done",
