@@ -428,7 +428,7 @@
 .agent-settings-editor .bot-detail-actions { flex-wrap: wrap; }
 
 /* Standalone Bots rail chat: match BB's native PageShell reading width (max-w-[760px])
-   for the embedded ThreadChat composer, and hide repo/workspace footer chips. */
+   for the embedded ThreadChat composer, and hide the workspace/context footer row. */
 .bots-chat [data-scroll-footer] > div > div:last-child {
   width: 100%;
   max-width: 760px;
@@ -436,9 +436,6 @@
   padding-top: 0;
   padding-bottom: max(0px, calc(1rem - var(--bb-content-bottom-inset, 0px)));
 }
-.bots-chat [data-follow-up-composer-footer] > :first-child > * {
-  display: none;
-}
-.bots-chat [data-follow-up-composer-footer]:has(> :last-child:empty) {
+.bots-chat [data-follow-up-composer-footer] {
   display: none;
 }
