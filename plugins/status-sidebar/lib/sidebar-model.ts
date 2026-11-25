@@ -1,5 +1,6 @@
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { SANDBOX_PROVIDER_LABELS, type SandboxThreadStatus } from "../shared";
+import { SANDBOX_PROVIDER_LABELS, type SandboxThreadStatus, type TaskRunPhase, type ThreadTaskRun } from "../shared";
+import type { CanonicalTone } from "./status-colors";
 
 export type ThreadStatusBucket =
   | "unread"
@@ -257,16 +258,146 @@ export function hasUnseenFailure(thread: PluginSidebarThread): boolean {
     (thread.status === "error" && (thread.lastReadAt === null || thread.latestAttentionAt > thread.lastReadAt));
 }
 
-/** Focus is a working set; quiet execution is not an attention request. */
-export function focusGroup(thread: PluginSidebarThread, status: ThreadStatusBucket) {
-  if (status === "needs-input" || (status === "unread" && !thread.lifecycleOwnerThreadId && (!thread.parentThreadId || thread.originKind === "fork")) || hasUnseenFailure(thread)) {
-    return { key: "attention", label: "Attention", rank: 0 };
-  }
+const AUTONOMOUS_TASK_PHASES = new Set<TaskRunPhase>([
+  "scoping",
+  "building",
+  "capturing",
+  "checking",
+  "babysitting",
+  "deploying",
+]);
+
+export const SETTLED_IDLE_MS = 7 * 86_400_000;
+
+export const TASK_PHASE_LABELS: Record<TaskRunPhase, string> = {
+  scoping: "Scoping",
+  building: "Building",
+  capturing: "Capturing",
+  checking: "Checking",
+  waiting: "Waiting",
+  babysitting: "PR Review",
+  deploying: "Deploying",
+  live: "Live",
+  blocked: "Blocked",
+};
+
+export function taskRunBadgeLabel(run: ThreadTaskRun): string | null {
+  if (run.phase === "blocked") return "Blocked";
+  if (run.hasWaitingUnit) return "Unit ready";
+  if (run.phase === "waiting" && run.proofPageId) return "Proof ready";
+  if (run.proposedStatus === "done" && run.taskStatus !== "done") return "Ready to close";
+  if (run.phase) return TASK_PHASE_LABELS[run.phase];
+  if (run.taskStatus === "review" && run.proofPageId) return "Proof ready";
+  return null;
+}
+
+export type FocusBandKey = "attention" | "current" | "library" | "settled";
+
+export interface ThreadPresentation {
+  band: FocusBandKey;
+  bandLabel: string;
+  bandRank: number;
+  tone: CanonicalTone;
+  reason: string | null;
+  isFactory: boolean;
+  prominent: boolean;
+}
+
+const BAND_META: Record<FocusBandKey, { label: string; rank: number }> = {
+  attention: { label: "Needs you", rank: 0 },
+  current: { label: "In flight", rank: 1 },
+  library: { label: "Recent", rank: 2 },
+  settled: { label: "Settled", rank: 3 },
+};
+
+/**
+ * Single source of truth for Focus sidebar placement, color tone, and badge
+ * label. Header summary pills and row glyphs/badges MUST read from this
+ * presentation so they can never drift out of sync.
+ */
+export function resolveThreadPresentation(
+  thread: PluginSidebarThread,
+  status: ThreadStatusBucket,
+  options?: { taskRun?: ThreadTaskRun | null; hasActiveChild?: boolean; now?: number },
+): ThreadPresentation {
+  const taskRun = options?.taskRun ?? null;
+  const hasActiveChild = options?.hasActiveChild === true;
+  const now = options?.now ?? Date.now();
+  const isFactory = Boolean(taskRun);
+  const stageLabel = taskRun ? taskRunBadgeLabel(taskRun) : null;
+  const isAutonomousRun = Boolean(taskRun?.phase && AUTONOMOUS_TASK_PHASES.has(taskRun.phase));
   const delegated = thread.lifecycleOwnerThreadId !== null || (thread.parentThreadId !== null && thread.originKind !== "fork");
-  if (thread.isPinned || status === "active" || status === "drafting" || (status === "recent" && !delegated) || thread.queuedWork === "waiting") {
-    return { key: "current", label: "Current work", rank: 1 };
+  const failed = hasUnseenFailure(thread);
+
+  const make = (band: FocusBandKey, tone: CanonicalTone, reason: string | null, prominent = false): ThreadPresentation => ({
+    band,
+    bandLabel: BAND_META[band].label,
+    bandRank: BAND_META[band].rank,
+    tone,
+    reason,
+    isFactory,
+    prominent,
+  });
+
+  // 1. Explicit pending interaction or unseen failure always surfaces in Needs you.
+  if (failed) return make("attention", "critical", "Failed", true);
+  if (status === "needs-input") return make("attention", "attention", "Needs input", true);
+
+  // 2. Actively working RIGHT NOW (including after user replied) ALWAYS lives in In flight.
+  if (status === "active" || hasActiveChild) {
+    const isPrReview = taskRun?.phase === "babysitting";
+    const activeTone: CanonicalTone = isPrReview ? "review" : "active";
+    const activeReason = isFactory ? (isAutonomousRun ? stageLabel : "Working") : "Working";
+    return make("current", activeTone, activeReason, false);
   }
-  return { key: "library", label: "Library", rank: 2 };
+
+  // 3. Factory run explicitly awaiting the owner (Proof ready, Unit ready, Blocked, Ready to close).
+  if (taskRun?.needsAttention) {
+    const tone: CanonicalTone = taskRun.phase === "blocked" ? "critical" : "attention";
+    return make("attention", tone, stageLabel ?? "Needs you", true);
+  }
+
+  // 4. Regular non-factory chat with an unread finished reply.
+  const topLevelUnread = status === "unread" && !thread.lifecycleOwnerThreadId && (!thread.parentThreadId || thread.originKind === "fork");
+  if (topLevelUnread && !isAutonomousRun) {
+    return make("attention", "unread", "Unread", true);
+  }
+
+  // 5. Autonomous factory phase (e.g. PR Review / Building / Checking) stays in In flight.
+  if (isAutonomousRun && taskRun) {
+    const tone: CanonicalTone = taskRun.phase === "babysitting" ? "review" : "active";
+    return make("current", tone, stageLabel, false);
+  }
+
+  // 6. Unsent draft in composer gets its own distinct orange tone in In flight.
+  if (status === "drafting") {
+    return make("current", "draft", "Draft", false);
+  }
+
+  // 7. Pinned or queued work stays in In flight.
+  if (thread.isPinned || thread.queuedWork === "waiting") {
+    return make("current", "idle", thread.isPinned ? "Pinned" : "Queued", false);
+  }
+
+  // 8. Settled: idle >= 7 days or linked task is done/cancelled.
+  const lastActivity = Math.max(thread.updatedAt, thread.latestAttentionAt, thread.createdAt);
+  const taskDone = taskRun?.taskStatus === "done" || taskRun?.taskStatus === "cancelled";
+  if (!delegated && (taskDone || (status === "idle" && now - lastActivity >= SETTLED_IDLE_MS))) {
+    return make("settled", "idle", null, false);
+  }
+
+  // 9. Recent: idle < 7 days.
+  return make("library", "idle", null, false);
+}
+
+/** Focus is a working set; quiet execution and autonomous factory runs are not attention requests. */
+export function focusGroup(
+  thread: PluginSidebarThread,
+  status: ThreadStatusBucket,
+  options?: { taskRun?: ThreadTaskRun | null; hasActiveChild?: boolean; now?: number },
+) {
+  const p = resolveThreadPresentation(thread, status, options);
+  return { key: p.band, label: p.bandLabel, rank: p.bandRank };
 }
 
 /** A review suggestion only. BB archive can remove the workspace and worktree. */

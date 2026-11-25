@@ -30,6 +30,8 @@ import "./styles.css";
 // Startup surfaces (directive, composer banners and settings) stay
 // eager; the pages evaluate when first opened. See app/shared/lazy.tsx.
 const AgentsSettings = deferred(() => import("./app/agents/agents-settings").then((module) => module.AgentsSettings));
+const BotsPage = deferred(() => import("./app/agents/bots-page").then((module) => module.BotsPage));
+const BotsSidebar = deferred(() => import("./app/agents/bots-page").then((module) => module.BotsSidebar));
 const ChannelsPage = deferred(() => import("./app/channels/channels-page").then((module) => module.ChannelsPage));
 const ChannelsHeader = deferred(() => import("./app/channels/channels-header").then((module) => module.ChannelsHeader));
 
@@ -421,6 +423,14 @@ export default definePluginApp((app) => {
     id: "agent-profile",
     scopes: ["new-thread"],
     banners: [{ id: "agent-dm-selection", chrome: "bare", component: AgentDmSelection }],
+  });
+  app.slots.navPanel({
+    id: "bots",
+    title: "Bots",
+    icon: "agent-profiles/robot",
+    path: "bots",
+    component: BotsPage,
+    experimental_sidebar: BotsSidebar,
   });
   app.slots.navPanel({
     id: "channels",

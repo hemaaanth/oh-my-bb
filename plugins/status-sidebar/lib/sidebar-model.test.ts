@@ -3,6 +3,7 @@ import type { PluginSidebarProject, PluginSidebarThread } from "@get-bb/plugin-s
 import {
   bucketForThread,
   focusGroup,
+  resolveThreadPresentation,
   hasUnseenFailure,
   sortFocusThreads,
   isCleanupCandidate,
@@ -258,15 +259,41 @@ describe("focus buckets", () => {
 
 describe("focus working set", () => {
   it("surfaces completions and requests, while quiet running work stays current", () => {
-    expect(focusGroup(thread(), "unread").key).toBe("attention");
-    expect(focusGroup(thread(), "needs-input").key).toBe("attention");
-    expect(focusGroup(thread(), "active").key).toBe("current");
-    expect(focusGroup(thread({ isPinned: true }), "idle").key).toBe("current");
-    expect(focusGroup(thread(), "idle").key).toBe("library");
-    expect(focusGroup(thread({ lifecycleOwnerThreadId: "owner" }), "recent").key).toBe("library");
-    expect(focusGroup(thread({ lifecycleOwnerThreadId: "owner" }), "unread").key).toBe("library");
-    expect(focusGroup(thread({ lifecycleOwnerThreadId: "owner" }), "needs-input").key).toBe("attention");
-    expect(focusGroup(thread({ queuedWork: "failed" }), "idle").key).toBe("attention");
+    const now = 2 * 86_400_000;
+    expect(focusGroup(thread(), "unread", { now }).key).toBe("attention");
+    expect(focusGroup(thread(), "needs-input", { now }).key).toBe("attention");
+    expect(focusGroup(thread(), "active", { now }).key).toBe("current");
+    expect(focusGroup(thread({ isPinned: true }), "idle", { now }).key).toBe("current");
+    expect(focusGroup(thread(), "idle", { now }).key).toBe("library");
+    expect(focusGroup(thread(), "idle", { now: 10 * 86_400_000 }).key).toBe("settled");
+    expect(focusGroup(thread({ lifecycleOwnerThreadId: "owner" }), "recent", { now }).key).toBe("library");
+    expect(focusGroup(thread({ lifecycleOwnerThreadId: "owner" }), "unread", { now }).key).toBe("library");
+    expect(focusGroup(thread({ lifecycleOwnerThreadId: "owner" }), "needs-input", { now }).key).toBe("attention");
+    expect(focusGroup(thread({ queuedWork: "failed" }), "idle", { now }).key).toBe("attention");
+    // Autonomous factory runs and threads with active children stay in In flight even when unread.
+    expect(focusGroup(thread(), "unread", { now, hasActiveChild: true }).key).toBe("current");
+    expect(focusGroup(thread(), "unread", {
+      now,
+      taskRun: { threadId: "thr_1", taskId: "t1", taskStatus: "doing", phase: "building", proofPageId: null, proposedStatus: null, dismissedAt: null, hasWaitingUnit: false, needsAttention: false },
+    }).key).toBe("current");
+    expect(focusGroup(thread(), "idle", {
+      now,
+      taskRun: { threadId: "thr_1", taskId: "t1", taskStatus: "review", phase: "waiting", proofPageId: "p1", proposedStatus: null, dismissedAt: null, hasWaitingUnit: false, needsAttention: true },
+    }).key).toBe("attention");
+
+    // Replying to a waiting factory thread (status becomes active) immediately moves it to In flight with active tone.
+    const activeAfterReply = resolveThreadPresentation(thread(), "active", {
+      now,
+      taskRun: { threadId: "thr_1", taskId: "t1", taskStatus: "review", phase: "waiting", proofPageId: "p1", proposedStatus: null, dismissedAt: null, hasWaitingUnit: true, needsAttention: true },
+    });
+    expect(activeAfterReply.band).toBe("current");
+    expect(activeAfterReply.tone).toBe("active");
+
+    // Drafting gets its own distinct orange 'draft' tone in In flight, never amber 'attention'.
+    const draftPres = resolveThreadPresentation(thread(), "drafting", { now });
+    expect(draftPres.band).toBe("current");
+    expect(draftPres.tone).toBe("draft");
+    expect(draftPres.reason).toBe("Draft");
   });
 
   it("only suggests old idle work without protected signals", () => {

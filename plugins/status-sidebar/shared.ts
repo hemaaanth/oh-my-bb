@@ -117,3 +117,33 @@ export interface SandboxThreadStatus {
   status: SandboxLifecycleStatus | (string & {});
   label: string;
 }
+
+export type TaskRunPhase =
+  | "scoping"
+  | "building"
+  | "capturing"
+  | "checking"
+  | "waiting"
+  | "babysitting"
+  | "deploying"
+  | "live"
+  | "blocked";
+
+export interface ThreadTaskRun {
+  threadId: string;
+  taskId: string;
+  taskStatus: string;
+  phase: TaskRunPhase | null;
+  proofPageId: string | null;
+  proposedStatus: string | null;
+  dismissedAt: string | null;
+  hasWaitingUnit: boolean;
+  needsAttention: boolean;
+}
+
+export interface SettledThreadSafety {
+  threadId: string;
+  safe: boolean;
+  dirtyCount: number;
+  aheadCount: number;
+}

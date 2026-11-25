@@ -20,6 +20,7 @@
     "branding": {
       "icon": "./assets/robot.svg",
       "experimental_icons": {
+        "robot": "./assets/robot.svg",
         "agent-emoji-1f91d": "./assets/emoji/1f91d.svg",
         "agent-emoji-1f4ca": "./assets/emoji/1f4ca.svg",
         "agent-emoji-1f916": "./assets/emoji/1f916.svg",

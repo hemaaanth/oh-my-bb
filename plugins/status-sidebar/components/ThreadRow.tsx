@@ -16,9 +16,9 @@ import { SubagentBadge } from "./SubagentBadge";
 import { ThreadContextMenu, type ThreadMenuProps } from "./ThreadMenu";
 import { AttachTaskDialog } from "./AttachTaskDialog";
 import { cn } from "../lib/utils";
-import { STATUS_DESIGN, STATUS_MARKER } from "../lib/status-colors";
+import { STATUS_DESIGN, STATUS_MARKER, TONE_PALETTE } from "../lib/status-colors";
 import { useThreadRowActions } from "../lib/thread-row-actions";
-import type { SandboxThreadStatus } from "../shared";
+import type { SandboxThreadStatus, SettledThreadSafety, ThreadTaskRun } from "../shared";
 import { THREAD_WORKSPACE_DRAG_TYPE } from "../shared";
 import {
   dropPlacementForEvent,
@@ -27,6 +27,7 @@ import {
   statusForThread,
   threadTitle,
   type DropPlacement,
+  type ThreadPresentation,
   type ThreadStatusBucket,
 } from "../lib/sidebar-model";
 
@@ -39,6 +40,9 @@ export const ThreadRow = memo(function ThreadRow({
   effectiveStatus,
   focusView = false,
   cleanupCandidate = false,
+  taskRun,
+  presentation,
+  settledSafety,
   projectName,
   isSelected,
   snoozedUntil,
@@ -61,6 +65,9 @@ export const ThreadRow = memo(function ThreadRow({
   effectiveStatus?: ThreadStatusBucket;
   focusView?: boolean;
   cleanupCandidate?: boolean;
+  taskRun?: ThreadTaskRun;
+  presentation?: ThreadPresentation;
+  settledSafety?: SettledThreadSafety;
   projectName: string;
   isSelected: boolean;
   snoozedUntil: number | null;
@@ -147,19 +154,64 @@ export const ThreadRow = memo(function ThreadRow({
   const workingLabel =
     STATUS_DESIGN.find((entry) => entry.status === workingStatus)?.label ??
     workingStatus;
-  const prominent = focusView && !nested && (workingStatus === "needs-input" || workingStatus === "unread" || hasUnseenFailure(thread));
   const failed = thread.status === "error" || thread.queuedWork === "failed" || thread.indicator === "unread-error";
-  const attentionReason = failed ? "Failed" : workingStatus === "needs-input" ? "Needs input" : "Unread";
+  const tone = presentation?.tone ?? "idle";
+  const palette = TONE_PALETTE[tone];
+  const isFactory = presentation?.isFactory ?? Boolean(taskRun);
+  const stageLabel = isFactory ? (presentation?.reason ?? null) : null;
+  const prominent = focusView && !nested && (presentation ? presentation.prominent : (workingStatus === "needs-input" || failed || workingStatus === "unread"));
+  const attentionReason = presentation?.reason ?? (failed ? "Failed" : workingStatus === "needs-input" ? "Needs input" : "Unread");
   const ageMinutes = Math.max(0, Math.floor((Date.now() - thread.latestAttentionAt) / 60_000));
   const age = ageMinutes < 1 ? "now" : ageMinutes < 60 ? `${ageMinutes}m` : ageMinutes < 1440 ? `${Math.floor(ageMinutes / 60)}h` : `${Math.floor(ageMinutes / 1440)}d`;
   const attentionDetail = `${attentionReason} · ${age}`;
   const attentionTooltip = workingStatus === "needs-input" ? (thread.hasPendingInteraction ? thread.indicatorLabel || "This thread needs input" : "A child thread needs input") : attentionReason;
   const staleLabel = "Inactive for at least 14 days. Review or snooze; save work before archiving. BB archive removes the workspace and worktree.";
-  const focusMarker = focusView && !(prominent && workingStatus === "needs-input" && !failed) ? (
-    <span title={cleanupCandidate ? staleLabel : failed ? "Failed" : workingLabel} className={cn("shrink-0", failed ? "text-destructive-text" : workingTone.className)} style={workingTone.style}>
-      <Icon name={failed ? "FileX2" : cleanupCandidate ? "Clock" : workingStatus === "needs-input" ? "CircleQuestion" : workingStatus === "unread" ? "CircleCheck" : workingStatus === "active" ? "CircleDashed" : workingStatus === "drafting" ? "Edit" : thread.isPinned ? "Pin" : "Circle"} className="size-3" aria-hidden="true" />
+  const leadingGlyph = focusView && !nested ? (
+    isFactory ? (
+      <span
+        data-factory-glyph=""
+        data-tone={tone}
+        title={stageLabel ? `Factory run · ${stageLabel}` : "Task thread"}
+        className="inline-flex size-3.5 shrink-0 items-center justify-center"
+      >
+        <span className={cn("inline-flex size-2.5 items-center justify-center rounded-[3px] border-[1.5px]", palette.borderClass)}>
+          {tone !== "idle" ? <span className={cn("size-1 rounded-full", palette.dotClass)} /> : null}
+        </span>
+      </span>
+    ) : (
+      <span
+        data-chat-dot=""
+        data-tone={tone}
+        title={presentation?.reason ?? (failed ? "Failed" : workingLabel)}
+        className="inline-flex size-3.5 shrink-0 items-center justify-center"
+      >
+        <span className={cn("size-1.5 rounded-full", palette.dotClass)} />
+      </span>
+    )
+  ) : null;
+  const settledBadge = settledSafety && !settledSafety.safe ? (
+    <span
+      data-settled-unsaved=""
+      title={`${settledSafety.dirtyCount} uncommitted files, ${settledSafety.aheadCount} unpushed commits — protected from bulk archive`}
+      className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400"
+    >
+      {settledSafety.dirtyCount > 0 ? `${settledSafety.dirtyCount} unsaved` : `${settledSafety.aheadCount} unpushed`}
     </span>
   ) : null;
+  const stagePill = focusView && !nested && isFactory && stageLabel ? (
+    <span
+      data-task-stage=""
+      data-tone={tone}
+      className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none", palette.pillClass)}
+    >
+      {stageLabel}
+    </span>
+  ) : focusView && !nested && !isFactory && (tone === "draft" || tone === "attention" || tone === "critical") && presentation?.reason ? (
+    <span data-tone={tone} className={cn("shrink-0 text-[10px] font-medium", palette.textClass)}>
+      {presentation.reason === "Needs input" ? "Input" : presentation.reason}
+    </span>
+  ) : null;
+  const focusMarker = !focusView ? null : stagePill;
   const machineMetadata = (
     <span data-execution-metadata="" className="inline-flex shrink-0 items-center">
       {nested ? (
@@ -275,6 +327,7 @@ export const ThreadRow = memo(function ThreadRow({
             </span>
           ) : (
           <span className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-1.5">
+            {leadingGlyph}
             {editing ? (
               <input
                 ref={inputRef}
@@ -301,8 +354,9 @@ export const ThreadRow = memo(function ThreadRow({
                 {prominent ? <span data-attention-detail="" title={attentionTooltip} className="truncate text-[10px] font-normal text-muted-foreground">{attentionDetail}</span> : null}
               </span>
             )}
+            {settledBadge}
             {focusMarker}
-            {projectMetadata}
+            {focusView && taskRun && stageLabel ? null : projectMetadata}
             {subagentBadge}
             <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
               {machineMetadata}

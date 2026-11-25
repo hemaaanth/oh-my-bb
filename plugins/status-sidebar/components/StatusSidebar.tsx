@@ -13,6 +13,7 @@ import { flushSync } from "react-dom";
 import {
   UrlLink,
   useBbNavigate,
+  useRealtime,
   useSdk,
   useRpc,
   useSidebarThreadDraftIds,
@@ -45,11 +46,15 @@ import {
   type AgentSidebarSnapshot,
   type ChannelSummary,
   type SandboxThreadStatus,
+  type SettledThreadSafety,
   type SidebarWorkspace,
+  type ThreadTaskRun,
 } from "../shared";
 import {
   followSelectedBucket,
   focusGroup,
+  resolveThreadPresentation,
+  type ThreadPresentation,
   hasUnseenFailure,
   sortFocusThreads,
   isCleanupCandidate,
@@ -81,14 +86,17 @@ import {
   type SidebarGroupKey,
   type SidebarTreeNode,
 } from "../lib/sidebar-tree";
-import { STATUS_DESIGN } from "../lib/status-colors";
+import { CANONICAL_TONE_ORDER, STATUS_DESIGN, TONE_PALETTE } from "../lib/status-colors";
 import {
   ThreadRowActionsContext,
   useStableCallback,
   type ThreadRowActions,
 } from "../lib/thread-row-actions";
 
-const defaultCollapsed = (key: string) => ["status:active", "status:snoozed", "status:archived", "focus:library"].includes(key);
+const AUTO_COLLAPSE_KEYS = new Set(["focus:current", "focus:library", "focus:settled"]);
+const AUTO_COLLAPSE_MS = 20_000;
+const defaultCollapsed = (key: string) =>
+  ["status:active", "status:snoozed", "status:archived", "focus:current", "focus:library", "focus:settled"].includes(key);
 
 const COLLAPSE_STORAGE_KEY = "status-sidebar:hierarchy-collapse:v1";
 const AGENT_PROFILES_CHANNELS_ROUTE = "/plugins/agent-profiles/channels";
@@ -166,24 +174,80 @@ function readCollapsed(): Record<string, boolean> {
 
 function useCollapsedHierarchy() {
   const [collapsed, setCollapsed] =
-    useState<Record<string, boolean>>(readCollapsed);
-  const toggle = (key: string) => {
+    useState<Record<string, boolean>>(() => {
+      const saved = readCollapsed();
+      // Auto-collapse focus bands always start collapsed so the sidebar opens focused.
+      for (const key of AUTO_COLLAPSE_KEYS) delete saved[key];
+      return saved;
+    });
+  const setKey = (key: string, value: boolean) => {
     setCollapsed((current) => {
-      const next = { ...current };
-      next[key] = !(current[key] ?? defaultCollapsed(key));
-      try {
-        window.localStorage.setItem(
-          COLLAPSE_STORAGE_KEY,
-          JSON.stringify(next),
-        );
-      } catch {
-        // Keep the in-memory interaction working when browser storage is full
-        // or unavailable; persistence is a convenience, not a prerequisite.
+      if ((current[key] ?? defaultCollapsed(key)) === value) return current;
+      const next = { ...current, [key]: value };
+      if (!AUTO_COLLAPSE_KEYS.has(key)) {
+        try {
+          window.localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          // Ignore storage quota errors.
+        }
       }
       return next;
     });
   };
-  return { collapsed, toggle };
+  const toggle = (key: string) => {
+    setCollapsed((current) => {
+      const next = { ...current };
+      next[key] = !(current[key] ?? defaultCollapsed(key));
+      if (!AUTO_COLLAPSE_KEYS.has(key)) {
+        try {
+          window.localStorage.setItem(
+            COLLAPSE_STORAGE_KEY,
+            JSON.stringify(next),
+          );
+        } catch {
+          // Keep the in-memory interaction working when browser storage is full
+          // or unavailable; persistence is a convenience, not a prerequisite.
+        }
+      }
+      return next;
+    });
+  };
+  return { collapsed, toggle, setKey };
+}
+
+function useThreadTaskRuns(enabled: boolean) {
+  const rpc = useRpc<typeof rpcContract>();
+  const [runs, setRuns] = useState<ReadonlyMap<string, ThreadTaskRun>>(() => new Map());
+  useEffect(() => {
+    if (!enabled) {
+      setRuns(new Map());
+      return;
+    }
+    let alive = true;
+    const load = (fresh = false) => {
+      void rpc.call("listThreadTaskRuns", fresh ? { fresh: true } : null).then(
+        (res) => {
+          if (!alive) return;
+          setRuns(new Map(res.runs.map((run) => [run.threadId, run])));
+        },
+        () => undefined,
+      );
+    };
+    load(false);
+    const interval = window.setInterval(() => load(true), 30_000);
+    return () => {
+      alive = false;
+      window.clearInterval(interval);
+    };
+  }, [enabled, rpc]);
+  useRealtime("tasks-changed", () => {
+    if (!enabled) return;
+    void rpc.call("listThreadTaskRuns", { fresh: true }).then(
+      (res) => setRuns(new Map(res.runs.map((run) => [run.threadId, run]))),
+      () => undefined,
+    );
+  });
+  return runs;
 }
 
 function threadChildrenCollapseKey(threadId: string) {
@@ -194,10 +258,40 @@ function threadChildrenCollapseKey(threadId: string) {
 function ThreadStatusSummary({
   threads,
   statusByThreadId,
+  presentationByThreadId,
 }: {
   threads: readonly PluginSidebarThread[];
   statusByThreadId: ReadonlyMap<string, ThreadStatusBucket>;
+  presentationByThreadId?: ReadonlyMap<string, ThreadPresentation>;
 }) {
+  if (presentationByThreadId) {
+    const segments = CANONICAL_TONE_ORDER.flatMap((tone) => {
+      const count = threads.filter((thread) => presentationByThreadId.get(thread.id)?.tone === tone).length;
+      if (count === 0) return [];
+      const palette = TONE_PALETTE[tone];
+      return [{ key: tone, count, label: palette.label, className: palette.pillClass }];
+    });
+    if (segments.length === 0) return null;
+    return (
+      <span
+        aria-label={segments.map((s) => `${s.count} ${s.label}`).join(", ")}
+        className="inline-flex h-4 overflow-hidden rounded-full"
+      >
+        {segments.map((segment) => (
+          <span
+            key={segment.key}
+            data-tone={segment.key}
+            className={cn(
+              "inline-flex min-w-4 items-center justify-center px-1 text-[10px] font-medium leading-none tabular-nums",
+              segment.className,
+            )}
+          >
+            {segment.count}
+          </span>
+        ))}
+      </span>
+    );
+  }
   const segments = STATUS_DESIGN.flatMap((design) => {
     const count = threads.filter(
       (thread) => statusByThreadId.get(thread.id) === design.status,
@@ -293,6 +387,9 @@ export function StatusSidebar({
   );
   const threadOrders = useWorkspaceThreadOrders(workspaceIds);
   const collapseState = useCollapsedHierarchy();
+  const taskRunsByThreadId = useThreadTaskRuns(tasksEnabled);
+  const [settledSafetyByThreadId, setSettledSafetyByThreadId] = useState<ReadonlyMap<string, SettledThreadSafety>>(() => new Map());
+  const [settledArchiving, setSettledArchiving] = useState(false);
   // The host renders the opened thread in the same task as the navigation,
   // which can take hundreds of milliseconds. Highlight the clicked row first,
   // let the browser paint it, then navigate, so the click answers at once.
@@ -622,11 +719,36 @@ export function StatusSidebar({
     workspaceState.projectWorkspaceById.get(projectId) ??
     workspaceState.defaultWorkspaceId;
 
+  const presentationByThreadId = useMemo(() => {
+    const map = new Map<string, ThreadPresentation>();
+    for (const thread of threads) {
+      const children = childrenByParent.get(thread.id) ?? [];
+      const hasActiveChild = children.some((child) => {
+        const cs = effectiveStatusByThreadId.get(child.id) ?? statusByThreadId.get(child.id);
+        return cs === "active" || cs === "needs-input";
+      });
+      map.set(
+        thread.id,
+        resolveThreadPresentation(thread, effectiveStatusByThreadId.get(thread.id) ?? "idle", {
+          taskRun: taskRunsByThreadId.get(thread.id) ?? null,
+          hasActiveChild,
+          now,
+        }),
+      );
+    }
+    return map;
+  }, [threads, childrenByParent, effectiveStatusByThreadId, statusByThreadId, taskRunsByThreadId, now]);
+
   const describe = (
     dimension: GroupDimension,
     thread: PluginSidebarThread,
   ): SidebarGroupKey => {
-    if (dimension === "focus") return focusGroup(thread, effectiveStatusByThreadId.get(thread.id) ?? "idle");
+    if (dimension === "focus") {
+      const p = presentationByThreadId.get(thread.id);
+      return p
+        ? { key: p.band, label: p.bandLabel, rank: p.bandRank }
+        : focusGroup(thread, effectiveStatusByThreadId.get(thread.id) ?? "idle", { now });
+    }
     if (dimension === "status") {
       const bucket = bucketForThread(
         thread,
@@ -719,6 +841,25 @@ export function StatusSidebar({
         "idle",
     })),
   );
+
+  const settledNode = tree.find((node) => node.collapseKey === "focus:settled");
+  const settledExpanded = Boolean(settledNode && !isCollapsed("focus:settled"));
+  const settledInspectKey = settledNode ? settledNode.threads.map((t) => t.id).join(",") : "";
+  useEffect(() => {
+    if (!settledExpanded || !settledNode || settledNode.threads.length === 0) return;
+    let alive = true;
+    void rpc.call("inspectSettledSafety", {
+      threads: settledNode.threads.map((t) => ({
+        threadId: t.id,
+        environmentPath: t.environment?.path ?? null,
+        isWorktree: Boolean(t.environment?.isWorktree),
+      })),
+    }).then((res) => {
+      if (!alive) return;
+      setSettledSafetyByThreadId(new Map(res.results.map((r) => [r.threadId, r])));
+    }, () => undefined);
+    return () => { alive = false; };
+  }, [rpc, settledExpanded, settledInspectKey]);
 
   if (
     status === "loading" ||
@@ -827,9 +968,26 @@ export function StatusSidebar({
   const showProjectName =
     view.group !== "project" && view.subgroup !== "project";
 
+  const archiveSafeSettled = async (threadIds: string[]) => {
+    if (settledArchiving || threadIds.length === 0) return;
+    setSettledArchiving(true);
+    try {
+      await rpc.call("archiveSafeThreads", { threadIds });
+    } finally {
+      setSettledArchiving(false);
+    }
+  };
+
   const renderNode = (node: SidebarTreeNode, depth: 0 | 1): ReactNode => {
     const target = targetForNode(node);
     const collapsed = Boolean(isCollapsed(node.collapseKey));
+    const isSettled = node.collapseKey === "focus:settled";
+    const safeSettledIds = isSettled
+      ? node.threads.filter((t) => settledSafetyByThreadId.get(t.id)?.safe === true).map((t) => t.id)
+      : [];
+    const unsafeSettledCount = isSettled
+      ? node.threads.filter((t) => settledSafetyByThreadId.get(t.id)?.safe === false).length
+      : 0;
     return (
       <GroupSection
         key={node.collapseKey}
@@ -839,7 +997,10 @@ export function StatusSidebar({
         icon={iconForNode(node, target)}
         statusByThreadId={statusByThreadId}
         effectiveStatusByThreadId={effectiveStatusByThreadId}
+        presentationByThreadId={view.group === "focus" ? presentationByThreadId : undefined}
         collapsed={collapsed}
+        autoCollapse={AUTO_COLLAPSE_KEYS.has(node.collapseKey)}
+        onAutoCollapse={() => collapseState.setKey(node.collapseKey, true)}
         onToggle={() => collapseState.toggle(node.collapseKey)}
         headerDrag={headerDrag}
         actions={actionsForTarget(target, node)}
@@ -851,24 +1012,44 @@ export function StatusSidebar({
         {collapsed ? null : node.children ? (
           node.children.map((child) => renderNode(child, 1))
         ) : (
-          <ThreadGroups
-            focusView={view.group === "focus"}
-            now={now}
-            threads={node.threads}
-            activeThreadId={selectedThreadId}
-            statusByThreadId={statusByThreadId}
-            effectiveStatusByThreadId={effectiveStatusByThreadId}
-            childrenByParent={childrenByParent}
-            {...threadChildCollapseProps}
-            projectNameById={projectNameById}
-            standaloneThreadIds={standaloneThreadIds}
-            snoozedUntilById={snoozedUntilById}
-            sandboxStatuses={sandboxStatuses}
-            showProjectName={showProjectName}
-            reorderEnabled={reorderEnabled}
-            workspaceMoveEnabled={!searching && integrationPreferences?.values.projectsIntegration === true}
-            onReorder={persistManualOrder}
-          />
+          <>
+            {isSettled && safeSettledIds.length > 0 ? (
+              <div data-settled-cleanup-bar="" className="mx-2 mb-1 mt-0.5 flex items-center justify-between gap-2 rounded-md border border-border/60 bg-sidebar-accent/40 px-2 py-1 text-[10px] text-muted-foreground">
+                <span className="truncate">
+                  {safeSettledIds.length} safe to archive{unsafeSettledCount > 0 ? ` · ${unsafeSettledCount} protected` : ""}
+                </span>
+                <button
+                  type="button"
+                  disabled={settledArchiving}
+                  onClick={() => void archiveSafeSettled(safeSettledIds)}
+                  className="shrink-0 rounded bg-sidebar-accent px-1.5 py-0.5 font-medium text-sidebar-foreground hover:bg-sidebar-accent/80 disabled:opacity-50"
+                >
+                  {settledArchiving ? "Archiving…" : `Archive ${safeSettledIds.length}`}
+                </button>
+              </div>
+            ) : null}
+            <ThreadGroups
+              focusView={view.group === "focus"}
+              now={now}
+              threads={node.threads}
+              activeThreadId={selectedThreadId}
+              statusByThreadId={statusByThreadId}
+              effectiveStatusByThreadId={effectiveStatusByThreadId}
+              childrenByParent={childrenByParent}
+              {...threadChildCollapseProps}
+              projectNameById={projectNameById}
+              standaloneThreadIds={standaloneThreadIds}
+              snoozedUntilById={snoozedUntilById}
+              sandboxStatuses={sandboxStatuses}
+              taskRunsByThreadId={taskRunsByThreadId}
+              presentationByThreadId={view.group === "focus" ? presentationByThreadId : undefined}
+              settledSafetyByThreadId={isSettled ? settledSafetyByThreadId : undefined}
+              showProjectName={showProjectName}
+              reorderEnabled={reorderEnabled}
+              workspaceMoveEnabled={!searching && integrationPreferences?.values.projectsIntegration === true}
+              onReorder={persistManualOrder}
+            />
+          </>
         )}
       </GroupSection>
     );
@@ -879,26 +1060,8 @@ export function StatusSidebar({
     <div
       className="min-h-0 min-w-0 flex-1 overflow-y-auto px-1.5 pb-3 [scrollbar-gutter:stable]"
     >
-      {botsEnabled ? <div role="tablist" aria-label="Sidebar" className="sticky top-0 z-10 flex gap-1 bg-sidebar px-1 py-1">
-        {(["code", "bots"] as const).map((tab) => (
-          <button key={tab} type="button" role="tab" id={`sidebar-${tab}-tab`}
-            aria-controls={`sidebar-${tab}-panel`} aria-selected={visibleTab === tab}
-            tabIndex={visibleTab === tab ? 0 : -1}
-            onKeyDown={(event) => {
-              if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-              event.preventDefault();
-              const next = event.key === "Home" ? "code" : event.key === "End" ? "bots" : tab === "code" ? "bots" : "code";
-              setActiveTab(next);
-              document.getElementById(`sidebar-${next}-tab`)?.focus();
-            }}
-            onClick={() => setActiveTab(tab)}
-            className={cn("flex-1 rounded-md px-2 py-1 text-xs font-medium", visibleTab === tab ? "bg-sidebar-accent text-sidebar-foreground" : "text-muted-foreground hover:text-sidebar-foreground")}>
-            {tab === "code" ? "Code" : "Bots"}
-          </button>
-        ))}
-      </div> : null}
       {workspaceState.error ? <p role="alert" className="px-2 py-2 text-xs text-destructive-text">{workspaceState.error} <UrlLink href="/settings/plugins/status-sidebar" className="underline" onClick={onNavigate}>Open settings</UrlLink></p> : null}
-      <div role={botsEnabled ? "tabpanel" : undefined} id="sidebar-code-panel" aria-labelledby={botsEnabled ? "sidebar-code-tab" : undefined} hidden={visibleTab !== "code"}>
+      <div id="sidebar-code-panel">
         {tree.map((node) => renderNode(node, 0))}
         {snoozedTree.map((node) => renderNode(node, 0))}
         {archivedTree.map((node) => renderNode(node, 0))}
@@ -909,25 +1072,6 @@ export function StatusSidebar({
           </p>
         ) : null}
       </div>
-      {botsEnabled ? <div role="tabpanel" id="sidebar-bots-panel" aria-labelledby="sidebar-bots-tab" hidden={visibleTab !== "bots"}>
-        {agents ? (
-          <AgentsSection snapshot={agents} activeThreadId={selectedThreadId}
-            openingAgentId={openingAgentId} error={agentError} onOpen={openAgent}
-            collapsed={Boolean(isCollapsed("agents"))}
-            onToggle={() => collapseState.toggle("agents")} />
-        ) : null}
-        {channels ? (
-          <ChannelsSection channels={channels} activeChannelId={activeChannelId}
-            collapsed={Boolean(isCollapsed("channels"))}
-            onToggle={() => collapseState.toggle("channels")}
-            view={view} onViewChange={changeView} />
-        ) : null}
-        {!agents && !channels ? (
-          <p role="status" className="px-3 py-8 text-center text-xs text-muted-foreground">
-            Bots are unavailable.
-          </p>
-        ) : null}
-      </div> : null}
     </div>
     </ThreadRowActionsContext.Provider>
   );
@@ -994,7 +1138,10 @@ function GroupSection({
   icon,
   statusByThreadId,
   effectiveStatusByThreadId,
+  presentationByThreadId,
   collapsed,
+  autoCollapse = false,
+  onAutoCollapse,
   onToggle,
   headerDrag,
   actions,
@@ -1010,7 +1157,10 @@ function GroupSection({
   icon: IconName;
   statusByThreadId: ReadonlyMap<string, ThreadStatusBucket>;
   effectiveStatusByThreadId: ReadonlyMap<string, ThreadStatusBucket>;
+  presentationByThreadId?: ReadonlyMap<string, ThreadPresentation>;
   collapsed: boolean;
+  autoCollapse?: boolean;
+  onAutoCollapse?: () => void;
   onToggle: () => void;
   headerDrag: HeaderDragApi;
   actions: readonly SectionMenuAction[];
@@ -1052,12 +1202,39 @@ function GroupSection({
     effectiveStatusByThreadId.get(thread.id) ?? statusByThreadId.get(thread.id) ?? "idle", Date.now())).length;
   const isParent = node.children !== null;
   const label = target.kind === "workspace" ? `${node.label} section` : node.label;
+  const autoCollapseTimer = useRef<number | null>(null);
+  const cancelAutoCollapse = () => {
+    if (autoCollapseTimer.current !== null) {
+      window.clearTimeout(autoCollapseTimer.current);
+      autoCollapseTimer.current = null;
+    }
+  };
+  const scheduleAutoCollapse = () => {
+    if (!autoCollapse || collapsed || !onAutoCollapse) return;
+    cancelAutoCollapse();
+    autoCollapseTimer.current = window.setTimeout(() => {
+      autoCollapseTimer.current = null;
+      onAutoCollapse();
+    }, AUTO_COLLAPSE_MS);
+  };
+  useEffect(() => {
+    if (collapsed) cancelAutoCollapse();
+    return cancelAutoCollapse;
+  }, [collapsed]);
   return (
     <section
       aria-label={label}
       data-reorder-project-id={
         target.kind === "project" ? target.projectId : undefined
       }
+      onMouseEnter={cancelAutoCollapse}
+      onMouseLeave={scheduleAutoCollapse}
+      onFocus={cancelAutoCollapse}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          scheduleAutoCollapse();
+        }
+      }}
       className={isParent ? "mt-2 first:mt-1" : "mt-1 first:mt-0.5"}
     >
       <SectionContextMenu
@@ -1069,15 +1246,16 @@ function GroupSection({
       >
         <SidebarSectionHeader
           label={node.label}
-          icon={<span title={node.dimension === "focus" && node.key === "attention" ? "Needs input, failures, and unread results" : undefined}><Icon name={icon} className="size-3.5" aria-hidden="true" /></span>}
-          summary={node.dimension === "focus" && node.key === "library" ? (
-            <span className="text-[10px] tabular-nums text-muted-foreground" title={`${node.threads.length} threads; ${cleanupCount} inactive for at least 14 days to review. Save work before BB archive removes the workspace and worktree.`}>{node.threads.length}</span>
+          icon={<span title={node.dimension === "focus" && node.key === "attention" ? "Factory proof/decisions, pending input, failures, and unread replies" : undefined}><Icon name={icon} className="size-3.5" aria-hidden="true" /></span>}
+          summary={node.dimension === "focus" && (node.key === "library" || node.key === "settled") ? (
+            <span className="text-[10px] tabular-nums text-muted-foreground" title={node.key === "settled" ? `${node.threads.length} settled threads (idle ≥ 7d or done). Expand to inspect safe-to-archive cleanup.` : `${node.threads.length} recent threads`}>{node.threads.length}</span>
           ) : node.key === "archived" && target.kind === "status" ? (
             <span className="text-[10px] tabular-nums text-muted-foreground">{node.threads.length}{archiveHasMore ? "+" : ""}</span>
           ) : (
             <ThreadStatusSummary
               threads={node.threads}
               statusByThreadId={summary}
+              presentationByThreadId={presentationByThreadId}
             />
           )}
           variant={isParent ? "parent" : "section"}
@@ -1258,6 +1436,8 @@ function AgentsSection({
   error: string | null;
   onOpen: (profileId: string) => void;
   collapsed: boolean;
+  autoCollapse?: boolean;
+  onAutoCollapse?: () => void;
   onToggle: () => void;
 }) {
   const count = snapshot.agents.length;
@@ -1305,6 +1485,8 @@ function ChannelsSection({
   channels,
   activeChannelId,
   collapsed,
+  autoCollapse = false,
+  onAutoCollapse,
   onToggle,
   view,
   onViewChange,
@@ -1312,6 +1494,8 @@ function ChannelsSection({
   channels: readonly ChannelSummary[];
   activeChannelId: string | null;
   collapsed: boolean;
+  autoCollapse?: boolean;
+  onAutoCollapse?: () => void;
   onToggle: () => void;
   view: SidebarViewOptions;
   onViewChange: (next: SidebarViewOptions) => void;
@@ -1433,6 +1617,9 @@ interface ThreadGroupsProps {
   standaloneThreadIds: ReadonlySet<string>;
   snoozedUntilById: ReadonlyMap<string, number>;
   sandboxStatuses: ReadonlyMap<string, SandboxThreadStatus>;
+  taskRunsByThreadId?: ReadonlyMap<string, ThreadTaskRun>;
+  presentationByThreadId?: ReadonlyMap<string, ThreadPresentation>;
+  settledSafetyByThreadId?: ReadonlyMap<string, SettledThreadSafety>;
   onReorder: (threadIds: readonly string[]) => void;
   showProjectName?: boolean;
   reorderEnabled?: boolean;
@@ -1500,6 +1687,9 @@ function ThreadRows({
   standaloneThreadIds,
   snoozedUntilById,
   sandboxStatuses,
+  taskRunsByThreadId,
+  presentationByThreadId,
+  settledSafetyByThreadId,
   showProjectName = false,
   reorderEnabled = true,
   workspaceMoveEnabled = true,
@@ -1527,6 +1717,9 @@ function ThreadRows({
               effectiveStatus={effectiveStatusByThreadId.get(thread.id) ?? statusByThreadId.get(thread.id)}
               focusView={focusView}
               cleanupCandidate={isCleanupCandidate(thread, effectiveStatusByThreadId.get(thread.id) ?? statusByThreadId.get(thread.id) ?? "idle", now)}
+              taskRun={taskRunsByThreadId?.get(thread.id)}
+              presentation={presentationByThreadId?.get(thread.id)}
+              settledSafety={settledSafetyByThreadId?.get(thread.id)}
               projectName={
                 projectNameById.get(thread.projectId) ?? "Unknown project"
               }

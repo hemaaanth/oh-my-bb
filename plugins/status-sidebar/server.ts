@@ -1,4 +1,6 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { resolveHostThreadStatuses } from "./lib/host-status";
@@ -272,6 +274,48 @@ export const rpcContract = defineRpcContract({
     input: threadIdInput.extend({ query: z.string().trim().min(1).max(500) }),
     output: z.object({ tasks: z.array(taskCandidateSchema) }).strict(),
   },
+  listThreadTaskRuns: {
+    input: z.object({ fresh: z.boolean().optional() }).strict().nullable(),
+    output: z.object({
+      runs: z.array(z.object({
+        threadId: z.string(),
+        taskId: z.string(),
+        taskStatus: z.string(),
+        phase: z.enum(["scoping", "building", "capturing", "checking", "waiting", "babysitting", "deploying", "live", "blocked"]).nullable(),
+        proofPageId: z.string().nullable(),
+        proposedStatus: z.string().nullable(),
+        dismissedAt: z.string().nullable(),
+        hasWaitingUnit: z.boolean(),
+        needsAttention: z.boolean(),
+      }).strict()),
+    }).strict(),
+  },
+  inspectSettledSafety: {
+    input: z.object({
+      threads: z.array(z.object({
+        threadId: z.string().min(1),
+        environmentPath: z.string().nullable(),
+        isWorktree: z.boolean(),
+      }).strict()).max(150),
+    }).strict(),
+    output: z.object({
+      results: z.array(z.object({
+        threadId: z.string(),
+        safe: z.boolean(),
+        dirtyCount: z.number().int().nonnegative(),
+        aheadCount: z.number().int().nonnegative(),
+      }).strict()),
+    }).strict(),
+  },
+  archiveSafeThreads: {
+    input: z.object({
+      threadIds: z.array(z.string().min(1)).max(150),
+    }).strict(),
+    output: z.object({
+      archived: z.number().int().nonnegative(),
+      failed: z.number().int().nonnegative(),
+    }).strict(),
+  },
   attachThreadToTask: {
     input: threadIdInput.extend({ source: taskSourceSchema, taskId: z.string().min(1) }),
     output: z.object({ ok: z.literal(true) }).strict(),
@@ -439,6 +483,160 @@ export default async function plugin(bb: BbPluginApi) {
         ...task,
       })),
     };
+  }
+
+  type CachedTaskRun = {
+    threadId: string;
+    taskId: string;
+    taskStatus: string;
+    phase: "scoping" | "building" | "capturing" | "checking" | "waiting" | "babysitting" | "deploying" | "live" | "blocked" | null;
+    proofPageId: string | null;
+    proposedStatus: string | null;
+    dismissedAt: string | null;
+    hasWaitingUnit: boolean;
+    needsAttention: boolean;
+  };
+  let taskRunsCacheEntry: { value: CachedTaskRun[]; expiresAt: number; generation: number } | null = null;
+
+  const boardTasksProbeSchema = z.object({
+    tasks: z.array(z.object({
+      id: z.string(),
+      status: z.string(),
+      threadIds: z.array(z.string()),
+      run: z.object({
+        phase: z.enum(["scoping", "building", "capturing", "checking", "waiting", "babysitting", "deploying", "live", "blocked"]).nullable().optional(),
+        proofPageId: z.string().nullable().optional(),
+        proposedStatus: z.string().nullable().optional(),
+        dismissedAt: z.string().nullable().optional(),
+        units: z.array(z.object({ status: z.string() })).nullable().optional(),
+      }).nullable().optional(),
+    })),
+  });
+
+  async function listThreadTaskRuns(input?: { fresh?: boolean } | null) {
+    if (!integrations.tasksIntegration) return { runs: [] };
+    const generation = integrationGeneration;
+    if (
+      input?.fresh !== true &&
+      taskRunsCacheEntry &&
+      taskRunsCacheEntry.generation === generation &&
+      Date.now() < taskRunsCacheEntry.expiresAt
+    ) {
+      return { runs: taskRunsCacheEntry.value };
+    }
+    const runs = await (async (): Promise<CachedTaskRun[]> => {
+      try {
+        const board = await bb.sdk.plugins.callRpc({
+          pluginId: "task-workspaces",
+          method: "boardTasks",
+          input: null,
+          outputSchema: boardTasksProbeSchema,
+        });
+        if (!integrations.tasksIntegration || generation !== integrationGeneration) return [];
+        const rows: CachedTaskRun[] = [];
+        for (const task of board.tasks) {
+          const run = task.run ?? null;
+          if (!run) continue;
+          const phase = run.phase ?? null;
+          const proofPageId = run.proofPageId ?? null;
+          const proposedStatus = run.proposedStatus ?? null;
+          const dismissedAt = run.dismissedAt ?? null;
+          const hasWaitingUnit = Boolean(run.units?.some((u) => u.status === "waiting"));
+          const needsAttention = !dismissedAt && (
+            phase === "waiting" ||
+            phase === "blocked" ||
+            (proposedStatus === "done" && task.status !== "done") ||
+            hasWaitingUnit ||
+            (task.status === "review" && Boolean(proofPageId) && phase !== "babysitting")
+          );
+          for (const threadId of task.threadIds) {
+            rows.push({
+              threadId,
+              taskId: task.id,
+              taskStatus: task.status,
+              phase,
+              proofPageId,
+              proposedStatus,
+              dismissedAt,
+              hasWaitingUnit,
+              needsAttention,
+            });
+          }
+        }
+        return rows;
+      } catch {
+        return [];
+      }
+    })();
+    taskRunsCacheEntry = { value: runs, expiresAt: Date.now() + 5_000, generation };
+    return { runs };
+  }
+
+  function inspectSettledSafety(threads: Array<{ threadId: string; environmentPath: string | null; isWorktree: boolean }>) {
+    const results = threads.map(({ threadId, environmentPath, isWorktree }) => {
+      if (!isWorktree || !environmentPath || !existsSync(environmentPath)) {
+        return { threadId, safe: true, dirtyCount: 0, aheadCount: 0 };
+      }
+      let dirtyCount = 0;
+      let aheadCount = 0;
+      try {
+        const statusOut = execFileSync("git", ["status", "--porcelain"], {
+          cwd: environmentPath,
+          encoding: "utf8",
+          timeout: 1500,
+          stdio: ["ignore", "pipe", "ignore"],
+        }).trim();
+        if (statusOut) {
+          // Ignore ephemeral BB metadata / tmp dirs so clean worktrees aren't falsely flagged.
+          for (const line of statusOut.split("\n")) {
+            const pathPart = line.slice(3).trim();
+            if (!pathPart) continue;
+            if (pathPart === ".bb" || pathPart.startsWith(".bb/") || pathPart === "tmp" || pathPart.startsWith("tmp/")) continue;
+            dirtyCount++;
+          }
+        }
+      } catch {
+        // Non-git or inaccessible path: fail safe so we don't delete unknown state.
+        return { threadId, safe: false, dirtyCount: 1, aheadCount: 0 };
+      }
+      try {
+        const aheadOut = execFileSync("git", ["rev-list", "--count", "@{u}..HEAD"], {
+          cwd: environmentPath,
+          encoding: "utf8",
+          timeout: 1500,
+          stdio: ["ignore", "pipe", "ignore"],
+        }).trim();
+        aheadCount = parseInt(aheadOut, 10) || 0;
+      } catch {
+        try {
+          const fallbackOut = execFileSync("git", ["rev-list", "--count", "origin/HEAD..HEAD"], {
+            cwd: environmentPath,
+            encoding: "utf8",
+            timeout: 1500,
+            stdio: ["ignore", "pipe", "ignore"],
+          }).trim();
+          aheadCount = parseInt(fallbackOut, 10) || 0;
+        } catch {
+          aheadCount = 0;
+        }
+      }
+      return { threadId, safe: dirtyCount === 0 && aheadCount === 0, dirtyCount, aheadCount };
+    });
+    return { results };
+  }
+
+  async function archiveSafeThreads(threadIds: string[]) {
+    let archived = 0;
+    let failed = 0;
+    for (const threadId of threadIds) {
+      try {
+        await bb.sdk.threads.archive({ threadId });
+        archived++;
+      } catch {
+        failed++;
+      }
+    }
+    return { archived, failed };
   }
 
   async function attachThreadToTask(taskId: string, threadId: string) {
@@ -770,6 +968,9 @@ export default async function plugin(bb: BbPluginApi) {
       return { ok: true } as const;
     },
     listAttachableTasks: ({ threadId, query }) => listAttachableTasks(threadId, query),
+    listThreadTaskRuns: (input) => listThreadTaskRuns(input),
+    inspectSettledSafety: ({ threads }) => inspectSettledSafety(threads),
+    archiveSafeThreads: ({ threadIds }) => archiveSafeThreads(threadIds),
     attachThreadToTask: ({ taskId, threadId }) => attachThreadToTask(taskId, threadId),
     listSandboxStatuses: ({ threads }) => listSandboxStatuses(threads),
     listChannels,
