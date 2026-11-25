@@ -1119,6 +1119,8 @@ function ProofSidePanel({ task, unit, onClose, onApproveProof, onResolveProposal
   onApproveProof: (task: Task, unitId?: string) => void;
   onResolveProposal: (task: Task, accept: boolean) => void;
 }) {
+  const compact = useIsCompactViewport();
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const pageId = unit?.proofPageId ?? task.run?.proofPageId;
   const embedUrl = proofEmbedUrl(pageId);
   const fullHref = proofHref(pageId);
@@ -1127,11 +1129,22 @@ function ProofSidePanel({ task, unit, onClose, onApproveProof, onResolveProposal
   const awaitingProofApproval = (unit ? unit.status === "waiting" : task.run?.phase === "waiting") && Boolean(embedUrl) && task.threadIds.length > 0;
   const [panelWidth, setPanelWidth] = useState<number | null>(() => readProofWidth());
   const [resizing, setResizing] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  useEffect(() => { setLightboxOpen(false); }, [embedUrl]);
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const onMessage = (event: MessageEvent) => {
+      if (iframeRef.current && event.source !== iframeRef.current.contentWindow) return;
+      const data = event.data as { type?: unknown; open?: unknown } | null;
+      if (data?.type === "bb-pages:lightbox" && typeof data.open === "boolean") setLightboxOpen(data.open);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && !lightboxOpen) onClose(); };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [onClose, lightboxOpen]);
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1161,14 +1174,19 @@ function ProofSidePanel({ task, unit, onClose, onApproveProof, onResolveProposal
   };
   if (!embedUrl) return null;
   const label = unit ? `${task.title} — ${unit.title}` : task.title;
-  return <div className={`fixed inset-0 z-40 flex justify-end bg-black/35 backdrop-blur-[1px] ${resizing ? "cursor-col-resize select-none" : ""}`} onClick={onClose}>
+  const fullScreen = compact || lightboxOpen;
+  return <div className={`fixed inset-0 z-50 flex justify-end ${fullScreen ? "bg-background" : "bg-black/35 backdrop-blur-[1px]"} ${resizing ? "cursor-col-resize select-none" : ""}`} onClick={() => { if (!lightboxOpen) onClose(); }}>
     <aside
       aria-label={`Proof: ${label}`}
-      style={panelWidth ? { width: `min(94vw, ${panelWidth}px)` } : undefined}
-      className={`relative flex h-full flex-col border-l border-border/50 bg-background shadow-2xl ${panelWidth ? "" : "w-[min(92vw,68rem)]"}`}
+      style={!fullScreen && panelWidth ? { width: `min(94vw, ${panelWidth}px)` } : undefined}
+      className={`relative flex h-full flex-col bg-background ${
+        fullScreen
+          ? `w-full max-w-none ${lightboxOpen ? "" : "pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"}`
+          : `${panelWidth ? "" : "w-[min(92vw,68rem)]"} border-l border-border/50 shadow-2xl`
+      }`}
       onClick={(event) => event.stopPropagation()}
     >
-      <div
+      {!fullScreen ? <div
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize proof panel"
@@ -1178,8 +1196,8 @@ function ProofSidePanel({ task, unit, onClose, onApproveProof, onResolveProposal
         className="group absolute inset-y-0 -left-1.5 z-20 hidden w-3 cursor-col-resize items-center justify-center md:flex"
       >
         <span className={`h-full w-0.5 transition-colors ${resizing ? "bg-primary/70" : "bg-transparent group-hover:bg-primary/45"}`} />
-      </div>
-      <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-background/85 p-1 shadow-sm ring-1 ring-border/60 backdrop-blur-md">
+      </div> : null}
+      {!lightboxOpen ? <div className="absolute right-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-10 flex items-center gap-1 rounded-full bg-background/85 p-1 shadow-sm ring-1 ring-border/60 backdrop-blur-md">
         {awaitingProofApproval ? <Button size="sm" className="h-6 rounded-full px-2.5 text-xs" onClick={() => onApproveProof(task, unit?.id)}>
           {unit ? "Approve unit" : "Approve & merge"}
         </Button> : proposed ? <Button size="sm" className="h-6 rounded-full px-2.5 text-xs" onClick={() => onResolveProposal(task, true)}>
@@ -1197,8 +1215,8 @@ function ProofSidePanel({ task, unit, onClose, onApproveProof, onResolveProposal
             <Icon name="X" className="size-3.5" aria-hidden />
           </Button>
         </span>
-      </div>
-      <iframe title={`Proof: ${label}`} src={embedUrl} className={`min-h-0 h-full w-full flex-1 border-0 bg-background ${resizing ? "pointer-events-none" : ""}`} />
+      </div> : null}
+      <iframe ref={iframeRef} title={`Proof: ${label}`} src={embedUrl} className={`min-h-0 h-full w-full flex-1 border-0 bg-background ${resizing ? "pointer-events-none" : ""}`} />
     </aside>
   </div>;
 }

@@ -1,9 +1,8 @@
 // Shared image/diagram shell. Gesture geometry is ported from GenUI (Apache-2.0).
 import { createPortal } from "react-dom";
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Maximize2, Minus, Plus, X } from "./icons.generated.js";
 import { focusRing, PORTAL_SCOPE } from "../ui.js";
-import { usePaneBounds } from "./paneBounds.js";
 import { usePanZoom } from "./panZoom.js";
 import type { Size } from "./zoomMath.js";
 
@@ -71,15 +70,20 @@ export function ZoomSurface({ children, content, inline = false, onBackdrop, onS
   </div>;
 }
 
-/** Native modal semantics, scoped styles, pane bounds, and return to the actual opener. */
+/** Native modal semantics, full-viewport bounds, and return to the actual opener. */
 export function Lightbox({ open, onClose, label, caption, nav, children, tone = "photo" }: {
   open: boolean; onClose: () => void; label: string; caption?: ReactNode; nav?: Navigation; children: ReactNode; tone?: "photo" | "page";
 }) {
   const anchor = useRef<HTMLSpanElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
-  const bounds = usePaneBounds(anchor, open);
   const many = nav !== undefined && nav.count > 1;
   const step = (by: number) => { if (many) nav.go((nav.index + by + nav.count) % nav.count); };
+  useEffect(() => {
+    if (typeof window === "undefined" || window.parent === window) return;
+    if (!open) return;
+    window.parent.postMessage({ type: "bb-pages:lightbox", open: true }, "*");
+    return () => { window.parent.postMessage({ type: "bb-pages:lightbox", open: false }, "*"); };
+  }, [open]);
   useLayoutEffect(() => {
     const element = dialog.current;
     if (!open || !element) return;
@@ -94,8 +98,8 @@ export function Lightbox({ open, onClose, label, caption, nav, children, tone = 
     onCancel={(event) => { event.preventDefault(); onClose(); }}
     onClick={(event) => { if (event.target === event.currentTarget) onClose(); event.stopPropagation(); }}
     onKeyDown={(event) => { event.stopPropagation(); if (many && (event.key === "ArrowLeft" || event.key === "ArrowRight")) { event.preventDefault(); step(event.key === "ArrowLeft" ? -1 : 1); } }}
-    className={`fixed m-0 max-h-none max-w-none overflow-hidden border-0 p-0 outline-none backdrop:bg-black/50 open:flex open:flex-col ${tone === "photo" ? "bg-black/95 text-white" : "bg-background text-foreground"}`}
-    style={bounds ? { ...bounds, right: "auto", bottom: "auto" } : { inset: 0, width: "100vw", height: "100dvh" }}>
+    className={`fixed m-0 max-h-none max-w-none overflow-hidden border-0 p-0 outline-none backdrop:bg-black/70 open:flex open:flex-col ${tone === "photo" ? "bg-black/95 text-white" : "bg-background text-foreground"}`}
+    style={{ inset: 0, width: "100vw", height: "100dvh", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
     <header className="flex h-12 shrink-0 items-center justify-between gap-3 px-3">
       <span className="min-w-0 truncate text-xs opacity-75">{many ? `${nav.index + 1} / ${nav.count}` : label}</span>
       <button type="button" aria-label="Close image preview" onClick={onClose} className={control}><X aria-hidden className="size-4" /></button>
