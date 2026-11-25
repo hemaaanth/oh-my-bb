@@ -50,7 +50,8 @@ function useBotsList() {
   useRealtime("profiles-changed", useCallback(() => { void load(); }, [load]));
 
   const sorted = [...profiles].sort((a, b) => a.name.localeCompare(b.name));
-  return { profiles: sorted, loaded, error, reload: load };
+  const visible = sorted.filter((profile) => profile.showInSidebar);
+  return { profiles: visible, allProfiles: sorted, loaded, error, reload: load };
 }
 
 function activeSlugFromSubPath(subPath: string): string | null {
@@ -66,11 +67,11 @@ function activeSlugFromSubPath(subPath: string): string | null {
 /** Dedicated left sidebar for the Bots rail space — replaces the regular thread sidebar completely. */
 export function BotsSidebar({ subPath }: PluginNavPanelProps) {
   const navigate = useBbNavigate();
-  const { profiles, loaded, error, reload } = useBotsList();
+  const { profiles, allProfiles, loaded, error, reload } = useBotsList();
   const [editing, setEditing] = useState<string | null>(null);
   const [tab, setTab] = useState<(typeof agentTabs)[number]>("profile");
   const activeSlug = activeSlugFromSubPath(subPath);
-  const editingProfile = profiles.find((item) => item.id === editing);
+  const editingProfile = allProfiles.find((item) => item.id === editing);
 
   const selectBot = (profile: Profile) => {
     try {
@@ -107,7 +108,9 @@ export function BotsSidebar({ subPath }: PluginNavPanelProps) {
         ) : !loaded ? (
           <p role="status" className="px-2 py-2 text-xs text-muted-foreground">Loading bots…</p>
         ) : profiles.length === 0 ? (
-          <p className="px-2 py-4 text-center text-xs text-muted-foreground">No bots yet.</p>
+          <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+            {allProfiles.length > 0 ? "No visible bots." : "No bots yet."}
+          </p>
         ) : (
           <ul className="space-y-0.5" aria-label="Bots">
             {profiles.map((bot) => {
@@ -157,7 +160,7 @@ export function BotsSidebar({ subPath }: PluginNavPanelProps) {
             </DialogHeader>
             {editing === "new" ? (
               <ProfileForm
-                makeDefault={profiles.length === 0}
+                makeDefault={allProfiles.length === 0}
                 onSaved={async () => { await reload(); setEditing(null); }}
                 onCancel={() => setEditing(null)}
               />
@@ -184,13 +187,13 @@ export function BotsSidebar({ subPath }: PluginNavPanelProps) {
 export function BotsPage({ subPath }: PluginNavPanelProps) {
   const rpc = useRpc<typeof rpcContract>();
   const navigate = useBbNavigate();
-  const { profiles, loaded, error } = useBotsList();
+  const { profiles, allProfiles, loaded, error } = useBotsList();
   const activeSlug = activeSlugFromSubPath(subPath);
   const selectedBot = profiles.find((bot) => bot.slug === activeSlug) ?? null;
 
-  // Auto-select the last-chatted (or first) bot when opening /bots with no subPath.
+  // Auto-select the last-chatted (or first) visible bot when opening /bots or when the active bot is hidden.
   useEffect(() => {
-    if (!loaded || activeSlug || profiles.length === 0) return;
+    if (!loaded || selectedBot || profiles.length === 0) return;
     let saved: string | null = null;
     try {
       saved = window.localStorage.getItem(LAST_BOT_KEY);
@@ -201,7 +204,7 @@ export function BotsPage({ subPath }: PluginNavPanelProps) {
     if (target) {
       navigate.toPluginPanel("bots", { subPath: encodeURIComponent(target.slug), replace: true });
     }
-  }, [loaded, activeSlug, profiles, navigate]);
+  }, [loaded, selectedBot, profiles, navigate]);
 
   const [threadId, setThreadId] = useState<string | null>(() =>
     selectedBot ? (dmThreadCache.get(selectedBot.id) ?? null) : null,
@@ -243,7 +246,13 @@ export function BotsPage({ subPath }: PluginNavPanelProps) {
     return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading bots…</div>;
   }
   if (profiles.length === 0) {
-    return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No bots yet. Create one from the sidebar.</div>;
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        {allProfiles.length > 0
+          ? "All bots are hidden. Turn on Show in sidebar in Settings → Agents to chat directly."
+          : "No bots yet. Create one from the sidebar."}
+      </div>
+    );
   }
   if (!selectedBot) {
     return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Select a bot in the sidebar to start chatting.</div>;
