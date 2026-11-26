@@ -11,13 +11,9 @@ import { STATUS_DESIGN, STATUS_MARKER } from "../lib/status-colors";
 import type { SandboxThreadStatus } from "../shared";
 import { MachineShape } from "./MachineMarker";
 
-const MAX_DOTS = 3;
-
-// Ported from yusuf8834/bb-sidebar's ChildThreadBadge: a right-side pill with
-// a few markers, the overflow, and a chevron. Each marker matches that
-// sub-agent's row: its shape is the machine, its colour the status. The
-// neediest sub-agents come first, and the pill takes the tone of the neediest
-// one so a collapsed parent still reports it.
+// Compact, weight-matched inline trigger for attached sub-agents: one status
+// marker for the neediest child, total count, and a subtle chevron. Sits at
+// the exact same 10px visual weight as repo/age metadata instead of a heavy pill.
 export function SubagentBadge({
   threads,
   title,
@@ -35,14 +31,12 @@ export function SubagentBadge({
     threads.map((thread) => [thread.id, statusForThread(thread)]),
   );
   const status = mostNeedyStatus([...statuses.values()]);
-  const shown = [...threads]
-    .sort(
-      (left, right) =>
-        STATUS_NEEDINESS[statuses.get(right.id)!] -
-        STATUS_NEEDINESS[statuses.get(left.id)!],
-    )
-    .slice(0, MAX_DOTS);
-  const overflow = threads.length - shown.length;
+  const neediest = [...threads].sort(
+    (left, right) =>
+      STATUS_NEEDINESS[statuses.get(right.id)!] -
+      STATUS_NEEDINESS[statuses.get(left.id)!],
+  )[0];
+  const tone = STATUS_MARKER[status];
   const design = STATUS_DESIGN.find((entry) => entry.status === status);
   const count = threads.length;
   const noun = count === 1 ? "sub-agent" : "sub-agents";
@@ -54,39 +48,33 @@ export function SubagentBadge({
       title={`${count} ${noun}${status === "idle" ? "" : `, ${design?.label}`}`}
       data-subagent-status={status}
       className={cn(
-        "pointer-events-auto relative z-10 flex h-4 shrink-0 items-center gap-1 rounded-full px-1 text-[10px] font-medium outline-none focus-visible:ring-1 focus-visible:ring-ring",
-        design?.className,
+        "pointer-events-auto relative z-10 inline-flex h-4 shrink-0 items-center gap-1 rounded px-1 text-[10px] font-medium leading-none text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/80 hover:text-sidebar-foreground focus-visible:ring-1 focus-visible:ring-ring",
+        !collapsed && "bg-sidebar-accent/70 text-sidebar-foreground",
       )}
-      style={design?.style}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
         onToggle();
       }}
     >
-      <span className="flex items-center gap-0.5" aria-hidden="true">
-        {shown.map((thread) => {
-          const tone = STATUS_MARKER[statuses.get(thread.id)!];
-          return (
-            <MachineShape
-              key={thread.id}
-              machine={
-                sandboxProviderLabel(thread, sandboxStatuses?.get(thread.id))
-                  ? "sandbox"
-                  : "local"
-              }
-              className={cn("size-1.5", tone.className)}
-              style={tone.style}
-            />
-          );
-        })}
-      </span>
-      {overflow > 0 ? (
-        <span className="tabular-nums" aria-hidden="true">+{overflow}</span>
+      {neediest ? (
+        <MachineShape
+          machine={
+            sandboxProviderLabel(neediest, sandboxStatuses?.get(neediest.id))
+              ? "sandbox"
+              : "local"
+          }
+          className={cn("size-1.5", tone.className)}
+          style={tone.style}
+        />
       ) : null}
+      <span className="tabular-nums" aria-hidden="true">{count}</span>
       <Icon
         name="ChevronDown"
-        className={cn("size-2.5", !collapsed && "rotate-180")}
+        className={cn(
+          "size-2.5 text-muted-foreground/80 transition-transform",
+          collapsed && "-rotate-90",
+        )}
         aria-hidden="true"
       />
     </button>

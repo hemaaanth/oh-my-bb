@@ -212,6 +212,14 @@ export const ThreadRow = memo(function ThreadRow({
     </span>
   ) : null;
   const focusMarker = !focusView ? null : stagePill;
+  const focusStateText = focusView && !nested
+    ? (isFactory && stageLabel
+      ? stageLabel
+      : (tone !== "idle" ? (presentation?.reason ?? attentionReason) : null))
+    : null;
+  const focusHasMetaLine = focusView && !nested && Boolean(
+    focusStateText || childThreads.length > 0 || settledBadge,
+  );
   const machineMetadata = (
     <span data-execution-metadata="" className="inline-flex shrink-0 items-center">
       {nested ? (
@@ -284,7 +292,7 @@ export const ThreadRow = memo(function ThreadRow({
               },
             }}
             isSelected={isSelected}
-            prominent={prominent}
+            prominent={prominent || focusHasMetaLine}
             nested={nested}
             reorderEnabled={reorderEnabled}
             isDragging={isDragging}
@@ -309,8 +317,7 @@ export const ThreadRow = memo(function ThreadRow({
               ) : (
                 <span
                   className={cn(
-                    "min-w-0 flex-1 text-xs text-sidebar-foreground",
-                  prominent ? "flex flex-col gap-1" : "truncate",
+                    "min-w-0 flex-1 truncate text-xs text-sidebar-foreground",
                     thread.isUnread && "font-semibold",
                   )}
                   title={title}
@@ -324,6 +331,73 @@ export const ThreadRow = memo(function ThreadRow({
               {thread.indicatorLabel ? (
                 <span className="sr-only">{thread.indicatorLabel}</span>
               ) : null}
+            </span>
+          ) : focusHasMetaLine ? (
+            <span className="pointer-events-none relative flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="flex min-w-0 items-center gap-1.5">
+                {leadingGlyph}
+                {editing ? (
+                  <input
+                    ref={inputRef}
+                    defaultValue={title}
+                    aria-label="Thread name"
+                    onClick={(event) => event.stopPropagation()}
+                    onBlur={() => void finishRename()}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void finishRename();
+                      if (event.key === "Escape") setEditing(false);
+                    }}
+                    className="pointer-events-auto h-6 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-xs text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                ) : (
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate text-xs text-sidebar-foreground",
+                      thread.isUnread && "font-semibold",
+                    )}
+                    title={title}
+                  >
+                    {title}
+                  </span>
+                )}
+                <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/80">
+                  {age}
+                </span>
+              </span>
+              <span className="flex min-w-0 items-center justify-between gap-2 ps-5">
+                <span className="flex min-w-0 items-center gap-1 text-[10px] leading-tight">
+                  {focusStateText ? (
+                    <span
+                      data-attention-detail=""
+                      data-task-stage={isFactory ? "" : undefined}
+                      data-tone={tone}
+                      title={attentionTooltip}
+                      className={cn("shrink-0 font-medium", palette.textClass)}
+                    >
+                      {focusStateText}
+                    </span>
+                  ) : null}
+                  {focusStateText && showProjectName && projectName ? (
+                    <span aria-hidden="true" className="shrink-0 text-muted-foreground/50">·</span>
+                  ) : null}
+                  {showProjectName && projectName ? (
+                    <span
+                      data-project-metadata=""
+                      className="min-w-0 truncate text-muted-foreground"
+                    >
+                      {projectName}
+                    </span>
+                  ) : null}
+                  {settledBadge}
+                </span>
+                <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
+                  {subagentBadge}
+                  {machineMetadata}
+                  {thread.indicatorLabel ? (
+                    <span className="sr-only">{thread.indicatorLabel}</span>
+                  ) : null}
+                </span>
+              </span>
             </span>
           ) : (
           <span className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-1.5">
@@ -344,19 +418,17 @@ export const ThreadRow = memo(function ThreadRow({
             ) : (
               <span
                 className={cn(
-                  "min-w-0 flex-1 text-xs text-sidebar-foreground",
-                  prominent ? "flex flex-col gap-1" : "truncate",
+                  "min-w-0 flex-1 truncate text-xs text-sidebar-foreground",
                   thread.isUnread && "font-semibold",
                 )}
                 title={title}
               >
-                <span className="truncate">{title}</span>
-                {prominent ? <span data-attention-detail="" title={attentionTooltip} className="truncate text-[10px] font-normal text-muted-foreground">{attentionDetail}</span> : null}
+                {title}
               </span>
             )}
             {settledBadge}
             {focusMarker}
-            {focusView && taskRun && stageLabel ? null : projectMetadata}
+            {projectMetadata}
             {subagentBadge}
             <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
               {machineMetadata}

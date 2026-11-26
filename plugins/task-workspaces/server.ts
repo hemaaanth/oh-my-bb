@@ -1044,6 +1044,50 @@ export default async function plugin(bb: BbPluginApi) {
     };
   }
 
+  const pushNotifyOutputSchema = z.object({
+    ok: z.literal(true),
+    channels: z.array(z.string()),
+  });
+
+  function describeRunAttention(run: {
+    phase: RunPhase | null;
+    summary: string | null;
+    proofPageId: string | null;
+    proposedStatus: Status | null;
+    units: TaskUnit[] | null;
+  }): { key: string; label: string; body: string } | null {
+    if (run.proposedStatus === "done") {
+      return {
+        key: "done",
+        label: "Ready to close",
+        body: run.summary ?? "Work is finished and ready to close.",
+      };
+    }
+    if (run.phase === "blocked") {
+      return {
+        key: `blocked:${run.summary ?? ""}`,
+        label: "Blocked",
+        body: run.summary ?? "Factory run is blocked and needs your input.",
+      };
+    }
+    const waitingUnits = (run.units ?? []).filter((unit) => unit.status === "waiting");
+    if (waitingUnits.length > 0) {
+      return {
+        key: `units:${waitingUnits.map((unit) => unit.id).join(",")}`,
+        label: waitingUnits.length === 1 ? "Unit ready" : `${waitingUnits.length} units ready`,
+        body: waitingUnits[0]?.summary ?? run.summary ?? waitingUnits.map((unit) => unit.title).join(", "),
+      };
+    }
+    if (run.phase === "waiting") {
+      return {
+        key: `waiting:${run.proofPageId ?? ""}`,
+        label: run.proofPageId ? "Proof ready" : "Needs you",
+        body: run.summary ?? (run.proofPageId ? "Proof page is ready for your review." : "Ready for your review."),
+      };
+    }
+    return null;
+  }
+
   function setTaskRun(taskId: string, input: { phase?: RunPhase | null; summary?: string | null; proofPageId?: string | null; proposedStatus?: Status | null; units?: TaskUnit[] | null; clear?: boolean }) {
     const task = getDbTask(taskId);
     if (input.clear) {
@@ -1052,6 +1096,15 @@ export default async function plugin(bb: BbPluginApi) {
       return taskDto(getDbTask(taskId));
     }
     const existing = taskRun(taskId);
+    const prevAttention = existing
+      ? describeRunAttention({
+          phase: existing.phase,
+          summary: existing.summary,
+          proofPageId: existing.proofPageId,
+          proposedStatus: existing.proposedStatus ?? null,
+          units: existing.units ?? null,
+        })
+      : null;
     const phase = input.phase !== undefined ? input.phase : existing?.phase ?? null;
     const summary = input.summary !== undefined ? (input.summary?.trim() || null) : existing?.summary ?? null;
     const proofPageId = input.proofPageId !== undefined ? (input.proofPageId?.trim() || null) : existing?.proofPageId ?? null;
@@ -1076,6 +1129,20 @@ export default async function plugin(bb: BbPluginApi) {
           updated_at = excluded.updated_at`).run(taskId, phase, summary, proofPageId, proposedStatus, unitsJson, now());
     }
     bb.realtime.publish("tasks-changed", { reason: "run", taskId });
+    const nextAttention = describeRunAttention({ phase, summary, proofPageId, proposedStatus, units });
+    if (nextAttention && nextAttention.key !== prevAttention?.key) {
+      const newestThreadId = taskThreads(taskId)[0]?.thread_id ?? undefined;
+      void bb.sdk.plugins.callRpc({
+        pluginId: "push-notifications",
+        method: "notifications.send",
+        input: {
+          title: `${nextAttention.label} · ${task.title}`,
+          body: nextAttention.body,
+          ...(newestThreadId ? { threadId: newestThreadId } : {}),
+        },
+        outputSchema: pushNotifyOutputSchema,
+      }).catch(() => undefined);
+    }
     return taskDto(getDbTask(taskId));
   }
 

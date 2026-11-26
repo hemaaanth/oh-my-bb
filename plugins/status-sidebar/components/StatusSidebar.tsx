@@ -95,7 +95,11 @@ import {
 
 const AUTO_COLLAPSE_KEYS = new Set(["focus:current", "focus:library", "focus:settled"]);
 const AUTO_COLLAPSE_MS = 20_000;
+const isThreadChildrenKey = (key: string) => key.startsWith("thread-children:");
+const isAutoCollapseKey = (key: string) =>
+  AUTO_COLLAPSE_KEYS.has(key) || isThreadChildrenKey(key);
 const defaultCollapsed = (key: string) =>
+  isThreadChildrenKey(key) ||
   ["status:active", "status:snoozed", "status:archived", "focus:current", "focus:library", "focus:settled"].includes(key);
 
 const COLLAPSE_STORAGE_KEY = "status-sidebar:hierarchy-collapse:v1";
@@ -176,15 +180,17 @@ function useCollapsedHierarchy() {
   const [collapsed, setCollapsed] =
     useState<Record<string, boolean>>(() => {
       const saved = readCollapsed();
-      // Auto-collapse focus bands always start collapsed so the sidebar opens focused.
-      for (const key of AUTO_COLLAPSE_KEYS) delete saved[key];
+      // Auto-collapse focus bands and sub-agent drawers always start collapsed.
+      for (const key of Object.keys(saved)) {
+        if (isAutoCollapseKey(key)) delete saved[key];
+      }
       return saved;
     });
   const setKey = (key: string, value: boolean) => {
     setCollapsed((current) => {
       if ((current[key] ?? defaultCollapsed(key)) === value) return current;
       const next = { ...current, [key]: value };
-      if (!AUTO_COLLAPSE_KEYS.has(key)) {
+      if (!isAutoCollapseKey(key)) {
         try {
           window.localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify(next));
         } catch {
@@ -198,7 +204,7 @@ function useCollapsedHierarchy() {
     setCollapsed((current) => {
       const next = { ...current };
       next[key] = !(current[key] ?? defaultCollapsed(key));
-      if (!AUTO_COLLAPSE_KEYS.has(key)) {
+      if (!isAutoCollapseKey(key)) {
         try {
           window.localStorage.setItem(
             COLLAPSE_STORAGE_KEY,
@@ -886,6 +892,8 @@ export function StatusSidebar({
   const threadChildCollapseProps = {
     isThreadChildrenCollapsed: (threadId: string) =>
       Boolean(isCollapsed(threadChildrenCollapseKey(threadId))),
+    onAutoCollapseThreadChildren: (threadId: string) =>
+      collapseState.setKey(threadChildrenCollapseKey(threadId), true),
   };
   const reorderEnabled = view.sort === "manual" && !searching;
   const persistManualOrder = (groupIds: readonly string[]) => {
@@ -1613,6 +1621,7 @@ interface ThreadGroupsProps {
   effectiveStatusByThreadId: ReadonlyMap<string, ThreadStatusBucket>;
   childrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>;
   isThreadChildrenCollapsed: (threadId: string) => boolean;
+  onAutoCollapseThreadChildren: (threadId: string) => void;
   projectNameById: ReadonlyMap<string, string>;
   standaloneThreadIds: ReadonlySet<string>;
   snoozedUntilById: ReadonlyMap<string, number>;
@@ -1683,6 +1692,7 @@ function ThreadRows({
   activeThreadId,
   childrenByParent,
   isThreadChildrenCollapsed,
+  onAutoCollapseThreadChildren,
   projectNameById,
   standaloneThreadIds,
   snoozedUntilById,
@@ -1754,6 +1764,7 @@ function ThreadRows({
               parentProjectId={thread.projectId}
               childrenByParent={childrenByParent}
               isThreadChildrenCollapsed={isThreadChildrenCollapsed}
+              onAutoCollapseThreadChildren={onAutoCollapseThreadChildren}
               activeThreadId={activeThreadId}
               projectNameById={projectNameById}
               snoozedUntilById={snoozedUntilById}
@@ -1775,6 +1786,7 @@ function SidecarThreads({
   parentProjectId,
   childrenByParent,
   isThreadChildrenCollapsed,
+  onAutoCollapseThreadChildren,
   activeThreadId,
   projectNameById,
   snoozedUntilById,
@@ -1786,17 +1798,52 @@ function SidecarThreads({
   parentProjectId: string;
   childrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>;
   isThreadChildrenCollapsed: (threadId: string) => boolean;
+  onAutoCollapseThreadChildren: (threadId: string) => void;
   activeThreadId: string | null;
   projectNameById: ReadonlyMap<string, string>;
   snoozedUntilById: ReadonlyMap<string, number>;
   sandboxStatuses: ReadonlyMap<string, SandboxThreadStatus>;
 }) {
   const children = childrenByParent.get(parentId) ?? [];
-  if (children.length === 0 || isThreadChildrenCollapsed(parentId)) return null;
+  const collapsed = isThreadChildrenCollapsed(parentId);
+  const autoCollapseTimer = useRef<number | null>(null);
+  const cancelAutoCollapse = () => {
+    if (autoCollapseTimer.current !== null) {
+      window.clearTimeout(autoCollapseTimer.current);
+      autoCollapseTimer.current = null;
+    }
+  };
+  const scheduleAutoCollapse = () => {
+    if (collapsed) return;
+    cancelAutoCollapse();
+    autoCollapseTimer.current = window.setTimeout(() => {
+      autoCollapseTimer.current = null;
+      onAutoCollapseThreadChildren(parentId);
+    }, AUTO_COLLAPSE_MS);
+  };
+  useEffect(() => {
+    if (collapsed) {
+      cancelAutoCollapse();
+      return;
+    }
+    // Start the auto-collapse countdown when opened so an unhovered drawer
+    // still collapses back on its own unless actively hovered/focused.
+    scheduleAutoCollapse();
+    return cancelAutoCollapse;
+  }, [collapsed, parentId]);
+  if (children.length === 0 || collapsed) return null;
   return (
     <ul
       role="group"
       aria-label="Attached agents"
+      onMouseEnter={cancelAutoCollapse}
+      onMouseLeave={scheduleAutoCollapse}
+      onFocus={cancelAutoCollapse}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          scheduleAutoCollapse();
+        }
+      }}
       className="relative mt-px space-y-px before:absolute before:inset-y-0 before:start-3 before:w-px before:bg-sidebar-border/60 [[aria-label='Attached_agents']_&]:ms-4"
     >
       {children.map((child) => (
@@ -1832,6 +1879,7 @@ function SidecarThreads({
             parentProjectId={child.projectId}
             childrenByParent={childrenByParent}
             isThreadChildrenCollapsed={isThreadChildrenCollapsed}
+            onAutoCollapseThreadChildren={onAutoCollapseThreadChildren}
             activeThreadId={activeThreadId}
             projectNameById={projectNameById}
             snoozedUntilById={snoozedUntilById}

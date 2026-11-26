@@ -1031,4 +1031,72 @@ export default async function plugin(bb: BbPluginApi) {
     publishThreadOrder();
     publishWorkspaces();
   });
+
+  // Smart solo-chat notifications (Option B): when push-notifications is set to
+  // "input-only" so factory interim turns stay quiet, still push finished
+  // replies on standalone non-factory chats that have no active sub-agents.
+  const pushSendOutputSchema = z.object({
+    ok: z.literal(true),
+    channels: z.array(z.string()),
+  });
+  let pushLevelCache: { level: string | null; checkedAt: number } = { level: null, checkedAt: 0 };
+  async function getPushDefaultLevel(): Promise<string | null> {
+    if (Date.now() - pushLevelCache.checkedAt < 30_000) return pushLevelCache.level;
+    try {
+      const settings = await bb.sdk.plugins.getSettings({ pluginId: "push-notifications" });
+      const raw = (settings as { values?: Record<string, unknown> })?.values?.defaultLevel;
+      const level = typeof raw === "string" ? raw : null;
+      pushLevelCache = { level, checkedAt: Date.now() };
+      return level;
+    } catch {
+      return null;
+    }
+  }
+  function formatNotificationSnippet(text: string): string {
+    return text
+      .replace(/```[\s\S]*?```/g, " ")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/[#>*_~]+/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 180);
+  }
+  bb.events.on("thread.idle", ({ thread, lastAssistantText }) => {
+    void (async () => {
+      if (thread.parentThreadId || thread.lifecycleOwnerThreadId) return;
+      if (thread.archivedAt !== null) return;
+      if (thread.hasPendingInteraction || thread.status === "error") return;
+      if (thread.lastReadAt !== null && thread.lastReadAt >= thread.latestAttentionAt) return;
+      const snippet = formatNotificationSnippet(lastAssistantText ?? "");
+      if (!snippet) return;
+      const snoozedRow = db
+        .prepare(`SELECT until_at FROM snoozed_threads WHERE thread_id = ? AND until_at > ?`)
+        .get(thread.id, Date.now()) as { until_at: number } | undefined;
+      if (snoozedRow) return;
+      // Only bridge when core push-notifications is in input-only mode (avoids
+      // double-notifying on "all" and respects global "muted").
+      if ((await getPushDefaultLevel()) !== "input-only") return;
+      // Factory threads are notified exclusively on attention milestones by task-workspaces.
+      const taskRuns = await listThreadTaskRuns({ fresh: true }).catch(() => ({ runs: [] }));
+      if (taskRuns.runs.some((run) => run.threadId === thread.id)) return;
+      // Suppress interim orchestrator chatter while any child/descendant sub-agent is still running.
+      const running = await bb.sdk.threads.listRunning().catch(() => []);
+      if (running.length > 0) {
+        const runningIds = new Set(running.map((entry) => entry.id));
+        const descendants = await bb.sdk.threads
+          .experimental_listDescendants({ threadIds: [thread.id] })
+          .catch(() => null);
+        const list = (descendants as { threads?: Array<{ descendantIds?: string[] }> } | null)?.threads?.[0]?.descendantIds ?? [];
+        if (list.some((id) => runningIds.has(id))) return;
+      }
+      const title = thread.title?.trim() || "Reply ready";
+      await bb.sdk.plugins.callRpc({
+        pluginId: "push-notifications",
+        method: "notifications.send",
+        input: { title, body: snippet, threadId: thread.id },
+        outputSchema: pushSendOutputSchema,
+      });
+    })().catch(() => undefined);
+  });
 }
