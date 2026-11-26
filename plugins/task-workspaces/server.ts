@@ -394,6 +394,19 @@ export const rpcContract = defineRpcContract({
     input: z.object({ providerId: z.string().min(1).nullable() }).strict(),
     output: sandboxPreferencesSchema,
   },
+  composerDefaults: {
+    input: z.null(),
+    output: z.object({
+      byProject: z.record(z.string(), z.object({
+        providerId: z.string().optional(),
+        model: z.string().optional(),
+        reasoningLevel: z.string().optional(),
+        serviceTier: z.string().optional(),
+        permissionMode: z.enum(["accept-edits", "auto", "full"]).optional(),
+        environment: z.record(z.string(), z.unknown()).optional(),
+      })),
+    }),
+  },
   providerHealth: {
     input: z.null(),
     output: z.array(z.object({
@@ -852,6 +865,66 @@ export default async function plugin(bb: BbPluginApi) {
     else await bb.storage.kv.delete("default-sandbox-provider");
     bb.realtime.publish("tasks-changed", { reason: "settings" });
     return sandboxPreferencesState();
+  }
+
+  type SavedComposerDefaults = {
+    providerId?: string;
+    model?: string;
+    reasoningLevel?: string;
+    serviceTier?: string;
+    permissionMode?: "accept-edits" | "auto" | "full";
+    environment?: Record<string, unknown>;
+  };
+
+  async function loadSavedComposerDefaults(): Promise<Record<string, SavedComposerDefaults>> {
+    const stored = await bb.storage.kv.get("composer-defaults-by-project");
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return {};
+    return stored as Record<string, SavedComposerDefaults>;
+  }
+
+  async function saveProjectComposerDefaults(request: NewThreadRequest) {
+    const key = request.projectId ?? "__personal__";
+    const current = await loadSavedComposerDefaults();
+    const env = request.environment && typeof request.environment === "object"
+      ? (request.environment as Record<string, unknown>)
+      : undefined;
+    // Do not persist ephemeral `reuse` environment IDs or `project-default`
+    // placeholders; keep managed-worktree (with baseBranch/hostId), host, and provider envs.
+    const persistableEnv = env && env.type !== "reuse" && env.type !== "project-default"
+      ? env
+      : current[key]?.environment;
+    const next: SavedComposerDefaults = {
+      ...(request.providerId ? { providerId: request.providerId } : {}),
+      ...(request.model ? { model: request.model } : {}),
+      ...(request.reasoningLevel ? { reasoningLevel: String(request.reasoningLevel) } : {}),
+      ...(request.serviceTier ? { serviceTier: String(request.serviceTier) } : {}),
+      ...(request.permissionMode ? { permissionMode: request.permissionMode } : {}),
+      ...(persistableEnv ? { environment: persistableEnv } : {}),
+    };
+    await bb.storage.kv.set("composer-defaults-by-project", { ...current, [key]: next });
+  }
+
+  async function composerDefaultsState() {
+    const saved = await loadSavedComposerDefaults();
+    const byProject: Record<string, SavedComposerDefaults> = { ...saved };
+    try {
+      const projects = await bb.sdk.projects.list();
+      for (const project of projects) {
+        if (byProject[project.id]) continue;
+        const exec = project.defaultExecutionOptions;
+        if (!exec) continue;
+        byProject[project.id] = {
+          ...(exec.providerId ? { providerId: exec.providerId } : {}),
+          ...(exec.model ? { model: exec.model } : {}),
+          ...(exec.reasoningLevel ? { reasoningLevel: exec.reasoningLevel } : {}),
+          ...(exec.serviceTier ? { serviceTier: exec.serviceTier } : {}),
+          ...(exec.permissionMode ? { permissionMode: exec.permissionMode } : {}),
+        };
+      }
+    } catch {
+      // Fall back to saved task composer defaults if project listing is unavailable.
+    }
+    return { byProject };
   }
 
   function removeProviderReferences(provider: Provider) {
@@ -3193,6 +3266,7 @@ export default async function plugin(bb: BbPluginApi) {
       ],
     };
     const thread = await bb.sdk.threads.spawn({ ...request, title: task.title });
+    void saveProjectComposerDefaults(request).catch(() => undefined);
     // The chat opens at once. Moving the task to doing writes to its provider, which is slow.
     return { threadId: thread.id, task: await persistTaskAttachment(taskId, { ...thread, startedByTask: true }, { awaitStage: false }) };
   }
@@ -3987,6 +4061,7 @@ export default async function plugin(bb: BbPluginApi) {
     setProviderEnabled: ({ provider, enabled }) => setProviderEnabled(provider, enabled),
     sandboxPreferences: async () => sandboxPreferencesState(),
     setDefaultSandboxProvider: ({ providerId }) => setDefaultSandboxProvider(providerId),
+    composerDefaults: async () => composerDefaultsState(),
     providerHealth: () => providerHealth(),
     createTaskOptions,
     createTask,

@@ -260,6 +260,71 @@ function threadChildrenCollapseKey(threadId: string) {
   return `thread-children:${threadId}`;
 }
 
+function hasDescendantThread(
+  rootId: string,
+  targetId: string | null,
+  childrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>,
+): boolean {
+  if (!targetId) return false;
+  const pending = [...(childrenByParent.get(rootId) ?? [])];
+  const seen = new Set<string>([rootId]);
+  while (pending.length > 0) {
+    const child = pending.shift()!;
+    if (child.id === targetId) return true;
+    if (seen.has(child.id)) continue;
+    seen.add(child.id);
+    pending.push(...(childrenByParent.get(child.id) ?? []));
+  }
+  return false;
+}
+
+function nodeContainsThread(
+  node: SidebarTreeNode,
+  targetId: string | null,
+  childrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>,
+): boolean {
+  if (!targetId) return false;
+  if (node.threads.some((t) => t.id === targetId || hasDescendantThread(t.id, targetId, childrenByParent))) {
+    return true;
+  }
+  if (node.children) {
+    return node.children.some((child) => nodeContainsThread(child, targetId, childrenByParent));
+  }
+  return false;
+}
+
+function CollapsibleBody({
+  open,
+  className,
+  children,
+}: {
+  open: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  const [rendered, setRendered] = useState(open);
+  useEffect(() => {
+    if (open) {
+      setRendered(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setRendered(false), 160);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+  return (
+    <div
+      className={cn(
+        "grid transition-[grid-template-rows,opacity] duration-150 ease-out",
+        open ? "grid-rows-[1fr] opacity-100" : "pointer-events-none grid-rows-[0fr] opacity-0",
+        className,
+      )}
+      aria-hidden={!open || undefined}
+    >
+      <div className="min-h-0 overflow-hidden">{rendered ? children : null}</div>
+    </div>
+  );
+}
+
 
 function ThreadStatusSummary({
   threads,
@@ -1008,6 +1073,7 @@ export function StatusSidebar({
         presentationByThreadId={view.group === "focus" ? presentationByThreadId : undefined}
         collapsed={collapsed}
         autoCollapse={AUTO_COLLAPSE_KEYS.has(node.collapseKey)}
+        hasActiveThread={nodeContainsThread(node, selectedThreadId, childrenByParent)}
         onAutoCollapse={() => collapseState.setKey(node.collapseKey, true)}
         onToggle={() => collapseState.toggle(node.collapseKey)}
         headerDrag={headerDrag}
@@ -1017,7 +1083,7 @@ export function StatusSidebar({
         projectsEnabled={integrationPreferences?.values.projectsIntegration === true}
         archiveHasMore={matchingArchivedThreads.length > 50 || Boolean(archive?.hasNextPage)}
       >
-        {collapsed ? null : node.children ? (
+        {node.children ? (
           node.children.map((child) => renderNode(child, 1))
         ) : (
           <>
@@ -1149,6 +1215,7 @@ function GroupSection({
   presentationByThreadId,
   collapsed,
   autoCollapse = false,
+  hasActiveThread = false,
   onAutoCollapse,
   onToggle,
   headerDrag,
@@ -1168,6 +1235,7 @@ function GroupSection({
   presentationByThreadId?: ReadonlyMap<string, ThreadPresentation>;
   collapsed: boolean;
   autoCollapse?: boolean;
+  hasActiveThread?: boolean;
   onAutoCollapse?: () => void;
   onToggle: () => void;
   headerDrag: HeaderDragApi;
@@ -1218,7 +1286,7 @@ function GroupSection({
     }
   };
   const scheduleAutoCollapse = () => {
-    if (!autoCollapse || collapsed || !onAutoCollapse) return;
+    if (!autoCollapse || collapsed || hasActiveThread || !onAutoCollapse) return;
     cancelAutoCollapse();
     autoCollapseTimer.current = window.setTimeout(() => {
       autoCollapseTimer.current = null;
@@ -1226,9 +1294,15 @@ function GroupSection({
     }, AUTO_COLLAPSE_MS);
   };
   useEffect(() => {
-    if (collapsed) cancelAutoCollapse();
+    if (collapsed || hasActiveThread) {
+      cancelAutoCollapse();
+      return;
+    }
+    if (autoCollapse) {
+      scheduleAutoCollapse();
+    }
     return cancelAutoCollapse;
-  }, [collapsed]);
+  }, [collapsed, hasActiveThread, autoCollapse]);
   return (
     <section
       aria-label={label}
@@ -1353,7 +1427,9 @@ function GroupSection({
           {mutationError}
         </p>
       ) : null}
-      {isParent && !collapsed ? <div className="ms-2 ps-1">{children}</div> : children}
+      <CollapsibleBody open={!collapsed} className={isParent ? "ms-2 ps-1" : undefined}>
+        {children}
+      </CollapsibleBody>
     </section>
   );
 }
@@ -1445,6 +1521,7 @@ function AgentsSection({
   onOpen: (profileId: string) => void;
   collapsed: boolean;
   autoCollapse?: boolean;
+  hasActiveThread?: boolean;
   onAutoCollapse?: () => void;
   onToggle: () => void;
 }) {
@@ -1494,6 +1571,7 @@ function ChannelsSection({
   activeChannelId,
   collapsed,
   autoCollapse = false,
+  hasActiveThread = false,
   onAutoCollapse,
   onToggle,
   view,
@@ -1503,6 +1581,7 @@ function ChannelsSection({
   activeChannelId: string | null;
   collapsed: boolean;
   autoCollapse?: boolean;
+  hasActiveThread?: boolean;
   onAutoCollapse?: () => void;
   onToggle: () => void;
   view: SidebarViewOptions;
@@ -1806,6 +1885,7 @@ function SidecarThreads({
 }) {
   const children = childrenByParent.get(parentId) ?? [];
   const collapsed = isThreadChildrenCollapsed(parentId);
+  const hasActiveDescendant = hasDescendantThread(parentId, activeThreadId, childrenByParent);
   const autoCollapseTimer = useRef<number | null>(null);
   const cancelAutoCollapse = () => {
     if (autoCollapseTimer.current !== null) {
@@ -1814,7 +1894,7 @@ function SidecarThreads({
     }
   };
   const scheduleAutoCollapse = () => {
-    if (collapsed) return;
+    if (collapsed || hasActiveDescendant) return;
     cancelAutoCollapse();
     autoCollapseTimer.current = window.setTimeout(() => {
       autoCollapseTimer.current = null;
@@ -1822,71 +1902,73 @@ function SidecarThreads({
     }, AUTO_COLLAPSE_MS);
   };
   useEffect(() => {
-    if (collapsed) {
+    if (collapsed || hasActiveDescendant) {
       cancelAutoCollapse();
       return;
     }
     // Start the auto-collapse countdown when opened so an unhovered drawer
-    // still collapses back on its own unless actively hovered/focused.
+    // still collapses back on its own unless actively hovered/focused or active.
     scheduleAutoCollapse();
     return cancelAutoCollapse;
-  }, [collapsed, parentId]);
-  if (children.length === 0 || collapsed) return null;
+  }, [collapsed, hasActiveDescendant, parentId]);
+  if (children.length === 0) return null;
   return (
-    <ul
-      role="group"
-      aria-label="Attached agents"
-      onMouseEnter={cancelAutoCollapse}
-      onMouseLeave={scheduleAutoCollapse}
-      onFocus={cancelAutoCollapse}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          scheduleAutoCollapse();
-        }
-      }}
-      className="relative mt-px space-y-px before:absolute before:inset-y-0 before:start-3 before:w-px before:bg-sidebar-border/60 [[aria-label='Attached_agents']_&]:ms-4"
-    >
-      {children.map((child) => (
-        <Fragment key={child.id}>
-          <ThreadRow
-            thread={child}
-            focusView={focusView}
-            effectiveStatus={effectiveStatusByThreadId.get(child.id)}
-            projectName={
-              projectNameById.get(child.projectId) ?? "Unknown project"
-            }
-            showProjectName={child.projectId !== parentProjectId}
-            isSelected={child.id === activeThreadId}
-            snoozedUntil={snoozedUntilById.get(child.id) ?? null}
-            sandboxStatus={sandboxStatuses.get(child.id)}
-            childThreads={childrenByParent.get(child.id)}
-            childrenCollapsed={isThreadChildrenCollapsed(child.id)}
-            childSandboxStatuses={
-              childrenByParent.has(child.id) ? sandboxStatuses : undefined
-            }
-            isDragging={false}
-            dropPlacement={null}
-            onDragStart={noop}
-            onDragOver={noop}
-            onDrop={noop}
-            onDragEnd={noop}
-            nested
-          />
-          <SidecarThreads
-            focusView={focusView}
-            effectiveStatusByThreadId={effectiveStatusByThreadId}
-            parentId={child.id}
-            parentProjectId={child.projectId}
-            childrenByParent={childrenByParent}
-            isThreadChildrenCollapsed={isThreadChildrenCollapsed}
-            onAutoCollapseThreadChildren={onAutoCollapseThreadChildren}
-            activeThreadId={activeThreadId}
-            projectNameById={projectNameById}
-            snoozedUntilById={snoozedUntilById}
-            sandboxStatuses={sandboxStatuses}
-          />
-        </Fragment>
-      ))}
-    </ul>
+    <CollapsibleBody open={!collapsed}>
+      <ul
+        role="group"
+        aria-label="Attached agents"
+        onMouseEnter={cancelAutoCollapse}
+        onMouseLeave={scheduleAutoCollapse}
+        onFocus={cancelAutoCollapse}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            scheduleAutoCollapse();
+          }
+        }}
+        className="relative mt-px space-y-px before:absolute before:inset-y-0 before:start-3 before:w-px before:bg-sidebar-border/60 [[aria-label='Attached_agents']_&]:ms-4"
+      >
+        {children.map((child) => (
+          <Fragment key={child.id}>
+            <ThreadRow
+              thread={child}
+              focusView={focusView}
+              effectiveStatus={effectiveStatusByThreadId.get(child.id)}
+              projectName={
+                projectNameById.get(child.projectId) ?? "Unknown project"
+              }
+              showProjectName={child.projectId !== parentProjectId}
+              isSelected={child.id === activeThreadId}
+              snoozedUntil={snoozedUntilById.get(child.id) ?? null}
+              sandboxStatus={sandboxStatuses.get(child.id)}
+              childThreads={childrenByParent.get(child.id)}
+              childrenCollapsed={isThreadChildrenCollapsed(child.id)}
+              childSandboxStatuses={
+                childrenByParent.has(child.id) ? sandboxStatuses : undefined
+              }
+              isDragging={false}
+              dropPlacement={null}
+              onDragStart={noop}
+              onDragOver={noop}
+              onDrop={noop}
+              onDragEnd={noop}
+              nested
+            />
+            <SidecarThreads
+              focusView={focusView}
+              effectiveStatusByThreadId={effectiveStatusByThreadId}
+              parentId={child.id}
+              parentProjectId={child.projectId}
+              childrenByParent={childrenByParent}
+              isThreadChildrenCollapsed={isThreadChildrenCollapsed}
+              onAutoCollapseThreadChildren={onAutoCollapseThreadChildren}
+              activeThreadId={activeThreadId}
+              projectNameById={projectNameById}
+              snoozedUntilById={snoozedUntilById}
+              sandboxStatuses={sandboxStatuses}
+            />
+          </Fragment>
+        ))}
+      </ul>
+    </CollapsibleBody>
   );
 }

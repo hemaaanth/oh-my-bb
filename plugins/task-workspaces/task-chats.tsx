@@ -117,6 +117,38 @@ type ChatView = { taskId: string | null; title: string; chatIds: string[] | null
 type NewChatSeed = { projectId?: string; prompt: string };
 type AttachPatch = (patch: Record<string, Pick<Task, "threadIds">>, call: () => Promise<unknown>) => void;
 
+type SavedComposerDefaults = {
+  providerId?: string;
+  model?: string;
+  reasoningLevel?: string;
+  serviceTier?: string;
+  permissionMode?: "accept-edits" | "auto" | "full";
+  environment?: Record<string, unknown>;
+};
+
+const COMPOSER_DEFAULTS_STORAGE_KEY = "task-workspaces:composer-defaults:v1";
+
+function readLocalComposerDefaults(): Record<string, SavedComposerDefaults> {
+  try {
+    const raw = window.localStorage.getItem(COMPOSER_DEFAULTS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, SavedComposerDefaults>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalComposerDefaults(byProject: Record<string, SavedComposerDefaults>) {
+  try {
+    window.localStorage.setItem(COMPOSER_DEFAULTS_STORAGE_KEY, JSON.stringify(byProject));
+  } catch {
+    // Ignore storage quota errors.
+  }
+}
+
 // A new chat starts in the task's project. Its message names the task, links its GitHub or
 // Linear page, and prefills the factory workflow instruction (editable before sending).
 function newChatSeed(task: ChatTask, sandbox?: { id: string; label: string } | null, description?: string): NewChatSeed {
@@ -165,9 +197,17 @@ export function useChatPopup(tasks: readonly Task[], mutate: AttachPatch) {
   const opener = useCallback((task: ChatTask) => openChats(task).length ? () => show(task) : undefined, [openChats, show]);
   const attach = useCallback((task: ChatTask) => setView({ taskId: task.id, title: task.title, chatIds: [], pane: "attach", from: "menu" }), []);
   const [defaultSandbox, setDefaultSandbox] = useState<{ id: string; label: string } | null>(null);
+  const [composerDefaultsByProject, setComposerDefaultsByProject] = useState<Record<string, SavedComposerDefaults>>(readLocalComposerDefaults);
   const refreshSandboxPref = useCallback(() => {
     void rpc.call("sandboxPreferences").then((pref) => {
       setDefaultSandbox(pref.effectiveProviderId ? { id: pref.effectiveProviderId, label: pref.effectiveLabel ?? pref.effectiveProviderId } : null);
+    }, () => undefined);
+    void rpc.call("composerDefaults").then(({ byProject }) => {
+      setComposerDefaultsByProject((current) => {
+        const merged = { ...current, ...byProject };
+        writeLocalComposerDefaults(merged);
+        return merged;
+      });
     }, () => undefined);
   }, [rpc]);
   useEffect(() => { refreshSandboxPref(); }, [refreshSandboxPref]);
@@ -197,6 +237,28 @@ export function useChatPopup(tasks: readonly Task[], mutate: AttachPatch) {
     if (!taskId) return;
     try {
       const { threadId } = await rpc.call("startTaskThread", { taskId, request });
+      const projectKey = request.projectId ?? "__personal__";
+      const env = request.environment && typeof request.environment === "object"
+        ? (request.environment as Record<string, unknown>)
+        : undefined;
+      setComposerDefaultsByProject((current) => {
+        const persistableEnv = env && env.type !== "reuse" && env.type !== "project-default"
+          ? env
+          : current[projectKey]?.environment;
+        const next: Record<string, SavedComposerDefaults> = {
+          ...current,
+          [projectKey]: {
+            ...(request.providerId ? { providerId: request.providerId } : {}),
+            ...(request.model ? { model: request.model } : {}),
+            ...(request.reasoningLevel ? { reasoningLevel: String(request.reasoningLevel) } : {}),
+            ...(request.serviceTier ? { serviceTier: String(request.serviceTier) } : {}),
+            ...(request.permissionMode ? { permissionMode: request.permissionMode } : {}),
+            ...(persistableEnv ? { environment: persistableEnv } : {}),
+          },
+        };
+        writeLocalComposerDefaults(next);
+        return next;
+      });
       const linked = tasks.find((item) => item.id === taskId)?.threadIds ?? [];
       mutate({ [taskId]: { threadIds: [threadId, ...linked.filter((id) => id !== threadId)] } }, async () => undefined);
       setView((current) => current?.taskId === taskId
@@ -213,7 +275,7 @@ export function useChatPopup(tasks: readonly Task[], mutate: AttachPatch) {
   });
   const popup = view ? <ChatPopup key={view.taskId ?? view.chatIds?.[0]} view={view} available={task ? openChats(task) : view.chatIds ?? []} byId={byId} stateOf={stateOf}
     pane={view.pane === "attach" ? <ThreadPicker status={status} threads={threads} projects={projects} attached={task?.threadIds ?? []} stateOf={stateOf} onPick={attachThread} />
-      : view.pane === "new" && view.seed && view.taskId ? <NewChat taskId={view.taskId} seed={view.seed} onSubmit={startChat} /> : null}
+      : view.pane === "new" && view.seed && view.taskId ? <NewChat taskId={view.taskId} seed={view.seed} savedDefaults={composerDefaultsByProject[view.seed.projectId ?? "__personal__"]} onSubmit={startChat} /> : null}
     onShow={(chatIds) => setView({ ...view, chatIds })}
     onPane={openPane}
     onUnattach={task ? (threadId) => {
@@ -370,11 +432,24 @@ type Sidebar = ReturnType<typeof useSidebarThreads>;
 
 // BB's own new-thread composer, so the chat's project, model, host, sandbox and worktree are
 // chosen here. The draft is kept per task until it is sent.
-function NewChat({ taskId, seed, onSubmit }: { taskId: string; seed: NewChatSeed; onSubmit: (request: NewThreadRequest) => Promise<void> }) {
+function NewChat({ taskId, seed, savedDefaults, onSubmit }: { taskId: string; seed: NewChatSeed; savedDefaults?: SavedComposerDefaults; onSubmit: (request: NewThreadRequest) => Promise<void> }) {
   const compact = useIsCompactViewport();
   return <div className="min-h-0 flex-1 overflow-y-auto p-3">
-    <NewThreadComposer defaultProjectId={seed.projectId} defaultPermissionMode="full" initialPrompt={seed.prompt} draftKey={`task-workspaces:new-chat:${taskId}`}
-      layout="document" placeholder="What should the agent do?" focusRequest={compact ? undefined : 1} onSubmit={onSubmit} />
+    <NewThreadComposer
+      defaultProjectId={seed.projectId}
+      defaultProviderId={savedDefaults?.providerId}
+      defaultModel={savedDefaults?.model}
+      defaultReasoningLevel={savedDefaults?.reasoningLevel as NewThreadRequest["reasoningLevel"]}
+      defaultServiceTier={savedDefaults?.serviceTier as NewThreadRequest["serviceTier"]}
+      defaultPermissionMode={savedDefaults?.permissionMode ?? "full"}
+      defaultEnvironment={savedDefaults?.environment as NewThreadRequest["environment"]}
+      initialPrompt={seed.prompt}
+      draftKey={`task-workspaces:new-chat:${taskId}`}
+      layout="document"
+      placeholder="What should the agent do?"
+      focusRequest={compact ? undefined : 1}
+      onSubmit={onSubmit}
+    />
   </div>;
 }
 
