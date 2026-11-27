@@ -21,6 +21,36 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+const RESUME_RETRY_DELAYS_MS = [4_000, 8_000, 12_000] as const;
+
+function isTransientResumeError(error: unknown): boolean {
+  const message = errorMessage(error).toLowerCase();
+  return (
+    message.includes("still stopping") ||
+    message.includes("stopping") ||
+    message.includes("transitioning") ||
+    message.includes("409") ||
+    message.includes("429") ||
+    message.includes("503") ||
+    message.includes("temporarily unavailable")
+  );
+}
+
+async function sleepWithSignal(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) throw signal.reason ?? new Error("Aborted");
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason ?? new Error("Aborted"));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export interface RegisterSandboxBackendOptions {
   now: () => number;
   /** Required managed-model runtime. Checked before allocation or wake. */
@@ -126,10 +156,26 @@ export function registerSandboxBackend<
           },
           async resume(context) {
             await options.requireRuntime?.();
-            const resumed = await backend.resume!({
-              ...context,
-              resource: backend.parseResource(context.resource),
-            });
+            const parsedResource = backend.parseResource(context.resource);
+            let resumed: Awaited<ReturnType<NonNullable<typeof backend.resume>>> | undefined;
+            for (let attempt = 0; ; attempt++) {
+              try {
+                resumed = await backend.resume!({
+                  ...context,
+                  resource: parsedResource,
+                });
+                break;
+              } catch (error) {
+                const delayMs = RESUME_RETRY_DELAYS_MS[attempt];
+                if (delayMs === undefined || context.signal.aborted || !isTransientResumeError(error)) {
+                  throw error;
+                }
+                context.report.step(
+                  `${definition.runtimeName} is still settling (${errorMessage(error)}); retrying in ${delayMs / 1000}s`,
+                );
+                await sleepWithSignal(delayMs, context.signal);
+              }
+            }
             await connect({ ...context, key: backend.allocationKey(resumed.resource), executor: resumed.executor });
             return { resource: resumed.resource };
           },
