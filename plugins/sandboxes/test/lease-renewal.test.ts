@@ -20,3 +20,34 @@ it("renews connected active machines, isolates failures, and leaves sleeping mac
   expect(renewLease).toHaveBeenCalledTimes(4);
   await fake.harness.dispose();
 });
+
+it("recovers disconnected active sandboxes via suspend and auto-resumes only when work is waiting", async () => {
+  const suspend = vi.fn(async () => ({}));
+  const resume = vi.fn(async () => ({}));
+  const staleAt = Date.now() - 5 * 60_000;
+  const fake = createFakePluginHost({
+    pluginId: "sandboxes",
+    sdk: {
+      hosts: {
+        list: vi.fn(async () => [
+          { id: "crashed-busy", machineProviderId: "sandbox-box", status: "disconnected", lifecycle: { phase: "active" }, lastSeenAt: staleAt, createdAt: staleAt },
+          { id: "crashed-idle", machineProviderId: "sandbox-box", status: "disconnected", lifecycle: { phase: "active" }, lastSeenAt: staleAt, createdAt: staleAt },
+        ]),
+        experimental_suspend: suspend,
+        experimental_resume: resume,
+      },
+      threads: {
+        list: vi.fn(async ({ hostId }: { hostId: string }) =>
+          hostId === "crashed-busy"
+            ? { items: [{ id: "thr_1", status: "active", queuedMessageCount: 1 }] }
+            : { items: [{ id: "thr_2", status: "idle", queuedMessageCount: 0 }] },
+        ),
+      },
+    },
+  });
+  registerNativeLeaseRenewal(fake.bb, new Map([["sandbox-box", { parseResource: (r) => r, renewLease: vi.fn() }]]));
+  await fake.harness.runSchedule("sandbox-lease-renewal");
+  expect(suspend.mock.calls.map(([a]) => a.hostId)).toEqual(["crashed-busy", "crashed-idle"]);
+  expect(resume.mock.calls.map(([a]) => a.hostId)).toEqual(["crashed-busy"]);
+  await fake.harness.dispose();
+});

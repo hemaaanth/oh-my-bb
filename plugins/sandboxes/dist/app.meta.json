@@ -17,7 +17,6 @@
     "radixSelect",
     "react",
     "reactDom",
-    "tailwindMerge",
-    "zod"
+    "tailwindMerge"
   ]
 }

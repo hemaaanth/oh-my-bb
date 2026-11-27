@@ -242,13 +242,27 @@ export function createBoxMachineBackend(
       }
       return { resource, executor: executorFor(created.sandbox.id, resource.runtimeContainer) };
     },
-    async reconcileCleanup() {
-      const listed = z.object({
-        sandboxes: z.array(z.unknown()), pageInfo: z.object({ hasMore: z.boolean() }),
-      }).parse(await request("/sandboxes?limit=1"));
-      // Older creates had no allocation name. Only a completely empty account proves absence.
-      if (listed.sandboxes.length === 0 && !listed.pageInfo.hasMore) return;
-      throw new Error("Boat cannot confirm cleanup by allocation key; retain the native resource for manual reconciliation");
+    async reconcileCleanup(context) {
+      const targetName = `bb-${context.key}`;
+      let cursor: string | null = null;
+      for (let page = 0; page < 20; page++) {
+        const query = cursor ? `?limit=50&cursor=${encodeURIComponent(cursor)}` : "?limit=50";
+        const listed = z.object({
+          sandboxes: z.array(z.object({ id: z.string(), name: z.string().nullable().optional() })),
+          pageInfo: z.object({ hasMore: z.boolean(), nextCursor: z.string().nullable().optional() }),
+        }).parse(await request(`/sandboxes${query}`, { signal: context.signal }));
+        for (const sandbox of listed.sandboxes) {
+          if (sandbox.name === targetName) {
+            await request(`/sandboxes/${encodeURIComponent(sandbox.id)}`, {
+              method: "DELETE",
+              signal: context.signal,
+              headers: { "X-Ascii-Confirm-Delete": sandbox.id },
+            });
+          }
+        }
+        if (!listed.pageInfo.hasMore || !listed.pageInfo.nextCursor) return;
+        cursor = listed.pageInfo.nextCursor;
+      }
     },
     async renewLease(context) {
       const path = `/sandboxes/${encodeURIComponent(context.resource.providerSandboxId)}`;
@@ -266,10 +280,19 @@ export function createBoxMachineBackend(
     },
     async suspend(context) {
       context.report.step("Stopping the Boat sandbox");
-      await request(
-        `/sandboxes/${encodeURIComponent(context.resource.providerSandboxId)}/stop`,
-        { method: "POST" },
-      );
+      try {
+        await request(
+          `/sandboxes/${encodeURIComponent(context.resource.providerSandboxId)}/stop`,
+          { method: "POST" },
+        );
+      } catch (error) {
+        const current = await request(`/sandboxes/${encodeURIComponent(context.resource.providerSandboxId)}`).catch(() => null);
+        if (current !== null) {
+          const state = boxEnvelopeSchema.parse(current).sandbox.state;
+          if (state === "archived" || state === "stopped") return context.resource;
+        }
+        throw error;
+      }
       return context.resource;
     },
     async resume(context) {

@@ -86,14 +86,26 @@ it("resumes old Box records with finite auto-stop, executes, pauses and deletes"
   expect(calls.at(-1)!.headers.get("X-Ascii-Confirm-Delete")).toBe("bx_fixture");
 });
 
-it("confirms an old uncheckpointed allocation is gone only when the complete account is empty", async () => {
+it("reconciles cleanup by matching allocation name bb-<key>", async () => {
   const operation = { ...context(), key: resource.key };
   vi.stubGlobal("fetch", vi.fn(async () => Response.json({ sandboxes: [], pageInfo: { hasMore: false } })));
   await expect(backend().reconcileCleanup(operation)).resolves.toBeUndefined();
-  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ sandboxes: [{ id: "other" }], pageInfo: { hasMore: false } })));
-  await expect(backend().reconcileCleanup(operation)).rejects.toThrow("cannot confirm cleanup");
-  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ sandboxes: [], pageInfo: { hasMore: true } })));
-  await expect(backend().reconcileCleanup(operation)).rejects.toThrow("cannot confirm cleanup");
+
+  // Unrelated sandboxes do not block cleanup confirmation.
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ sandboxes: [{ id: "other", name: "bb-other" }], pageInfo: { hasMore: false } })));
+  await expect(backend().reconcileCleanup(operation)).resolves.toBeUndefined();
+
+  // A matching allocation name is deleted before confirming cleanup.
+  const deleted: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (init?.method === "DELETE") {
+      deleted.push(url);
+      return Response.json({ ok: true });
+    }
+    return Response.json({ sandboxes: [{ id: "bx_match", name: `bb-${resource.key}` }], pageInfo: { hasMore: false } });
+  }));
+  await expect(backend().reconcileCleanup(operation)).resolves.toBeUndefined();
+  expect(deleted).toEqual(["https://boat.dev/api/v1/sandboxes/bx_match"]);
 });
 
 it("runs managed machines inside the prepared container and uploads stdin outside command history", async () => {
