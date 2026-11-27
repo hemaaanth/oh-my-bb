@@ -290,6 +290,10 @@ export const rpcContract = defineRpcContract({
       }).strict()),
     }).strict(),
   },
+  taskRunsChanged: {
+    input: z.null(),
+    output: okSchema,
+  },
   inspectSettledSafety: {
     input: z.object({
       threads: z.array(z.object({
@@ -969,6 +973,13 @@ export default async function plugin(bb: BbPluginApi) {
     },
     listAttachableTasks: ({ threadId, query }) => listAttachableTasks(threadId, query),
     listThreadTaskRuns: (input) => listThreadTaskRuns(input),
+    taskRunsChanged() {
+      taskRunsCacheEntry = null;
+      if (integrations.tasksIntegration) {
+        bb.realtime.publish("tasks-changed", null);
+      }
+      return { ok: true } as const;
+    },
     inspectSettledSafety: ({ threads }) => inspectSettledSafety(threads),
     archiveSafeThreads: ({ threadIds }) => archiveSafeThreads(threadIds),
     attachThreadToTask: ({ taskId, threadId }) => attachThreadToTask(taskId, threadId),

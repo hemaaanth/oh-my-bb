@@ -39,6 +39,7 @@ export const ThreadRow = memo(function ThreadRow({
   thread,
   effectiveStatus,
   focusView = false,
+  twoLineFocusRow = false,
   cleanupCandidate = false,
   taskRun,
   presentation,
@@ -64,6 +65,7 @@ export const ThreadRow = memo(function ThreadRow({
   thread: PluginSidebarThread;
   effectiveStatus?: ThreadStatusBucket;
   focusView?: boolean;
+  twoLineFocusRow?: boolean;
   cleanupCandidate?: boolean;
   taskRun?: ThreadTaskRun;
   presentation?: ThreadPresentation;
@@ -217,9 +219,10 @@ export const ThreadRow = memo(function ThreadRow({
       ? stageLabel
       : (tone !== "idle" ? (presentation?.reason ?? attentionReason) : null))
     : null;
-  const focusHasMetaLine = focusView && !nested && Boolean(
-    focusStateText || childThreads.length > 0 || settledBadge,
-  );
+  // Layout is strictly band-level: Needs you & In flight are always 2-line;
+  // Recent & Settled are always 1-line so sibling rows never mix heights or
+  // shift project/sub-agent columns based on per-row state.
+  const focusHasMetaLine = focusView && !nested && twoLineFocusRow;
   const machineMetadata = (
     <span data-execution-metadata="" className="inline-flex shrink-0 items-center">
       {nested ? (
@@ -292,7 +295,7 @@ export const ThreadRow = memo(function ThreadRow({
               },
             }}
             isSelected={isSelected}
-            prominent={prominent || focusHasMetaLine}
+            prominent={focusView ? focusHasMetaLine : prominent}
             nested={nested}
             reorderEnabled={reorderEnabled}
             isDragging={isDragging}
@@ -427,7 +430,7 @@ export const ThreadRow = memo(function ThreadRow({
               </span>
             )}
             {settledBadge}
-            {focusMarker}
+            {focusView ? null : focusMarker}
             {projectMetadata}
             {subagentBadge}
             <span className="flex shrink-0 items-center gap-1 text-muted-foreground">

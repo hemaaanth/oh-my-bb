@@ -1121,6 +1121,15 @@ export default async function plugin(bb: BbPluginApi) {
     ok: z.literal(true),
     channels: z.array(z.string()),
   });
+  const okRpcOutputSchema = z.object({ ok: z.literal(true) });
+  function notifySidebarTaskRunsChanged() {
+    void bb.sdk.plugins.callRpc({
+      pluginId: "status-sidebar",
+      method: "taskRunsChanged",
+      input: null,
+      outputSchema: okRpcOutputSchema,
+    }).catch(() => undefined);
+  }
 
   function describeRunAttention(run: {
     phase: RunPhase | null;
@@ -1166,6 +1175,7 @@ export default async function plugin(bb: BbPluginApi) {
     if (input.clear) {
       db.prepare("DELETE FROM task_runs WHERE task_id = ?").run(taskId);
       bb.realtime.publish("tasks-changed", { reason: "run", taskId });
+      notifySidebarTaskRunsChanged();
       return taskDto(getDbTask(taskId));
     }
     const existing = taskRun(taskId);
@@ -1202,6 +1212,7 @@ export default async function plugin(bb: BbPluginApi) {
           updated_at = excluded.updated_at`).run(taskId, phase, summary, proofPageId, proposedStatus, unitsJson, now());
     }
     bb.realtime.publish("tasks-changed", { reason: "run", taskId });
+    notifySidebarTaskRunsChanged();
     const nextAttention = describeRunAttention({ phase, summary, proofPageId, proposedStatus, units });
     if (nextAttention && nextAttention.key !== prevAttention?.key) {
       const newestThreadId = taskThreads(taskId)[0]?.thread_id ?? undefined;
@@ -1231,6 +1242,7 @@ export default async function plugin(bb: BbPluginApi) {
         setTaskRun(taskId, { proposedStatus: null });
       }
       bb.realtime.publish("tasks-changed", { reason: "run-proposal", taskId });
+      notifySidebarTaskRunsChanged();
       return taskDto(getDbTask(taskId));
     }
     return setTaskRun(taskId, { proposedStatus: null });
@@ -1261,6 +1273,7 @@ export default async function plugin(bb: BbPluginApi) {
     await finalizeTask(taskId, "done");
     db.prepare("DELETE FROM task_runs WHERE task_id = ?").run(taskId);
     bb.realtime.publish("tasks-changed", { reason: "done-no-merge", taskId });
+    notifySidebarTaskRunsChanged();
     return taskDto(getDbTask(taskId));
   }
 

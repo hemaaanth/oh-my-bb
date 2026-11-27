@@ -1104,6 +1104,7 @@ export function StatusSidebar({
             ) : null}
             <ThreadGroups
               focusView={view.group === "focus"}
+              twoLineFocusRow={view.group === "focus" && (node.key === "attention" || node.key === "current")}
               now={now}
               threads={node.threads}
               activeThreadId={selectedThreadId}
@@ -1693,6 +1694,7 @@ function ChannelsSection({
 
 interface ThreadGroupsProps {
   focusView?: boolean;
+  twoLineFocusRow?: boolean;
   now?: number;
   threads: readonly PluginSidebarThread[];
   activeThreadId: string | null;
@@ -1765,6 +1767,7 @@ function ThreadGroups(props: ThreadGroupsProps) {
 function ThreadRows({
   threads,
   focusView = false,
+  twoLineFocusRow = false,
   now = Date.now(),
   statusByThreadId,
   effectiveStatusByThreadId,
@@ -1805,6 +1808,7 @@ function ThreadRows({
               thread={thread}
               effectiveStatus={effectiveStatusByThreadId.get(thread.id) ?? statusByThreadId.get(thread.id)}
               focusView={focusView}
+              twoLineFocusRow={twoLineFocusRow}
               cleanupCandidate={isCleanupCandidate(thread, effectiveStatusByThreadId.get(thread.id) ?? statusByThreadId.get(thread.id) ?? "idle", now)}
               taskRun={taskRunsByThreadId?.get(thread.id)}
               presentation={presentationByThreadId?.get(thread.id)}
